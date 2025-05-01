@@ -15,10 +15,8 @@ def save_markdown(oops: Oops, image_path: str) -> str:
     Returns:
         保存的文件路径
     """
-    # 创建data/markdown目录（如果不存在）
     os.makedirs("data/markdown", exist_ok=True)
     
-    # 获取当前日期和随机ID作为文件名部分
     today = datetime.datetime.now().strftime("%Y-%m-%d")
     
     # 获取图片文件名（不含路径和扩展名）作为标识符

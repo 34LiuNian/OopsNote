@@ -1,0 +1,4 @@
+python-telegram-bot[ext]>=20.0
+google-generativeai
+pydantic
+python-dotenv

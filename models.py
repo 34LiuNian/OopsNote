@@ -27,11 +27,15 @@ class Oops(OopsResponse):
 
 class Request(BaseModel):
     image: bytes
-    prompt: str | None
+    image_path: Optional[str]
+    prompt: str
 
 class AnalyzeError(BaseModel):
     level: str
     status: str
     reasons: str
 
+# TODO: 错误信息
+class Response(BaseModel):
+    pass
 Response = Union[OopsResponse, AnalyzeError]
