@@ -70,7 +70,7 @@ python main.py
 
 ## 许可证
 
-GPL许可证
+AGPL许可证
 
 ## 📁 项目结构 (简化)
 

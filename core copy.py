@@ -1,6 +1,6 @@
 # TODO: 修改导入方式，以优化实例命名
 from models import OopsResponse, Request, Oops
-from export import MarkdownExporter # TODO: 模块改名，防混淆
+from markdown import save_markdown# TODO: 模块改名，防混淆
 from save import MongoSaver
 from config import Env
 import telegram_bot
@@ -33,11 +33,9 @@ class OopsNote:
         self.queue: asyncio.Queue[Request] = asyncio.Queue()
         self._load_queue()
 
-        self.Generator = generate.Generate(mode=self.env.api_mode, api_key=self.env.api_key, model=self.env.model, system_instruction=self.env.prompt, end_point=self.env.openai_endpoint, tempterature=0.5)
+        self.Generater = generate.Generate(mode=self.env.api_mode, api_key=self.env.api_key, model=self.env.model, system_instruction=self.env.prompt)
 
         self.Saver = MongoSaver()
-
-        # self.Explorter = MarkdownExporter(output_dir="data/markdown") # TODO: 导出的core完善
 
         self.Bot = telegram_bot.Bot(token=self.env.telegram_token, Queue=self.queue)
 
@@ -112,7 +110,7 @@ class OopsNote:
                     break # 退出循环
                 try:
                     # 调用 AI 生成
-                    wrong: OopsResponse = self.Generator.generate(data)
+                    wrong: OopsResponse = self.Generater.generate(data) # 修正：调用 generate 而不是 gemerate
                     logger.info(f"生成的内容：\n{wrong.problem}")
 
                     # 构建 Oops 对象 (需要包含 image_path)
@@ -145,20 +143,24 @@ class OopsNote:
 
     async def shutdown(self, loop: asyncio.AbstractEventLoop, task_bot: asyncio.Task, task_deal: asyncio.Task):
         """
-        关闭程序，保存队列状态并取消任务
+        优雅关闭程序，保存队列状态并取消任务
         """
         logger.info("开始执行关闭程序...")
 
+        # 1. 保存队列状态
         self._save_queue()
 
+        # 2. 关闭数据库连接
         self.Saver.close()
 
+        # 3. 取消正在运行的任务
         logger.info("正在取消后台任务...")
         tasks_to_cancel = [task_bot, task_deal]
         for task in tasks_to_cancel:
             if task and not task.done():
                 task.cancel()
 
+        # 等待任务被取消 (给它们一点时间清理)
         cancelled_tasks = await asyncio.gather(*tasks_to_cancel, return_exceptions=True)
         for i, result in enumerate(cancelled_tasks):
             task_name = "task_bot" if i == 0 else "task_deal"
@@ -183,15 +185,18 @@ class OopsNote:
         try:
             task_bot = asyncio.create_task(self.Bot.run())
             task_deal = asyncio.create_task(self.deal_request())
+            # 等待任一任务完成或被取消
+            # 使用 wait 而不是 gather，这样可以更容易处理取消
             done, pending = await asyncio.wait(
                 [task_bot, task_deal],
-                return_when=asyncio.FIRST_COMPLETED
+                return_when=asyncio.FIRST_COMPLETED # 或者 FIRST_EXCEPTION
             )
+            # 如果有任务异常结束，记录日志
             for task in done:
                 try:
                     task.result() # 获取结果，如果异常会抛出
                 except asyncio.CancelledError:
-                    pass
+                    pass # 被取消是预期的
                 except Exception as e:
                     task_name = "task_bot" if task == task_bot else "task_deal"
                     logger.error(f"{task_name} 异常退出: {e}", exc_info=True)
@@ -199,4 +204,5 @@ class OopsNote:
         except asyncio.CancelledError:
             logger.info("主任务被取消 (可能由 Ctrl+C 触发)，开始清理...")
         finally:
+            # 调用新的关闭函数
             await self.shutdown(loop, task_bot, task_deal)

@@ -3,6 +3,7 @@ data/
 *.pyc
 __pycache__/
 .obsidian/
+.vscode/
 .env
 test/
 old/
