@@ -55,20 +55,18 @@ class Bot:
     async def run(self):
         """异步启动 Bot 并保持运行。"""
         try:
-            logger.info("Telegram Bot 启动中 (异步)...")
+            logger.info("Telegram Bot 启动中...")
             await self.application.initialize()
             await self.application.start()
             await self.application.updater.start_polling()
             logger.info("Telegram Bot 运行中，等待消息...")
-
-            # 保持协程运行，直到被外部停止（例如 Ctrl+C）
-            # asyncio.Future() 创建一个永远不会完成的 Future
-            await asyncio.Future()
+            
+            stop_signal = asyncio.get_event_loop().create_future()
+            await stop_signal
+            
         # TODO: 处理异常优化（Ctrl+C）
         finally:
-            # 确保在退出时清理资源
             logger.info("Telegram Bot 关闭中...")
-            # 使用 _running 替代 is_running
             if self.application.updater._running:
                 await self.application.updater.stop()
             await self.application.stop()

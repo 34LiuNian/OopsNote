@@ -1,4 +1,12 @@
 python-telegram-bot[ext]>=20.0
-google-generativeai
-pydantic
+google-genai
 python-dotenv
+coloredlogs
+pydantic
+pymongo
+openai
+pdfkit
+
+pytest
+pytest-asyncio
+pytest-mock

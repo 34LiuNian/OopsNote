@@ -22,6 +22,7 @@ class Generate:
         """
         匹配生成模式
         """
+        logger.info("开始调用生成")
         if self.mode == "GEMINI":
             return self.gemini_generate(request)
         elif self.mode == "OPENAI":
@@ -32,8 +33,6 @@ class Generate:
         """
         gemini实现
         """
-        
-
         contents = [
             genai.types.Part.from_bytes(
                 data=request.image,
@@ -57,15 +56,16 @@ class Generate:
                 ],
             },
         )
-        return response.parsed
+        # 自动解析成 Response 类型（你定义的）
+        json_data = response.text
+        parsed = TypeAdapter(Response).validate_json(json_data)
+        return parsed
     
     
     def openai_compatible_generate(self, request: Request) -> Response:
         """
         OpenAI 实现
         """
-        
-        
         base64_image_url = f"data:image/jpeg;base64,{request.image}"
 
         messages = [

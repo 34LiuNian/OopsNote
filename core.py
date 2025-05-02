@@ -1,15 +1,13 @@
-# TODO: 修改导入方式，以优化实例命名
 from models import OopsResponse, Request, Oops
 from export import MarkdownExporter # TODO: 模块改名，防混淆
 from save import MongoSaver
 from config import Env
 import telegram_bot
 import generate
+from queue_persistence import PickleFileQueuePersistence, QueuePersistence
 
-from datetime import datetime
 import asyncio
 import os
-import pickle
 from logger import logging
 
 logger = logging.getLogger(__name__)
@@ -31,7 +29,10 @@ class OopsNote:
         self.env = Env()
 
         self.queue: asyncio.Queue[Request] = asyncio.Queue()
-        self._load_queue()
+        
+        # 使用具体的持久化实现
+        self.queue_persistence: QueuePersistence = PickleFileQueuePersistence(QUEUE_DUMP_FILE)
+        self.queue_persistence.load_queue(self.queue) # <--- 使用新的调用
 
         self.Generator = generate.Generate(mode=self.env.api_mode, api_key=self.env.api_key, model=self.env.model, system_instruction=self.env.prompt, end_point=self.env.openai_endpoint, tempterature=0.5)
 
@@ -40,65 +41,6 @@ class OopsNote:
         # self.Explorter = MarkdownExporter(output_dir="data/markdown") # TODO: 导出的core完善
 
         self.Bot = telegram_bot.Bot(token=self.env.telegram_token, Queue=self.queue)
-
-    def _load_queue(self):
-        """
-        从文件加载上次未完成的队列任务
-        """
-        if os.path.exists(QUEUE_DUMP_FILE):
-            try:
-                with open(QUEUE_DUMP_FILE, 'rb') as f:
-                    items = pickle.load(f)
-                for item in items:
-                    # 注意：这里假设 Request 对象是可序列化的
-                    # 如果 Request 包含不可序列化的内容（如文件句柄），需要调整
-                    # 这里直接放入 Request 对象，因为图片数据已是 bytes
-                    self.queue.put_nowait(item)
-                logger.info(f"成功从 {QUEUE_DUMP_FILE} 加载了 {len(items)} 个未处理的任务。")
-                os.remove(QUEUE_DUMP_FILE) # 加载成功后删除文件，避免重复加载
-                logger.info(f"已删除队列状态文件: {QUEUE_DUMP_FILE}")
-            except (FileNotFoundError, pickle.UnpicklingError, EOFError, TypeError) as e:
-                logger.error(f"加载队列状态文件 {QUEUE_DUMP_FILE} 失败: {e}。将启动空队列。")
-            except Exception as e:
-                 logger.error(f"加载队列时发生未知错误: {e}。将启动空队列。")
-
-
-    def _save_queue(self):
-        """
-        将当前队列中未处理的任务保存到文件
-        """
-        items_to_save = []
-        while not self.queue.empty():
-            try:
-                # 使用 get_nowait 避免阻塞
-                item = self.queue.get_nowait()
-                # 确保 None 信号不被保存
-                if item is not None:
-                    items_to_save.append(item)
-                # 标记任务完成，即使我们没有处理它，因为我们要保存它
-                self.queue.task_done()
-            except asyncio.QueueEmpty:
-                break # 队列已空
-            except Exception as e:
-                logger.error(f"从队列取出任务准备保存时出错: {e}")
-                # 出错时也标记完成，避免卡住 join (虽然我们不用 join 了)
-                try:
-                    self.queue.task_done()
-                except ValueError: # 如果任务已被标记完成
-                    pass
-
-        if items_to_save:
-            try:
-                with open(QUEUE_DUMP_FILE, 'wb') as f:
-                    pickle.dump(items_to_save, f)
-                logger.info(f"成功将 {len(items_to_save)} 个未处理的任务保存到 {QUEUE_DUMP_FILE}。")
-            except (pickle.PicklingError, IOError) as e:
-                logger.error(f"保存队列状态到 {QUEUE_DUMP_FILE} 失败: {e}")
-            except Exception as e:
-                 logger.error(f"保存队列时发生未知错误: {e}")
-        else:
-            logger.info("队列为空，无需保存状态。")
-
 
     async def deal_request(self):
         """
@@ -149,7 +91,7 @@ class OopsNote:
         """
         logger.info("开始执行关闭程序...")
 
-        self._save_queue()
+        self.queue_persistence.save_queue(self.queue) # <--- 使用新的调用
 
         self.Saver.close()
 
@@ -181,22 +123,20 @@ class OopsNote:
         task_deal = None
 
         try:
+            # 创建两个异步任务
             task_bot = asyncio.create_task(self.Bot.run())
             task_deal = asyncio.create_task(self.deal_request())
-            done, pending = await asyncio.wait(
-                [task_bot, task_deal],
-                return_when=asyncio.FIRST_COMPLETED
-            )
-            for task in done:
-                try:
-                    task.result() # 获取结果，如果异常会抛出
-                except asyncio.CancelledError:
-                    pass
-                except Exception as e:
-                    task_name = "task_bot" if task == task_bot else "task_deal"
-                    logger.error(f"{task_name} 异常退出: {e}", exc_info=True)
+            
+            # 让两个任务真正并行执行，而不是等待任一任务完成
+            # 使用 asyncio.gather 等待所有任务完成（但实际上它们是无限循环，除非有异常或被取消）
+            await asyncio.gather(task_bot, task_deal)
+            
+            # 注：上面的 gather 实际上永远不会正常结束，因为两个任务都是无限循环
+            # 所以下面的代码只有在异常（如Ctrl+C）时才会执行
 
         except asyncio.CancelledError:
             logger.info("主任务被取消 (可能由 Ctrl+C 触发)，开始清理...")
+        except Exception as e:
+            logger.error(f"运行时发生异常: {e}", exc_info=True)
         finally:
             await self.shutdown(loop, task_bot, task_deal)
