@@ -1,9 +1,9 @@
 import asyncio
 import pytest
-import pytest_asyncio # <--- 确保导入了这个小可爱
+import pytest_asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
-from models import Request, OopsResponse, Oops, Tags  # 确保导入了所有需要的模型
-from core import OopsNote
+from models import Request, OopsResponse, Oops, Tags  # <--- 改回绝对导入
+from core import OopsNote # <--- 改回绝对导入
 
 # pytest 标记，所有测试都是异步的
 pytestmark = pytest.mark.asyncio

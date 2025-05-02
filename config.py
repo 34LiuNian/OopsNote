@@ -4,6 +4,12 @@ from logger import logging
 logger = logging.getLogger(__name__)
 class Env:
     def __init__(self):
+
+        # TODO: 配置化文件创建
+        os.makedirs("./data/telegram_bot", exist_ok=True)
+        os.makedirs("./data/markdown", exist_ok=True)
+        os.makedirs("./data", exist_ok=True) # 确保 data 目录存在
+
         logger.info("加载环境变量...")
         try:
             # 尝试加载 .env 文件
@@ -12,7 +18,8 @@ class Env:
             logger.error("未找到 .env 文件，请确保该文件存在于当前目录。")
             raise FileNotFoundError("未找到 .env 文件，请确保该文件存在于当前目录。")
 
-        self.api_mode = os.getenv("API_MODE")
+        self.api_mode = "OPENAI" # TODO： 赛博闹鬼,暂爆炸
+        logger.info(f"API_MODE: {self.api_mode}")
         if self.api_mode == "GEMINI":
             self.api_key = os.getenv("GEMINI_API_KEY")
             self.model = os.getenv("GEMINI_MODEL")
