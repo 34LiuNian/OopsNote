@@ -12,7 +12,6 @@ class Env:
 
         logger.info("加载环境变量...")
         try:
-            # 尝试加载 .env 文件
             load_dotenv()
         except FileNotFoundError:
             logger.error("未找到 .env 文件，请确保该文件存在于当前目录。")
@@ -20,16 +19,10 @@ class Env:
 
         self.api_mode = "OPENAI" # TODO： 赛博闹鬼,暂爆炸
         logger.info(f"API_MODE: {self.api_mode}")
-        if self.api_mode == "GEMINI":
-            self.api_key = os.getenv("GEMINI_API_KEY")
-            self.model = os.getenv("GEMINI_MODEL")
-        elif self.api_mode == "OPENAI":
-            self.api_key = os.getenv("OPENAI_API_KEY")
-            self.model = os.getenv("OPENAI_MODEL")
+        self.api_key = os.getenv("OPENAI_API_KEY")
+        self.model = os.getenv("OPENAI_MODEL")
         
-        else:
             # logger.error("处理失败", exc_info=True) #TODO： 添加异常处理
-            raise ValueError("Invalid API mode. Please set GEMINI_API_MODE to either 'GEMINI' or 'OPENAI'.")
         self.openai_endpoint = os.getenv("OPENAI_ENDPOINT") #TODO： 需要添加特判
         if not self.api_key:
             raise ValueError("API key not found. Please set the GEMINI_API_KEY environment variable.")

@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import Optional, Union, List
+from typing import Optional, Union
 
 class Tags(BaseModel):
     class Problem(BaseModel):
@@ -36,6 +36,6 @@ class AnalyzeError(BaseModel):
     reasons: str
 
 # TODO: 错误信息
-class Response(BaseModel):
-    pass
+# class Response(BaseModel):
+#     pass
 Response = Union[OopsResponse, AnalyzeError]

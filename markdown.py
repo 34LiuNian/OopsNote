@@ -4,7 +4,7 @@ from models import Oops
 import os
 import re
 
-def save_markdown(oops: Oops, image_path: str) -> str:
+def save_markdown(oops: Oops) -> str:
     """
     将生成的内容保存为 Markdown 文件，修复常见的 Markdown 格式问题
     

@@ -2,7 +2,7 @@ import pytest
 import asyncio
 import os
 import pickle
-from typing import List, Any
+from typing import List
 
 # 模拟 Request 类，因为它在 core 或其他地方定义
 # 在测试中，我们只需要一个具有相似结构的对象即可

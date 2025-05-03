@@ -27,10 +27,10 @@ class Bot:
         self.application.add_handler(MessageHandler(filters.PHOTO, self.handle_photo))
         logger.info("Telegram Bot 初始化完成。")
 
-    async def start(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+    async def start(self, update: Update):
         await update.message.reply_text("发送图片以开始错题整理，可携带描述")
 
-    async def handle_photo(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+    async def handle_photo(self, update: Update):
         user = update.message.from_user
         photo = update.message.photo[-1]
         caption = update.message.caption or ""
