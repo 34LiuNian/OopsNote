@@ -94,4 +94,4 @@ class OopsNote:
             logger.error(f"运行时发生异常: {e}", exc_info=True)
         finally:
             # 确保传入任务列表
-            await self.shutdown(task_bot, tasks_deal)
+            await self.shutdown(task_bot)

@@ -24,10 +24,6 @@ class Env:
         
             # logger.error("处理失败", exc_info=True) #TODO： 添加异常处理
         self.openai_endpoint = os.getenv("OPENAI_ENDPOINT") #TODO： 需要添加特判
-        if not self.api_key:
-            raise ValueError("API key not found. Please set the GEMINI_API_KEY environment variable.")
-        if not self.model:
-            raise ValueError("Model name not found. Please set the GEMINI_MODEL environment variable.")
         
         self.telegram_token = os.getenv("TELEGRAM_BOT_TOKEN")
 

@@ -15,12 +15,13 @@ class Generate:
         self.system_instruction = system_instruction
         self.temperature = temperature
         self.end_point = end_point
-        self.api_key = api_key
-        self.model = model
+        self.api_key = "sk-WkYTI6iPaFDAqQdMFd612bD34eAc4e918cC8F5Bf5cC86d8e"
+        # self.model = model
+        self.model = "gemini-2.5-pro-exp-03-25"
 
         self.client = genai.Client(
             api_key=self.api_key,
-            http_options={"base_url": self.end_point}
+            http_options={"base_url": "https://aihubmix.com/gemini"}
         )
         logger.info("生成器初始化完成。")
 
