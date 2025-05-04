@@ -63,8 +63,8 @@ class Bot:
             
             stop_signal = asyncio.get_event_loop().create_future()
             await stop_signal
-            
-        # TODO: 处理异常优化（Ctrl+C）
+        except asyncio.CancelledError:
+            logger.info("Telegram Bot 运行已取消。")# TODO: 处理异常优化（Ctrl+C）
         finally:
             logger.info("Telegram Bot 关闭中...")
             if self.application.updater._running:

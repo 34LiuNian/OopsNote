@@ -15,9 +15,13 @@ class Generate:
         self.system_instruction = system_instruction
         self.temperature = temperature
         self.end_point = end_point
-        self.api_key = "sk-WkYTI6iPaFDAqQdMFd612bD34eAc4e918cC8F5Bf5cC86d8e"
-        # self.model = model
-        self.model = "gemini-2.5-pro-exp-03-25"
+        self.api_key = api_key
+        self.model = model
+
+        logger.info("end_point: %s", self.end_point)
+        logger.info("model: %s", self.model)
+        logger.info("api_key: %s", self.api_key)
+        logger.info("temperature: %s", self.temperature)
 
         self.client = genai.Client(
             api_key=self.api_key,
@@ -41,12 +45,12 @@ class Generate:
                     )
                 ),
                 types.Part(
-                    text="Describe the image."
+                    text=request.prompt,
                 )
             ]
         )
         response = await self.client.aio.models.generate_content(
-            model="gemini-2.5-pro-exp-03-25",
+            model=self.model,
             contents=contents,
             config=types.GenerateContentConfig(
                 system_instruction = self.system_instruction,

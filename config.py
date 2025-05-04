@@ -17,20 +17,25 @@ class Env:
             logger.error("未找到 .env 文件，请确保该文件存在于当前目录。")
             raise FileNotFoundError("未找到 .env 文件，请确保该文件存在于当前目录。")
 
-        self.api_mode = "OPENAI" # TODO： 赛博闹鬼,暂爆炸
-        logger.info(f"API_MODE: {self.api_mode}")
-        self.api_key = os.getenv("OPENAI_API_KEY")
-        self.model = os.getenv("OPENAI_MODEL")
-        
-            # logger.error("处理失败", exc_info=True) #TODO： 添加异常处理
-        self.openai_endpoint = os.getenv("OPENAI_ENDPOINT") #TODO： 需要添加特判
-        
+        self.api_mode = os.getenv("API_MODE", "GEMINI")
+        if self.api_mode == "GEMINI":
+            self.api_key = os.getenv("GEMINI_API_KEY")
+            self.endpoint = os.getenv("GEMINI_ENDPOINT")
+            self.model = os.getenv("GEMINI_MODEL")
+        else:
+            self.api_key = os.getenv("OPENAI_API_KEY")
+            self.endpoint = os.getenv("OPENAI_ENDPOINT")
+            self.model = os.getenv("OPENAI_MODEL")
+        self.temperature = float(os.getenv("TEMPERATURE", 0.5))
+
         self.telegram_token = os.getenv("TELEGRAM_BOT_TOKEN")
 
         self.mongo_uri = os.getenv("MONGO_URI")
         self.database_name = os.getenv("DATABASE_NAME")
 
+        self.dump_file = os.getenv("DUMP_FILE") # 队列持久化文件
+
         # 读取提示文件
         with open(os.getenv("PROMPT_FILE"), 'r', encoding='utf-8') as f:
-            self.prompt = f.read()
+            self.system_instruction = f.read()
         logger.info("环境变量加载完成。")
