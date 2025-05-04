@@ -20,6 +20,7 @@ class Generate:
 
         logger.info("end_point: %s", self.end_point)
         logger.info("model: %s", self.model)
+        logger.info("api_key: %s", self.api_key)
         logger.info("temperature: %s", self.temperature)
 
         self.client = genai.Client(
