@@ -1,110 +1,128 @@
 import os
 import datetime
 import uuid
-import pdfkit
 from models import Oops
+from save import MongoSaver # <--- 导入数据库操作类
+from config import Env      # <--- 导入配置加载类
+from logger import logging  # <--- 导入日志记录器
 
-class MarkdownExporter:
-    def __init__(self, output_dir="data/markdown", css_file=None):
-        """
-        初始化导出器
-        Args:
-            output_dir: Markdown 文件保存路径
-            css_file: 自定义 CSS 文件路径（用于 PDF 导出）
-        """
-        self.output_dir = output_dir
-        self.css_file = css_file
-        os.makedirs(self.output_dir, exist_ok=True)
+logger = logging.getLogger(__name__)
 
-    def export_markdown(self, oops_list: list[Oops]) -> list[str]:
-        """
-        批量导出 Oops 对象为 Markdown 文件
-        Args:
-            oops_list: Oops 对象列表
-        Returns:
-            保存的 Markdown 文件路径列表
-        """
-        filepaths = []
-        for oops in oops_list:
-            today = datetime.datetime.now().strftime("%Y-%m-%d")
-            file_id = str(uuid.uuid4())[:8]
-            filename = f"{today}_{file_id}.md"
-            filepath = os.path.join(self.output_dir, filename)
+# --- Markdown 模板 ---
+# 每道题目的模板
+MARKDOWN_ITEM_TEMPLATE = """
+### 题目
 
-            # 默认 Markdown 内容
-            content = [
-                f"# 题目\n\n{oops.problem}\n",
-                f"## 正确答案\n\n{oops.answer}\n",
-                f"## 错因分析\n\n{oops.analysis or '无'}\n",
-            ]
+{problem}
 
-            # 添加图片引用
-            if oops.image_path:
-                content.append(f"![题目图片]({oops.image_path})\n")
+### 正确答案
 
-            # 添加标签信息
-            if hasattr(oops, "tags"):
-                content.append("## 标签\n")
-                for key, value in vars(oops.tags).items():
-                    if isinstance(value, list):
-                        value = ", ".join(value)
-                    content.append(f"- **{key}:** {value}\n")
+{answer}
 
-            # 写入文件
-            with open(filepath, "w", encoding="utf-8") as f:
-                f.writelines(content)
+### 错因分析
 
-            filepaths.append(filepath)
+{analysis}
 
-        return filepaths
+---
+"""
 
-    def export_pdf(self, oops_list: list[Oops], pdf_output: str):
-        """
-        批量导出 Oops 对象为 PDF 文件
-        Args:
-            oops_list: Oops 对象列表
-            pdf_output: 输出 PDF 文件路径
-        """
-        html_content = """
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <meta charset="UTF-8">
-            <title>错题</title>
-        """
+# 文档头部模板
+MARKDOWN_HEADER = """# 错题汇总
 
-        # 添加自定义 CSS
-        if self.css_file and os.path.exists(self.css_file):
-            html_content += f'<link rel="stylesheet" href="{self.css_file}">\n'
+> 导出时间: {timestamp}
+> 总题目数: {total_count}
 
-        html_content += """
-        </head>
-        <body>
-        """
+---
+"""
 
-        # 添加每个 Oops 的内容
-        for oops in oops_list:
-            html_content += f"<h1>题目</h1><p>{oops.problem}</p>\n"
-            html_content += f"<h2>正确答案</h2><p>{oops.answer}</p>\n"
-            html_content += f"<h2>错因分析</h2><p>{oops.analysis or '无'}</p>\n"
+def format_oops_to_markdown(oops: Oops) -> str:
+    """将单个 Oops 对象格式化为 Markdown 字符串"""
+    # 处理图片部分
+    return MARKDOWN_ITEM_TEMPLATE.format(
+        problem=oops.problem or "无",
+        answer=oops.answer or "无",
+        analysis=oops.analysis or "无",
+    )
 
-            # 添加图片
-            if oops.image_path:
-                html_content += f'<img src="{oops.image_path}" alt="题目图片" style="max-width:100%;">\n'
+def export_all_to_single_markdown(output_file="exports/all_oops_records.md"):
+    """从数据库导出所有 Oops 记录到一个单独的 Markdown 文件"""
+    logger.info("开始从数据库导出所有错题记录到单个Markdown文件...")
+    env = Env()
+    exported_count = 0
+    failed_count = 0
+    all_markdown_content = []
 
-            # 添加标签
-            if hasattr(oops, "tags"):
-                html_content += "<h2>标签</h2><ul>\n"
-                for key, value in vars(oops.tags).items():
-                    if isinstance(value, list):
-                        value = ", ".join(value)
-                    html_content += f"<li><strong>{key}:</strong> {value}</li>\n"
-                html_content += "</ul>\n"
+    # 检查必要的数据库配置
+    mongo_uri = env.mongo_uri
+    database_name = env.database_name or "OopsDB"
+    
+    if not mongo_uri:
+        logger.error("未配置MongoDB连接URI，请检查.env文件中的MONGO_URI设置。")
+        return
 
-        html_content += """
-        </body>
-        </html>
-        """
+    logger.info(f"将连接到数据库: {database_name}")
 
-        # 使用 pdfkit 导出 PDF
-        pdfkit.from_string(html_content, pdf_output, options={"encoding": "utf-8"})
+    try:
+        # 确保输出目录存在
+        os.makedirs(os.path.dirname(output_file), exist_ok=True)
+        
+        # 使用 with 语句确保连接关闭
+        with MongoSaver(mongo_uri=mongo_uri, database_name=database_name) as saver:
+            # 修正：Collection 对象不支持布尔值测试，必须用 is None 判断
+            if saver.client is None or saver.collection is None:
+                logger.error("未能成功连接到数据库，导出中止。")
+                return
+
+            # 查询所有记录并按照科目排序
+            all_records = list(saver.collection.find({}))
+            logger.info(f"从数据库中获取了 {len(all_records)} 条记录。")
+            
+            # 如果没有记录，生成空的Markdown
+            if not all_records:
+                timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                header = MARKDOWN_HEADER.format(timestamp=timestamp, total_count=0)
+                with open(output_file, "w", encoding="utf-8") as f:
+                    f.write(header)
+                    f.write("\n\n*没有找到任何错题记录，数据库为空。*")
+                logger.info(f"导出完成，但数据库中没有记录。Markdown文件已保存到: {output_file}")
+                return
+
+            # 添加文档头部
+            timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            header = MARKDOWN_HEADER.format(timestamp=timestamp, total_count=len(all_records))
+            all_markdown_content.append(header)
+
+            # 处理每条记录
+            for record in all_records:
+                try:
+                    # 使用 Pydantic 模型验证数据结构
+                    oops_instance = Oops.model_validate(record)
+                    record_id = str(record.get('_id', '未知ID'))
+                    
+                    # 格式化为Markdown
+                    markdown_content = format_oops_to_markdown(oops_instance)
+                    all_markdown_content.append(markdown_content)
+                    
+                    exported_count += 1
+                    logger.debug(f"成功处理记录 {record_id}")
+
+                except Exception as e:
+                    failed_count += 1
+                    record_id_str = str(record.get('_id', '未知ID'))
+                    logger.error(f"处理记录 {record_id_str} 时出错: {e}", exc_info=True)
+
+            # 写入单一Markdown文件
+            with open(output_file, "w", encoding="utf-8") as f:
+                f.write("\n".join(all_markdown_content))
+
+            logger.info(f"导出完成！成功处理 {exported_count} 条记录，失败 {failed_count} 条。")
+            logger.info(f"Markdown文件已保存到: {output_file}")
+
+    except Exception as e:
+        logger.error(f"导出过程中发生严重错误: {e}", exc_info=True)
+
+if __name__ == "__main__":
+    # 当直接运行这个脚本时，执行导出操作
+    export_all_to_single_markdown()
+    # 你也可以指定不同的输出文件，例如：
+    # export_all_to_single_markdown(output_file="exports/错题汇总.md")
