@@ -2,7 +2,6 @@
 from models import OopsResponse, Request
 from pydantic import TypeAdapter
 from logger import logging
-import base64
 import asyncio
 from google import genai
 from google.genai import types
@@ -34,7 +33,7 @@ class Generate:
         异步 Gemini 实现
         """
         logger.info("准备调用 Gemini API ...")
-        file_bytes = base64.b64encode(request.image).decode('utf-8')
+        file_bytes = request.image
 
         contents = types.Content(
             parts=[
