@@ -13,6 +13,7 @@
 * ⚙️ 核心业务逻辑编排 (`core.py`)
 * 🧱 使用 Pydantic 定义清晰的数据模型 (`models.py`)
 * 🔑 通过 `.env` 文件管理配置 (`config.py`)
+* 🖨️ 彩色日志输出 (`logger.py`)
 * 📄 (可选) 导出为 Markdown 或 PDF (`export.py`, `markdown.py`)
 
 ## 安装 🛠️
@@ -44,14 +45,8 @@
 
 ## 配置 ⚙️
 
-1. **复制环境变量模板**:
-    项目根目录下通常会有一个 `.env.example` 文件 (如果没有，请根据需要创建一个)。复制它并命名为 `.env`。
-
-    ```bash
-    # 如果存在 .env.example
-    cp .env.example .env
-    # 如果不存在，则手动创建 .env 文件
-    ```
+1. **准备 `.env` 文件**
+    本仓库不再附带 `.env.example`，请直接新建 `.env` 并填写配置。
 
 2. **编辑 `.env` 文件**: ✏️
     打开 `.env` 文件，填入你的配置信息。关键配置包括：
@@ -102,6 +97,7 @@ python main.py
 * 请确保 `.env` 文件已正确配置并且包含了所有必要的密钥和路径。
 * 确保 MongoDB 服务正在运行并且网络可达。
 * 如果使用代理或特定的 AI 服务接入点，请确保网络连接正常。
+* 可在 `tags.toml` 中调整科目、知识点等标签配置。
 
 ## 贡献 ❤️
 
@@ -122,16 +118,17 @@ python main.py
 ├── ⚙️ core.py           # 核心业务逻辑与任务调度
 ├── 🧱 models.py         # Pydantic 数据模型定义
 ├── 🔑 config.py         # 加载 .env 配置
-├── 📄 markdown.py       # (旧) Markdown 文件保存 (可能被 export.py 替代)
+├── 🖨️ logger.py        # 终端彩色日志
+├── 📄 markdown.py       # (旧) Markdown 文件保存 (可选)
 ├── 📤 export.py         # 导出功能 (Markdown, PDF)
 ├── 📜 prompt.md         # AI 系统指令模板
+├── 📄 tags.toml         # 标签及知识点配置
 ├── 📦 requirements.txt  # Python 依赖列表
 ├── 🚀 main.py           # 程序主入口
 ├── 🧪 tests/            # 测试文件目录
 │   ├── test_core.py
-│   ├── test_queue_persistence.py
-│   └── ...
-├── 📄 .env              # 环境变量 (需自行根据 .env.example 创建)
+│   └── test_queue_persistence.py
+├── 📄 .env              # 环境变量 (需自行手动创建)
 ├── 📄 .gitignore        # Git 忽略配置
 ├── 📄 README.md         # 就是你现在看到的这个文件
 ├── 📄 LICENSE           # 项目许可证
