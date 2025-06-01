@@ -35,18 +35,30 @@ class OopsNote:
         try:
             while True:
                 data = await self.queue.get()
-                wrong: OopsResponse = await self.Generator.generate(data)
-                # logger.info(f"生成的内容：\n{wrong.problem}")
-                oops_to_save = Oops(
-                    problem=wrong.problem,
-                    answer=wrong.answer,
-                    analysis=wrong.analysis,
-                    tags=wrong.tags,
-                    image_path=data.image_path 
-                )
+                if data is None:
+                    # None 作为停止信号
+                    self.queue.task_done()
+                    break
+                try:
+                    wrong: OopsResponse = await self.Generator.generate(data)
+                    # logger.info(f"生成的内容：\n{wrong.problem}")
+                    oops_to_save = Oops(
+                        problem=wrong.problem,
+                        answer=wrong.answer,
+                        analysis=wrong.analysis,
+                        tags=wrong.tags,
+                        image_path=data.image_path
+                    )
 
-                self.Saver.save_oops(oops_to_save)
-                logger.info(f"请求处理完毕并成功保存。")
+                    self.Saver.save_oops(oops_to_save)
+                    logger.info(f"请求处理完毕并成功保存。")
+                except Exception as e:
+                    logger.error(
+                        f"处理请求 (Prompt: {getattr(data, 'prompt', '')}) 时发生错误: {e}",
+                        exc_info=True,
+                    )
+                finally:
+                    self.queue.task_done()
         except asyncio.CancelledError:
             if data is not None:
                 self.queue.put_nowait(data)  # 将未处理的请求放回队列
@@ -73,11 +85,15 @@ class OopsNote:
             
         except KeyboardInterrupt:
             logger.info("Ctrl+C 退出，开始清理...")
+            # 使用 None 停止 deal_request 循环
+            self.queue.put_nowait(None)
+            await tasks_deal
             task_bot.cancel()
-            tasks_deal.cancel()
-            await asyncio.gather(task_bot, tasks_deal, return_exceptions=True)
+            await asyncio.gather(task_bot, return_exceptions=True)
         except asyncio.CancelledError:
             logger.info("任务被取消，退出 launch。")
+            self.queue.put_nowait(None)
+            await asyncio.gather(tasks_deal, return_exceptions=True)
         except Exception as e:
             logger.error(f"运行时发生异常: {e}", exc_info=True)
         finally:
