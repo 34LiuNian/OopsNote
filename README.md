@@ -7,10 +7,11 @@
 ## 功能 ✨
 
 * 🤖 通过 Telegram 机器人进行交互 (`telegram_bot.py`)
+* 🖥️ 支持命令行批量导入图片 (`cli.py`)
 * 🧠 利用 AI 分析图片中的题目并生成解答 (`generate.py`)
 * 💾 将整理好的错题保存到 MongoDB (`save.py`)
 * 🔄 通过队列持久化确保任务不丢失 (`queue_persistence.py`)
-* ⚙️ 核心业务逻辑编排 (`core.py`)
+* ⚙️ 核心业务逻辑编排 (`core.py`)，支持根据队列长度自动增加处理线程
 * 🧱 使用 Pydantic 定义清晰的数据模型 (`models.py`)
 * 🔑 通过 `.env` 文件管理配置 (`config.py`)
 * 🖨️ 彩色日志输出 (`logger.py`)
@@ -52,10 +53,10 @@
     打开 `.env` 文件，填入你的配置信息。关键配置包括：
 
 * `TELEGRAM_BOT_TOKEN`: 你的 Telegram 机器人令牌 🤖。
-* `API_MODE`: 使用的 AI 服务 (`GEMINI` 或 `OPENAI`)。
-* `GEMINI_API_KEY` / `OPENAI_API_KEY`: 对应 AI 服务的 API 密钥 🔑。
-* `GEMINI_ENDPOINT` / `OPENAI_ENDPOINT`: 对应 AI 服务的接入点 URL (如果需要指定)。
-* `GEMINI_MODEL` / `OPENAI_MODEL`: 使用的 AI 模型名称。
+* `API_MODE`: 使用的 AI 服务 (`GEMINI`、`OPENAI` 或 `QWEN3`)。
+* `GEMINI_API_KEY` / `OPENAI_API_KEY` / `QWEN_API_KEY`: 对应 AI 服务的 API 密钥 🔑。
+* `GEMINI_ENDPOINT` / `OPENAI_ENDPOINT` / `QWEN_ENDPOINT`: 接入点 URL (如需指定)。
+* `GEMINI_MODEL` / `OPENAI_MODEL` / `QWEN_MODEL`: 使用的模型名称。
 * `PROMPT_FILE`: 指向 `prompt.md` 文件的路径 (定义 AI 的角色和输出格式)。
 * `MONGO_URI`: MongoDB 连接字符串 💾 (例如: `mongodb://localhost:27017`)。
 * `DATABASE_NAME`: MongoDB 数据库名称 (例如: `OopsDB`)。
@@ -65,7 +66,7 @@
     # .env 文件示例
     TELEGRAM_BOT_TOKEN="YOUR_TELEGRAM_BOT_TOKEN"
 
-    API_MODE="GEMINI" # 或 "OPENAI"
+    API_MODE="GEMINI" # 或 "OPENAI" 或 "QWEN3"
 
     GEMINI_API_KEY="YOUR_GEMINI_API_KEY"
     GEMINI_ENDPOINT="YOUR_GEMINI_ENDPOINT_IF_NEEDED" # 例如 aihubmix 的地址
@@ -75,6 +76,11 @@
     # OPENAI_API_KEY="YOUR_OPENAI_API_KEY"
     # OPENAI_ENDPOINT="YOUR_OPENAI_ENDPOINT_IF_NEEDED"
     # OPENAI_MODEL="gpt-4-vision-preview"
+
+    # 如果使用 QWEN3
+    # QWEN_API_KEY="YOUR_QWEN_API_KEY"
+    # QWEN_ENDPOINT="YOUR_QWEN_ENDPOINT_IF_NEEDED"
+    # QWEN_MODEL="qwen-turbo"
 
     PROMPT_FILE="./prompt.md"
     MONGO_URI="mongodb://localhost:27017"
@@ -91,6 +97,14 @@ python main.py
 ```
 
 机器人启动后，你就可以在 Telegram 里给它发送带有题目的图片啦！
+
+### 命令行批量处理
+
+```bash
+python cli.py path/to/images -p "可选的统一描述"
+```
+
+这将在不启动 Telegram 机器人的情况下，将指定文件夹或文件中的图片批量放入队列处理。
 
 ## 注意事项 ⚠️
 

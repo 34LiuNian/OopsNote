@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 
 class OopsNote:
-    def __init__(self):
+    def __init__(self, enable_bot: bool = True, max_workers: int = 4, threshold: int = 5):
         """
         初始化
         创建相关模块实例
@@ -22,10 +22,16 @@ class OopsNote:
         self.env = Env()
         self.queue: asyncio.Queue[Request] = asyncio.Queue()
         self.queue_persistence: QueuePersistence = PickleFileQueuePersistence(self.env.dump_file)
-        self.Generator = generate.Generate(api_key=self.env.api_key, model=self.env.model, system_instruction=self.env.system_instruction, end_point=self.env.endpoint, temperature=0.5)
+        self.Generator = generate.Generate(api_mode=self.env.api_mode, api_key=self.env.api_key, model=self.env.model, system_instruction=self.env.system_instruction, end_point=self.env.endpoint, temperature=self.env.temperature)
         self.Saver = MongoSaver()
-        # self.Exporter = MarkdownExporter(output_dir="data/markdown") # TODO: 导出的core完善
-        self.Bot = telegram_bot.Bot(token=self.env.telegram_token, Queue=self.queue)
+        self.enable_bot = enable_bot
+        self.max_workers = max_workers
+        self.threshold = threshold
+        self.workers: list[asyncio.Task] = []
+        if self.enable_bot:
+            self.Bot = telegram_bot.Bot(token=self.env.telegram_token, Queue=self.queue)
+        else:
+            self.Bot = None
 
     async def deal_request(self):
         data = None
@@ -69,31 +75,59 @@ class OopsNote:
             self.queue_persistence.save_queue(self.queue)
             logger.info("队列已保存。")
 
+    async def _monitor_workers(self):
+        """根据队列长度动态调整处理协程数量"""
+        try:
+            while True:
+                await asyncio.sleep(1)
+                qsize = self.queue.qsize()
+                # 清理已结束的任务
+                self.workers = [w for w in self.workers if not w.done()]
+                target = min(self.max_workers, max(1, (qsize // self.threshold) + 1))
+                while len(self.workers) < target:
+                    task = asyncio.create_task(self.deal_request())
+                    self.workers.append(task)
+                    logger.info(f"新增处理线程，当前数量: {len(self.workers)}")
+        except asyncio.CancelledError:
+            pass
+        finally:
+            for _ in self.workers:
+                self.queue.put_nowait(None)
+            await asyncio.gather(*self.workers, return_exceptions=True)
+
     async def launch(self):
         """
         启动主程序，创建任务并运行
         """
         task_bot = None
+        monitor = None
 
         try:
             self.queue_persistence.load_queue(self.queue)
 
-            task_bot = asyncio.create_task(self.Bot.run())
-            tasks_deal = asyncio.create_task(self.deal_request())
-            
-            await asyncio.gather(task_bot, tasks_deal)
+            if self.Bot:
+                task_bot = asyncio.create_task(self.Bot.run())
+            monitor = asyncio.create_task(self._monitor_workers())
+
+            await asyncio.gather(*(t for t in [task_bot, monitor] if t))
             
         except KeyboardInterrupt:
             logger.info("Ctrl+C 退出，开始清理...")
-            # 使用 None 停止 deal_request 循环
-            self.queue.put_nowait(None)
-            await tasks_deal
-            task_bot.cancel()
-            await asyncio.gather(task_bot, return_exceptions=True)
+            for _ in self.workers:
+                self.queue.put_nowait(None)
+            if monitor:
+                monitor.cancel()
+            await asyncio.gather(*self.workers, return_exceptions=True)
+            if task_bot:
+                task_bot.cancel()
+                await asyncio.gather(task_bot, return_exceptions=True)
         except asyncio.CancelledError:
             logger.info("任务被取消，退出 launch。")
-            self.queue.put_nowait(None)
-            await asyncio.gather(tasks_deal, return_exceptions=True)
+            for _ in self.workers:
+                self.queue.put_nowait(None)
+            if monitor:
+                monitor.cancel()
+            await asyncio.gather(*self.workers, return_exceptions=True)
         except Exception as e:
             logger.error(f"运行时发生异常: {e}", exc_info=True)
         finally:
