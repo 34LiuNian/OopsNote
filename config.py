@@ -17,12 +17,16 @@ class Env:
             logger.error("未找到 .env 文件，请确保该文件存在于当前目录。")
             raise FileNotFoundError("未找到 .env 文件，请确保该文件存在于当前目录。")
 
-        self.api_mode = os.getenv("API_MODE", "GEMINI")
+        self.api_mode = os.getenv("API_MODE", "GEMINI").upper()
         if self.api_mode == "GEMINI":
             self.api_key = os.getenv("GEMINI_API_KEY")
             self.endpoint = os.getenv("GEMINI_ENDPOINT")
             self.model = os.getenv("GEMINI_MODEL")
-        else:
+        elif self.api_mode == "QWEN3":
+            self.api_key = os.getenv("QWEN_API_KEY")
+            self.endpoint = os.getenv("QWEN_ENDPOINT")
+            self.model = os.getenv("QWEN_MODEL")
+        else:  # 默认使用 OPENAI 兼容格式
             self.api_key = os.getenv("OPENAI_API_KEY")
             self.endpoint = os.getenv("OPENAI_ENDPOINT")
             self.model = os.getenv("OPENAI_MODEL")
