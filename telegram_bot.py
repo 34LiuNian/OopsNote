@@ -60,15 +60,26 @@ class Bot:
             await self.application.start()
             await self.application.updater.start_polling()
             logger.info("Telegram Bot 运行中，等待消息...")
-            
+
             stop_signal = asyncio.get_event_loop().create_future()
             await stop_signal
         except asyncio.CancelledError:
-            logger.info("Telegram Bot 运行已取消。")# TODO: 处理异常优化（Ctrl+C）
+            logger.info("Telegram Bot 运行已取消。")  # TODO: 处理异常优化（Ctrl+C）
+        except Exception as e:  # 捕获网络或初始化失败等异常
+            logger.error("Telegram Bot 启动或运行时发生异常: %s", e, exc_info=True)
         finally:
             logger.info("Telegram Bot 关闭中...")
-            if self.application.updater._running:
-                await self.application.updater.stop()
-            await self.application.stop()
-            await self.application.shutdown()
+            try:
+                if getattr(self.application, "updater", None):
+                    await self.application.updater.stop()
+            except Exception:
+                pass
+            try:
+                await self.application.stop()
+            except Exception:
+                pass
+            try:
+                await self.application.shutdown()
+            except Exception:
+                pass
             logger.info("Telegram Bot 已关闭。")
