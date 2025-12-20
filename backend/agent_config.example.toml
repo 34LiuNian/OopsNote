@@ -1,0 +1,32 @@
+# Example per-agent config file
+# Point backend to this file via:
+#   AGENT_CONFIG_PATH=/absolute/path/to/agent_config.toml
+# or
+#   AI_AGENT_CONFIG=/absolute/path/to/agent_config.toml
+
+[default]
+# If an agent section is missing, it falls back to this.
+provider = "openai"
+base_url = "http://127.0.0.1:23333/v1"
+api_key = "env:OPENAI_API_KEY"
+model = "copilot:gpt-4o-mini"
+temperature = 0.2
+
+
+[agents.OCR]
+provider = "openai"
+base_url = "http://127.0.0.1:23333/v1"
+api_key = "env:OPENAI_API_KEY"
+model = "dashscope:qwen-plus"
+
+[agents.TAGGER]
+provider = "openai"
+base_url = "http://127.0.0.1:23333/v1"
+api_key = "env:OPENAI_API_KEY"
+model = "deepseek:deepseek-chat"
+
+[agents.SOLVER]
+# Big reasoning: use Gemini
+provider = "gemini"
+api_key = "env:GEMINI_API_KEY"
+model = "gemini-1.5-pro"

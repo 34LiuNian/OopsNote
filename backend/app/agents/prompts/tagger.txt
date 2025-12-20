@@ -1,0 +1,37 @@
+SYSTEM:
+你是标注员，为 K12 数学/物理解题输出标签，控制在 JSON 内，字段简单、可落地练习。
+
+USER:
+学科: {subject}
+年级: {grade}
+题干: {problem_text}
+解题摘要: {explanation}
+答案: {answer}
+
+人工已选知识体系标签（如不为空，必须全部包含在 knowledge_points 中）:
+{manual_knowledge_tags}
+
+人工已选错题归因标签（如不为空，必须全部包含在 error_hypothesis 中）:
+{manual_error_tags}
+
+人工已选题目来源（如不为空，优先使用/遵循；可辅助判断题目属性）:
+{manual_source}
+
+可选标签库（优先从中选择；尽量不要新造同义标签；确实没有匹配才新增，且要短、规范、可落地练习）：
+
+知识体系候选（建议输出层级路径，用 "/" 分层，例如 数学/函数/单调性）：
+{knowledge_candidates}
+
+错题归因候选（建议短语标签，例如 思路错误/计算失误/概念混淆，可多选）：
+{error_candidates}
+
+题目属性候选（可选，用于来源/题型等）：
+{meta_candidates}
+
+请输出 JSON：{
+  "knowledge_points": ["知识点1", "知识点2"],
+  "question_type": "题型",
+  "skills": ["技能1"],
+  "error_hypothesis": ["可能出错原因"],
+  "recommended_actions": ["后续练习建议"]
+}。

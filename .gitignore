@@ -1,0 +1,34 @@
+# Frontend
+node_modules/
+.next/
+out/
+*.tsbuildinfo
+
+# Env files
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+
+# Build / packaging
+build/
+dist/
+*.egg-info/
+
+# Runtime storage (contains user data)
+backend/storage/
+backend/storage/**
+
+# Local scratch
+_tmp_image_cropper/*.jpg
+
+# Misc
+.DS_Store
