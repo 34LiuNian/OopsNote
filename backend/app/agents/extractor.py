@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import mimetypes
+from io import BytesIO
 from dataclasses import dataclass
 import logging
+import os
 from pathlib import Path
 import time
 from typing import Callable
@@ -131,12 +133,24 @@ class LLMOcrExtractor:
                 len(system_prompt) + len(user_prompt),
             )
 
+            # IMPORTANT: bbox is only meaningful if we actually crop the image.
+            # Otherwise the model may extract multiple questions from the full page.
+            crop_enabled = os.getenv("AI_OCR_CROP_ENABLED", "false").lower() == "true"
+            if crop_enabled:
+                region_image_bytes, region_mime_type = _try_crop_image_bytes(
+                    image_bytes=image_bytes,
+                    mime_type=mime_type,
+                    bbox=region.bbox,
+                )
+            else:
+                region_image_bytes, region_mime_type = image_bytes, mime_type
+
             try:
                 payload_dict = self.client.structured_chat_with_image(
                     system_prompt,
                     user_prompt,
-                    image_bytes,
-                    mime_type,
+                    region_image_bytes,
+                    region_mime_type,
                     response_model=OcrOutput,
                     on_delta=on_delta,
                 )
@@ -161,8 +175,8 @@ class LLMOcrExtractor:
                     payload_dict = self.client.structured_chat_with_image(
                         retry_system_prompt,
                         retry_prompt,
-                        image_bytes,
-                        mime_type,
+                        region_image_bytes,
+                        region_mime_type,
                         response_model=None,
                         on_delta=on_delta,
                     )
@@ -186,6 +200,15 @@ class LLMOcrExtractor:
             problem_text = _coerce_str(payload_dict.get("problem_text"), fallback="")
             latex_blocks = _coerce_str_list(payload_dict.get("latex_blocks"))
             ocr_text = _coerce_str(payload_dict.get("ocr_text"), fallback=None)
+
+            # Some models spam trailing whitespace/newlines when hitting max tokens.
+            # Trim tail to prevent UI looking like it's "infinitely printing".
+            rstrip_enabled = os.getenv("AI_OCR_RSTRIP_OUTPUT", "false").lower() == "true"
+            if rstrip_enabled:
+                if isinstance(problem_text, str):
+                    problem_text = problem_text.rstrip()
+                if isinstance(ocr_text, str):
+                    ocr_text = ocr_text.rstrip()
             options = payload_dict.get("options")
             if not isinstance(options, list):
                 options = []
@@ -196,7 +219,10 @@ class LLMOcrExtractor:
                 if not isinstance(item, dict):
                     continue
                 key = _coerce_str(item.get("key"), fallback="").strip()
-                text = _coerce_str(item.get("text"), fallback="").strip()
+                raw_text = _coerce_str(item.get("text"), fallback="")
+                if rstrip_enabled:
+                    raw_text = raw_text.rstrip()
+                text = raw_text.strip()
                 if not key or not text:
                     continue
                 normalized_options.append(
@@ -231,6 +257,43 @@ class LLMOcrExtractor:
             )
 
         return problems
+
+
+def _try_crop_image_bytes(*, image_bytes: bytes, mime_type: str, bbox: list[float]) -> tuple[bytes, str]:
+    """Crop by normalized [x, y, width, height] bbox.
+
+    Returns (bytes, mime_type). On any failure, returns the original image.
+    """
+
+    try:
+        from PIL import Image
+    except Exception:
+        return image_bytes, mime_type
+
+    try:
+        with Image.open(BytesIO(image_bytes)) as img:
+            img.load()
+            w, h = img.size
+            if w <= 0 or h <= 0:
+                return image_bytes, mime_type
+            if not (isinstance(bbox, list) and len(bbox) == 4):
+                return image_bytes, mime_type
+
+            x, y, bw, bh = bbox
+            left = int(max(0, min(1, x)) * w)
+            top = int(max(0, min(1, y)) * h)
+            right = int(max(0, min(1, x + bw)) * w)
+            bottom = int(max(0, min(1, y + bh)) * h)
+            if right <= left or bottom <= top:
+                return image_bytes, mime_type
+
+            cropped = img.crop((left, top, right, bottom))
+            out = BytesIO()
+            # Use PNG to avoid format edge cases with gateways.
+            cropped.save(out, format="PNG")
+            return out.getvalue(), "image/png"
+    except Exception:
+        return image_bytes, mime_type
 
 
 @dataclass

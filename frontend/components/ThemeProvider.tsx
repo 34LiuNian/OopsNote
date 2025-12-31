@@ -38,8 +38,36 @@ function readStoredPreference(): ThemePreference {
   return "system";
 }
 
-export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const [preference, setPreferenceState] = useState<ThemePreference>("system");
+function readCookiePreference(): ThemePreference {
+  if (typeof document === "undefined") return "system";
+  const m = document.cookie.match(
+    /(?:^|;\s*)oopsnote-theme=([^;]*)/
+  );
+  const raw = m ? decodeURIComponent(m[1]) : null;
+  if (raw === "light" || raw === "dark" || raw === "system") return raw;
+  return "system";
+}
+
+function writePreferenceCookie(value: ThemePreference) {
+  if (typeof document === "undefined") return;
+  const oneYear = 60 * 60 * 24 * 365;
+  document.cookie = `${STORAGE_KEY}=${encodeURIComponent(value)}; Path=/; Max-Age=${oneYear}; SameSite=Lax`;
+}
+
+function applyDocumentColorScheme(resolved: ResolvedTheme) {
+  if (typeof document === "undefined") return;
+  document.documentElement.dataset.oopsnoteColorScheme = resolved;
+  document.documentElement.style.colorScheme = resolved;
+}
+
+export function ThemeProvider({
+  children,
+  initialPreference,
+}: {
+  children: React.ReactNode;
+  initialPreference?: ThemePreference;
+}) {
+  const [preference, setPreferenceState] = useState<ThemePreference>(() => initialPreference ?? "system");
   const [resolvedTheme, setResolvedTheme] = useState<ResolvedTheme>("dark");
 
   const mqlRef = useRef<MediaQueryList | null>(null);
@@ -49,15 +77,18 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     (nextPreference: ThemePreference) => {
       const nextResolved = nextPreference === "system" ? getSystemTheme() : nextPreference;
       setResolvedTheme(nextResolved);
+      applyDocumentColorScheme(nextResolved);
     },
     [setResolvedTheme]
   );
 
   useEffect(() => {
     const stored = readStoredPreference();
-    setPreferenceState(stored);
-    preferenceRef.current = stored;
-    sync(stored);
+    const cookiePref = readCookiePreference();
+    const effective = stored !== "system" ? stored : cookiePref;
+    setPreferenceState(effective);
+    preferenceRef.current = effective;
+    sync(effective);
 
     if (typeof window === "undefined" || !window.matchMedia) return;
     const mql = window.matchMedia("(prefers-color-scheme: dark)");
@@ -85,6 +116,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
       if (typeof window !== "undefined") {
         window.localStorage.setItem(STORAGE_KEY, value);
       }
+      writePreferenceCookie(value);
       sync(value);
     },
     [sync]

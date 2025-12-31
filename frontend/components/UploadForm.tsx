@@ -16,8 +16,8 @@ import {
 import Link from "next/link";
 import { fetchJson } from "../lib/api";
 import type { TaskResponse } from "../types/api";
-import type { TagDimensionsResponse } from "../types/api";
 import { TagPicker } from "./TagPicker";
+import { useTagDimensions } from "../features/tags";
 
 const DEFAULT_SUBJECT = "math";
 
@@ -166,7 +166,7 @@ export function UploadForm() {
   const [knowledgeTags, setKnowledgeTags] = useState<string[]>([]);
   const [errorTags, setErrorTags] = useState<string[]>([]);
   const [customTags, setCustomTags] = useState<string[]>([]);
-  const [tagStyles, setTagStyles] = useState<Record<string, { label: string; label_variant: string }>>({});
+  const { effectiveDimensions: tagStyles } = useTagDimensions();
   const [statusMessage, setStatusMessage] = useState<string>("");
   const [isLoading, setIsLoading] = useState(false);
   const [lastTaskId, setLastTaskId] = useState<string>("");
@@ -174,22 +174,6 @@ export function UploadForm() {
 
   const singleInputRef = useRef<HTMLInputElement | null>(null);
   const folderInputRef = useRef<HTMLInputElement | null>(null);
-
-  useEffect(() => {
-    let alive = true;
-    (async () => {
-      try {
-        const data = await fetchJson<TagDimensionsResponse>("/settings/tag-dimensions");
-        if (!alive) return;
-        setTagStyles(data.dimensions || {});
-      } catch {
-        // best-effort
-      }
-    })();
-    return () => {
-      alive = false;
-    };
-  }, []);
 
   useEffect(() => {
     // Enable folder import on Chromium browsers.

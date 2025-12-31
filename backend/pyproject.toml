@@ -9,9 +9,16 @@ dependencies = [
   "uvicorn>=0.32.0",
   "pydantic>=2.9.0",
   "openai>=1.55.0",
-  "google-generativeai>=0.8.3",
+  "Pillow>=10.0.0",
   "python-dotenv>=1.0.1",
 ]
+
+[tool.setuptools]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["app*"]
+exclude = ["storage*", "tests*"]
 
 [project.optional-dependencies]
 dev = [

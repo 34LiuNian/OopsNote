@@ -27,13 +27,13 @@ Note: the OpenAI Python SDK expects `/v1` in the base URL.
 
 For each agent name in `{OCR,SOLVER,TAGGER}`:
 
-- `AGENT_<NAME>_PROVIDER` = `openai` | `gemini` | `stub`
+- `AGENT_<NAME>_PROVIDER` = `openai` | `stub`
 - `AGENT_<NAME>_API_KEY` = provider key
 - `AGENT_<NAME>_MODEL` = model name
 - `AGENT_<NAME>_TEMPERATURE` = float
 - `AGENT_<NAME>_BASE_URL` = **openai only** (OpenAI-compatible endpoint/proxy)
 
-If `AGENT_<NAME>_PROVIDER` is omitted, that agent falls back to the default `ai_client` chosen from `OPENAI_API_KEY` / `GEMINI_API_KEY` / stub.
+If `AGENT_<NAME>_PROVIDER` is omitted, that agent falls back to the default `ai_client` chosen from `OPENAI_API_KEY` / stub.
 
 ## OpenAI-compatible gateway (local)
 
@@ -73,9 +73,10 @@ model = "gpt-4o-mini"
 temperature = 0.2
 
 [agents.SOLVER]
-provider = "gemini"
-api_key = "env:GEMINI_API_KEY"
-model = "gemini-1.5-pro"
+provider = "openai"
+api_key = "env:OPENAI_API_KEY"
+base_url = "env:OPENAI_BASE_URL"
+model = "gpt-4o-mini"
 temperature = 0.2
 
 [agents.TAGGER]
@@ -99,9 +100,7 @@ export AGENT_CONFIG_PATH="/abs/path/to/agent_config.toml"
 - `OPENAI_MODEL` (default `gpt-4o-mini`)
 - `OPENAI_TEMPERATURE` (default `0.2`)
 
-- `GEMINI_API_KEY`
-- `GEMINI_MODEL` (default `gemini-1.5-flash`)
-- `GEMINI_TEMPERATURE` (default `0.2`)
+（已移除 Gemini：统一使用 OpenAI 协议网关）
 
 ## Example
 
@@ -120,12 +119,13 @@ export AGENT_TAGGER_BASE_URL="https://api.openai.com/v1"
 export AGENT_TAGGER_MODEL="gpt-4o-mini"
 
 # strong model for solving
-export AGENT_SOLVER_PROVIDER=gemini
-export AGENT_SOLVER_API_KEY="$GEMINI_API_KEY"
-export AGENT_SOLVER_MODEL="gemini-1.5-pro"
+export AGENT_SOLVER_PROVIDER=openai
+export AGENT_SOLVER_API_KEY="$OPENAI_API_KEY"
+export AGENT_SOLVER_BASE_URL="$OPENAI_BASE_URL"
+export AGENT_SOLVER_MODEL="gpt-4o-mini"
 ```
 
 ## Notes
 
-- `google-generativeai` uses a global configuration; this repo guards per-agent Gemini keys with a lock.
+本项目仅支持 OpenAI 协议（可接 OpenAI-compatible gateway）。
 - `BASE_URL` is only supported for OpenAI-compatible providers.

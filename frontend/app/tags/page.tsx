@@ -1,23 +1,13 @@
 "use client";
 
 import { Box, Button, Flash, FormControl, Heading, Label, Select, Spinner, Text, TextInput } from "@primer/react";
-import { useEffect, useMemo, useState } from "react";
-import { fetchJson } from "../../lib/api";
+import { useCallback, useEffect, useState } from "react";
+import { createTag, searchTags } from "../../features/tags/api";
+import { TAG_DIMENSIONS, useTagDimensions } from "../../features/tags";
 import type {
   TagDimension,
-  TagDimensionStyle,
-  TagDimensionsResponse,
-  TagDimensionsUpdateRequest,
   TagItem,
-  TagsResponse,
 } from "../../types/api";
-
-const DIMENSIONS: Array<{ key: TagDimension; fallbackLabel: string }> = [
-  { key: "knowledge", fallbackLabel: "知识体系" },
-  { key: "error", fallbackLabel: "错题归因" },
-  { key: "meta", fallbackLabel: "题目属性" },
-  { key: "custom", fallbackLabel: "自定义" },
-];
 
 const LABEL_VARIANTS = [
   "secondary",
@@ -29,7 +19,14 @@ const LABEL_VARIANTS = [
 ];
 
 export default function TagsPage() {
-  const [dims, setDims] = useState<Record<string, TagDimensionStyle>>({});
+  const {
+    setDimensions: setDims,
+    effectiveDimensions: effectiveDims,
+    isLoading: isLoadingDims,
+    error: dimsError,
+    save: saveDims,
+  } = useTagDimensions();
+
   const [dimFilter, setDimFilter] = useState<TagDimension | "">("");
   const [query, setQuery] = useState("");
   const [items, setItems] = useState<TagItem[]>([]);
@@ -41,50 +38,21 @@ export default function TagsPage() {
   const [newValue, setNewValue] = useState("");
   const [newAliases, setNewAliases] = useState("");
 
-  const [savingDims, setSavingDims] = useState(false);
-
-  const effectiveDims = useMemo(() => {
-    const out: Record<string, TagDimensionStyle> = { ...dims };
-    for (const d of DIMENSIONS) {
-      out[d.key] = out[d.key] || { label: d.fallbackLabel, label_variant: "secondary" };
+  const loadTags = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const data = await searchTags({
+        dimension: dimFilter || undefined,
+        query: query.trim() || undefined,
+        limit: 100,
+      });
+      setItems(Array.isArray(data.items) ? data.items : []);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "加载标签失败");
+    } finally {
+      setLoading(false);
     }
-    return out;
-  }, [dims]);
-
-  useEffect(() => {
-    let alive = true;
-    (async () => {
-      try {
-        const data = await fetchJson<TagDimensionsResponse>("/settings/tag-dimensions");
-        if (!alive) return;
-        setDims(data.dimensions || {});
-      } catch (e) {
-        if (!alive) return;
-        setError(e instanceof Error ? e.message : "加载标签配置失败");
-      }
-    })();
-    return () => {
-      alive = false;
-    };
-  }, []);
-
-  const loadTags = useMemo(() => {
-    return async () => {
-      setLoading(true);
-      setError("");
-      try {
-        const sp = new URLSearchParams();
-        if (dimFilter) sp.set("dimension", dimFilter);
-        if (query.trim()) sp.set("query", query.trim());
-        sp.set("limit", "100");
-        const data = await fetchJson<TagsResponse>(`/tags?${sp.toString()}`);
-        setItems(Array.isArray(data.items) ? data.items : []);
-      } catch (e) {
-        setError(e instanceof Error ? e.message : "加载标签失败");
-      } finally {
-        setLoading(false);
-      }
-    };
   }, [dimFilter, query]);
 
   useEffect(() => {
@@ -104,10 +72,7 @@ export default function TagsPage() {
       .map((s) => s.trim())
       .filter(Boolean);
     try {
-      await fetchJson<TagsResponse>("/tags", {
-        method: "POST",
-        body: JSON.stringify({ dimension: newDim, value, aliases }),
-      });
+      await createTag({ dimension: newDim, value, aliases });
       setNewValue("");
       setNewAliases("");
       setOk("已保存");
@@ -120,19 +85,11 @@ export default function TagsPage() {
   const onSaveDims = async () => {
     setOk("");
     setError("");
-    setSavingDims(true);
     try {
-      const payload: TagDimensionsUpdateRequest = { dimensions: effectiveDims };
-      const saved = await fetchJson<TagDimensionsResponse>("/settings/tag-dimensions", {
-        method: "PUT",
-        body: JSON.stringify(payload),
-      });
-      setDims(saved.dimensions || {});
+      await saveDims();
       setOk("已保存配置");
     } catch (e) {
       setError(e instanceof Error ? e.message : "保存配置失败");
-    } finally {
-      setSavingDims(false);
     }
   };
 
@@ -145,6 +102,12 @@ export default function TagsPage() {
             标签管理
           </Heading>
         </Box>
+
+        {dimsError ? (
+          <Flash variant="danger" sx={{ mb: 3 }}>
+            {dimsError}
+          </Flash>
+        ) : null}
 
         {error ? (
           <Flash variant="danger" sx={{ mb: 3 }}>
@@ -160,9 +123,9 @@ export default function TagsPage() {
         <Box sx={{ display: "grid", gridTemplateColumns: ["1fr", "1fr 1fr"], gap: 3 }}>
           <FormControl>
             <FormControl.Label>维度</FormControl.Label>
-            <Select value={dimFilter} onChange={(e) => setDimFilter(e.target.value as any)} block>
+            <Select value={dimFilter} onChange={(e) => setDimFilter(e.target.value as TagDimension | "")} block>
               <Select.Option value="">全部</Select.Option>
-              {DIMENSIONS.map((d) => (
+              {TAG_DIMENSIONS.map((d) => (
                 <Select.Option key={d.key} value={d.key}>
                   {effectiveDims[d.key]?.label || d.fallbackLabel}
                 </Select.Option>
@@ -209,8 +172,8 @@ export default function TagsPage() {
         <Box sx={{ display: "grid", gridTemplateColumns: ["1fr", "220px 1fr"], gap: 3 }}>
           <FormControl>
             <FormControl.Label>维度</FormControl.Label>
-            <Select value={newDim} onChange={(e) => setNewDim(e.target.value as any)} block>
-              {DIMENSIONS.map((d) => (
+            <Select value={newDim} onChange={(e) => setNewDim(e.target.value as TagDimension)} block>
+              {TAG_DIMENSIONS.map((d) => (
                 <Select.Option key={d.key} value={d.key}>
                   {effectiveDims[d.key]?.label || d.fallbackLabel}
                 </Select.Option>
@@ -245,13 +208,20 @@ export default function TagsPage() {
           这里配置每个维度使用的 Label 颜色（Primer variant）。
         </Text>
 
-        <Box sx={{ display: "grid", gridTemplateColumns: ["1fr", "1fr 220px 220px"], gap: 3, alignItems: "end" }}>
+        <Box
+          sx={{
+            display: "grid",
+            gridTemplateColumns: ["1fr", "160px 1fr 220px 120px"],
+            gap: 3,
+            alignItems: "end",
+          }}
+        >
           <Text sx={{ fontWeight: "bold" }}>维度</Text>
           <Text sx={{ fontWeight: "bold" }}>显示名称</Text>
           <Text sx={{ fontWeight: "bold" }}>颜色</Text>
           <Box />
 
-          {DIMENSIONS.map((d) => (
+          {TAG_DIMENSIONS.map((d) => (
             <Box key={d.key} sx={{ display: "contents" }}>
               <Text>{d.key}</Text>
               <TextInput
@@ -294,8 +264,8 @@ export default function TagsPage() {
         </Box>
 
         <Box sx={{ mt: 3, display: "flex", gap: 2 }}>
-          <Button variant="primary" onClick={onSaveDims} disabled={savingDims}>
-            {savingDims ? (
+          <Button variant="primary" onClick={onSaveDims} disabled={isLoadingDims}>
+            {isLoadingDims ? (
               <>
                 <Spinner size="small" sx={{ mr: 1 }} />
                 保存中…

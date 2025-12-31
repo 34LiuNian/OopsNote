@@ -50,6 +50,15 @@ Agent 流程与提示词说明见 `AGENTS.md`；后端 API/存储说明见 `back
 
 ## 运行
 
+### VS Code 一键拉起（推荐）
+
+已提供 VS Code Task：同时启动后端与前端。
+
+1. 打开命令面板：`Terminal: Run Task`
+2. 选择：`dev: all`
+
+（首次启动前端会自动执行一次 `npm install`；后端请先按下方步骤安装依赖。）
+
 ### 后端
 
 ```bash

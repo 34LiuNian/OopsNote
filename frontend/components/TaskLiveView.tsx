@@ -71,6 +71,7 @@ export function TaskLiveView({ taskId }: { taskId: string }) {
   const [streamText, setStreamText] = useState<string>("");
   const [isLoading, setIsLoading] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
+  const [isRetrying, setIsRetrying] = useState(false);
 
   const mathContainerRef = useRef<HTMLDivElement | null>(null);
 
@@ -135,6 +136,42 @@ export function TaskLiveView({ taskId }: { taskId: string }) {
       setIsCancelling(false);
     }
   }, [data, loadOnce, taskId]);
+
+  const retryTask = useCallback(async () => {
+    if (!data) return;
+    const status = data.task.status;
+    if (status !== "failed") return;
+
+    setIsRetrying(true);
+    setError("");
+    setStatusMessage("准备重试...");
+    setProgressLines([]);
+    streamBufferRef.current = "";
+    setStreamText("");
+    hasLoadedStreamRef.current = false;
+
+    if (eventSourceRef.current) {
+      try {
+        eventSourceRef.current.close();
+      } catch {
+        // ignore
+      }
+      eventSourceRef.current = null;
+    }
+
+    try {
+      await fetchJson<TaskResponse>(
+        `/tasks/${taskId}/retry?background=true&clear_stream=true`,
+        { method: "POST" }
+      );
+      await loadOnce();
+      await loadStreamOnce();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "重试失败");
+    } finally {
+      setIsRetrying(false);
+    }
+  }, [data, loadOnce, loadStreamOnce, taskId]);
 
   useEffect(() => {
     hasLoadedStreamRef.current = false;
@@ -321,6 +358,15 @@ export function TaskLiveView({ taskId }: { taskId: string }) {
               disabled={isCancelling || isLoading}
             >
               {isCancelling ? "作废中..." : "停止并作废"}
+            </Button>
+          )}
+          {data?.task?.status === "failed" && (
+            <Button
+              onClick={retryTask}
+              disabled={isRetrying || isLoading || isCancelling}
+              leadingVisual={SyncIcon}
+            >
+              {isRetrying ? "重试中..." : "重试"}
             </Button>
           )}
           <Button 

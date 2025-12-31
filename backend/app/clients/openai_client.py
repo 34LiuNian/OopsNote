@@ -47,6 +47,7 @@ class OpenAIClient(AIClient):
         max_tokens: int | None = None,
     ) -> None:
         self.model = model
+        self.base_url = base_url
         self.temperature = temperature
         if max_tokens is None:
             env_max = os.getenv("OPENAI_MAX_TOKENS")
@@ -172,14 +173,12 @@ class OpenAIClient(AIClient):
             has_image=has_image,
             approx_chars=approx_chars,
             max_tokens=self.max_tokens,
-            response_format=(
-                "json_schema" if response_model is not None else "json_object"
-            ),
+            response_format=("json_schema" if response_model is not None else "json_object"),
         )
 
         response_format_candidates: list[dict[str, Any]] = []
         if response_model is not None:
-            # If the gateway supports it, pass the schema directly (Gemini-like behavior).
+            # If the gateway supports it, pass the schema directly.
             # Many OpenAI-compatible gateways still don't support json_schema; we will
             # automatically fallback to json_object.
             try:
@@ -195,66 +194,87 @@ class OpenAIClient(AIClient):
                     }
                 )
             except Exception:
-                # If schema generation fails for any reason, skip it.
                 response_format_candidates = []
 
         response_format_candidates.append({"type": "json_object"})
+
+        def _call_once(*, model: str, msg_payload: list[dict[str, Any]], rf: dict[str, Any]):
+            if on_delta is None:
+                return self._client.chat.completions.create(
+                    model=model,
+                    temperature=self.temperature,
+                    max_tokens=self.max_tokens,
+                    messages=msg_payload,
+                    response_format=rf,
+                )
+
+            chunks = self._client.chat.completions.create(
+                model=model,
+                temperature=self.temperature,
+                max_tokens=self.max_tokens,
+                messages=msg_payload,
+                response_format=rf,
+                stream=True,
+            )
+            parts: list[str] = []
+            finish_reason = None
+            suppress_ws = os.getenv("AI_STREAM_SUPPRESS_WHITESPACE", "false").lower() == "true"
+            whitespace_run = 0
+            for chunk in chunks:
+                try:
+                    choice = chunk.choices[0]
+                    finish_reason = getattr(choice, "finish_reason", finish_reason)
+                    delta = getattr(choice.delta, "content", None)
+                    if delta:
+                        parts.append(delta)
+                        if not suppress_ws:
+                            try:
+                                on_delta(delta)
+                            except Exception:
+                                pass
+                        else:
+                            # Prevent UI spam when models emit long runs of whitespace/newlines.
+                            # Still keep the raw text for downstream JSON repair.
+                            is_ws_only = (delta.strip() == "")
+                            if is_ws_only:
+                                whitespace_run += len(delta)
+                            else:
+                                whitespace_run = 0
+
+                            # Allow some whitespace (formatting), but stop forwarding after a while.
+                            if (not is_ws_only) or whitespace_run <= 64:
+                                try:
+                                    on_delta(delta)
+                                except Exception:
+                                    pass
+                except Exception:
+                    continue
+
+            class _Msg:
+                def __init__(self, content: str) -> None:
+                    self.content = content
+
+            class _Choice:
+                def __init__(self, content: str, fr) -> None:
+                    self.message = _Msg(content)
+                    self.finish_reason = fr
+
+            class _Resp:
+                def __init__(self, content: str, fr) -> None:
+                    self.choices = [_Choice(content, fr)]
+
+            return _Resp("".join(parts), finish_reason)
 
         last_exc: Exception | None = None
         response = None
         for rf in response_format_candidates:
             try:
-                if on_delta is None:
-                    response = self._client.chat.completions.create(
-                        model=self.model,
-                        temperature=self.temperature,
-                        max_tokens=self.max_tokens,
-                        messages=messages,
-                        response_format=rf,
-                    )
-                else:
-                    # True streaming: push deltas as they arrive.
-                    chunks = self._client.chat.completions.create(
-                        model=self.model,
-                        temperature=self.temperature,
-                        max_tokens=self.max_tokens,
-                        messages=messages,
-                        response_format=rf,
-                        stream=True,
-                    )
-                    parts: list[str] = []
-                    finish_reason = None
-                    for chunk in chunks:
-                        try:
-                            choice = chunk.choices[0]
-                            finish_reason = getattr(choice, "finish_reason", finish_reason)
-                            delta = getattr(choice.delta, "content", None)
-                            if delta:
-                                parts.append(delta)
-                                try:
-                                    on_delta(delta)
-                                except Exception:
-                                    pass
-                        except Exception:
-                            continue
-                    # Build a response-like object for downstream parsing.
-                    class _Msg:
-                        def __init__(self, content: str) -> None:
-                            self.content = content
-
-                    class _Choice:
-                        def __init__(self, content: str, fr) -> None:
-                            self.message = _Msg(content)
-                            self.finish_reason = fr
-
-                    class _Resp:
-                        def __init__(self, content: str, fr) -> None:
-                            self.choices = [_Choice(content, fr)]
-
-                    response = _Resp("".join(parts), finish_reason)
+                response = _call_once(model=self.model, msg_payload=messages, rf=rf)
                 break
             except OpenAIError as exc:
                 last_exc = exc
+
+                # 1) If the gateway rejected json_schema, try json_object.
                 if rf.get("type") == "json_schema":
                     logger.warning(
                         "OpenAI gateway rejected json_schema; falling back to json_object rid=%s model=%s err=%s",
@@ -263,8 +283,38 @@ class OpenAIClient(AIClient):
                         exc,
                     )
                     continue
-                logger.error("OpenAI chat.completions failed: %s", exc)
-                raise RuntimeError("OpenAI request failed") from exc
+
+                # 2) Some OpenAI-compatible gateways reject the image_url payload shape.
+                if has_image and _is_messages_illegal_error(exc):
+                    try:
+                        rewritten = _rewrite_image_url_messages(messages)
+                        logger.warning(
+                            "OpenAI gateway rejected messages; retry with rewritten image_url rid=%s model=%s",
+                            get_request_id(),
+                            self.model,
+                        )
+                        response = _call_once(model=self.model, msg_payload=rewritten, rf=rf)
+                        break
+                    except OpenAIError as exc2:
+                        last_exc = exc2
+
+                # 3) If configured model is not available in provider, pick a fallback model.
+                fallback_model = _pick_fallback_model(current_model=self.model, has_image=has_image, exc=exc)
+                if fallback_model and fallback_model != self.model:
+                    try:
+                        logger.warning(
+                            "Model not available; retry with fallback rid=%s model=%s -> %s",
+                            get_request_id(),
+                            self.model,
+                            fallback_model,
+                        )
+                        response = _call_once(model=fallback_model, msg_payload=messages, rf=rf)
+                        break
+                    except OpenAIError as exc2:
+                        last_exc = exc2
+
+                logger.error("OpenAI chat.completions failed: %s", last_exc)
+                raise RuntimeError("OpenAI request failed") from last_exc
 
         if response is None:
             raise RuntimeError("OpenAI request failed") from last_exc
@@ -274,17 +324,26 @@ class OpenAIClient(AIClient):
         content = response.choices[0].message.content or ""
         try:
             data = _parse_json_block(content)
-        except ValueError as exc:
+        except ValueError:
+            fallback_keys: list[str] = [
+                "answer",
+                "explanation",
+                "short_answer",
+                "verdict",
+                "notes",
+                "question_type",
+            ]
+            if response_model is not None:
+                try:
+                    model_keys = list(getattr(response_model, "model_fields", {}).keys())
+                    for k in model_keys:
+                        if k not in fallback_keys:
+                            fallback_keys.insert(0, str(k))
+                except Exception:
+                    pass
             extracted, incomplete = _extract_lenient_top_level_string_fields_with_meta(
                 content,
-                keys=(
-                    "answer",
-                    "explanation",
-                    "short_answer",
-                    "verdict",
-                    "notes",
-                    "question_type",
-                ),
+                keys=tuple(fallback_keys),
             )
             if extracted:
                 if incomplete:
@@ -341,6 +400,112 @@ class OpenAIClient(AIClient):
             f"题干: {problem.problem_text}\n"
             f"Latex: {latex if latex else 'N/A'}"
         )
+
+
+def _is_messages_illegal_error(exc: OpenAIError) -> bool:
+    msg = str(exc)
+    return "\"messages\"" in msg and "illegal" in msg
+
+
+def _rewrite_image_url_messages(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Best-effort normalize image_url part for OpenAI-compatible gateways.
+
+    Some gateways reject the OpenAI-style object form: {image_url: {url: ...}}.
+    We retry with the simpler form: {image_url: "data:..."}.
+    """
+
+    out: list[dict[str, Any]] = []
+    for m in messages:
+        if not isinstance(m, dict):
+            out.append(m)
+            continue
+        content = m.get("content")
+        if not isinstance(content, list):
+            out.append(m)
+            continue
+        new_parts: list[Any] = []
+        for part in content:
+            if not isinstance(part, dict) or part.get("type") != "image_url":
+                new_parts.append(part)
+                continue
+            image_url = part.get("image_url")
+            if isinstance(image_url, dict) and isinstance(image_url.get("url"), str):
+                new_parts.append({"type": "image_url", "image_url": image_url["url"]})
+            else:
+                new_parts.append(part)
+        out.append({**m, "content": new_parts})
+    return out
+
+
+def _apply_provider_prefix(current_model: str, candidate: str) -> str:
+    """Ensure model name matches gateway expected format.
+
+    Some OpenAI-compatible gateways require model format: 'provider:model_id'.
+    Error messages often list available models without the provider prefix.
+    """
+
+    if ":" in candidate:
+        return candidate
+    if ":" not in current_model:
+        return candidate
+    provider = current_model.split(":", 1)[0].strip()
+    if not provider:
+        return candidate
+    return f"{provider}:{candidate}"
+
+
+def _pick_fallback_model(*, current_model: str, has_image: bool, exc: OpenAIError) -> str | None:
+    """Try to extract a usable model from a model_not_available error message."""
+
+    msg = str(exc)
+    if "model_not_available" not in msg and "not available" not in msg:
+        return None
+
+    m = re.search(r"Available models:\s*(.+?)\s*\}?$", msg)
+    if not m:
+        return None
+
+    raw = m.group(1)
+    candidates = [s.strip() for s in raw.split(",") if s.strip()]
+    if not candidates:
+        return None
+
+    def _is_vision(name: str) -> bool:
+        n = name.lower()
+        return "vl" in n or "vision" in n or "4.6v" in n
+
+    def _is_embedding(name: str) -> bool:
+        n = name.lower()
+        return "bge" in n or "embedding" in n
+
+    if has_image:
+        for preferred in [
+            "Qwen/Qwen3-VL-32B-Thinking",
+            "Qwen/Qwen3-VL-8B-Thinking",
+            "zai-org/GLM-4.6V",
+        ]:
+            for c in candidates:
+                if c == preferred:
+                    return _apply_provider_prefix(current_model, c)
+        for c in candidates:
+            if _is_vision(c):
+                return _apply_provider_prefix(current_model, c)
+        return _apply_provider_prefix(current_model, candidates[0])
+
+    # text-only
+    for preferred in [
+        "deepseek-ai/DeepSeek-V3",
+        "deepseek-ai/DeepSeek-V3.2",
+        "Qwen/Qwen2.5-7B-Instruct",
+        "Qwen/Qwen3-8B",
+    ]:
+        for c in candidates:
+            if c == preferred:
+                return _apply_provider_prefix(current_model, c)
+    for c in candidates:
+        if (not _is_vision(c)) and (not _is_embedding(c)):
+            return _apply_provider_prefix(current_model, c)
+    return _apply_provider_prefix(current_model, candidates[0])
 
 
 def _parse_json_block(text: str) -> dict[str, Any]:

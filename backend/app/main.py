@@ -47,7 +47,6 @@ from .agent_settings import (
     AgentThinkingSettingsStore,
 )
 from .clients import (
-    GeminiClient,
     OpenAIClient,
     StubAIClient,
     build_client_for_agent,
@@ -86,6 +85,16 @@ from .repository import ArchiveStore, FileTaskRepository, InMemoryTaskRepository
 from .storage import LocalAssetStore
 from .request_context import reset_request_id, set_request_id
 from .trace import trace_event
+from .app_state import BackendState
+from .api.health import router as health_router
+from .api.tags import router as tags_router
+from .api.agent_settings import router as agent_settings_router
+from .api.tasks import router as tasks_router
+from .api.problems import router as problems_router
+from .api.models import router as models_router
+from .services.agent_settings import AgentSettingsService
+from .services.tasks_service import TasksService
+from .services.models_service import ModelsService
 
 logger = logging.getLogger(__name__)
 
@@ -318,62 +327,33 @@ asset_store = LocalAssetStore()
 agent_model_store = AgentModelSettingsStore()
 agent_enable_store = AgentEnableSettingsStore()
 agent_thinking_store = AgentThinkingSettingsStore()
+agent_settings_service = AgentSettingsService(
+    model_store=agent_model_store,
+    enable_store=agent_enable_store,
+    thinking_store=agent_thinking_store,
+)
 _models_cache: list[dict[str, object]] | None = None
 _ai_gateway_status: dict[str, object] = {"checked": False}
 
 
-_FORCE_ENABLED_AGENTS = {"OCR", "SOLVER", "TAGGER"}
+def _models_cache_getter() -> list[dict[str, object]] | None:
+    return _models_cache
 
 
-def _effective_agent_enabled(name: str) -> bool:
-    key = str(name).upper()
-    if key in _FORCE_ENABLED_AGENTS:
-        return True
-    # Defaults: enabled unless explicitly disabled.
-    try:
-        settings = agent_enable_store.load()
-        return settings.enabled.get(key, True)
-    except Exception:
-        return True
-
-
-def _agent_enabled_snapshot() -> dict[str, bool]:
-    # Expose a stable set of keys for UI.
-    keys = ["SOLVER", "TAGGER", "OCR"]
-    snap = {k: _effective_agent_enabled(k) for k in keys}
-    return snap
-
-
-def _effective_agent_thinking(name: str) -> bool:
-    """Whether the agent should be encouraged to think more deeply.
-
-    Default is True to preserve existing behavior (more reasoning / thoroughness).
-    """
-
-    key = str(name).upper()
-    try:
-        settings = agent_thinking_store.load()
-        return settings.thinking.get(key, True)
-    except Exception:
-        return True
-
-
-def _agent_thinking_snapshot() -> dict[str, bool]:
-    # Expose a stable set of keys for UI.
-    keys = ["SOLVER", "TAGGER", "OCR"]
-    return {k: _effective_agent_thinking(k) for k in keys}
+def _models_cache_setter(value: list[dict[str, object]] | None) -> None:
+    global _models_cache
+    _models_cache = value
 
 
 def _resolve_saved_model(agent: str) -> str | None:
-    settings = agent_model_store.load()
-    return settings.models.get(agent.upper())
+    # Backwards-compatible helper for places that still reference this symbol.
+    return agent_settings_service.resolve_saved_model(agent)
 
 # Keep automated tests deterministic (avoid calling external gateways).
 # Note: during pytest collection, PYTEST_CURRENT_TEST may not be set yet.
 _running_under_pytest = ("pytest" in sys.modules) or ("PYTEST_CURRENT_TEST" in os.environ)
 
 openai_api_key = None if _running_under_pytest else os.getenv("OPENAI_API_KEY")
-gemini_api_key = None if _running_under_pytest else os.getenv("GEMINI_API_KEY")
 agent_orchestrator: AgentOrchestrator | None = None
 
 agent_config_path = os.getenv("AGENT_CONFIG_PATH") or os.getenv("AI_AGENT_CONFIG")
@@ -386,14 +366,21 @@ if openai_api_key:
         model=os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
         temperature=_float_env("OPENAI_TEMPERATURE", 0.2),
     )
-elif gemini_api_key:
-    ai_client = GeminiClient(
-        api_key=gemini_api_key,
-        model=os.getenv("GEMINI_MODEL", "gemini-1.5-flash"),
-        temperature=_float_env("GEMINI_TEMPERATURE", 0.2),
-    )
 else:
     ai_client = StubAIClient()
+
+models_service = ModelsService(
+    guess_config=lambda: _guess_openai_gateway_config(),
+    fetch_models=lambda base_url, api_key, authorization, auth_header_name, timeout_seconds: _fetch_openai_models(
+        base_url,
+        api_key,
+        authorization,
+        auth_header_name,
+        timeout_seconds,
+    ),
+    cache_getter=_models_cache_getter,
+    cache_setter=_models_cache_setter,
+)
 
 prompt_dir = Path(__file__).parent / "agents" / "prompts"
 
@@ -421,8 +408,8 @@ agent_orchestrator = AgentOrchestrator(
         response_model=TaggerOutput,
         model_resolver=_resolve_saved_model,
     ),
-    is_enabled=_effective_agent_enabled,
-    thinking_resolver=_effective_agent_thinking,
+    is_enabled=agent_settings_service.is_agent_enabled,
+    thinking_resolver=agent_settings_service.is_agent_thinking,
 )
 detector = MultiProblemDetector()
 rebuilder = ProblemRebuilder()
@@ -431,7 +418,7 @@ ocr_client = build_client_for_agent("OCR", ai_client, bundle=agent_config_bundle
 ocr_extractor = OcrRouter(
     base_extractor=OcrExtractor(),
     llm_extractor=LLMOcrExtractor(ocr_client),
-    model_resolver=_resolve_saved_model,
+    model_resolver=agent_settings_service.resolve_saved_model,
 )
 pipeline = AgentPipeline(
     PipelineDependencies(
@@ -447,13 +434,27 @@ pipeline = AgentPipeline(
     orchestrator=agent_orchestrator,
 )
 
+tasks_service = TasksService(
+    repository=repository,
+    pipeline=pipeline,
+    asset_store=asset_store,
+    tag_store=tag_store,
+)
 
-@app.get("/health")
-def health() -> dict[str, object]:
-    return {
-        "status": "ok",
-        "ai_gateway": _ai_gateway_status,
-    }
+# Attach shared dependencies for routers (helps decouple route modules from globals).
+app.state.oops = BackendState(
+    repository=repository,
+    ai_gateway_status=_ai_gateway_status,
+    agent_settings=agent_settings_service,
+    tasks=tasks_service,
+    models=models_service,
+)
+app.include_router(health_router)
+app.include_router(tags_router)
+app.include_router(agent_settings_router)
+app.include_router(tasks_router)
+app.include_router(problems_router)
+app.include_router(models_router)
 
 
 def _probe_openai_gateway(base_url: str, timeout_seconds: float = 1.2) -> tuple[bool, str]:
@@ -473,8 +474,6 @@ def _probe_openai_gateway(base_url: str, timeout_seconds: float = 1.2) -> tuple[
         return True, f"http_{exc.code}"
     except Exception as exc:
         return False, f"{type(exc).__name__}: {exc}"
-
-
 def _collect_openai_gateway_urls() -> list[tuple[str, str]]:
     """Collect configured OpenAI-compatible base URLs from env + agent config.
 
@@ -522,398 +521,7 @@ def _collect_openai_gateway_urls() -> list[tuple[str, str]]:
     return candidates
 
 
-@app.get("/tags", response_model=TagsResponse)
-def list_tags(
-    dimension: TagDimension | None = None,
-    query: str | None = None,
-    limit: int = 50,
-) -> TagsResponse:
-    q = (query or "").strip()
-    lim = max(1, int(limit))
-
-    def _inc(counter: dict[str, int], value: str | None) -> None:
-        if not value:
-            return
-        s = str(value).strip()
-        if not s:
-            return
-        key = s.casefold()
-        counter[key] = counter.get(key, 0) + 1
-
-    def _inc_many(counter: dict[str, int], values) -> None:
-        if not values:
-            return
-        for v in values:
-            _inc(counter, v)
-
-    ref_counts: dict[str, int] = {}
-    try:
-        for task in repository.list_all().values():
-            payload = getattr(task, "payload", None)
-            if payload is not None:
-                if dimension in (None, TagDimension.KNOWLEDGE):
-                    _inc_many(ref_counts, getattr(payload, "knowledge_tags", None))
-                if dimension in (None, TagDimension.ERROR):
-                    _inc_many(ref_counts, getattr(payload, "error_tags", None))
-                if dimension in (None, TagDimension.CUSTOM):
-                    _inc_many(ref_counts, getattr(payload, "user_tags", None))
-                if dimension in (None, TagDimension.META):
-                    _inc(ref_counts, getattr(payload, "source", None))
-
-            for p in getattr(task, "problems", []) or []:
-                if dimension in (None, TagDimension.KNOWLEDGE):
-                    _inc_many(ref_counts, getattr(p, "knowledge_tags", None))
-                if dimension in (None, TagDimension.ERROR):
-                    _inc_many(ref_counts, getattr(p, "error_tags", None))
-                if dimension in (None, TagDimension.CUSTOM):
-                    _inc_many(ref_counts, getattr(p, "user_tags", None))
-                if dimension in (None, TagDimension.META):
-                    _inc(ref_counts, getattr(p, "source", None))
-    except Exception:
-        ref_counts = {}
-
-    if not q:
-        base = tag_store.list(dimension=dimension, limit=5000)
-        base.sort(key=lambda t: (-ref_counts.get(t.value.casefold().strip(), 0), t.value))
-        items = base[:lim]
-    else:
-        candidates = tag_store.search(dimension=dimension, query=q, limit=5000)
-        qkey = q.casefold()
-
-        def _tier(t) -> int:
-            val = str(getattr(t, "value", "")).casefold()
-            if val.startswith(qkey):
-                return 0
-            if qkey in val:
-                return 1
-            aliases = getattr(t, "aliases", []) or []
-            if any(qkey in str(a).casefold() for a in aliases):
-                return 2
-            return 3
-
-        candidates.sort(
-            key=lambda t: (
-                _tier(t),
-                -ref_counts.get(str(getattr(t, "value", "")).casefold().strip(), 0),
-                str(getattr(t, "value", "")),
-            )
-        )
-        items = candidates[:lim]
-
-    from .tags import TagItemView
-
-    return TagsResponse(
-        items=[
-            TagItemView(
-                **t.model_dump(mode="json"),
-                ref_count=ref_counts.get(t.value.casefold().strip(), 0),
-            )
-            for t in items
-        ]
-    )
-
-
-@app.post("/tags", response_model=TagsResponse, status_code=201)
-def create_tag(payload: TagCreateRequest) -> TagsResponse:
-    item, _created = tag_store.upsert(payload.dimension, payload.value, aliases=payload.aliases)
-    from .tags import TagItemView
-
-    return TagsResponse(items=[TagItemView(**item.model_dump(mode="json"), ref_count=0)])
-
-
-@app.get("/settings/tag-dimensions", response_model=TagDimensionsResponse)
-def get_tag_dimensions() -> TagDimensionsResponse:
-    return TagDimensionsResponse(dimensions=tag_store.load_dimensions())
-
-
-@app.put("/settings/tag-dimensions", response_model=TagDimensionsResponse)
-def update_tag_dimensions(payload: TagDimensionsUpdateRequest) -> TagDimensionsResponse:
-    saved = tag_store.save_dimensions(payload.dimensions)
-    return TagDimensionsResponse(dimensions=saved)
-
-
-@app.post("/tasks", response_model=TaskResponse, status_code=201)
-def create_task(payload: TaskCreateRequest, auto_process: bool = True) -> TaskResponse:
-    task = repository.create(payload)
-    if auto_process:
-        task = _process_task(task.id)
-    return TaskResponse(task=task)
-
-
-@app.get("/tasks", response_model=TasksResponse)
-def list_tasks(
-    status: TaskStatus | None = None,
-    active_only: bool = False,
-    subject: str | None = None,
-) -> TasksResponse:
-    tasks = list(repository.list_all().values())
-
-    # If the backend restarts during processing, tasks may stay "processing" forever.
-    # Mark them stale after a grace period so the UI isn't stuck showing phantom in-flight work.
-    stale_seconds = _int_env("TASK_STALE_SECONDS", 600)
-    now = datetime.now(timezone.utc)
-    for t in tasks:
-        try:
-            if t.status == TaskStatus.PROCESSING:
-                age = (now - t.updated_at).total_seconds()
-                with _processing_lock:
-                    inflight = t.id in _processing_inflight
-                if (not inflight) and age > stale_seconds:
-                    repository.patch_task(
-                        t.id,
-                        status=TaskStatus.FAILED,
-                        last_error="Task processing stale (backend restarted or worker crashed)",
-                        stage="failed",
-                        stage_message="处理超时（可能后端重启/崩溃），请重新提交或手动重试处理",
-                    )
-        except Exception:
-            # Best-effort only; never break listing.
-            continue
-
-    tasks = list(repository.list_all().values())
-
-    if subject is not None:
-        tasks = [t for t in tasks if t.payload.subject == subject]
-
-    if active_only:
-        tasks = [t for t in tasks if t.status in (TaskStatus.PENDING, TaskStatus.PROCESSING)]
-    elif status is not None:
-        tasks = [t for t in tasks if t.status == status]
-
-    tasks.sort(key=lambda t: t.created_at, reverse=True)
-
-    items = [
-        TaskSummary(
-            id=t.id,
-            status=t.status,
-            stage=getattr(t, "stage", None),
-            stage_message=getattr(t, "stage_message", None),
-            created_at=t.created_at,
-            updated_at=t.updated_at,
-            subject=t.payload.subject,
-            question_no=getattr(t.payload, "question_no", None),
-        )
-        for t in tasks
-    ]
-    return TasksResponse(items=items)
-
-
-@app.post("/upload", response_model=TaskResponse, status_code=201)
-def upload_task(upload: UploadRequest, auto_process: bool = True) -> TaskResponse:
-    logger.info(
-        "Upload received subject=%s auto_process=%s has_image_base64=%s has_image_url=%s filename=%s mime_type=%s",
-        upload.subject,
-        auto_process,
-        bool(upload.image_base64),
-        bool(upload.image_url),
-        upload.filename,
-        upload.mime_type,
-    )
-    trace_event(
-        "upload_received",
-        subject=upload.subject,
-        auto_process=auto_process,
-        has_image_base64=bool(upload.image_base64),
-        has_image_url=bool(upload.image_url),
-        filename=upload.filename,
-        mime_type=upload.mime_type,
-        mock_problem_count=upload.mock_problem_count,
-        user_tags=upload.user_tags,
-        knowledge_tags=upload.knowledge_tags,
-        error_tags=upload.error_tags,
-        difficulty=upload.difficulty,
-        source=upload.source,
-    )
-    if upload.image_base64:
-        asset = asset_store.save_base64(
-            upload.image_base64,
-            mime_type=upload.mime_type,
-            filename=upload.filename,
-        )
-        derived_url = f"https://assets.local/{asset.asset_id}"
-    else:
-        assert upload.image_url is not None
-        asset = asset_store.register_remote(str(upload.image_url), upload.mime_type)
-        derived_url = str(upload.image_url)
-
-    payload = TaskCreateRequest(
-        image_url=derived_url,
-        subject=upload.subject,
-        grade=upload.grade,
-        notes=upload.notes,
-        question_no=upload.question_no,
-        mock_problem_count=upload.mock_problem_count,
-        difficulty=upload.difficulty,
-        source=upload.source,
-        knowledge_tags=upload.knowledge_tags,
-        error_tags=upload.error_tags,
-        user_tags=upload.user_tags,
-    )
-
-    task = repository.create(payload, asset=asset)
-    if auto_process:
-        task = _process_task(task.id)
-    return TaskResponse(task=task)
-
-
-@app.get("/tasks/{task_id}", response_model=TaskResponse)
-def get_task(task_id: str) -> TaskResponse:
-    try:
-        task = repository.get(task_id)
-    except KeyError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-    return TaskResponse(task=task)
-
-
-@app.post("/tasks/{task_id}/process", response_model=TaskResponse)
-def process_task(task_id: str, background: bool = False) -> TaskResponse:
-    if background:
-        _start_processing_in_thread(task_id)
-        return TaskResponse(task=repository.get(task_id))
-    task = _process_task(task_id)
-    return TaskResponse(task=task)
-
-
-@app.post("/tasks/{task_id}/cancel", response_model=TaskResponse)
-def cancel_task(task_id: str) -> TaskResponse:
-    try:
-        task = repository.get(task_id)
-    except KeyError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-
-    # Idempotent: cancelling a terminal task is a no-op.
-    if task.status in (TaskStatus.COMPLETED, TaskStatus.FAILED):
-        return TaskResponse(task=task)
-
-    with _task_cancel_lock:
-        _task_cancelled.add(task_id)
-
-    # Mark as failed with a dedicated stage/message so UI can show "作废".
-    repository.mark_failed(task_id, "cancelled")
-    updated = repository.patch_task(task_id, stage="cancelled", stage_message="已作废")
-
-    try:
-        _event_broker.publish(
-            task_id,
-            "progress",
-            {
-                "task_id": task_id,
-                "status": str(updated.status),
-                "stage": "cancelled",
-                "message": "已作废",
-            },
-        )
-    except Exception:
-        pass
-
-    return TaskResponse(task=updated)
-
-
-@app.get("/tasks/{task_id}/stream")
-def get_task_stream(task_id: str, max_chars: int = 200_000) -> dict[str, object]:
-    """Return accumulated LLM stream text for a task.
-
-    Used by the frontend to restore content after refresh/reconnect.
-    """
-    try:
-        _ = repository.get(task_id)
-    except KeyError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-
-    text = _get_task_stream(task_id)
-    if max_chars > 0 and len(text) > max_chars:
-        text = text[-max_chars:]
-    return {"task_id": task_id, "text": text}
-
-
-@app.get("/tasks/{task_id}/events")
-async def task_events(task_id: str):
-    async def gen():
-        subscriber_q = _event_broker.subscribe(task_id)
-        try:
-            # Send an initial snapshot so the client can render immediately.
-            try:
-                task = repository.get(task_id)
-            except KeyError:
-                data = json.dumps({"error": "not_found"}, ensure_ascii=False)
-                yield f"event: error\ndata: {data}\n\n"
-                return
-
-            snapshot = {
-                "task_id": task.id,
-                "status": task.status,
-                "stage": getattr(task, "stage", None),
-                "message": getattr(task, "stage_message", None),
-            }
-            yield f"event: progress\ndata: {json.dumps(snapshot, ensure_ascii=False)}\n\n"
-
-            # Send accumulated stream text so refresh/reconnect can render full content.
-            stream_snapshot = {"task_id": task.id, "text": _get_task_stream(task.id)}
-            yield f"event: llm_snapshot\ndata: {json.dumps(stream_snapshot, ensure_ascii=False)}\n\n"
-
-            last_snapshot = snapshot
-            last_keepalive = time.monotonic()
-            last_snapshot_at = time.monotonic()
-
-            while True:
-                # Prefer pushed events for true streaming.
-                try:
-                    event, payload = await asyncio.to_thread(subscriber_q.get, True, 0.5)
-                    yield f"event: {event}\ndata: {json.dumps(payload, ensure_ascii=False)}\n\n"
-                except Exception:
-                    # timeout or interruption; fall back to keepalive + periodic snapshot
-                    pass
-
-                now = time.monotonic()
-                if now - last_keepalive > 10:
-                    yield ": ping\n\n"
-                    last_keepalive = now
-
-                # Periodic snapshot in case worker doesn't publish (or client connected late).
-                if now - last_snapshot_at > 1.0:
-                    try:
-                        task = repository.get(task_id)
-                    except KeyError:
-                        data = json.dumps({"error": "not_found"}, ensure_ascii=False)
-                        yield f"event: error\ndata: {data}\n\n"
-                        return
-
-                    # Same stale-protection as list endpoint.
-                    try:
-                        stale_seconds = _int_env("TASK_STALE_SECONDS", 600)
-                        if task.status == TaskStatus.PROCESSING:
-                            age = (datetime.now(timezone.utc) - task.updated_at).total_seconds()
-                            with _processing_lock:
-                                inflight = task.id in _processing_inflight
-                            if (not inflight) and age > stale_seconds:
-                                task = repository.patch_task(
-                                    task_id,
-                                    status=TaskStatus.FAILED,
-                                    last_error="Task processing stale (backend restarted or worker crashed)",
-                                    stage="failed",
-                                    stage_message="处理超时（可能后端重启/崩溃），请重新提交或手动重试处理",
-                                )
-                    except Exception:
-                        pass
-
-                    snapshot = {
-                        "task_id": task.id,
-                        "status": task.status,
-                        "stage": getattr(task, "stage", None),
-                        "message": getattr(task, "stage_message", None),
-                    }
-                    if snapshot != last_snapshot:
-                        yield f"event: progress\ndata: {json.dumps(snapshot, ensure_ascii=False)}\n\n"
-                        last_snapshot = snapshot
-                    last_snapshot_at = now
-
-                    if task.status in (TaskStatus.COMPLETED, TaskStatus.FAILED):
-                        yield "event: done\ndata: {}\n\n"
-                        return
-        finally:
-            _event_broker.unsubscribe(task_id, subscriber_q)
-
-    return StreamingResponse(gen(), media_type="text/event-stream")
+"""Tasks endpoints were moved to backend/app/api/tasks.py."""
 
 
 _processing_lock = threading.Lock()
@@ -1021,206 +629,10 @@ def _start_processing_in_thread(task_id: str) -> None:
 
 @app.on_event("startup")
 def _start_task_workers() -> None:
-    _ensure_task_workers_started()
+    tasks_service.ensure_workers_started()
 
 
-@app.post("/tasks/{task_id}/problems/{problem_id}/ocr", response_model=TaskResponse)
-def rerun_ocr(task_id: str, problem_id: str) -> TaskResponse:
-    task = repository.get(task_id)
-    problem = _get_problem(task, problem_id)
-    extractor = pipeline.deps.ocr_extractor
-    if extractor is None:
-        raise HTTPException(status_code=400, detail="OCR extractor not configured")
-    from .models import CropRegion, DetectionOutput
-
-    if task.detection:
-        regions = [r for r in task.detection.regions if r.id == problem.region_id]
-    else:
-        regions = []
-    if not regions:
-        bbox = problem.crop_bbox or [0.05, 0.05, 0.9, 0.25]
-        regions = [CropRegion(id=problem.region_id or problem.problem_id, bbox=bbox, label="full")]
-    detection = DetectionOutput(action="single", regions=regions)
-    extracted = extractor.run(task.payload, detection, task.asset)[0]
-    extracted.problem_id = problem.problem_id
-    extracted.region_id = problem.region_id
-    extracted.locked_tags = problem.locked_tags
-    _update_problem(task, extracted)
-    _retag_single(task, extracted, force=False)
-    updated = repository.patch_task(task_id, problems=task.problems, tags=task.tags, detection=task.detection)
-    return TaskResponse(task=updated)
-
-
-@app.post("/tasks/{task_id}/problems/{problem_id}/retag", response_model=TaskResponse)
-def retag_problem(task_id: str, problem_id: str, payload: RetagRequest) -> TaskResponse:
-    task = repository.get(task_id)
-    problem = _get_problem(task, problem_id)
-    _retag_single(task, problem, force=payload.force)
-    updated = repository.patch_task(task_id, tags=task.tags)
-    return TaskResponse(task=updated)
-
-
-@app.patch("/tasks/{task_id}/problems/{problem_id}/override", response_model=TaskResponse)
-def override_problem(task_id: str, problem_id: str, override: OverrideProblemRequest) -> TaskResponse:
-    task = repository.get(task_id)
-    problem = _get_problem(task, problem_id)
-    updates = problem.model_copy(update={
-        "question_no": override.question_no if override.question_no is not None else problem.question_no,
-        "problem_text": override.problem_text or problem.problem_text,
-        "latex_blocks": override.latex_blocks if override.latex_blocks is not None else problem.latex_blocks,
-        "options": override.options if override.options is not None else problem.options,
-        "locked_tags": override.locked_tags if override.locked_tags is not None else problem.locked_tags,
-        "source": override.source if override.source is not None else problem.source,
-        "knowledge_tags": override.knowledge_tags if override.knowledge_tags is not None else getattr(problem, "knowledge_tags", []),
-        "error_tags": override.error_tags if override.error_tags is not None else getattr(problem, "error_tags", []),
-        "user_tags": override.user_tags if override.user_tags is not None else getattr(problem, "user_tags", []),
-        "crop_bbox": override.crop_bbox if override.crop_bbox is not None else problem.crop_bbox,
-        "crop_image_url": override.crop_image_url if override.crop_image_url is not None else problem.crop_image_url,
-    })
-    _update_problem(task, updates)
-
-    # Optionally update tags directly if provided
-    if any(
-        field is not None
-        for field in [
-            override.knowledge_points,
-            override.question_type,
-            override.skills,
-            override.error_hypothesis,
-            override.recommended_actions,
-        ]
-    ):
-        task.tags = [t for t in task.tags if t.problem_id != problem_id]
-        task.tags.append(
-            pipeline.deps.tagger.ai_client.classify_problem(task.payload.subject, updates)
-            if hasattr(pipeline.deps.tagger, "ai_client")
-            else pipeline.deps.tagger.run(task.payload, [updates], [])[-1]
-        )
-    elif override.retag:
-        _retag_single(task, updates, force=True)
-
-    updated = repository.patch_task(task_id, problems=task.problems, tags=task.tags)
-    return TaskResponse(task=updated)
-
-
-@app.delete("/tasks/{task_id}", response_model=TaskResponse)
-def delete_task(task_id: str) -> TaskResponse:
-    try:
-        task = repository.get(task_id)
-    except KeyError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-
-    # Safety: do not delete in-flight tasks.
-    if task.status in (TaskStatus.PENDING, TaskStatus.PROCESSING):
-        raise HTTPException(status_code=409, detail="Task is in progress; cancel/finish before delete")
-
-    try:
-        repository.delete(task_id)
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
-
-    # Best-effort remove stream file.
-    try:
-        _task_stream_path(task_id).unlink(missing_ok=True)
-    except Exception:
-        pass
-
-    return TaskResponse(task=task)
-
-
-@app.delete("/tasks/{task_id}/problems/{problem_id}", response_model=TaskResponse)
-def delete_problem(task_id: str, problem_id: str) -> TaskResponse:
-    task = repository.get(task_id)
-    _ = _get_problem(task, problem_id)
-
-    task.problems = [p for p in task.problems if p.problem_id != problem_id]
-    task.solutions = [s for s in task.solutions if s.problem_id != problem_id]
-    task.tags = [t for t in task.tags if t.problem_id != problem_id]
-    updated = repository.patch_task(task_id, problems=task.problems, solutions=task.solutions, tags=task.tags)
-    return TaskResponse(task=updated)
-
-
-@app.post("/tasks/{task_id}/problems/{problem_id}/retry", response_model=TaskResponse)
-def retry_problem(task_id: str, problem_id: str) -> TaskResponse:
-    task = repository.get(task_id)
-    problem = _get_problem(task, problem_id)
-    # Re-run solve + tag for this problem only
-    if pipeline.orchestrator:
-        solutions, tags = pipeline.orchestrator.solve_and_tag(task.payload, [problem])
-    else:
-        solutions = pipeline.deps.solution_writer.run(task.payload, [problem])
-        tags = pipeline.deps.tagger.run(task.payload, [problem], solutions)
-
-    # replace solution/tag for this problem
-    task.solutions = [s for s in task.solutions if s.problem_id != problem_id] + solutions
-    task.tags = [t for t in task.tags if t.problem_id != problem_id] + tags
-    updated = repository.patch_task(task_id, solutions=task.solutions, tags=task.tags)
-    return TaskResponse(task=updated)
-
-
-@app.get("/problems", response_model=ProblemsResponse)
-def list_problems(subject: str | None = None, tag: str | None = None) -> ProblemsResponse:
-    """Flatten all problems across tasks into a simple library view.
-
-    This is intentionally lightweight and in-memory for now. It can later be backed
-    by a real database without changing the external contract.
-    """
-
-    tasks = repository.list_all().values()
-    items: list[ProblemSummary] = []
-
-    for task in tasks:
-        task_subject = task.payload.subject
-        if subject is not None and task_subject != subject:
-            continue
-
-        # Quick lookup table for tagging results by problem_id
-        tag_index = {t.problem_id: t for t in task.tags}
-
-        for problem in task.problems:
-            tag_result = tag_index.get(problem.problem_id)
-
-            manual_knowledge = list(getattr(problem, "knowledge_tags", []) or [])
-            manual_error = list(getattr(problem, "error_tags", []) or [])
-            manual_custom = list(getattr(problem, "user_tags", []) or [])
-            ai_knowledge = list(getattr(tag_result, "knowledge_points", [])) if tag_result else []
-
-            def _merge_unique(items: list[str]) -> list[str]:
-                out: list[str] = []
-                seen: set[str] = set()
-                for it in items:
-                    s = str(it).strip()
-                    if not s:
-                        continue
-                    key = s.casefold()
-                    if key in seen:
-                        continue
-                    seen.add(key)
-                    out.append(s)
-                return out
-
-            combined_knowledge = _merge_unique([*manual_knowledge, *ai_knowledge])
-
-            if tag is not None:
-                if tag not in combined_knowledge:
-                    continue
-
-            items.append(
-                ProblemSummary(
-                    task_id=task.id,
-                    problem_id=problem.problem_id,
-                    question_no=getattr(problem, "question_no", None),
-                    subject=task_subject,
-                    grade=task.payload.grade,
-                    source=problem.source,
-                    knowledge_points=combined_knowledge,
-                    knowledge_tags=manual_knowledge,
-                    error_tags=manual_error,
-                    user_tags=manual_custom,
-                )
-            )
-
-    return ProblemsResponse(items=items)
+"""Per-problem endpoints and /problems were moved to backend/app/api/*.py."""
 
 
 def _get_problem(task, problem_id: str):
@@ -1336,14 +748,9 @@ def _prefetch_models_cache() -> None:
     can fetch model list on startup when credentials are available.
     """
 
-    global _models_cache
-
     try:
-        base_url, api_key, authorization, auth_header_name = _guess_openai_gateway_config()
-        if base_url and (api_key or authorization):
-            _models_cache = _fetch_openai_models(base_url, api_key, authorization, auth_header_name)
+        models_service.prefetch_cache()
     except Exception:
-        # Do not fail backend startup if gateway is unavailable or credentials are missing.
         pass
 
 
@@ -1387,78 +794,6 @@ def _check_ai_gateway_on_startup() -> None:
         )
         if require_gateway:
             raise RuntimeError("AI_REQUIRE_GATEWAY=true but gateway probe failed")
-
-
-@app.get("/models", response_model=ModelsResponse)
-def list_models(refresh: bool = False) -> ModelsResponse:
-    """List models from OpenAI-compatible gateway (used by Settings UI)."""
-
-    global _models_cache
-    if _models_cache is not None and not refresh:
-        return ModelsResponse(items=[ModelSummary(**m) for m in _models_cache if m.get("id")])
-
-    base_url, api_key, authorization, auth_header_name = _guess_openai_gateway_config()
-    if not base_url:
-        raise HTTPException(status_code=400, detail="Missing OPENAI_BASE_URL or default.base_url in agent config")
-    if not api_key and not authorization:
-        raise HTTPException(
-            status_code=400,
-            detail="Missing OPENAI_API_KEY (or OPENAI_AUTHORIZATION) or default.api_key in agent config",
-        )
-
-    _models_cache = _fetch_openai_models(base_url, api_key, authorization, auth_header_name)
-    return ModelsResponse(items=[ModelSummary(**m) for m in _models_cache if m.get("id")])
-
-
-@app.get("/settings/agent-models", response_model=AgentModelsResponse)
-def get_agent_models() -> AgentModelsResponse:
-    settings = agent_model_store.load()
-    return AgentModelsResponse(models=settings.models)
-
-
-@app.put("/settings/agent-models", response_model=AgentModelsResponse)
-def update_agent_models(payload: AgentModelsUpdateRequest) -> AgentModelsResponse:
-    normalized = {str(k).upper(): str(v) for k, v in payload.models.items() if v}
-    saved = agent_model_store.save(AgentModelSettings(models=normalized))
-    return AgentModelsResponse(models=saved.models)
-
-
-@app.get("/settings/agent-enabled", response_model=AgentEnabledResponse)
-def get_agent_enabled() -> AgentEnabledResponse:
-    return AgentEnabledResponse(enabled=_agent_enabled_snapshot())
-
-
-@app.put("/settings/agent-enabled", response_model=AgentEnabledResponse)
-def update_agent_enabled(payload: AgentEnabledUpdateRequest) -> AgentEnabledResponse:
-    incoming: dict[str, bool] = {}
-    for k, v in (payload.enabled or {}).items():
-        incoming[str(k).upper()] = bool(v)
-
-    # Enforce non-disableable agents.
-    for locked in _FORCE_ENABLED_AGENTS:
-        incoming[locked] = True
-
-    saved = agent_enable_store.save(AgentEnableSettings(enabled=incoming))
-
-    # Return effective snapshot (includes defaults for missing keys).
-    _ = saved
-    return AgentEnabledResponse(enabled=_agent_enabled_snapshot())
-
-
-@app.get("/settings/agent-thinking", response_model=AgentThinkingResponse)
-def get_agent_thinking() -> AgentThinkingResponse:
-    return AgentThinkingResponse(thinking=_agent_thinking_snapshot())
-
-
-@app.put("/settings/agent-thinking", response_model=AgentThinkingResponse)
-def update_agent_thinking(payload: AgentThinkingUpdateRequest) -> AgentThinkingResponse:
-    incoming: dict[str, bool] = {}
-    for k, v in (payload.thinking or {}).items():
-        incoming[str(k).upper()] = bool(v)
-
-    saved = agent_thinking_store.save(AgentThinkingSettings(thinking=incoming))
-    _ = saved
-    return AgentThinkingResponse(thinking=_agent_thinking_snapshot())
 
 
 def _process_task(task_id: str):

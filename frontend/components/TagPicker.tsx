@@ -2,26 +2,10 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Box, Button, Label, Spinner, Text, TextInput } from "@primer/react";
-import { fetchJson } from "../lib/api";
+import type { TagDimension, TagDimensionStyle, TagItem } from "../types/api";
+import { createTag, searchTags } from "../features/tags/api";
 
-export type TagDimension = "knowledge" | "error" | "meta" | "custom";
-
-export type TagDimensionStyle = {
-  label: string;
-  label_variant: string;
-};
-
-type TagItem = {
-  id: string;
-  dimension: TagDimension;
-  value: string;
-  aliases?: string[];
-  ref_count?: number;
-};
-
-type TagsResponse = {
-  items: TagItem[];
-};
+export type { TagDimension, TagDimensionStyle };
 
 type SuggestionItem =
   | { type: "existing"; id: string; value: string; ref_count?: number }
@@ -90,10 +74,7 @@ export function TagPicker({
       const s = normalizeTag(raw);
       if (!s) return;
       try {
-        await fetchJson<TagsResponse>("/tags", {
-          method: "POST",
-          body: JSON.stringify({ dimension, value: s, aliases: [] }),
-        });
+        await createTag({ dimension, value: s, aliases: [] });
       } catch {
         // ignore; still add locally
       }
@@ -178,13 +159,11 @@ export function TagPicker({
 
     const timer = setTimeout(async () => {
       try {
-        const sp = new URLSearchParams();
-        sp.set("dimension", dimension);
-        if (q) {
-          sp.set("query", q);
-        }
-        sp.set("limit", String(Math.max(maxSuggestions, 20)));
-        const data = await fetchJson<TagsResponse>(`/tags?${sp.toString()}`);
+        const data = await searchTags({
+          dimension,
+          query: q || undefined,
+          limit: Math.max(maxSuggestions, 20),
+        });
         if (lastReq.current !== requestId) return;
         setSuggestions(Array.isArray(data.items) ? data.items : []);
       } catch {

@@ -6,7 +6,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from .gemini_client import GeminiClient
 from .openai_client import OpenAIClient
 from .stub import StubAIClient
 
@@ -47,7 +46,7 @@ def load_agent_client_config(agent_name: str) -> AgentClientConfig | None:
     """Load per-agent config from env.
 
     Env naming:
-      AGENT_<NAME>_PROVIDER: openai | gemini | stub
+    AGENT_<NAME>_PROVIDER: openai | stub
       AGENT_<NAME>_API_KEY
       AGENT_<NAME>_BASE_URL   (openai only)
       AGENT_<NAME>_MODEL
@@ -76,7 +75,7 @@ def load_agent_config_bundle(path: str | os.PathLike[str] | None) -> AgentConfig
     TOML structure:
 
       [default]
-      provider = "openai"|"gemini"|"stub"
+    provider = "openai"|"stub"
       api_key = "env:OPENAI_API_KEY"  # or literal
       base_url = "https://.../v1"     # openai only
       model = "gpt-4o-mini"
@@ -162,13 +161,8 @@ def build_client_from_config(config: AgentClientConfig):
         )
 
     if provider == "gemini":
-        if not config.api_key:
-            raise RuntimeError("gemini provider requires API_KEY")
-        # base_url is not supported by google-generativeai
-        return GeminiClient(
-            api_key=config.api_key,
-            model=config.model or "gemini-1.5-flash",
-            temperature=config.temperature if config.temperature is not None else 0.2,
+        raise RuntimeError(
+            "gemini provider has been removed. Use provider=openai with an OpenAI-compatible gateway (BASE_URL)."
         )
 
     raise RuntimeError(f"Unknown provider: {provider}")

@@ -15,14 +15,21 @@ import {
   Flash,
   Textarea
 } from "@primer/react";
-import { fetchJson } from "../../lib/api";
+import { useTagDimensions } from "../../features/tags";
+import {
+  deleteProblem as deleteProblemApi,
+  deleteTask as deleteTaskApi,
+  getTask,
+  listProblems,
+  listTasks,
+  overrideProblem,
+} from "../../features/tasks";
 import type {
   ProblemsResponse,
   ProblemSummary,
   TaskResponse,
   TasksResponse,
   TaskSummary,
-  TagDimensionsResponse,
   TagDimensionStyle,
 } from "../../types/api";
 import { TagPicker } from "../../components/TagPicker";
@@ -42,7 +49,7 @@ export default function LibraryPage() {
   const [isLoadingActive, setIsLoadingActive] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string>("");
-  const [tagStyles, setTagStyles] = useState<Record<string, TagDimensionStyle>>({});
+  const { effectiveDimensions: tagStyles } = useTagDimensions();
 
   const [editingKey, setEditingKey] = useState<string>("");
   const [editQuestionNo, setEditQuestionNo] = useState<string>("");
@@ -67,10 +74,7 @@ export default function LibraryPage() {
     async function loadActive() {
       setIsLoadingActive(true);
       try {
-        const searchParams = new URLSearchParams();
-        searchParams.set("active_only", "true");
-        if (subject) searchParams.set("subject", subject);
-        const data = await fetchJson<TasksResponse>(`/tasks?${searchParams.toString()}`);
+        const data = await listTasks({ active_only: true, subject: subject || undefined });
         if (!cancelled) {
           setActiveTasks(data.items);
         }
@@ -95,36 +99,14 @@ export default function LibraryPage() {
   }, [subject]);
 
   useEffect(() => {
-    let alive = true;
-    (async () => {
-      try {
-        const data = await fetchJson<TagDimensionsResponse>("/settings/tag-dimensions");
-        if (!alive) return;
-        setTagStyles(data.dimensions || {});
-      } catch {
-        // best-effort
-      }
-    })();
-    return () => {
-      alive = false;
-    };
-  }, []);
-
-  useEffect(() => {
     let cancelled = false;
 
     async function load() {
       setIsLoading(true);
       setError("");
 
-      const searchParams = new URLSearchParams();
-      if (subject) searchParams.set("subject", subject);
-      if (tag) searchParams.set("tag", tag);
-      const query = searchParams.toString();
-
       try {
-        const path = query ? `/problems?${query}` : "/problems";
-        const data = await fetchJson<ProblemsResponse>(path);
+        const data = await listProblems({ subject: subject || undefined, tag: tag || undefined });
         if (!cancelled) {
           setItems(data.items);
         }
@@ -152,7 +134,7 @@ export default function LibraryPage() {
     setEditMessage("");
     setEditLoading(true);
     try {
-      const data = await fetchJson<TaskResponse>(`/tasks/${taskId}`);
+      const data = await getTask(taskId);
       const p = data.task.problems.find((x) => x.problem_id === problemId);
       if (!p) throw new Error("题目不存在");
 
@@ -173,26 +155,18 @@ export default function LibraryPage() {
     setEditSaving(true);
     setEditMessage("");
     try {
-      await fetchJson<TaskResponse>(`/tasks/${taskId}/problems/${problemId}/override`, {
-        method: "PATCH",
-        body: JSON.stringify({
-          question_no: editQuestionNo.trim() || null,
-          source: editSource.trim() || null,
-          problem_text: editProblemText,
-          knowledge_tags: editKnowledgeTags,
-          error_tags: editErrorTags,
-          user_tags: editUserTags,
-        }),
+      await overrideProblem(taskId, problemId, {
+        question_no: editQuestionNo.trim() || null,
+        source: editSource.trim() || null,
+        problem_text: editProblemText,
+        knowledge_tags: editKnowledgeTags,
+        error_tags: editErrorTags,
+        user_tags: editUserTags,
       });
       setEditMessage("已保存");
       setEditingKey("");
       // Reload list
-      const searchParams = new URLSearchParams();
-      if (subject) searchParams.set("subject", subject);
-      if (tag) searchParams.set("tag", tag);
-      const query = searchParams.toString();
-      const path = query ? `/problems?${query}` : "/problems";
-      const refreshed = await fetchJson<ProblemsResponse>(path);
+      const refreshed = await listProblems({ subject: subject || undefined, tag: tag || undefined });
       setItems(refreshed.items);
     } catch (e) {
       setEditMessage(e instanceof Error ? e.message : "保存失败");
@@ -204,14 +178,9 @@ export default function LibraryPage() {
   async function deleteProblem(taskId: string, problemId: string) {
     if (!window.confirm("确认删除这道题？")) return;
     try {
-      await fetchJson<TaskResponse>(`/tasks/${taskId}/problems/${problemId}`, { method: "DELETE" });
+      await deleteProblemApi(taskId, problemId);
       // Reload list
-      const searchParams = new URLSearchParams();
-      if (subject) searchParams.set("subject", subject);
-      if (tag) searchParams.set("tag", tag);
-      const query = searchParams.toString();
-      const path = query ? `/problems?${query}` : "/problems";
-      const refreshed = await fetchJson<ProblemsResponse>(path);
+      const refreshed = await listProblems({ subject: subject || undefined, tag: tag || undefined });
       setItems(refreshed.items);
     } catch (e) {
       setError(e instanceof Error ? e.message : "删除失败");
@@ -220,7 +189,7 @@ export default function LibraryPage() {
 
   async function copyMarkdown(taskId: string, problemId: string) {
     try {
-      const data = await fetchJson<TaskResponse>(`/tasks/${taskId}`);
+      const data = await getTask(taskId);
       const p = data.task.problems.find((x) => x.problem_id === problemId);
       if (!p) throw new Error("题目不存在");
       const tagResult = data.task.tags.find((x) => x.problem_id === problemId);
@@ -267,12 +236,9 @@ export default function LibraryPage() {
   async function deleteTask(taskId: string) {
     if (!window.confirm("确认删除这个任务（将删除其所有题目）？")) return;
     try {
-      await fetchJson<TaskResponse>(`/tasks/${taskId}`, { method: "DELETE" });
+      await deleteTaskApi(taskId);
       // best-effort refresh active list
-      const searchParams = new URLSearchParams();
-      searchParams.set("active_only", "true");
-      if (subject) searchParams.set("subject", subject);
-      const data = await fetchJson<TasksResponse>(`/tasks?${searchParams.toString()}`);
+      const data = await listTasks({ active_only: true, subject: subject || undefined });
       setActiveTasks(data.items);
     } catch (e) {
       setError(e instanceof Error ? e.message : "删除任务失败");
