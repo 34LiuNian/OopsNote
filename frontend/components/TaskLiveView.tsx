@@ -16,6 +16,7 @@ import { fetchJson } from "../lib/api";
 import type { TaskResponse } from "../types/api";
 import { LiveStreamRenderer } from "./LiveStreamRenderer";
 import { InlineMath } from "react-katex";
+import { MarkdownRenderer } from "./MarkdownRenderer";
 
 type RenderMathInElement = (
   element: HTMLElement,
@@ -425,7 +426,7 @@ export function TaskLiveView({ taskId }: { taskId: string }) {
                     </Text>
                     
                     <Box sx={{ mb: 3 }}>
-                      <Box sx={{ whiteSpace: 'pre-wrap', mb: 2 }}>{problem.problem_text}</Box>
+                      <MarkdownRenderer text={problem.problem_text || ""} />
                       {problem.options && problem.options.length > 0 && (
                         <Box sx={{ pl: 2, borderLeft: '2px solid', borderColor: 'border.default' }}>
                           {problem.options.map((opt) => (
@@ -437,7 +438,7 @@ export function TaskLiveView({ taskId }: { taskId: string }) {
                                     <InlineMath math={normalizeLatexInline(opt.text)} />
                                   </Box>
                                 ) : (
-                                  <Text>{opt.text}</Text>
+                                  <MarkdownRenderer text={opt.text || ""} />
                                 )}
                               </Box>
                             </Box>
@@ -449,9 +450,9 @@ export function TaskLiveView({ taskId }: { taskId: string }) {
                     {solution && (
                       <Box sx={{ mb: 2 }}>
                         <Text sx={{ fontWeight: 'bold', display: 'block' }}>答案：</Text>
-                        <Box sx={{ whiteSpace: 'pre-wrap', mb: 2 }}>{solution.answer}</Box>
+                        <MarkdownRenderer text={solution.answer || ""} />
                         <Text sx={{ fontWeight: 'bold', display: 'block' }}>解析：</Text>
-                        <Box sx={{ whiteSpace: 'pre-wrap' }}>{solution.explanation}</Box>
+                        <MarkdownRenderer text={solution.explanation || ""} />
                       </Box>
                     )}
 

@@ -223,6 +223,12 @@ class UploadRequest(BaseModel):
         return self
 
 
+class LatexCompileRequest(BaseModel):
+    content: str = Field(description="LaTeX document body content")
+    title: Optional[str] = Field(default="LaTeX 测试", description="Document title")
+    author: Optional[str] = Field(default="OopsNote", description="Document author")
+
+
 class OverrideProblemRequest(BaseModel):
     question_no: Optional[str] = None
     problem_text: Optional[str] = None

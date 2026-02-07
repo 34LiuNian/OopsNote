@@ -92,6 +92,7 @@ from .api.agent_settings import router as agent_settings_router
 from .api.tasks import router as tasks_router
 from .api.problems import router as problems_router
 from .api.models import router as models_router
+from .api.latex import router as latex_router
 from .services.agent_settings import AgentSettingsService
 from .services.tasks_service import TasksService
 from .services.models_service import ModelsService
@@ -455,6 +456,7 @@ app.include_router(agent_settings_router)
 app.include_router(tasks_router)
 app.include_router(problems_router)
 app.include_router(models_router)
+app.include_router(latex_router)
 
 
 def _probe_openai_gateway(base_url: str, timeout_seconds: float = 1.2) -> tuple[bool, str]:

@@ -3,11 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Box, Text, ButtonGroup, Button } from "@primer/react";
 import { CodeIcon, EyeIcon } from "@primer/octicons-react";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
-import remarkMath from "remark-math";
-import remarkBreaks from "remark-breaks";
-import rehypeKatex from "rehype-katex";
+import { MarkdownRenderer } from "./MarkdownRenderer";
 
 function useThrottledValue<T>(value: T, delayMs: number): T {
   const [throttled, setThrottled] = useState(value);
@@ -165,45 +161,7 @@ export function LiveStreamRenderer({ text }: { text: string }) {
             {text}
           </Box>
         ) : (
-          <Box sx={{ fontSize: 1, '& .katex': { fontSize: '1.1em' } }}>
-            <ReactMarkdown
-              remarkPlugins={[remarkGfm, remarkMath, remarkBreaks]}
-              rehypePlugins={[[rehypeKatex, { throwOnError: false }]]}
-              components={{
-                p: ({ children }) => <Box as="p" sx={{ m: 0, mb: 2, whiteSpace: 'pre-wrap' }}>{children}</Box>,
-                ul: ({ children }) => <Box as="ul" sx={{ pl: 3, mt: 0, mb: 2 }}>{children}</Box>,
-                ol: ({ children }) => <Box as="ol" sx={{ pl: 3, mt: 0, mb: 2 }}>{children}</Box>,
-                li: ({ children }) => <Box as="li" sx={{ mb: 1, whiteSpace: 'pre-wrap' }}>{children}</Box>,
-                pre: ({ children }) => (
-                  <Box
-                    as="pre"
-                    sx={{
-                      whiteSpace: 'pre-wrap',
-                      fontFamily: 'mono',
-                      fontSize: 1,
-                      m: 0,
-                      mb: 2,
-                      p: 2,
-                      borderRadius: 1,
-                      border: '1px solid',
-                      borderColor: 'border.default',
-                      bg: 'canvas.subtle',
-                      overflowX: 'auto',
-                    }}
-                  >
-                    {children}
-                  </Box>
-                ),
-                code: ({ children }) => (
-                  <Box as="code" sx={{ fontFamily: 'mono', fontSize: 1 }}>
-                    {children}
-                  </Box>
-                ),
-              }}
-            >
-              {formattedText}
-            </ReactMarkdown>
-          </Box>
+          <MarkdownRenderer text={formattedText} />
         )}
       </Box>
     </Box>

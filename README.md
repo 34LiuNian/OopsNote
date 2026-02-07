@@ -75,6 +75,19 @@ npm install
 npm run dev
 ```
 
+### 渲染测试（化学方程式 / 流程图）
+
+仓库内提供一个用于验证 KaTeX（含化学方程式）与 Mermaid 流程图渲染的 demo 任务（不会直接提交到 `backend/storage/`，需要本地 seed 一次）：
+
+```bash
+D:\works\2025\OopsNote\.venv\Scripts\python.exe backend/scripts/seed_demo_tasks.py
+```
+
+启动后端/前端后，在任务页打开：
+
+- `http://localhost:3000/tasks/c10f6c74b5e34c0d9b4b62d3b2c2a110`
+
+
 默认后端地址为 `http://localhost:8000`，可通过 `frontend/.env` 配置：
 
 ```bash

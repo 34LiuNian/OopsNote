@@ -1,0 +1,74 @@
+{
+  "id": "c10f6c74b5e34c0d9b4b62d3b2c2a110",
+  "payload": {
+    "image_url": "https://assets.local/chem-demo",
+    "subject": "chemistry",
+    "grade": null,
+    "notes": "demo: 化学方程式 / 有机结构 / 流程图渲染",
+    "question_no": "chem-demo-1",
+    "mock_problem_count": null,
+    "difficulty": "中",
+    "source": "渲染测试",
+    "knowledge_tags": [
+      "化学方程式",
+      "有机化学",
+      "流程图"
+    ],
+    "error_tags": [],
+    "user_tags": []
+  },
+  "asset": null,
+  "status": "completed",
+  "stage": "done",
+  "stage_message": "完成",
+  "created_at": "2026-01-10T00:00:00.000000Z",
+  "updated_at": "2026-01-10T00:00:00.000000Z",
+  "last_error": null,
+  "detection": {
+    "action": "single",
+    "regions": [
+      {
+        "id": "chem-demo-region-1",
+        "bbox": [0.05, 0.05, 0.9, 0.9],
+        "label": "full"
+      }
+    ]
+  },
+  "problems": [
+    {
+      "problem_id": "chem-demo-problem-1",
+      "region_id": "chem-demo-region-1",
+      "question_no": "chem-demo-1",
+      "problem_text": "【渲染测试题】\n\n1) 配平并书写化学方程式（测试 mhchem/KaTeX）：\n\n$$\\ce{KMnO4 + Fe^{2+} + H+ -> Mn^{2+} + Fe^{3+} + H2O}$$\n\n2) 写出乙醇脱水制乙烯的反应（测试条件箭头）：\n\n$$\\ce{CH3CH2OH ->[conc.\\ H2SO4][170^\\circ C] CH2=CH2 + H2O}$$\n\n3) 有机物结构渲染（测试 SMILES 代码块 -> 结构式）：\n\n- 乙醇（SMILES）：\n\n```smiles\nCCO\n```\n\n- 苯乙烯（SMILES）：\n\n```smiles\nC=Cc1ccccc1\n```\n\n- 苯环（苯，SMILES）：\n\n```smiles\nc1ccccc1\n```\n\n- 支链碳链（异丁烷，SMILES）：\n\n```smiles\nCC(C)C\n```\n\n- 酰胺基（乙酰胺，SMILES）：\n\n```smiles\nCC(=O)N\n```\n\n4) 用流程图描述“配平-检验-书写”的步骤（测试 mermaid）：\n\n见解析部分。\n",
+      "latex_blocks": [
+        "\\ce{2H2 + O2 -> 2H2O}",
+        "\\ce{CO2 + C -> 2CO}",
+        "\\ce{CH3COOH + C2H5OH <=> CH3COOC2H5 + H2O}"
+      ],
+      "ocr_text": null,
+      "crop_image_url": null,
+      "locked_tags": false,
+      "media_notes": null,
+      "options": [],
+      "source": "渲染测试",
+      "knowledge_tags": [],
+      "error_tags": [],
+      "user_tags": [],
+      "crop_bbox": [0.05, 0.05, 0.9, 0.9]
+    }
+  ],
+  "solutions": [
+    {
+      "problem_id": "chem-demo-problem-1",
+      "answer": "示例答案（用于渲染验证）：\n\n- $\\ce{MnO4^-}$：$+7 \\to +2$ 得 $5e^-$\n- $\\ce{Fe^{2+}}$：$+2 \\to +3$ 失 $1e^-$\n\n$$\\ce{MnO4^- + 5Fe^{2+} + 8H+ -> Mn^{2+} + 5Fe^{3+} + 4H2O}$$",
+      "explanation": "下面是流程图（mermaid 代码块）示例：\n\n```mermaid\nflowchart TD\n  A[确定反应物/生成物] --> B[设系数并列原子守恒]\n  B --> C[按酸性/碱性补 H2O、H+、OH-]\n  C --> D[用电子守恒配平氧化还原]\n  D --> E{检验各元素与电荷}\n  E -- 通过 --> F[写出最终方程式]\n  E -- 不通过 --> B\n```\n\n提示：如果浏览器端能看到 SVG 流程图，就说明 mermaid 渲染 OK。",
+      "short_answer": "渲染 OK"
+    }
+  ],
+  "tags": [],
+  "archive_record": {
+    "task_id": "c10f6c74b5e34c0d9b4b62d3b2c2a110",
+    "stored_problem_ids": ["chem-demo-problem-1"],
+    "timestamp": "2026-01-10T00:00:00.000000Z"
+  }
+}
