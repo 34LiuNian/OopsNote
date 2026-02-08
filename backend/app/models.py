@@ -229,6 +229,11 @@ class LatexCompileRequest(BaseModel):
     author: Optional[str] = Field(default="OopsNote", description="Document author")
 
 
+class ChemfigRenderRequest(BaseModel):
+    content: str = Field(description="Chemfig content (with or without \\chemfig{...})")
+    inline: bool = Field(default=False, description="Whether to render as inline math")
+
+
 class OverrideProblemRequest(BaseModel):
     question_no: Optional[str] = None
     problem_text: Optional[str] = None

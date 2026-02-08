@@ -27,8 +27,10 @@ const DEFAULT_TEXT = `\\section{引言}
 export default function LatexTestPage() {
   const [input, setInput] = useState(DEFAULT_TEXT);
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<{ message: string; log?: string } | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const codeFont =
+    "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace";
 
   const handleCompile = useCallback(async () => {
     setError(null);
@@ -45,8 +47,25 @@ export default function LatexTestPage() {
       });
 
       if (!response.ok) {
-        const text = await response.text();
-        throw new Error(text || `编译失败: ${response.status}`);
+        const contentType = response.headers.get("Content-Type") || "";
+        let message = `编译失败: ${response.status}`;
+        let log = "";
+
+        if (contentType.includes("application/json")) {
+          const data = (await response.json()) as { detail?: { message?: string; log?: string } | string };
+          if (typeof data.detail === "string") {
+            message = data.detail;
+          } else if (data.detail) {
+            message = data.detail.message || message;
+            log = data.detail.log || "";
+          }
+        } else {
+          const text = await response.text();
+          if (text) message = text;
+        }
+
+        setError({ message, log });
+        return;
       }
 
       const blob = await response.blob();
@@ -55,8 +74,10 @@ export default function LatexTestPage() {
         if (prev) URL.revokeObjectURL(prev);
         return nextUrl;
       });
+      setError(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "编译失败，请检查 LaTeX 内容。");
+      const message = err instanceof Error ? err.message : "编译失败，请检查 LaTeX 内容。";
+      setError({ message });
     } finally {
       setIsLoading(false);
     }
@@ -80,12 +101,6 @@ export default function LatexTestPage() {
         </Button>
       </Box>
 
-      {error ? (
-        <Box sx={{ border: "1px solid", borderColor: "danger.emphasis", borderRadius: 6, p: 3, bg: "danger.subtle" }}>
-          <Text sx={{ color: "danger.fg", fontSize: 1, whiteSpace: "pre-wrap" }}>{error}</Text>
-        </Box>
-      ) : null}
-
       <Box
         sx={{
           display: "grid",
@@ -102,7 +117,7 @@ export default function LatexTestPage() {
             sx={{
               flex: 1,
               minHeight: 360,
-              fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace",
+              fontFamily: codeFont,
               fontSize: 1,
             }}
           />
@@ -115,11 +130,7 @@ export default function LatexTestPage() {
               flex: 1,
               minHeight: 360,
               overflow: "auto",
-              bg: "canvas.subtle",
-              border: "1px solid",
-              borderColor: "border.default",
               borderRadius: 6,
-              p: 3,
               display: "flex",
               justifyContent: "center",
               alignItems: "flex-start",
@@ -137,10 +148,33 @@ export default function LatexTestPage() {
                 overflow: "hidden",
               }}
             >
-              {pdfUrl ? (
+              {error ? (
+                <Box sx={{ p: 4, height: "100%", overflow: "auto", fontFamily: codeFont }}>
+                  <Text sx={{ color: "danger.fg", fontWeight: "bold" }}>编译失败</Text>
+                  <Box sx={{ mt: 2 }}>
+                    <Text sx={{ color: "danger.fg", fontSize: 1, whiteSpace: "pre-wrap" }}>{error.message}</Text>
+                  </Box>
+                  {error.log ? (
+                    <Box sx={{ mt: 3 }}>
+                      <Text sx={{ color: "fg.muted", fontSize: 1 }}>日志（末尾）：</Text>
+                      <Text
+                        sx={{
+                          display: "block",
+                          mt: 2,
+                          fontSize: 0,
+                          whiteSpace: "pre-wrap",
+                          fontFamily: codeFont,
+                        }}
+                      >
+                        {error.log}
+                      </Text>
+                    </Box>
+                  ) : null}
+                </Box>
+              ) : pdfUrl ? (
                 <iframe title="LaTeX PDF 预览" src={pdfUrl} style={{ width: "100%", height: "100%", border: 0 }} />
               ) : (
-                <Box sx={{ p: 4 }}>
+                <Box sx={{ p: 4, fontFamily: codeFont }}>
                   <Text sx={{ color: "fg.muted" }}>点击“编译”生成 PDF 预览。</Text>
                 </Box>
               )}

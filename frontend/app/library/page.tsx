@@ -291,8 +291,8 @@ export default function LibraryPage() {
                     <Text sx={{ fontSize: 1, color: 'fg.muted' }}>{t.stage_message || t.stage || "—"}</Text>
                   </Box>
                   <Box sx={{ width: '100%', textAlign: ['left', 'right'], mt: [2, 0] }}>
-                    <Link href={`/tasks/${t.id}`} passHref legacyBehavior>
-                      <Label as="a" variant="accent" sx={{ cursor: 'pointer', textDecoration: 'none' }}>查看任务</Label>
+                    <Link href={`/tasks/${t.id}`}>
+                      <Label variant="accent" sx={{ cursor: 'pointer', textDecoration: 'none' }}>查看任务</Label>
                     </Link>
                   </Box>
                 </Box>
@@ -372,8 +372,8 @@ export default function LibraryPage() {
                       {item.question_no ? `题号 ${item.question_no}` : "题目"}
                     </Text>
                     {item.source && <Text sx={{ fontSize: 0, color: 'fg.muted', display: 'block' }}>{item.source}</Text>}
-                    <Link href={`/tasks/${item.task_id}`} passHref legacyBehavior>
-                        <Label as="a" variant="secondary" sx={{ cursor: 'pointer', textDecoration: 'none', mt: 1, display: 'inline-block' }}>查看任务</Label>
+                    <Link href={`/tasks/${item.task_id}`}>
+                        <Label variant="secondary" sx={{ cursor: 'pointer', textDecoration: 'none', mt: 1, display: 'inline-block' }}>查看任务</Label>
                     </Link>
                   </Box>
                   <Box sx={{ width: '100%', display: 'flex', alignItems: 'center', gap: 2 }}>

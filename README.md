@@ -75,6 +75,15 @@ npm install
 npm run dev
 ```
 
+### LaTeX 论文版式测试
+
+前端提供 `http://localhost:3000/latex-test`，支持将 LaTeX 内容编译为 PDF 预览（非实时）。
+
+要求本机安装 TeX 发行版（推荐 TeX Live），并确保 `xelatex` 可被后端找到：
+
+- 方式一：加入系统 PATH（如 `C:\\texlive\\2025\\bin\\windows`）
+- 方式二：设置环境变量 `XELATEX_PATH` 指向 `xelatex.exe`
+
 ### 渲染测试（化学方程式 / 流程图）
 
 仓库内提供一个用于验证 KaTeX（含化学方程式）与 Mermaid 流程图渲染的 demo 任务（不会直接提交到 `backend/storage/`，需要本地 seed 一次）：
@@ -99,6 +108,7 @@ NEXT_PUBLIC_BACKEND_URL=http://localhost:8000
 建议把环境变量写入各自目录的 `.env` 文件（不要提交到仓库）。
 
 - 后端：按需填写 `OPENAI_API_KEY` / `OPENAI_BASE_URL` / `GEMINI_API_KEY` 等；也支持每个 agent 单独配置（见 `backend/README_AGENT_CONFIG.md`）。
+- 后端 LaTeX：可选 `XELATEX_PATH`（用于定位 `xelatex.exe`）
 - 前端：复制 [frontend/.env.example](frontend/.env.example) 为 `frontend/.env`，按需配置 `NEXT_PUBLIC_BACKEND_URL`。
 
 注意：`.env` 文件应只用于本地/部署环境配置，不应提交到仓库（已在 `.gitignore` 中忽略）。

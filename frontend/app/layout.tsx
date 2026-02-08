@@ -6,21 +6,21 @@ import "katex/dist/katex.min.css";
 import AppLayout from '@/components/AppLayout';
 import { ThemeProvider } from '@/components/ThemeProvider';
 import StyledComponentsRegistry from '@/lib/registry';
-import { KatexAutoRender } from '@/components/KatexAutoRender';
 
 export const metadata: Metadata = {
   title: "AI Mistake Organizer",
   description: "Organize your mistakes with AI",
 };
 
-function readInitialThemePreference(): "light" | "dark" | "system" {
-  const raw = cookies().get("oopsnote-theme")?.value;
+async function readInitialThemePreference(): Promise<"light" | "dark" | "system"> {
+  const store = await cookies();
+  const raw = store.get("oopsnote-theme")?.value;
   if (raw === "light" || raw === "dark" || raw === "system") return raw;
   return "system";
 }
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
-  const initialPreference = readInitialThemePreference();
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  const initialPreference = await readInitialThemePreference();
   const serverResolved = initialPreference === "light" || initialPreference === "dark" ? initialPreference : undefined;
 
   return (
@@ -41,10 +41,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           }}
         />
       </head>
-      <body>
+      <body style={{ backgroundColor: "Canvas", color: "CanvasText" }}>
         <StyledComponentsRegistry>
           <ThemeProvider initialPreference={initialPreference}>
-            <KatexAutoRender />
             <AppLayout>
               {children}
             </AppLayout>

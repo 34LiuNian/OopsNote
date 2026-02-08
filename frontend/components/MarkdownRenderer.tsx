@@ -1,21 +1,36 @@
 "use client";
 
 import { Box } from "@primer/react";
-import "katex/contrib/mhchem";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import remarkMath from "remark-math";
 import remarkBreaks from "remark-breaks";
+import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
 import { Mermaid } from "./Mermaid";
 import { Smiles } from "./Smiles";
+import { Chemfig } from "./Chemfig";
+import { useEffect, useMemo, useRef } from "react";
 
 export function MarkdownRenderer({ text }: { text: string }) {
+  const containerRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    void import("katex/contrib/mhchem");
+  }, []);
+
+  const remarkPlugins = useMemo(() => {
+    return [remarkGfm, remarkMath, remarkBreaks];
+  }, []);
+
+  const rehypePlugins = useMemo(() => {
+    return [[rehypeKatex, { throwOnError: false }]];
+  }, []);
+
   return (
-    <Box sx={{ fontSize: 1, "& .katex": { fontSize: "1.1em" } }}>
+    <Box ref={containerRef} sx={{ fontSize: 1, "& .katex": { fontSize: "1.1em" } }}>
       <ReactMarkdown
-        remarkPlugins={[remarkGfm, remarkMath, remarkBreaks]}
-        rehypePlugins={[[rehypeKatex, { throwOnError: false }]]}
+        remarkPlugins={remarkPlugins}
+        rehypePlugins={rehypePlugins}
         components={{
           p: ({ children }) => (
             <Box as="p" sx={{ m: 0, mb: 2, whiteSpace: "pre-wrap" }}>
@@ -30,7 +45,7 @@ export function MarkdownRenderer({ text }: { text: string }) {
             const className = (child as { props?: { className?: string } })?.props?.className || "";
             const language = className.replace("language-", "").trim();
 
-            if (language === "smiles" || language === "mermaid") {
+            if (language === "smiles" || language === "mermaid" || language === "chemfig") {
               return (
                 <Box sx={{ m: 0, mb: 2 }}>
                   {children}
@@ -69,6 +84,10 @@ export function MarkdownRenderer({ text }: { text: string }) {
 
             if (language === "smiles") {
               return <Smiles code={raw} />;
+            }
+
+            if (language === "chemfig") {
+              return <Chemfig code={raw} />;
             }
 
             return (

@@ -181,7 +181,7 @@ export function TaskLiveView({ taskId }: { taskId: string }) {
   }, [loadOnce, loadStreamOnce]);
 
   // When navigating from the library, the route changes first and data arrives later.
-  // Re-run KaTeX auto-render after task data is rendered to avoid "sometimes not rendered".
+  // Re-run math renderer after task data is rendered to avoid "sometimes not rendered".
   useEffect(() => {
     if (!data) return;
     if (!mathContainerRef.current) return;
@@ -434,9 +434,13 @@ export function TaskLiveView({ taskId }: { taskId: string }) {
                               <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 1, flexWrap: 'wrap' }}>
                                 <Text sx={{ fontWeight: 'bold' }}>{opt.key}.</Text>
                                 {looksLikeStandaloneMath(opt.text) ? (
-                                  <Box as="span" sx={{ '& .katex': { fontSize: '1.05em' } }}>
-                                    <InlineMath math={normalizeLatexInline(opt.text)} />
-                                  </Box>
+                                  renderer === "katex" ? (
+                                    <Box as="span" sx={{ '& .katex': { fontSize: '1.05em' } }}>
+                                      <InlineMath math={normalizeLatexInline(opt.text)} />
+                                    </Box>
+                                  ) : (
+                                    <Box as="span">{`\\(${normalizeLatexInline(opt.text)}\\)`}</Box>
+                                  )
                                 ) : (
                                   <MarkdownRenderer text={opt.text || ""} />
                                 )}
@@ -475,9 +479,13 @@ export function TaskLiveView({ taskId }: { taskId: string }) {
       )}
 
       <Box sx={{ mt: 4, pt: 3, borderTop: '1px solid', borderColor: 'border.muted', fontSize: 1 }}>
-        <Link href="/" passHref legacyBehavior><Text as="a" sx={{ color: 'accent.fg', textDecoration: 'none', mr: 2, cursor: 'pointer' }}>返回采集面板</Text></Link>
+        <Link href="/">
+          <Text as="span" sx={{ color: 'accent.fg', textDecoration: 'none', mr: 2, cursor: 'pointer' }}>返回采集面板</Text>
+        </Link>
         <Text sx={{ color: 'fg.muted' }}>·</Text>
-        <Link href="/library" passHref legacyBehavior><Text as="a" sx={{ color: 'accent.fg', textDecoration: 'none', ml: 2, cursor: 'pointer' }}>返回题库总览</Text></Link>
+        <Link href="/library">
+          <Text as="span" sx={{ color: 'accent.fg', textDecoration: 'none', ml: 2, cursor: 'pointer' }}>返回题库总览</Text>
+        </Link>
       </Box>
     </Box>
   );

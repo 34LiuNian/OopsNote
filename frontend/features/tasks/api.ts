@@ -4,6 +4,7 @@ import type {
   TaskResponse,
   TasksResponse,
 } from "../../types/api";
+import { API_BASE } from "../../lib/api";
 
 export type ListTasksParams = {
   active_only?: boolean;
@@ -71,4 +72,19 @@ export async function listProblems(params?: ListProblemsParams): Promise<Problem
   const sp = toSearchParams(params);
   const query = sp.toString();
   return fetchJson<ProblemsResponse>(query ? `/problems?${query}` : "/problems");
+}
+
+export type PaperCompilePayload = {
+  items: Array<{ task_id: string; problem_id: string }>;
+  title?: string;
+  subtitle?: string;
+  show_answers?: boolean;
+};
+
+export async function compilePaper(payload: PaperCompilePayload): Promise<Response> {
+  return fetch(`${API_BASE}/papers/compile`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
 }

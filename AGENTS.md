@@ -131,6 +131,7 @@ Use concise Chinese labels; prefer selecting from the provided candidate lists.
 - `GET /health` 查看后端状态
 - `GET /models` 查看可用模型（前端设置页会用）
 - `GET /settings/agent-models` / `GET /settings/agent-enabled` 查看 agent 配置与启用状态
+- `POST /latex/compile` LaTeX 论文编译接口（见下方附录）
 
 ---
 
@@ -140,3 +141,29 @@ Use concise Chinese labels; prefer selecting from the provided candidate lists.
 2. **多模态裁剪工具**：在前端加入可视化框选，写回 Detector 的输出用于再训练。
 3. **协同模式**：支持多人共享错题集，基于角色管理编辑/打标权限。
 4. **评测框架**：构建自动化 benchmark（真实题图 + 标准答案 + 标签）来回归测试各 Agent。
+
+---
+
+## 附录：LaTeX 论文编译接口
+
+该接口用于将 LaTeX 内容编译为 PDF，供前端“论文版式测试”页面预览。
+
+| 项目 | 说明 |
+| --- | --- |
+| 路由 | `POST /latex/compile` |
+| 输入 | `content`（正文或完整 LaTeX 文档），可选 `title` / `author` |
+| 输出 | `application/pdf`（成功）；失败返回结构化 JSON 错误 |
+| 引擎 | `xelatex`（可通过 `XELATEX_PATH` 或 PATH 查找） |
+| 模板 | 未包含 `\documentclass` 时自动包裹 `ctexart` 模板 |
+
+错误响应示例：
+
+```json
+{
+  "detail": {
+    "message": "LaTeX 编译失败。",
+    "log": "...LaTeX log tail...",
+    "exit_code": 1
+  }
+}
+```
