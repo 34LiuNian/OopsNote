@@ -1,0 +1,42 @@
+\documentclass[a4paper,11pt]{article}
+\usepackage{ctex}
+\usepackage{amsmath,amssymb}
+\usepackage{geometry}
+\usepackage{xeCJK}
+\usepackage{xeCJKfntef}
+\usepackage{ulem}
+\usepackage{gensymb}
+\usepackage{wrapfig}
+\usepackage{graphicx}
+\usepackage{fixdif}
+\usepackage{fancyhdr}
+\usepackage{lastpage}
+\usepackage{chemfig}
+\usepackage{exam-zh-choices}
+\usepackage{exam-zh-question}
+\usepackage{exam-zh-textfigure}
+\usepackage{tabularray}
+\usepackage{multirow}
+\usepackage{setspace}
+\pagestyle{fancy}
+\fancyhead{}
+\fancyfoot{}
+\fancyfoot[C]{\normalsize 数学试题第\thepage 页（共 \pageref{LastPage} 页）}
+\renewcommand{\headrulewidth}{0mm}
+\DeclareMathOperator{\arccot}{arccot}
+\newcommand{\dlim}{\displaystyle\lim}
+\newcommand{\dint}{\displaystyle\int}
+\newcommand{\e}{\mathrm{e}}
+\renewcommand{\i}{\mathrm{i}}
+\questionsetup{show-answer={{SHOW_ANSWERS}}}
+\fillinsetup{no-answer-type=none, show-answer=false}
+\geometry{left=31.7mm, right=31.7mm, top=30.4mm, bottom=30.4mm}
+\begin{document}
+\setstretch{1.5}
+\begin{center}
+{\fontsize{17pt}{\baselineskip} \selectfont {{TITLE}}\\[9pt]}
+\textbf{\fontsize{22pt}{\baselineskip}\selectfont {{SUBTITLE}}}
+\end{center}
+
+{{SECTIONS}}
+\end{document}

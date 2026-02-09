@@ -35,9 +35,19 @@ class DetectionOutput(BaseModel):
 
 
 class OptionItem(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     key: str = Field(description="Option key such as A/B/C/D")
     text: str = Field(description="Rendered option text, may contain LaTeX markup")
     latex_blocks: List[str] = Field(default_factory=list)
+
+    @field_validator("key", "text")
+    @classmethod
+    def validate_non_empty(cls, value: str):
+        trimmed = str(value).strip()
+        if not trimmed:
+            raise ValueError("Option key/text must be non-empty")
+        return trimmed
 
 
 class ProblemBlock(BaseModel):
@@ -47,6 +57,7 @@ class ProblemBlock(BaseModel):
         default=None,
         description="User-provided problem identifier (can be alphanumeric); used for display only",
     )
+    question_type: Optional[str] = Field(default=None, description="Optional manual question type label")
     problem_text: str
     latex_blocks: List[str] = Field(default_factory=list)
     ocr_text: Optional[str] = Field(default=None, description="Raw OCR text before cleanup")
@@ -118,14 +129,16 @@ class TaskCreateRequest(BaseModel):
         default=None,
         description="User-provided problem identifier (alphanumeric). Stored for display; internal problem_id uses UUID",
     )
+    question_type: Optional[str] = Field(default=None, description="Optional manual question type label")
     mock_problem_count: Optional[int] = Field(
         default=None,
         ge=1,
         le=8,
         description="For demos: override detector to emit specific count",
     )
-    difficulty: Optional[str] = Field(default=None, description="Optional difficulty label, e.g. 易/中/难")
+    difficulty: Optional[str] = Field(default=None, description="Score ratio a/b used for ordering")
     source: Optional[str] = Field(default=None, description="Optional paper/exam source label")
+    options: List[OptionItem] = Field(default_factory=list, description="Optional manual choice items")
     knowledge_tags: List[str] = Field(default_factory=list, description="Manual knowledge-system tags")
     error_tags: List[str] = Field(default_factory=list, description="Manual error-attribution tags")
     user_tags: List[str] = Field(default_factory=list)
@@ -181,6 +194,9 @@ class ProblemSummary(BaseModel):
     task_id: str
     problem_id: str
     question_no: Optional[str] = None
+    question_type: Optional[str] = None
+    problem_text: str
+    options: List[OptionItem] = Field(default_factory=list)
     subject: str
     grade: Optional[str] = None
     source: Optional[str] = None
@@ -209,9 +225,11 @@ class UploadRequest(BaseModel):
     grade: Optional[str] = None
     notes: Optional[str] = None
     question_no: Optional[str] = None
+    question_type: Optional[str] = None
     mock_problem_count: Optional[int] = Field(default=None, ge=1, le=8)
     difficulty: Optional[str] = None
     source: Optional[str] = None
+    options: List[OptionItem] = Field(default_factory=list)
     knowledge_tags: List[str] = Field(default_factory=list)
     error_tags: List[str] = Field(default_factory=list)
     user_tags: List[str] = Field(default_factory=list)
@@ -227,6 +245,18 @@ class LatexCompileRequest(BaseModel):
     content: str = Field(description="LaTeX document body content")
     title: Optional[str] = Field(default="LaTeX 测试", description="Document title")
     author: Optional[str] = Field(default="OopsNote", description="Document author")
+
+
+class PaperItemRequest(BaseModel):
+    task_id: str
+    problem_id: str
+
+
+class PaperCompileRequest(BaseModel):
+    items: List[PaperItemRequest]
+    title: Optional[str] = Field(default="试卷", description="Paper title")
+    subtitle: Optional[str] = Field(default=None, description="Paper subtitle")
+    show_answers: bool = Field(default=False, description="Whether to show answers in paper")
 
 
 class ChemfigRenderRequest(BaseModel):

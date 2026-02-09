@@ -340,9 +340,6 @@ export function TagPicker({
         ) : null}
       </Box>
 
-      {!enableRemoteSearch ? (
-        <Text sx={{ fontSize: 1, color: "fg.muted" }}>提示：输入后回车添加，可多次输入</Text>
-      ) : null}
     </Box>
   );
 }

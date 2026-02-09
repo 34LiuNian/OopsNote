@@ -16,62 +16,27 @@ from ..models import (
 )
 
 
-def _derive_problem_count(payload: TaskCreateRequest) -> int:
-    if payload.mock_problem_count:  # explicit override for demos/tests
-        return payload.mock_problem_count
-
-    if payload.notes:
-        lowered = payload.notes.lower()
-        if "multi" in lowered or "两" in lowered:
-            return 2
-        if "三" in lowered or "triple" in lowered:
-            return 3
-    return 1
-
-
-class MultiProblemDetector:
-    def run(self, payload: TaskCreateRequest) -> DetectionOutput:
-        count = _derive_problem_count(payload)
-        action: DetectionOutput = DetectionOutput(action="single", regions=[])
-        if count == 1:
-            if payload.notes and "fragment" in payload.notes.lower():
-                action.action = "single-noise"
-                action.regions = [
-                    CropRegion(
-                        id=uuid4().hex,
-                        bbox=[0.05, 0.05, 0.9, 0.9],
-                        label="full",
-                    )
-                ]
-            return action
-
-        regions = []
-        for idx in range(count):
-            regions.append(
-                CropRegion(
-                    id=uuid4().hex,
-                    bbox=[0.05, 0.05 + idx * 0.3, 0.9, 0.25],
-                    label="full" if idx == 0 else "partial",
-                )
+def _default_detection() -> DetectionOutput:
+    return DetectionOutput(
+        action="single",
+        regions=[
+            CropRegion(
+                id=uuid4().hex,
+                bbox=[0.05, 0.05, 0.9, 0.9],
+                label="full",
             )
-        action.action = "multi"
-        action.regions = regions
-        return action
+        ],
+    )
 
 
 class HandwrittenExtractor:
-    """Composite stage: detect multi-problem layout, then rebuild logical problems.
+    """Composite stage: rebuild logical problems from a single default region."""
 
-    Today this is rule-based; later it can be swapped for real OCR / multimodal models
-    without touching the rest of the pipeline.
-    """
-
-    def __init__(self, detector: "MultiProblemDetector", rebuilder: "ProblemRebuilder") -> None:
-        self.detector = detector
+    def __init__(self, rebuilder: "ProblemRebuilder") -> None:
         self.rebuilder = rebuilder
 
     def run(self, payload: TaskCreateRequest) -> Tuple[DetectionOutput, List[ProblemBlock]]:
-        detection = self.detector.run(payload)
+        detection = _default_detection()
         problems = self.rebuilder.run(payload, detection)
         return detection, problems
 

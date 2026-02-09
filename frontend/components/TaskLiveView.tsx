@@ -9,14 +9,20 @@ import {
   Button, 
   Label, 
   Flash,
-  Spinner
+  Spinner,
+  FormControl,
+  TextInput,
+  Textarea
 } from "@primer/react";
 import { SyncIcon } from "@primer/octicons-react";
 import { fetchJson } from "../lib/api";
 import type { TaskResponse } from "../types/api";
 import { LiveStreamRenderer } from "./LiveStreamRenderer";
-import { InlineMath } from "react-katex";
 import { MarkdownRenderer } from "./MarkdownRenderer";
+import { ProblemContent } from "./ProblemContent";
+import { deleteProblem, deleteTask, overrideProblem } from "../features/tasks";
+import { TagPicker } from "./TagPicker";
+import { useTagDimensions } from "../features/tags";
 
 type RenderMathInElement = (
   element: HTMLElement,
@@ -34,36 +40,6 @@ type RenderMathInElement = (
   },
 ) => void;
 
-function normalizeLatexInline(input: string): string {
-  const trimmed = input.trim();
-  if (trimmed.startsWith("$$") && trimmed.endsWith("$$")) {
-    return trimmed.slice(2, -2).trim();
-  }
-  if (trimmed.startsWith("\\[") && trimmed.endsWith("\\]")) {
-    return trimmed.slice(2, -2).trim();
-  }
-  if (trimmed.startsWith("\\(") && trimmed.endsWith("\\)")) {
-    return trimmed.slice(2, -2).trim();
-  }
-  if (trimmed.startsWith("$") && trimmed.endsWith("$")) {
-    return trimmed.slice(1, -1).trim();
-  }
-  return trimmed;
-}
-
-function looksLikeStandaloneMath(input: string): boolean {
-  const t = input.trim();
-  if (!t) return false;
-  // Already delimited -> let auto-render or markdown handle it.
-  if (t.includes("$") || t.includes("\\(") || t.includes("\\[") || t.includes("$$")) return false;
-  // Avoid wrapping text with CJK characters; those are usually explanations.
-  if (/[\u4e00-\u9fff]/.test(t)) return false;
-  // TeX command hint (\frac, \sqrt, \left, ...)
-  if (/\\[a-zA-Z]+/.test(t)) return true;
-  // Simple math-y strings without commands (x^2, a_1, etc.) are too ambiguous; skip.
-  return false;
-}
-
 export function TaskLiveView({ taskId }: { taskId: string }) {
   const [data, setData] = useState<TaskResponse | null>(null);
   const [error, setError] = useState<string>("");
@@ -73,6 +49,18 @@ export function TaskLiveView({ taskId }: { taskId: string }) {
   const [isLoading, setIsLoading] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
   const [isRetrying, setIsRetrying] = useState(false);
+  const { effectiveDimensions: tagStyles } = useTagDimensions();
+  const [editingKey, setEditingKey] = useState<string>("");
+  const [editQuestionNo, setEditQuestionNo] = useState<string>("");
+  const [editSource, setEditSource] = useState<string>("");
+  const [editProblemText, setEditProblemText] = useState<string>("");
+  const [editOptionsJson, setEditOptionsJson] = useState<string>("");
+  const [editOptionsError, setEditOptionsError] = useState<string>("");
+  const [editKnowledgeTags, setEditKnowledgeTags] = useState<string[]>([]);
+  const [editErrorTags, setEditErrorTags] = useState<string[]>([]);
+  const [editUserTags, setEditUserTags] = useState<string[]>([]);
+  const [editSaving, setEditSaving] = useState(false);
+  const [editMessage, setEditMessage] = useState<string>("");
 
   const mathContainerRef = useRef<HTMLDivElement | null>(null);
 
@@ -141,7 +129,7 @@ export function TaskLiveView({ taskId }: { taskId: string }) {
   const retryTask = useCallback(async () => {
     if (!data) return;
     const status = data.task.status;
-    if (status !== "failed") return;
+    if (status !== "failed" && status !== "completed") return;
 
     setIsRetrying(true);
     setError("");
@@ -173,6 +161,175 @@ export function TaskLiveView({ taskId }: { taskId: string }) {
       setIsRetrying(false);
     }
   }, [data, loadOnce, loadStreamOnce, taskId]);
+
+  const loadEdit = useCallback((problemId: string) => {
+    if (!data) return;
+    const p = data.task.problems.find((x) => x.problem_id === problemId);
+    if (!p) {
+      setEditMessage("题目不存在");
+      return;
+    }
+    setEditingKey(problemId);
+    setEditMessage("");
+    setEditQuestionNo((p.question_no || "").toString());
+    setEditSource((p.source || "").toString());
+    setEditProblemText((p.problem_text || "").toString());
+    const options = Array.isArray(p.options) ? p.options : [];
+    if (options.length > 0) {
+      const normalized = options.map((opt) => {
+        const entry: { key: string; text: string; latex_blocks?: string[] } = {
+          key: String(opt.key || "").trim(),
+          text: String(opt.text || "").trim(),
+        };
+        if (Array.isArray(opt.latex_blocks) && opt.latex_blocks.length > 0) {
+          entry.latex_blocks = opt.latex_blocks;
+        }
+        return entry;
+      });
+      setEditOptionsJson(JSON.stringify(normalized, null, 2));
+    } else {
+      setEditOptionsJson("");
+    }
+    setEditOptionsError("");
+    setEditKnowledgeTags(Array.isArray(p.knowledge_tags) ? p.knowledge_tags : []);
+    setEditErrorTags(Array.isArray(p.error_tags) ? p.error_tags : []);
+    setEditUserTags(Array.isArray(p.user_tags) ? p.user_tags : []);
+  }, [data]);
+
+  const saveEdit = useCallback(async (problemId: string) => {
+    if (!data) return;
+    setEditSaving(true);
+    setEditMessage("");
+    setEditOptionsError("");
+    try {
+      const rawOptions = editOptionsJson.trim();
+      let parsedOptions: Array<{ key: string; text: string; latex_blocks?: string[] }> = [];
+      if (rawOptions) {
+        let raw: Array<{ key?: string; text?: string; latex_blocks?: string[] }> = [];
+        try {
+          const parsed = JSON.parse(rawOptions) as Array<{ key?: string; text?: string; latex_blocks?: string[] }>;
+          if (!Array.isArray(parsed)) {
+            throw new Error("选项 JSON 必须是数组");
+          }
+          raw = parsed;
+        } catch (err) {
+          const message = err instanceof Error ? err.message : "选项 JSON 解析失败";
+          setEditOptionsError(message);
+          setEditSaving(false);
+          return;
+        }
+
+        parsedOptions = raw
+          .map((opt) => ({
+            key: String(opt?.key || "").trim(),
+            text: String(opt?.text || "").trim(),
+            latex_blocks: Array.isArray(opt?.latex_blocks) ? opt!.latex_blocks : undefined,
+          }))
+          .filter((opt) => opt.key && opt.text);
+
+        if (parsedOptions.length === 0) {
+          setEditOptionsError("选项 JSON 为空或格式不正确");
+          setEditSaving(false);
+          return;
+        }
+      }
+
+      await overrideProblem(taskId, problemId, {
+        question_no: editQuestionNo.trim() || null,
+        source: editSource.trim() || null,
+        problem_text: editProblemText,
+        options: parsedOptions,
+        knowledge_tags: editKnowledgeTags,
+        error_tags: editErrorTags,
+        user_tags: editUserTags,
+      });
+      setEditMessage("已保存");
+      setEditingKey("");
+      await loadOnce();
+    } catch (err) {
+      setEditMessage(err instanceof Error ? err.message : "保存失败");
+    } finally {
+      setEditSaving(false);
+    }
+  }, [
+    data,
+    editErrorTags,
+    editKnowledgeTags,
+    editOptionsJson,
+    editProblemText,
+    editQuestionNo,
+    editSource,
+    editUserTags,
+    loadOnce,
+    taskId,
+  ]);
+
+  const copyMarkdown = useCallback(async (problemId: string) => {
+    if (!data) return;
+    try {
+      const p = data.task.problems.find((x) => x.problem_id === problemId);
+      if (!p) throw new Error("题目不存在");
+      const tagResult = data.task.tags.find((x) => x.problem_id === problemId);
+      const s = data.task.solutions.find((x) => x.problem_id === problemId);
+
+      const lines: string[] = [];
+      lines.push(`# ${p.question_no ? `题号 ${p.question_no}` : "题目"}`);
+      if (p.source) lines.push(`来源：${p.source}`);
+      lines.push("");
+      lines.push("## 题干");
+      lines.push(p.problem_text || "");
+      lines.push("");
+
+      const knowledgeTags = Array.isArray(p.knowledge_tags) ? p.knowledge_tags : [];
+      const errorTags = Array.isArray(p.error_tags) ? p.error_tags : [];
+      const userTags = Array.isArray(p.user_tags) ? p.user_tags : [];
+      const aiKnowledge = tagResult?.knowledge_points || [];
+
+      lines.push("## 标签");
+      if (knowledgeTags.length) lines.push(`- 知识体系：${knowledgeTags.join("，")}`);
+      if (errorTags.length) lines.push(`- 错题归因：${errorTags.join("，")}`);
+      if (userTags.length) lines.push(`- 自定义：${userTags.join("，")}`);
+      if (aiKnowledge.length) lines.push(`- AI 知识点：${aiKnowledge.join("，")}`);
+      if (!knowledgeTags.length && !errorTags.length && !userTags.length && !aiKnowledge.length) {
+        lines.push("- （无）");
+      }
+      lines.push("");
+
+      if (s) {
+        lines.push("## 答案");
+        lines.push(s.answer || "");
+        lines.push("");
+        lines.push("## 解析");
+        lines.push(s.explanation || "");
+        lines.push("");
+      }
+
+      await navigator.clipboard.writeText(lines.join("\n"));
+      setStatusMessage("已复制 Markdown");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "复制失败");
+    }
+  }, [data]);
+
+  const removeProblem = useCallback(async (problemId: string) => {
+    if (!window.confirm("确认删除这道题？")) return;
+    try {
+      await deleteProblem(taskId, problemId);
+      await loadOnce();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "删除失败");
+    }
+  }, [loadOnce, taskId]);
+
+  const removeTask = useCallback(async () => {
+    if (!window.confirm("确认删除这个任务（将删除其所有题目）？")) return;
+    try {
+      await deleteTask(taskId);
+      window.location.href = "/library";
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "删除任务失败");
+    }
+  }, [taskId]);
 
   useEffect(() => {
     hasLoadedStreamRef.current = false;
@@ -361,7 +518,7 @@ export function TaskLiveView({ taskId }: { taskId: string }) {
               {isCancelling ? "作废中..." : "停止并作废"}
             </Button>
           )}
-          {data?.task?.status === "failed" && (
+          {(data?.task?.status === "failed" || data?.task?.status === "completed") && (
             <Button
               onClick={retryTask}
               disabled={isRetrying || isLoading || isCancelling}
@@ -376,6 +533,13 @@ export function TaskLiveView({ taskId }: { taskId: string }) {
             leadingVisual={SyncIcon}
           >
             {isLoading ? "刷新中..." : "查看最新状态"}
+          </Button>
+          <Button
+            variant="danger"
+            onClick={removeTask}
+            disabled={isLoading || isCancelling}
+          >
+            删除任务
           </Button>
         </Box>
       </Box>
@@ -424,31 +588,122 @@ export function TaskLiveView({ taskId }: { taskId: string }) {
                     <Text sx={{ fontWeight: 'bold', display: 'block', mb: 2, fontSize: 2 }}>
                       {problem.question_no ? `题号 ${problem.question_no}` : `题目 ${idx + 1}`}
                     </Text>
-                    
-                    <Box sx={{ mb: 3 }}>
-                      <MarkdownRenderer text={problem.problem_text || ""} />
-                      {problem.options && problem.options.length > 0 && (
-                        <Box sx={{ pl: 2, borderLeft: '2px solid', borderColor: 'border.default' }}>
-                          {problem.options.map((opt) => (
-                            <Box key={opt.key}>
-                              <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 1, flexWrap: 'wrap' }}>
-                                <Text sx={{ fontWeight: 'bold' }}>{opt.key}.</Text>
-                                {looksLikeStandaloneMath(opt.text) ? (
-                                  renderer === "katex" ? (
-                                    <Box as="span" sx={{ '& .katex': { fontSize: '1.05em' } }}>
-                                      <InlineMath math={normalizeLatexInline(opt.text)} />
-                                    </Box>
-                                  ) : (
-                                    <Box as="span">{`\\(${normalizeLatexInline(opt.text)}\\)`}</Box>
-                                  )
-                                ) : (
-                                  <MarkdownRenderer text={opt.text || ""} />
-                                )}
-                              </Box>
-                            </Box>
-                          ))}
+
+                    <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', mb: 2 }}>
+                      <Button size="small" onClick={() => loadEdit(problem.problem_id)}>
+                        编辑
+                      </Button>
+                      <Button size="small" onClick={() => copyMarkdown(problem.problem_id)}>
+                        复制 Markdown
+                      </Button>
+                      <Button size="small" variant="danger" onClick={() => removeProblem(problem.problem_id)}>
+                        删除题目
+                      </Button>
+                    </Box>
+
+                    {editingKey === problem.problem_id ? (
+                      <Box sx={{ mb: 3, p: 3, border: '1px solid', borderColor: 'border.default', borderRadius: 2, bg: 'canvas.default' }}>
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                          <Text sx={{ fontWeight: 'bold' }}>编辑题目</Text>
+                          <Button size="small" onClick={() => setEditingKey("")}>关闭</Button>
                         </Box>
-                      )}
+                        {editMessage ? (
+                          <Flash variant={editMessage === "已保存" ? "success" : "danger"} sx={{ mb: 2 }}>
+                            {editMessage}
+                          </Flash>
+                        ) : null}
+                        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                          <Box sx={{ display: 'grid', gridTemplateColumns: ['1fr', '1fr 1fr'], gap: 3 }}>
+                            <FormControl>
+                              <FormControl.Label>题号</FormControl.Label>
+                              <TextInput value={editQuestionNo} onChange={(e) => setEditQuestionNo(e.target.value)} block />
+                            </FormControl>
+                            <FormControl>
+                              <FormControl.Label>来源</FormControl.Label>
+                              <TextInput value={editSource} onChange={(e) => setEditSource(e.target.value)} block />
+                            </FormControl>
+                          </Box>
+
+                          <FormControl>
+                            <FormControl.Label>题干</FormControl.Label>
+                            <Textarea value={editProblemText} onChange={(e) => setEditProblemText(e.target.value)} block rows={6} />
+                          </FormControl>
+
+                          <FormControl>
+                            <FormControl.Label>选项（JSON）</FormControl.Label>
+                            <Textarea
+                              value={editOptionsJson}
+                              onChange={(e) => {
+                                setEditOptionsJson(e.target.value);
+                                if (editOptionsError) setEditOptionsError("");
+                              }}
+                              block
+                              rows={4}
+                            />
+                            {editOptionsError ? (
+                              <Text sx={{ color: 'danger.fg', mt: 1, display: 'block' }}>{editOptionsError}</Text>
+                            ) : null}
+                          </FormControl>
+
+                          <TagPicker
+                            title="知识体系"
+                            dimension="knowledge"
+                            value={editKnowledgeTags}
+                            onChange={setEditKnowledgeTags}
+                            styles={tagStyles}
+                            placeholder="输入搜索，Tab 补全，Enter 选第一"
+                          />
+                          <TagPicker
+                            title="错题归因"
+                            dimension="error"
+                            value={editErrorTags}
+                            onChange={setEditErrorTags}
+                            styles={tagStyles}
+                            placeholder="输入搜索，Tab 补全，Enter 选第一"
+                          />
+                          <TagPicker
+                            title="自定义"
+                            dimension="custom"
+                            value={editUserTags}
+                            onChange={setEditUserTags}
+                            styles={tagStyles}
+                            enableRemoteSearch={false}
+                            placeholder="输入后回车添加"
+                          />
+
+                          <Box sx={{ display: 'flex', gap: 2 }}>
+                            <Button
+                              variant="primary"
+                              onClick={() => saveEdit(problem.problem_id)}
+                              disabled={editSaving}
+                            >
+                              {editSaving ? (
+                                <>
+                                  <Spinner size="small" sx={{ mr: 1 }} />
+                                  保存中…
+                                </>
+                              ) : (
+                                '保存'
+                              )}
+                            </Button>
+                          </Box>
+                        </Box>
+                      </Box>
+                    ) : null}
+                    
+                    <Box
+                      sx={{
+                        mb: 3,
+                        fontFamily: "'Times New Roman','SimSun','宋体',serif",
+                        "& *": { fontFamily: "'Times New Roman','SimSun','宋体',serif" },
+                      }}
+                    >
+                      <ProblemContent
+                        problemText={problem.problem_text || ""}
+                        options={problem.options}
+                        itemKeyPrefix={problem.problem_id}
+                        fontSize={2}
+                      />
                     </Box>
 
                     {solution && (

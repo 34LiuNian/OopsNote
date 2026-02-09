@@ -32,8 +32,8 @@
 当前实现：
 
 - **客户端**：Next.js（`frontend/`）负责上传、任务页回放、题库编辑、标签管理。
-- **后端**：FastAPI（`backend/`）负责任务状态机、SSE 流式、OCR/解题/打标串联与落盘。
-- **存储**：本地文件存储（`backend/storage/`），便于本地开发/回放；后续可替换为 DB/S3。
+- **后端**：FastAPI（`backend/`）负责任务状态机、SSE 流式、OCR/解题/打标串联与落盘（任务处理由 `TasksService` 统一管理）。
+- **存储**：本地文件存储（`backend/storage/`），便于本地开发/回放；后续可替换为 DB/S3（错误详情记录在 `storage/llm_errors.log`）。
 
 ## 项目结构
 
@@ -86,7 +86,7 @@ npm run dev
 
 ### 渲染测试（化学方程式 / 流程图）
 
-仓库内提供一个用于验证 KaTeX（含化学方程式）与 Mermaid 流程图渲染的 demo 任务（不会直接提交到 `backend/storage/`，需要本地 seed 一次）：
+仓库内提供一个用于验证 KaTeX（含 mhchem 化学方程式）、chemfig SVG 以及 Mermaid 流程图渲染的 demo 任务（不会直接提交到 `backend/storage/`，需要本地 seed 一次）：
 
 ```bash
 D:\works\2025\OopsNote\.venv\Scripts\python.exe backend/scripts/seed_demo_tasks.py
@@ -95,6 +95,8 @@ D:\works\2025\OopsNote\.venv\Scripts\python.exe backend/scripts/seed_demo_tasks.
 启动后端/前端后，在任务页打开：
 
 - `http://localhost:3000/tasks/c10f6c74b5e34c0d9b4b62d3b2c2a110`
+
+说明：数学文本默认由 KaTeX 渲染；chemfig 结构式通过后端 `POST /latex/chemfig` 转为 SVG 在前端展示。
 
 
 默认后端地址为 `http://localhost:8000`，可通过 `frontend/.env` 配置：

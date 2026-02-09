@@ -19,6 +19,10 @@ logger = logging.getLogger(__name__)
 
 
 _PLACEHOLDER_RE = re.compile(r"\{([a-zA-Z_][a-zA-Z0-9_]*)\}")
+_SKILL_DIR = Path(__file__).parent / "skills"
+_SKILL_CACHE: dict[str, str] = {}
+_CHEMFIG_RE = re.compile(r"\\chemfig|chemfig", re.IGNORECASE)
+_CHEM_HINT_RE = re.compile(r"化学|有机|结构式|分子式|反应", re.IGNORECASE)
 
 
 @dataclass
@@ -82,6 +86,18 @@ class LLMAgent:
 
     def run(self, context: Mapping[str, Any], on_delta: Callable[[str], None] | None = None) -> AgentResult:
         system_prompt, user_prompt = self.template.render(context)
+
+        skills = context.get("skills")
+        if isinstance(skills, (list, tuple)) and skills:
+            skill_blocks = []
+            for name in skills:
+                if not name:
+                    continue
+                text = _load_skill(self.name, str(name))
+                if text:
+                    skill_blocks.append(f"[Skill: {name}]\n{text}")
+            if skill_blocks:
+                system_prompt = f"{system_prompt}\n\n" + "\n\n".join(skill_blocks) + "\n"
 
         # Optional per-agent "thinking" toggle.
         # We implement this as a prompt style hint (provider-agnostic).
@@ -208,6 +224,9 @@ class AgentOrchestrator:
     @staticmethod
     def _build_context(payload: TaskCreateRequest, problem: ProblemBlock) -> dict[str, Any]:
         latex = "\n".join(problem.latex_blocks)
+        skills: list[str] = []
+        if _needs_chemfig_skill(problem, latex):
+            skills.append("chemfig")
         knowledge_candidates = tag_store.list(dimension=TagDimension.KNOWLEDGE, limit=200)
         error_candidates = tag_store.list(dimension=TagDimension.ERROR, limit=200)
         meta_candidates = tag_store.list(dimension=TagDimension.META, limit=200)
@@ -224,6 +243,7 @@ class AgentOrchestrator:
             "problem_text": problem.problem_text,
             "latex": latex,
             "source": problem.source or "",
+            "skills": skills,
             "manual_knowledge_tags": "、".join([t for t in (payload.knowledge_tags or []) if str(t).strip()]),
             "manual_error_tags": "、".join([t for t in (payload.error_tags or []) if str(t).strip()]),
             "manual_source": (payload.source or "").strip(),
@@ -244,6 +264,36 @@ class AgentOrchestrator:
                 data.get("recommended_actions"), default=["完成 2 道同类题"]
             ),
         )
+
+
+def _load_skill(agent_name: str, name: str) -> str:
+    cache_key = f"{agent_name.lower()}::{name}"
+    if cache_key in _SKILL_CACHE:
+        return _SKILL_CACHE[cache_key]
+    path = _SKILL_DIR / agent_name.lower() / f"{name}.txt"
+    if not path.exists():
+        _SKILL_CACHE[cache_key] = ""
+        return ""
+    text = path.read_text(encoding="utf-8").strip()
+    _SKILL_CACHE[cache_key] = text
+    return text
+
+
+def _needs_chemfig_skill(problem: ProblemBlock, latex: str) -> bool:
+    if _CHEMFIG_RE.search(latex or ""):
+        return True
+    if _CHEMFIG_RE.search(problem.problem_text or ""):
+        return True
+    if _CHEM_HINT_RE.search(problem.problem_text or ""):
+        return True
+    for opt in problem.options or []:
+        text = getattr(opt, "text", "") or ""
+        if _CHEMFIG_RE.search(text) or _CHEM_HINT_RE.search(text):
+            return True
+        for block in getattr(opt, "latex_blocks", []) or []:
+            if _CHEMFIG_RE.search(block):
+                return True
+    return False
 
 
 def _coerce_list(value: Any, default: list[str]) -> list[str]:

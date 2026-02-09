@@ -15,6 +15,7 @@ export interface TaskResponse {
     problems: Array<{
       problem_id: string;
       question_no?: string | null;
+      question_type?: string | null;
       source?: string | null;
       knowledge_tags?: string[];
       error_tags?: string[];
@@ -58,6 +59,13 @@ export interface ProblemSummary {
   task_id: string;
   problem_id: string;
   question_no?: string | null;
+  question_type?: string | null;
+  problem_text: string;
+  options?: Array<{
+    key: string;
+    text: string;
+    latex_blocks?: string[];
+  }>;
   subject: string;
   grade?: string | null;
   source?: string | null;

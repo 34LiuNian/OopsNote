@@ -134,22 +134,24 @@ function ImagePanZoom({ file }: { file: File }) {
           userSelect: 'none',
         }}
       >
-        <Box
-          as="img"
-          src={url}
-          alt={file.name}
-          draggable={false}
-          sx={{
-            position: 'absolute',
-            top: '50%',
-            left: '50%',
-            maxWidth: 'none',
-            maxHeight: 'none',
-            transform: `translate(calc(-50% + ${state.x}px), calc(-50% + ${state.y}px)) scale(${state.scale})`,
-            transformOrigin: 'center',
-            pointerEvents: 'none',
-          }}
-        />
+        {url ? (
+          <Box
+            as="img"
+            src={url}
+            alt={file.name}
+            draggable={false}
+            sx={{
+              position: 'absolute',
+              top: '50%',
+              left: '50%',
+              maxWidth: 'none',
+              maxHeight: 'none',
+              transform: `translate(calc(-50% + ${state.x}px), calc(-50% + ${state.y}px)) scale(${state.scale})`,
+              transformOrigin: 'center',
+              pointerEvents: 'none',
+            }}
+          />
+        ) : null}
       </Box>
     </Box>
   );
@@ -162,7 +164,9 @@ export function UploadForm() {
   const [questionNo, setQuestionNo] = useState("");
   const [notes, setNotes] = useState("");
   const [source, setSource] = useState("");
-  const [difficulty, setDifficulty] = useState("");
+  const [difficultyLeft, setDifficultyLeft] = useState("");
+  const [difficultyRight, setDifficultyRight] = useState("");
+  const [questionType, setQuestionType] = useState("");
   const [knowledgeTags, setKnowledgeTags] = useState<string[]>([]);
   const [errorTags, setErrorTags] = useState<string[]>([]);
   const [customTags, setCustomTags] = useState<string[]>([]);
@@ -171,9 +175,11 @@ export function UploadForm() {
   const [isLoading, setIsLoading] = useState(false);
   const [lastTaskId, setLastTaskId] = useState<string>("");
   const [error, setError] = useState<string>("");
+  const [showAdvanced, setShowAdvanced] = useState(false);
 
   const singleInputRef = useRef<HTMLInputElement | null>(null);
   const folderInputRef = useRef<HTMLInputElement | null>(null);
+  const difficultyRightRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     // Enable folder import on Chromium browsers.
@@ -253,12 +259,22 @@ export function UploadForm() {
     setStatusMessage("正在入队...");
 
     try {
+      const leftScore = difficultyLeft.trim();
+      const rightScore = difficultyRight.trim();
+      if ((leftScore && !rightScore) || (!leftScore && rightScore)) {
+        setError("分数请填写为 a/b（两段都要填）");
+        setIsLoading(false);
+        return;
+      }
+      const difficultyValue = leftScore && rightScore ? `${leftScore}/${rightScore}` : undefined;
+
       const payload: Record<string, unknown> = {
         subject,
         notes,
         question_no: questionNo.trim() || undefined,
         source: source.trim() || undefined,
-        difficulty: difficulty.trim() || undefined,
+        question_type: questionType || undefined,
+        difficulty: difficultyValue,
         knowledge_tags: knowledgeTags,
         error_tags: errorTags,
         user_tags: customTags,
@@ -288,7 +304,21 @@ export function UploadForm() {
     }
 
     setIsLoading(false);
-  }, [convertFileToBase64, currentFile, difficulty, errorTags, knowledgeTags, moveNext, notes, questionNo, source, subject, customTags]);
+  }, [
+    convertFileToBase64,
+    currentFile,
+    customTags,
+    difficultyLeft,
+    difficultyRight,
+    errorTags,
+    knowledgeTags,
+    moveNext,
+    notes,
+    questionNo,
+    questionType,
+    source,
+    subject,
+  ]);
 
   return (
     <Box sx={{ display: 'flex', flexDirection: ['column', 'column', 'row'], gap: 4, height: '100%' }}>
@@ -296,9 +326,6 @@ export function UploadForm() {
       <Box sx={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 3 }}>
         <Box>
           <Heading as="h1" sx={{ fontSize: 4, mb: 1 }}>快速打标</Heading>
-          <Text as="p" sx={{ color: 'fg.muted', fontSize: 1 }}>
-            拍照/导入后，先人工打标，再提交入队处理。
-          </Text>
         </Box>
 
         <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -353,15 +380,6 @@ export function UploadForm() {
         <Box sx={{ p: 3, border: '1px solid', borderColor: 'border.default', borderRadius: 2, display: 'flex', flexDirection: 'column', gap: 3 }}>
           <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 3 }}>
             <FormControl>
-              <FormControl.Label>题号（可选）</FormControl.Label>
-              <TextInput
-                placeholder="例如：A100502.14"
-                value={questionNo}
-                onChange={(e) => setQuestionNo(e.target.value)}
-                block
-              />
-            </FormControl>
-            <FormControl>
               <FormControl.Label>学科</FormControl.Label>
               <Select value={subject} onChange={(e) => setSubject(e.target.value)} block>
                 <Select.Option value="math">数学</Select.Option>
@@ -369,38 +387,108 @@ export function UploadForm() {
                 <Select.Option value="chemistry">化学</Select.Option>
               </Select>
             </FormControl>
-          </Box>
-
-          <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 3 }}>
             <FormControl>
-              <FormControl.Label>来源（可选，批量）</FormControl.Label>
+              <FormControl.Label>备注（可选）</FormControl.Label>
               <TextInput
-                placeholder="例如：2025-一模"
-                value={source}
-                onChange={(e) => setSource(e.target.value)}
+                placeholder="比如：易错点、你自己的想法..."
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
                 block
               />
-            </FormControl>
-            <FormControl>
-              <FormControl.Label>难度（可选）</FormControl.Label>
-              <Select value={difficulty} onChange={(e) => setDifficulty(e.target.value)} block>
-                <Select.Option value="">（不填）</Select.Option>
-                <Select.Option value="易">易</Select.Option>
-                <Select.Option value="中">中</Select.Option>
-                <Select.Option value="难">难</Select.Option>
-              </Select>
             </FormControl>
           </Box>
 
           <FormControl>
-            <FormControl.Label>备注（可选）</FormControl.Label>
-            <TextInput
-              placeholder="比如：易错点、你自己的想法..."
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              block
-            />
+            <FormControl.Label>分数（可选，a/b）</FormControl.Label>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <TextInput
+                placeholder="a"
+                value={difficultyLeft}
+                onChange={(e) => {
+                  const next = e.target.value;
+                  if (next.includes("/")) {
+                    const [left, right] = next.split("/");
+                    setDifficultyLeft(left.trim());
+                    setDifficultyRight(right.trim());
+                    difficultyRightRef.current?.focus();
+                    return;
+                  }
+                  setDifficultyLeft(next);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "/") {
+                    e.preventDefault();
+                    difficultyRightRef.current?.focus();
+                  }
+                }}
+                sx={{ flex: 1 }}
+              />
+              <Text
+                sx={{
+                  color: 'fg.muted',
+                  px: 1,
+                  cursor: 'pointer',
+                  userSelect: 'none',
+                }}
+                onClick={() => difficultyRightRef.current?.focus()}
+              >
+                /
+              </Text>
+              <TextInput
+                placeholder="b"
+                value={difficultyRight}
+                onChange={(e) => setDifficultyRight(e.target.value)}
+                ref={difficultyRightRef}
+                sx={{ flex: 1 }}
+              />
+            </Box>
           </FormControl>
+
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end' }}>
+            <Button
+              size="small"
+              variant="invisible"
+              onClick={() => setShowAdvanced((prev) => !prev)}
+            >
+              {showAdvanced ? "收起高级选项" : "展开高级选项"}
+            </Button>
+          </Box>
+
+          {showAdvanced && (
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+              <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 3 }}>
+                <FormControl>
+                  <FormControl.Label>题号（可选）</FormControl.Label>
+                  <TextInput
+                    placeholder="例如：A100502.14"
+                    value={questionNo}
+                    onChange={(e) => setQuestionNo(e.target.value)}
+                    block
+                  />
+                </FormControl>
+                <FormControl>
+                  <FormControl.Label>来源（可选，批量）</FormControl.Label>
+                  <TextInput
+                    placeholder="例如：2025-一模"
+                    value={source}
+                    onChange={(e) => setSource(e.target.value)}
+                    block
+                  />
+                </FormControl>
+              </Box>
+              <FormControl>
+                <FormControl.Label>题型（可选）</FormControl.Label>
+                <Select value={questionType} onChange={(e) => setQuestionType(e.target.value)} block>
+                  <Select.Option value="">（不填）</Select.Option>
+                  <Select.Option value="选择题">选择题</Select.Option>
+                  <Select.Option value="多选题">多选题</Select.Option>
+                  <Select.Option value="填空题">填空题</Select.Option>
+                  <Select.Option value="解答题">解答题</Select.Option>
+                  <Select.Option value="其它">其它</Select.Option>
+                </Select>
+              </FormControl>
+            </Box>
+          )}
 
           <TagPicker
             title="知识体系（可多选，支持模糊搜索）"
@@ -425,7 +513,7 @@ export function UploadForm() {
             dimension="custom"
             value={customTags}
             onChange={setCustomTags}
-            placeholder="输入后回车添加"
+            placeholder=""
             styles={tagStyles}
             enableRemoteSearch={false}
           />

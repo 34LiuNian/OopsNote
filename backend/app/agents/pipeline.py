@@ -8,7 +8,7 @@ from uuid import uuid4
 from ..models import AssetMetadata, CropRegion, DetectionOutput, PipelineResult, ProblemBlock, TaskCreateRequest
 from ..repository import ArchiveStore
 from .agent_flow import AgentOrchestrator
-from .stages import Archiver, HandwrittenExtractor, MultiProblemDetector, ProblemRebuilder, SolutionWriter, TaggingProfiler
+from .stages import Archiver, HandwrittenExtractor, SolutionWriter, TaggingProfiler
 from ..trace import trace_event
 
 logger = logging.getLogger(__name__)
@@ -27,8 +27,6 @@ class OcrExtractorLike(Protocol):
 @dataclass
 class PipelineDependencies:
     extractor: HandwrittenExtractor
-    detector: MultiProblemDetector
-    rebuilder: ProblemRebuilder
     solution_writer: SolutionWriter
     tagger: TaggingProfiler
     archiver: Archiver
@@ -77,6 +75,15 @@ class AgentPipeline:
         # Extract logical problems from the original sheet (handwritten or scanned).
         emit("extracting", "识别题目")
         detection, problems = self._extract(payload, asset, on_llm_delta=on_llm_delta)
+        if problems and (payload.question_type or payload.options):
+            if len(problems) == 1:
+                updated = problems[0].model_copy(
+                    update={
+                        "question_type": payload.question_type or problems[0].question_type,
+                        "options": payload.options or problems[0].options,
+                    }
+                )
+                problems = [updated]
         logger.info(
             "Pipeline extracted task_id=%s problems=%s regions=%s",
             task_id,
@@ -154,10 +161,10 @@ class AgentPipeline:
         on_llm_delta: Callable[[str, str, str], None] | None = None,
     ):
         if asset and self.deps.ocr_extractor:
-            detection = self.deps.detector.run(payload)
-            # Ensure at least one region for OCR when detector returns none.
-            if not detection.regions:
-                detection.regions = [CropRegion(id=uuid4().hex, bbox=[0.05, 0.05, 0.9, 0.9], label="full")]
+            detection = DetectionOutput(
+                action="single",
+                regions=[CropRegion(id=uuid4().hex, bbox=[0.05, 0.05, 0.9, 0.9], label="full")],
+            )
 
             logger.info(
                 "Recognize OCR start regions=%s",

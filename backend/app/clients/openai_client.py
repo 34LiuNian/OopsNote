@@ -19,6 +19,7 @@ from app.models import ProblemBlock, TaggingResult
 from .base import AIClient
 from app.request_context import get_request_id
 from app.trace import trace_event
+from app.llm_logging import append_llm_error_log, truncate_preview
 
 logger = logging.getLogger(__name__)
 
@@ -177,26 +178,77 @@ class OpenAIClient(AIClient):
         )
 
         response_format_candidates: list[dict[str, Any]] = []
-        if response_model is not None:
-            # If the gateway supports it, pass the schema directly.
-            # Many OpenAI-compatible gateways still don't support json_schema; we will
-            # automatically fallback to json_object.
-            try:
-                schema = response_model.model_json_schema()
-                response_format_candidates.append(
-                    {
-                        "type": "json_schema",
-                        "json_schema": {
-                            "name": response_model.__name__,
-                            "schema": schema,
-                            "strict": True,
-                        },
-                    }
-                )
-            except Exception:
-                response_format_candidates = []
+        model_name = (self.model or "").lower()
+        use_json_object = model_name.startswith("zhipu:") or model_name.startswith("glm-") or ":glm-" in model_name
+        if response_model is not None and not use_json_object:
+            schema = response_model.model_json_schema()
+            response_format_candidates.append(
+                {
+                    "type": "json_schema",
+                    "json_schema": {
+                        "name": response_model.__name__,
+                        "schema": schema,
+                        "strict": True,
+                    },
+                }
+            )
+            # Fallback for gateways/models that reject json_schema.
+            response_format_candidates.append({"type": "json_object"})
+        else:
+            response_format_candidates.append({"type": "json_object"})
 
-        response_format_candidates.append({"type": "json_object"})
+        debug_payload = os.getenv("AI_DEBUG_LLM_PAYLOAD", "false").lower() == "true"
+        include_image_payload = os.getenv("AI_DEBUG_LLM_PAYLOAD_INCLUDE_IMAGE", "false").lower() == "true"
+        if debug_payload:
+            try:
+                def _redact_messages(msgs: list[dict[str, Any]]) -> list[dict[str, Any]]:
+                    redacted: list[dict[str, Any]] = []
+                    for m in msgs:
+                        if not isinstance(m, dict):
+                            redacted.append(m)
+                            continue
+                        content = m.get("content")
+                        if isinstance(content, list):
+                            new_parts = []
+                            for part in content:
+                                if isinstance(part, dict) and part.get("type") == "image_url":
+                                    if include_image_payload:
+                                        new_parts.append(part)
+                                    else:
+                                        image_url = part.get("image_url")
+                                        url_value = ""
+                                        if isinstance(image_url, dict):
+                                            url_value = str(image_url.get("url", ""))
+                                        elif isinstance(image_url, str):
+                                            url_value = image_url
+                                        new_parts.append(
+                                            {
+                                                "type": "image_url",
+                                                "image_url": "<omitted>",
+                                                "image_url_len": len(url_value),
+                                            }
+                                        )
+                                else:
+                                    new_parts.append(part)
+                            redacted.append({**m, "content": new_parts})
+                        else:
+                            redacted.append(m)
+                    return redacted
+
+                payload_log_path = os.getenv("AI_DEBUG_LLM_PAYLOAD_PATH")
+                if not payload_log_path:
+                    payload_log_path = str(Path(__file__).resolve().parents[2] / "storage" / "llm_payloads.log")
+                payload_record = {
+                    "request_id": get_request_id(),
+                    "model": self.model,
+                    "response_format": response_format_candidates[0],
+                    "messages": _redact_messages(messages),
+                    "include_image": include_image_payload,
+                }
+                with open(payload_log_path, "a", encoding="utf-8") as f:
+                    f.write(json.dumps(payload_record, ensure_ascii=False) + "\n")
+            except Exception:
+                pass
 
         def _call_once(*, model: str, msg_payload: list[dict[str, Any]], rf: dict[str, Any]):
             if on_delta is None:
@@ -267,21 +319,24 @@ class OpenAIClient(AIClient):
 
         last_exc: Exception | None = None
         response = None
+        selected_rf: dict[str, Any] | None = None
         for rf in response_format_candidates:
             try:
                 response = _call_once(model=self.model, msg_payload=messages, rf=rf)
+                selected_rf = rf
                 break
             except OpenAIError as exc:
                 last_exc = exc
 
                 # 1) If the gateway rejected json_schema, try json_object.
                 if rf.get("type") == "json_schema":
-                    logger.warning(
-                        "OpenAI gateway rejected json_schema; falling back to json_object rid=%s model=%s err=%s",
+                    logger.error(
+                        "OpenAI gateway rejected json_schema rid=%s model=%s err=%s",
                         get_request_id(),
                         self.model,
                         exc,
                     )
+                    # Try json_object fallback if available.
                     continue
 
                 # 2) Some OpenAI-compatible gateways reject the image_url payload shape.
@@ -325,6 +380,28 @@ class OpenAIClient(AIClient):
         try:
             data = _parse_json_block(content)
         except ValueError:
+            if response_model is not None:
+                preview = truncate_preview(content)
+                logger.error(
+                    "OpenAI completion did not return JSON for schema rid=%s model=%s: %s",
+                    get_request_id(),
+                    self.model,
+                    preview,
+                )
+                append_llm_error_log(
+                    {
+                        "rid": get_request_id(),
+                        "event": "schema_json_parse_failed",
+                        "provider": "openai",
+                        "model": self.model,
+                        "has_image": has_image,
+                        "finish_reason": finish_reason,
+                        "response_format": selected_rf,
+                        "response_len": len(content),
+                        "response_preview": preview,
+                    }
+                )
+                raise RuntimeError("Model output is not JSON for schema request")
             fallback_keys: list[str] = [
                 "answer",
                 "explanation",
@@ -377,6 +454,34 @@ class OpenAIClient(AIClient):
                     "explanation": "",
                     "short_answer": "",
                 }
+
+        if response_model is not None:
+            try:
+                validated = response_model.model_validate(data)
+                data = validated.model_dump()
+            except Exception as exc:
+                logger.error(
+                    "OpenAI completion failed schema validation rid=%s model=%s err=%s",
+                    get_request_id(),
+                    self.model,
+                    exc,
+                )
+                append_llm_error_log(
+                    {
+                        "rid": get_request_id(),
+                        "event": "schema_validation_failed",
+                        "provider": "openai",
+                        "model": self.model,
+                        "has_image": has_image,
+                        "finish_reason": finish_reason,
+                        "response_format": selected_rf,
+                        "error": str(exc),
+                        "response_len": len(content),
+                        "response_preview": truncate_preview(content),
+                        "keys": sorted(list(data.keys())) if isinstance(data, dict) else [],
+                    }
+                )
+                raise RuntimeError("Model output did not match schema") from exc
 
         trace_event(
             "llm_response",

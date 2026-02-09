@@ -8,10 +8,12 @@ USER:
 年级: {grade}
 额外线索: {notes}
 
-请阅读 bbox={bbox} 区域内的题目内容并输出严格 JSON：{
+请阅读 bbox={bbox} 区域内的题目内容并输出 JSON：{
   "problem_text": str,
   "latex_blocks": list[str],
   "ocr_text": str,
-  "options": []
+  "options": [
+    {"key": str, "text": str, "latex_blocks": list[str]}
+  ]
 }。
-注意：options 必须是空数组，不要输出多余文本。
+注意：不要输出多余文本。

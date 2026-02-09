@@ -11,7 +11,7 @@ import { Smiles } from "./Smiles";
 import { Chemfig } from "./Chemfig";
 import { useEffect, useMemo, useRef } from "react";
 
-export function MarkdownRenderer({ text }: { text: string }) {
+export function MarkdownRenderer({ text, fontSize }: { text: string; fontSize?: number }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -27,7 +27,7 @@ export function MarkdownRenderer({ text }: { text: string }) {
   }, []);
 
   return (
-    <Box ref={containerRef} sx={{ fontSize: 1, "& .katex": { fontSize: "1.1em" } }}>
+    <Box ref={containerRef} sx={{ fontSize: fontSize ?? 1, "& .katex": { fontSize: "1.1em" } }}>
       <ReactMarkdown
         remarkPlugins={remarkPlugins}
         rehypePlugins={rehypePlugins}

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import os
 import shutil
 import subprocess
@@ -13,6 +14,17 @@ from starlette.responses import Response
 from ..models import ChemfigRenderRequest, LatexCompileRequest
 
 router = APIRouter()
+
+CHEMFIG_CACHE_VERSION = "v1"
+
+
+def _chemfig_cache_dir() -> Path:
+    return Path(__file__).resolve().parents[2] / "storage" / "chemfig_cache"
+
+
+def _chemfig_cache_key(tex_content: str) -> str:
+    payload = f"{CHEMFIG_CACHE_VERSION}\n{tex_content}".encode("utf-8")
+    return hashlib.sha256(payload).hexdigest()
 
 
 def _latex_template(content: str, title: Optional[str], author: Optional[str]) -> str:
@@ -87,54 +99,26 @@ def _read_text_tail(text: str, max_lines: int = 80) -> str:
     return "\n".join(tail)
 
 
-@router.post("/latex/compile")
-def compile_latex(payload: LatexCompileRequest) -> Response:
-    if "\\documentclass" in payload.content:
-        tex_content = payload.content
-    else:
-        tex_content = _latex_template(payload.content, payload.title, payload.author)
+def _compile_pdf(tex_content: str, *, xelatex_path: str) -> bytes:
+    with tempfile.TemporaryDirectory(prefix="oopsnote-latex-") as tmp_dir:
+        workdir = Path(tmp_dir)
+        tex_path = workdir / "main.tex"
+        tex_path.write_text(tex_content, encoding="utf-8")
 
-    latex_path = _find_latex()
-    xelatex_path = _find_xelatex()
-    compiler_path = latex_path or xelatex_path
-    if not compiler_path:
-        raise HTTPException(
-            status_code=500,
-            detail={
-                "message": "未找到 latex/xelatex，请先安装并加入 PATH 或设置 LATEX_PATH/XELATEX_PATH。",
-                "log": "",
-            },
-        )
-
-    try:
-        with tempfile.TemporaryDirectory(prefix="oopsnote-latex-") as tmp_dir:
-            workdir = Path(tmp_dir)
-            tex_path = workdir / "main.tex"
-            tex_path.write_text(tex_content, encoding="utf-8")
-
-            try:
-                result = subprocess.run(
-                    [
-                        xelatex_path,
-                        "-interaction=nonstopmode",
-                        "-halt-on-error",
-                        "-no-shell-escape",
-                        tex_path.name,
-                    ],
-                    cwd=workdir,
-                    capture_output=True,
-                    text=True,
-                    check=False,
-                )
-            except FileNotFoundError as exc:
-                raise HTTPException(
-                    status_code=500,
-                    detail={
-                        "message": "未找到 xelatex，请先安装并加入 PATH 或设置 XELATEX_PATH。",
-                        "log": "",
-                    },
-                ) from exc
-
+        for _ in range(2):
+            result = subprocess.run(
+                [
+                    xelatex_path,
+                    "-interaction=nonstopmode",
+                    "-halt-on-error",
+                    "-no-shell-escape",
+                    tex_path.name,
+                ],
+                cwd=workdir,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
             if result.returncode != 0:
                 log_tail = _read_log_tail(workdir / "main.log")
                 raise HTTPException(
@@ -146,22 +130,43 @@ def compile_latex(payload: LatexCompileRequest) -> Response:
                     },
                 )
 
-            pdf_path = workdir / "main.pdf"
-            if not pdf_path.exists():
-                raise HTTPException(
-                    status_code=500,
-                    detail={
-                        "message": "未生成 PDF 文件。",
-                        "log": "",
-                    },
-                )
-
-            pdf_bytes = pdf_path.read_bytes()
-            return Response(
-                content=pdf_bytes,
-                media_type="application/pdf",
-                headers={"Content-Disposition": "inline; filename=latex.pdf"},
+        pdf_path = workdir / "main.pdf"
+        if not pdf_path.exists():
+            raise HTTPException(
+                status_code=500,
+                detail={
+                    "message": "未生成 PDF 文件。",
+                    "log": "",
+                },
             )
+
+        return pdf_path.read_bytes()
+
+
+@router.post("/latex/compile")
+def compile_latex(payload: LatexCompileRequest) -> Response:
+    if "\\documentclass" in payload.content:
+        tex_content = payload.content
+    else:
+        tex_content = _latex_template(payload.content, payload.title, payload.author)
+
+    xelatex_path = _find_xelatex()
+    if not xelatex_path:
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "message": "未找到 xelatex，请先安装并加入 PATH 或设置 XELATEX_PATH。",
+                "log": "",
+            },
+        )
+
+    try:
+        pdf_bytes = _compile_pdf(tex_content, xelatex_path=xelatex_path)
+        return Response(
+            content=pdf_bytes,
+            media_type="application/pdf",
+            headers={"Content-Disposition": "inline; filename=latex.pdf"},
+        )
     except HTTPException:
         raise
     except Exception as exc:
@@ -198,6 +203,15 @@ def render_chemfig(payload: ChemfigRenderRequest) -> Response:
         )
 
     tex_content = _chemfig_template(payload.content, payload.inline)
+    cache_key = _chemfig_cache_key(tex_content)
+    cache_dir = _chemfig_cache_dir()
+    cache_path = cache_dir / f"{cache_key}.svg"
+    if cache_path.exists():
+        try:
+            return Response(content=cache_path.read_bytes(), media_type="image/svg+xml")
+        except Exception:
+            # Cache read failures fall back to rendering.
+            pass
 
     try:
         with tempfile.TemporaryDirectory(prefix="oopsnote-chemfig-") as tmp_dir:
@@ -302,6 +316,14 @@ def render_chemfig(payload: ChemfigRenderRequest) -> Response:
                 )
 
             svg_bytes = svg_path.read_bytes()
+            try:
+                cache_dir.mkdir(parents=True, exist_ok=True)
+                tmp_path = cache_dir / f"{cache_key}.tmp"
+                tmp_path.write_bytes(svg_bytes)
+                tmp_path.replace(cache_path)
+            except Exception:
+                # Cache write failures should not block the response.
+                pass
             return Response(content=svg_bytes, media_type="image/svg+xml")
     except HTTPException:
         raise

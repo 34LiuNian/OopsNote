@@ -316,9 +316,11 @@ class TasksService:
             grade=upload.grade,
             notes=upload.notes,
             question_no=upload.question_no,
+            question_type=upload.question_type,
             mock_problem_count=upload.mock_problem_count,
             difficulty=upload.difficulty,
             source=upload.source,
+            options=upload.options,
             knowledge_tags=upload.knowledge_tags,
             error_tags=upload.error_tags,
             user_tags=upload.user_tags,
@@ -391,7 +393,7 @@ class TasksService:
         return self.process_task_sync(task_id)
 
     def retry_task(self, task_id: str, *, background: bool = True, clear_stream: bool = True):
-        """Retry a failed task.
+        """Retry a task (failed or completed).
 
         This is a convenience wrapper around processing that also clears cancellation
         flags and (optionally) clears previous LLM stream output.
@@ -571,6 +573,7 @@ class TasksService:
         updates = problem.model_copy(
             update={
                 "question_no": override.question_no if override.question_no is not None else problem.question_no,
+                "question_type": override.question_type if override.question_type is not None else problem.question_type,
                 "problem_text": override.problem_text or problem.problem_text,
                 "latex_blocks": override.latex_blocks if override.latex_blocks is not None else problem.latex_blocks,
                 "options": override.options if override.options is not None else problem.options,
@@ -700,6 +703,10 @@ class TasksService:
                         task_id=task.id,
                         problem_id=problem.problem_id,
                         question_no=getattr(problem, "question_no", None),
+                        question_type=getattr(problem, "question_type", None)
+                        or (tag_result.question_type if tag_result else None),
+                        problem_text=problem.problem_text,
+                        options=list(getattr(problem, "options", []) or []),
                         subject=task_subject,
                         grade=task.payload.grade,
                         source=problem.source,
@@ -858,4 +865,18 @@ class TasksService:
             # Persist failure state.
             self.repository.mark_failed(task_id, str(exc))
             updated = self.repository.patch_task(task_id, stage="failed", stage_message="处理失败")
+            try:
+                self._append_task_stream(task_id, f'{{"stage":"failed","message":"{str(exc)}"}}')
+                self._event_broker.publish(
+                    task_id,
+                    "progress",
+                    {
+                        "task_id": task_id,
+                        "status": "failed",
+                        "stage": "failed",
+                        "message": str(exc),
+                    },
+                )
+            except Exception:
+                pass
             raise HTTPException(status_code=500, detail=str(exc)) from exc

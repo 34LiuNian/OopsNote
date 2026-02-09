@@ -1,39 +1,63 @@
-# Agent Pipeline Design
+# AI 流程说明
 
-本文描述 OopsNote **当前后端实现**的多 Agent/多阶段流程（FastAPI + File storage），覆盖触发条件、输入输出、提示词位置与可观测点。所有阶段都以 `task_id` 贯穿，便于追踪与回放。
+本文描述 OopsNote **当前后端实现**的多阶段 AI 流程（FastAPI + 文件存储），覆盖触发条件、输入输出、编排逻辑、提示词位置、失败与重试、流式回放与可观测点。所有阶段都以 `task_id` 贯穿，便于追踪与回放。
 
 ## 总览（实现版）
 
-1. **Multi-Problem Detector** – 基于 `notes/mock_problem_count` 生成多题裁剪区域（规则实现）。
-2. **OCR Extractor** – 针对每个裁剪块输出结构化题面（含选项与 `latex_blocks`）。
-3. **Solver → Tagger** – 对每题逐题解题与打标。
-4. **Persistence** – 将任务、流式输出、资产与标签库落盘，供前端回放/编辑。
+1. **多题检测器** – 当前已暂时弃用（不参与执行）。
+2. **OCR 提取器** – 针对每个裁剪块输出结构化题面（含选项与 `latex_blocks`）。
+3. **解题 → 打标** – 对每题逐题解题与打标。
+4. **持久化** – 将任务、流式输出、资产与标签库落盘，供前端回放/编辑。
 
 ```text
-┌──────────────────────┐    ┌──────────────┐    ┌──────────────────────────┐
-│ MultiProblemDetector  │ -> │ OCR Extractor │ -> │ Solver -> Tagger         │
-└──────────────────────┘    └──────────────┘    │ (per-problem sequential) │
-  │ task_id            │ problems[]                                 │
-  └──────────────────────────────────────────────────────────────────┘
+┌──────────────┐    ┌──────────────────────────┐
+│ OCR 提取器     │ -> │ 解题 -> 打标             │
+└──────────────┘    │ (per-problem sequential) │
+  │ task_id     │ problems[]                   │
+  └────────────────────────────────────────────┘
           ↓
        File persistence
 ```
 
 ---
 
-## 1. Multi-Problem Detector
+## 0. 触发与入口（API 与任务生命周期）
+
+| 项目 | 说明 |
+| --- | --- |
+| 入口 API | `POST /tasks` 创建任务并启动 pipeline（见 `backend/app/api/tasks.py`） |
+| 任务标识 | `task_id` 全链路透传，SSE 与持久化均以该 ID 作为主键 |
+| 前端触发 | 上传图片或选择历史任务，前端随后订阅 SSE 流 |
+| 并发模型 | 当前为 per-task 顺序执行；多题按 `problems[]` 依次处理 |
+| 取消任务 | `POST /tasks/{id}/cancel` 终止正在执行的任务 |
+
+任务生命周期简述：
+
+1. 前端请求创建任务 → 后端初始化任务状态并落盘。
+2. 启动 AgentOrchestrator 进入多阶段流程，产出流式日志。
+3. SSE 实时推送给前端，同时将日志写入 `task_streams` 供回放。
+4. 任务完成或被取消，落盘终态，前端可回放与编辑。
+
+---
+
+## 1. 多题检测器（暂时弃用）
 
 | 项目 | 说明 |
 | --- | --- |
 | 输入 | 原始图片（Base64/S3 URL）、历史裁剪记录（可为空） |
 | 输出 | `detections`: `[{bbox, label}]`，label ∈ {`full`, `partial`, `noise`}；`action`: {`multi`, `single-noise`, `single`} |
-| 技术 | 规则实现：`backend/app/agents/stages.py` 的 `MultiProblemDetector` 会根据 `notes/mock_problem_count` 生成裁剪区域 |
-| 决策 | `multi`/`single-noise` 时返回需要裁剪的坐标；Web 端可直接展示裁剪预览并允许用户调整 |
-| 失败策略 | 若检测失败，回退到 `single` 直接进入下一阶段，同时记录告警 |
+| 技术 | 规则实现存在但当前不参与 pipeline 执行 |
+| 决策 | 统一使用单题默认区域（full frame），不进行多题检测 |
+| 失败策略 | 不适用（已跳过该阶段） |
+
+补充说明：
+
+- 暂时使用单题默认裁剪区域作为 OCR 输入。
+- 前端仍可通过编辑题面进行纠错，但不会依赖检测框。
 
 ---
 
-## 2. OCR Extractor（Problem Rebuilder）
+## 2. OCR 提取器（题面重建）
 
 | 项目 | 说明 |
 | --- | --- |
@@ -48,9 +72,15 @@
 - `backend/app/agents/prompts/ocr.txt`
 - `backend/app/agents/prompts/ocr_retry.txt`
 
+补充说明：
+
+- OCR 目标是“结构化题面”，并区分 `problem_text`、`options` 与 `latex_blocks`。
+- `latex_blocks` 为列表，供前端稳定渲染，避免重复解析。
+- 若 LLM JSON 格式错误，会使用 retry prompt 强化约束。
+
 ---
 
-## 3. Solver
+## 3. 解题器
 
 | 项目 | 说明 |
 | --- | --- |
@@ -63,9 +93,14 @@
 
 - `backend/app/agents/prompts/solver.txt`
 
+补充说明：
+
+- 解题结果在 `solutions[]` 中按 `problem_id` 对齐。
+- `short_answer` 可用于前端“答案速览”或列表展示。
+
 ---
 
-## 4. Tagger（多维标签）
+## 4. 打标器（多维标签）
 
 | 项目 | 说明 |
 | --- | --- |
@@ -93,18 +128,72 @@ Use concise Chinese labels; prefer selecting from the provided candidate lists.
 
 标签候选排序：`GET /tags` 在空 `query` 时会按 `ref_count`（被任务/题目引用次数）降序返回 Top-N，用于前端“未输入也推荐常用标签”。
 
+补充说明：
+
+- Tagger 输出面向后续检索/纠错总结，强制结构化 JSON。
+- 若用户上传时指定标签，Tagger 必须包含该标签，避免“覆盖用户意图”。
+
 ---
 
-## 5. Persistence（落盘与回放）
+## 5. 持久化（落盘与回放）
 
 | 项目 | 说明 |
 | --- | --- |
-后端当前使用文件存储（便于本地开发与可回放）：
+**后**端当前使用文件存储（便于本地开发与可回放）：
 
 - 任务：`backend/storage/tasks/{task_id}.json`
 - 流式输出：`backend/storage/task_streams/{task_id}.txt`（用于刷新后回放 `GET /tasks/{id}/stream`）
+- LLM 错误日志：`backend/storage/llm_errors.log`（解析/校验/请求失败细节）
 - Trace：`backend/storage/traces/*.jsonl`
 - 标签库：`backend/storage/settings/tags.json`、维度样式 `backend/storage/settings/tag_dimensions.json`
+
+写入时机与内容：
+
+- 任务创建：初始化任务元数据并落盘。
+- 流式输出：SSE 的 delta 同步写入 `task_streams`。
+- 任务完成：写入包含 `problems[] / solutions[] / tags[]` 的终态。
+- 任务编辑：前端修改题面或标签会直接更新存储文件。
+
+---
+
+## 6. 编排逻辑与核心类（执行顺序）
+
+| 组件 | 位置 | 作用 |
+| --- | --- | --- |
+| `AgentOrchestrator` | `backend/app/agents/agent_flow.py` | 统一编排任务流程与上下文注入 |
+| `pipeline` | `backend/app/agents/pipeline.py` | 组织多阶段执行与结果聚合 |
+| `stages` | `backend/app/agents/stages.py` | Extractor / Solver / Tagger 等阶段实现 |
+| `extractor` | `backend/app/agents/extractor.py` | OCR Extractor 的多模态与重试逻辑 |
+| `TasksService` | `backend/app/services/tasks_service.py` | 任务执行/队列/SSE/持久化聚合 |
+
+执行顺序（单任务）：
+
+1. OCR Extractor 逐块生成 `problems[]`。
+2. Solver 逐题生成 `solutions[]`。
+3. Tagger 逐题生成标签结构。
+4. 持久化与流式回放。
+
+---
+
+## 7. 流式输出与前端回放（SSE）
+
+| 项目 | 说明 |
+| --- | --- |
+| SSE 路由 | `GET /tasks/{id}/stream` |
+| 内容 | LLM delta、阶段状态、错误信息、进度提示（含 `error_detail` traceback） |
+| 回放 | 前端刷新后可读取 `task_streams` 重放已输出内容 |
+| 目的 | 低延迟反馈、可视化“解题过程”与日志 |
+
+---
+
+## 8. 失败与重试策略（当前实现）
+
+| 阶段 | 失败模式 | 行为 |
+| --- | --- | --- |
+| Detector | 已禁用 | 不参与执行 |
+| OCR Extractor | JSON 格式错误 | retry prompt + 解析修复 |
+| Solver | 模型异常 | 记录错误并进入任务失败态 |
+| Tagger | JSON 格式错误 | 以重试或降级策略输出最小结构 |
 
 ---
 
@@ -113,6 +202,11 @@ Use concise Chinese labels; prefer selecting from the provided candidate lists.
 - Web 支持题库编辑：题号/来源/题干/三类标签（knowledge/error/custom）可手动覆盖并持久化。
 - 支持“作废任务”：`POST /tasks/{id}/cancel`，处理中协作式终止。
 - 支持“重新 OCR/重新打标”：`POST /tasks/{id}/problems/{pid}/ocr`、`POST /tasks/{id}/problems/{pid}/retag`。
+
+补充说明：
+
+- 前端可在任一阶段后“人工纠正”，并直接写回持久化文件。
+- 重新 OCR/重新打标会重用原始资产与任务上下文，减少重复上传。
 
 ---
 
@@ -131,14 +225,20 @@ Use concise Chinese labels; prefer selecting from the provided candidate lists.
 - `GET /health` 查看后端状态
 - `GET /models` 查看可用模型（前端设置页会用）
 - `GET /settings/agent-models` / `GET /settings/agent-enabled` 查看 agent 配置与启用状态
+- `POST /latex/chemfig` chemfig 结构式渲染为 SVG（前端显示用）
 - `POST /latex/compile` LaTeX 论文编译接口（见下方附录）
+
+补充建议（可选）：
+
+- 在 `trace` 中记录 `model_name / latency / token_usage`，便于后续性能追踪。
+- 给每个阶段增加 `started_at / finished_at` 字段，用于生成流水线甘特图。
 
 ---
 
 ## 待办扩展
 
 1. **增量学习**：将用户最终确认的标签作为 few-shot 示例缓存给 Agent，减少漂移。
-2. **多模态裁剪工具**：在前端加入可视化框选，写回 Detector 的输出用于再训练。
+2. **多模态裁剪工具**：在前端加入可视化框选，写回裁剪结果用于再训练。
 3. **协同模式**：支持多人共享错题集，基于角色管理编辑/打标权限。
 4. **评测框架**：构建自动化 benchmark（真实题图 + 标准答案 + 标签）来回归测试各 Agent。
 

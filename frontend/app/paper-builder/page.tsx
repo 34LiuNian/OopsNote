@@ -1,10 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Box,
   Button,
-  Checkbox,
   Heading,
   Text,
   Label,
@@ -13,9 +12,9 @@ import {
   FormControl,
   Spinner,
 } from "@primer/react";
-import { useTagDimensions } from "../../features/tags";
 import { compilePaper, listProblems } from "../../features/tasks";
 import type { ProblemSummary } from "../../types/api";
+import { ProblemListItem } from "../../components/ProblemListItem";
 
 const SUBJECT_OPTIONS = [
   { value: "", label: "全部学科" },
@@ -30,7 +29,6 @@ export default function PaperBuilderPage() {
   const [items, setItems] = useState<ProblemSummary[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string>("");
-  const { effectiveDimensions: tagStyles } = useTagDimensions();
 
   const [selected, setSelected] = useState<Record<string, boolean>>({});
   const [paperTitle, setPaperTitle] = useState("2024年普通高等学校招生全国统一考试");
@@ -46,9 +44,9 @@ export default function PaperBuilderPage() {
 
   const selectedCount = selectedItems.length;
 
-  function toggleSelected(key: string, next: boolean) {
-    setSelected((prev) => ({ ...prev, [key]: next }));
-  }
+  const toggleSelected = useCallback((key: string) => {
+    setSelected((prev) => ({ ...prev, [key]: !prev[key] }));
+  }, []);
 
   function clearSelected() {
     setSelected({});
@@ -181,7 +179,7 @@ export default function PaperBuilderPage() {
               <Box sx={{ mt: 2, display: "flex", flexWrap: "wrap", gap: 1 }}>
                 {selectedItems.map((item) => (
                   <Label key={`${item.task_id}:${item.problem_id}`} variant="secondary">
-                    {item.question_no ? `题号 ${item.question_no}` : `题目 ${item.problem_id.slice(0, 4)}`}
+                    题目 {item.problem_id.slice(0, 4)}
                   </Label>
                 ))}
               </Box>
@@ -256,24 +254,6 @@ export default function PaperBuilderPage() {
           </Box>
         ) : (
           <Box>
-            <Box
-              sx={{
-                display: ["none", "grid"],
-                gridTemplateColumns: "auto 2fr 1fr 2fr",
-                gap: 2,
-                px: 2,
-                py: 1,
-                bg: "canvas.subtle",
-                fontWeight: "bold",
-                fontSize: 1,
-                color: "fg.muted",
-              }}
-            >
-              <Text>选择</Text>
-              <Text>题目</Text>
-              <Text>学科 / 年级</Text>
-              <Text>标签</Text>
-            </Box>
             <Box as="ul" sx={{ listStyle: "none", p: 0, m: 0 }}>
               {items.map((item) => (
                 <Box
@@ -281,64 +261,13 @@ export default function PaperBuilderPage() {
                   key={`${item.task_id}-${item.problem_id}`}
                   sx={{ px: 2, py: 2, borderBottom: "1px solid", borderColor: "border.muted" }}
                 >
-                  <Box
-                    sx={{
-                      display: ["flex", "grid"],
-                      flexDirection: "column",
-                      gridTemplateColumns: ["1fr", "auto 2fr 1fr 2fr"],
-                      gap: 2,
-                      alignItems: ["flex-start", "center"],
-                    }}
-                  >
-                    <Box sx={{ width: "100%" }}>
-                      <Checkbox
-                        checked={!!selected[`${item.task_id}:${item.problem_id}`]}
-                        onChange={(e) => toggleSelected(`${item.task_id}:${item.problem_id}`, e.target.checked)}
-                        aria-label="选择题目"
-                      />
-                    </Box>
-                    <Box sx={{ width: "100%" }}>
-                      <Text sx={{ fontWeight: "bold", display: "block" }}>
-                        {item.question_no ? `题号 ${item.question_no}` : "题目"}
-                      </Text>
-                      {item.source && (
-                        <Text sx={{ fontSize: 0, color: "fg.muted", display: "block" }}>{item.source}</Text>
-                      )}
-                    </Box>
-                    <Box sx={{ width: "100%", display: "flex", alignItems: "center", gap: 2 }}>
-                      <Text sx={{ display: "block" }}>{item.subject}</Text>
-                      {item.grade && <Label variant="secondary">{item.grade}</Label>}
-                    </Box>
-                    <Box sx={{ width: "100%", display: "flex", flexWrap: "wrap", gap: 1 }}>
-                      {item.knowledge_points.length === 0 &&
-                      !(item.knowledge_tags?.length || item.error_tags?.length || item.user_tags?.length) ? (
-                        <Text sx={{ color: "fg.muted" }}>—</Text>
-                      ) : (
-                        <>
-                          {(item.knowledge_tags || []).map((t) => (
-                            <Label key={`k:${t}`} variant={(tagStyles.knowledge?.label_variant || "accent") as any}>
-                              {t}
-                            </Label>
-                          ))}
-                          {(item.error_tags || []).map((t) => (
-                            <Label key={`e:${t}`} variant={(tagStyles.error?.label_variant || "danger") as any}>
-                              {t}
-                            </Label>
-                          ))}
-                          {(item.user_tags || []).map((t) => (
-                            <Label key={`u:${t}`} variant={(tagStyles.custom?.label_variant || "secondary") as any}>
-                              {t}
-                            </Label>
-                          ))}
-                          {item.knowledge_points.map((kp) => (
-                            <Label key={`ai:${kp}`} variant="secondary">
-                              {kp}
-                            </Label>
-                          ))}
-                        </>
-                      )}
-                    </Box>
-                  </Box>
+                  <ProblemListItem
+                    item={item}
+                    selected={!!selected[`${item.task_id}:${item.problem_id}`]}
+                    toggleKey={`${item.task_id}:${item.problem_id}`}
+                    onToggleSelection={toggleSelected}
+                    showCheckbox
+                  />
                 </Box>
               ))}
             </Box>

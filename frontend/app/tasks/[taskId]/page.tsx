@@ -2,9 +2,9 @@ import type { Metadata } from "next";
 import { TaskLiveView } from "../../../components/TaskLiveView";
 
 interface TaskPageProps {
-  params: {
+  params: Promise<{
     taskId: string;
-  };
+  }>;
 }
 
 export const metadata: Metadata = {
@@ -12,6 +12,6 @@ export const metadata: Metadata = {
 };
 
 export default async function TaskPage({ params }: TaskPageProps) {
-  const { taskId } = params;
+  const { taskId } = await params;
   return <TaskLiveView taskId={taskId} />;
 }

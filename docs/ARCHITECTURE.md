@@ -20,13 +20,19 @@
   - `backend/app/repository.py`：任务记录（内存 / 文件）与归档存根
   - `backend/app/storage.py`：资产文件落盘
   - `backend/app/tags.py`：标签库与维度样式
+  - `storage/llm_errors.log`：LLM 请求/解析/校验失败明细
+  - `backend/app/services/tasks_service.py`：任务处理/队列/SSE/持久化聚合
+- 应用装配与可观测：
+  - `backend/app/bootstrap.py`：应用装配（依赖构建、路由与启动钩子）
+  - `backend/app/builders.py`：依赖构建与装配辅助函数
+  - `backend/app/config.py`：环境配置集中读取
+  - `backend/app/gateway.py`：网关探测与模型列表访问
+  - `backend/app/http_logging.py`：请求日志与访问日志过滤
+  - `backend/app/startup_hooks.py`：启动期钩子（网关探测/LLM 日志探针）
 
 ### 2.1 后端主要耦合点
 
-1) `main.py` 过大：路由 + 业务编排 + 后台线程 + 存储/模型初始化紧耦合，导致：
-- 单元测试/注入替换困难
-- 新增功能容易引入循环依赖
-- 复用 pipeline 的能力弱（只能通过 main 全局变量调用）
+1) `bootstrap.py` 仍包含较多装配逻辑：依赖构建与启用策略集中在一个模块，后续可进一步拆分为 builder 与配置层。
 
 2) “依赖”以全局变量形式存在：repository/pipeline/tag_store 等隐式依赖难以替换。
 
@@ -37,10 +43,10 @@
 - 页面：`frontend/app/*/page.tsx`
 - 组件：`frontend/components/*`
 - API：`frontend/lib/api.ts` + `frontend/types/api.ts`
+- 数学渲染：KaTeX（rehype-katex + mhchem），chemfig 通过后端 `POST /latex/chemfig` 生成 SVG
 
 ### 3.1 前端主要耦合点
 
-1) 页面直接拉 API 并做数据整形：可复用性差、重复 loading/error 状态。
 2) 缺少明确的“domain hooks/service”：例如 tasks/tags/settings 的请求逻辑散落。
 3) 主题/渲染与业务组件交织（例如 layout 中引入多种 provider）。
 

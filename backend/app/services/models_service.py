@@ -9,8 +9,7 @@ class ModelsService:
     """List models with caching.
 
     NOTE: This service is designed to be test-friendly.
-    Tests in this repo monkeypatch functions/vars on app.main (e.g. _models_cache),
-    so we accept injected functions + cache getter/setter from app.main.
+    Cache access and gateway functions are injected by the app bootstrap layer.
     """
 
     guess_config: Callable[[], tuple[str | None, str | None, str | None, str]]

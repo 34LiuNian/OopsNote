@@ -2,9 +2,13 @@
 
 This package hosts the FastAPI orchestration service for the OopsNote project.
 
+Entry point uses an app factory in `backend/app/bootstrap.py` (see `backend/app/main.py`).
+Environment config is centralized in `backend/app/config.py`.
+
 ## What it provides
 
 - Task orchestration: upload → OCR → solve/tag → persist
+- Task processing is centralized in `TasksService` (queue + SSE + persistence)
 - Streaming: SSE events + best-effort stream replay after refresh
 - Tags: 4 dimensions (knowledge / error / meta / custom) with configurable styles
 - Library aggregation: flatten all extracted problems across tasks
@@ -17,6 +21,7 @@ All data is stored under `backend/storage/` for local-first usage:
 - `storage/tasks/{task_id}.json` task payload + extracted problems + solutions + tags
 - `storage/task_streams/{task_id}.txt` accumulated LLM stream text (used by stream replay)
 - `storage/traces/*.jsonl` structured trace events
+- `storage/llm_errors.log` structured LLM error details (parse/validation/transport failures)
 - `storage/settings/tags.json` tag registry
 - `storage/settings/tag_dimensions.json` per-dimension label + Primer label variant
 
