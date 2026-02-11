@@ -4,7 +4,7 @@ import Link from "next/link";
 import { memo } from "react";
 import { Box, Checkbox } from "@primer/react";
 import type { ProblemSummary } from "../types/api";
-import { ProblemContent } from "./ProblemContent";
+import { ProblemCard } from "./ProblemCard";
 
 export const ProblemListItem = memo(function ProblemListItem(props: {
   item: ProblemSummary;
@@ -47,15 +47,11 @@ export const ProblemListItem = memo(function ProblemListItem(props: {
           aria-label="查看任务"
           style={{ textDecoration: "none", color: "inherit" }}
         >
-          <Box
-            sx={{
-              width: "100%",
-              fontFamily: "'Times New Roman','SimSun','宋体',serif",
-              "& *": { fontFamily: "'Times New Roman','SimSun','宋体',serif" },
-              cursor: "pointer",
-            }}
-          >
-            <ProblemContent
+          <Box sx={{ cursor: "pointer" }}>
+            <ProblemCard
+              questionNo={item.question_no}
+              questionType={item.question_type}
+              source={item.source}
               problemText={item.problem_text || "（无题干）"}
               options={item.options}
               itemKeyPrefix={item.problem_id}
@@ -64,20 +60,15 @@ export const ProblemListItem = memo(function ProblemListItem(props: {
           </Box>
         </Link>
       ) : (
-        <Box
-          sx={{
-            width: "100%",
-            fontFamily: "'Times New Roman','SimSun','宋体',serif",
-            "& *": { fontFamily: "'Times New Roman','SimSun','宋体',serif" },
-          }}
-        >
-          <ProblemContent
-            problemText={item.problem_text || "（无题干）"}
-            options={item.options}
-            itemKeyPrefix={item.problem_id}
-            fontSize={2}
-          />
-        </Box>
+        <ProblemCard
+          questionNo={item.question_no}
+          questionType={item.question_type}
+          source={item.source}
+          problemText={item.problem_text || "（无题干）"}
+          options={item.options}
+          itemKeyPrefix={item.problem_id}
+          fontSize={2}
+        />
       )}
     </Box>
   );

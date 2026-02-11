@@ -12,8 +12,7 @@ import {
   FormControl,
   Spinner,
 } from "@primer/react";
-import { compilePaper, listProblems } from "../../features/tasks";
-import type { ProblemSummary } from "../../types/api";
+import { compilePaper, useProblemList } from "../../features/tasks";
 import { ProblemListItem } from "../../components/ProblemListItem";
 
 const SUBJECT_OPTIONS = [
@@ -26,9 +25,11 @@ const SUBJECT_OPTIONS = [
 export default function PaperBuilderPage() {
   const [subject, setSubject] = useState<string>("");
   const [tag, setTag] = useState<string>("");
-  const [items, setItems] = useState<ProblemSummary[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string>("");
+  const {
+    items,
+    isLoading,
+    error,
+  } = useProblemList({ subject: subject || undefined, tag: tag || undefined });
 
   const [selected, setSelected] = useState<Record<string, boolean>>({});
   const [paperTitle, setPaperTitle] = useState("2024年普通高等学校招生全国统一考试");
@@ -106,36 +107,6 @@ export default function PaperBuilderPage() {
   }
 
   useEffect(() => {
-    let cancelled = false;
-
-    async function load() {
-      setIsLoading(true);
-      setError("");
-
-      try {
-        const data = await listProblems({ subject: subject || undefined, tag: tag || undefined });
-        if (!cancelled) {
-          setItems(data.items);
-        }
-      } catch (err) {
-        if (!cancelled) {
-          setError(err instanceof Error ? err.message : "加载题库失败");
-        }
-      } finally {
-        if (!cancelled) {
-          setIsLoading(false);
-        }
-      }
-    }
-
-    void load();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [subject, tag]);
-
-  useEffect(() => {
     return () => {
       if (paperPdfUrl) URL.revokeObjectURL(paperPdfUrl);
     };
@@ -152,7 +123,7 @@ export default function PaperBuilderPage() {
         </Box>
         <Box sx={{ display: "flex", gap: 2, alignItems: "center" }}>
           <Label variant="secondary">已选 {selectedCount} 道</Label>
-          <Button size="small" variant="outline" onClick={clearSelected} disabled={selectedCount === 0 || paperLoading}>
+          <Button size="small" variant="default" onClick={clearSelected} disabled={selectedCount === 0 || paperLoading}>
             清空选择
           </Button>
           <Button size="small" variant="primary" onClick={generatePaper} disabled={selectedCount === 0 || paperLoading}>

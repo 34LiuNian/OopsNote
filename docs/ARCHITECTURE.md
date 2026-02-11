@@ -1,6 +1,6 @@
 # OopsNote 架构与解耦重构指南（现状 -> 目标）
 
-本文基于当前代码实现（2025-12-31）整理 OopsNote 的前后端结构、数据流与主要耦合点，并给出可渐进落地的重构路线。
+本文基于当前代码实现（2026-02-11）整理 OopsNote 的前后端结构、数据流与主要耦合点，并给出可渐进落地的重构路线。
 
 ## 1. 当前系统概览
 
@@ -43,11 +43,15 @@
 - 页面：`frontend/app/*/page.tsx`
 - 组件：`frontend/components/*`
 - API：`frontend/lib/api.ts` + `frontend/types/api.ts`
+- Domain hooks：`frontend/features/tasks`、`frontend/features/tags`、`frontend/features/settings`
 - 数学渲染：KaTeX（rehype-katex + mhchem），chemfig 通过后端 `POST /latex/chemfig` 生成 SVG
+- 题面渲染复用：`ProblemContent` 统一题干 + 选项渲染；`OptionsList` 负责选项布局
+- LaTeX 资产渲染：`useLatexAsset` + `LatexAssetRenderer` 负责请求与缓存（预留 tikz）
 
 ### 3.1 前端主要耦合点
 
-2) 缺少明确的“domain hooks/service”：例如 tasks/tags/settings 的请求逻辑散落。
+1) 题面/LaTeX 资产渲染仍分散在多个组件内，统一层已建立但还有覆盖空间（如 tikz、更多题型卡片）。
+2) domain hooks 已建立，但仍可能存在页面级逻辑偏重、可继续下沉的空间。
 3) 主题/渲染与业务组件交织（例如 layout 中引入多种 provider）。
 
 ## 4. 目标架构（建议）
@@ -64,6 +68,8 @@
 - `lib/api`：只负责 fetch + baseURL + 错误标准化
 - `features/<domain>/`：每个域（tasks/tags/settings）有 hooks + API 封装
 - pages 只负责组装 UI，不直接写复杂请求逻辑
+- `components/renderers`：集中 LaTeX/化学结构式/未来 tikz 的渲染与缓存
+- `components/problem`：统一题目卡片/题干/选项布局与展示
 
 ## 5. 渐进式重构路线（不大爆炸）
 
@@ -78,11 +84,15 @@
 - 根据 env/config 生成 AI client + orchestrator + deps
 - 测试时可注入 stub/fake pipeline
 
-4) 前端：为 tasks/tags/settings 建立 hooks 层
+4) 前端：为 tasks/tags/settings 建立 hooks 层（已落地）
 - 统一 loading/error/refresh
 - 降低页面组件对 API 细节的感知
 
-5) 最后再做“目录级重排”
+5) 前端：统一题目显示层级
+- 将题干、选项、题型/来源展示沉到 `ProblemCard/ProblemContent`
+- 列表/详情页只负责数据拼装和交互
+
+6) 最后再做“目录级重排”
 - 先稳定边界与依赖注入方式，再移动文件；否则容易引入大量无意义 diff。
 
 ## 6. 验收标准（解耦是否成功）

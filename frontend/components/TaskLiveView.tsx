@@ -9,19 +9,16 @@ import {
   Button, 
   Label, 
   Flash,
-  Spinner,
-  FormControl,
-  TextInput,
-  Textarea
+  Spinner
 } from "@primer/react";
 import { SyncIcon } from "@primer/octicons-react";
 import { fetchJson } from "../lib/api";
 import type { TaskResponse } from "../types/api";
 import { LiveStreamRenderer } from "./LiveStreamRenderer";
 import { MarkdownRenderer } from "./MarkdownRenderer";
-import { ProblemContent } from "./ProblemContent";
-import { deleteProblem, deleteTask, overrideProblem } from "../features/tasks";
-import { TagPicker } from "./TagPicker";
+import { ProblemCard } from "./ProblemCard";
+import { ProblemEditPanel } from "./ProblemEditPanel";
+import { deleteProblem, deleteTask } from "../features/tasks";
 import { useTagDimensions } from "../features/tags";
 
 type RenderMathInElement = (
@@ -51,16 +48,6 @@ export function TaskLiveView({ taskId }: { taskId: string }) {
   const [isRetrying, setIsRetrying] = useState(false);
   const { effectiveDimensions: tagStyles } = useTagDimensions();
   const [editingKey, setEditingKey] = useState<string>("");
-  const [editQuestionNo, setEditQuestionNo] = useState<string>("");
-  const [editSource, setEditSource] = useState<string>("");
-  const [editProblemText, setEditProblemText] = useState<string>("");
-  const [editOptionsJson, setEditOptionsJson] = useState<string>("");
-  const [editOptionsError, setEditOptionsError] = useState<string>("");
-  const [editKnowledgeTags, setEditKnowledgeTags] = useState<string[]>([]);
-  const [editErrorTags, setEditErrorTags] = useState<string[]>([]);
-  const [editUserTags, setEditUserTags] = useState<string[]>([]);
-  const [editSaving, setEditSaving] = useState(false);
-  const [editMessage, setEditMessage] = useState<string>("");
 
   const mathContainerRef = useRef<HTMLDivElement | null>(null);
 
@@ -162,107 +149,6 @@ export function TaskLiveView({ taskId }: { taskId: string }) {
     }
   }, [data, loadOnce, loadStreamOnce, taskId]);
 
-  const loadEdit = useCallback((problemId: string) => {
-    if (!data) return;
-    const p = data.task.problems.find((x) => x.problem_id === problemId);
-    if (!p) {
-      setEditMessage("题目不存在");
-      return;
-    }
-    setEditingKey(problemId);
-    setEditMessage("");
-    setEditQuestionNo((p.question_no || "").toString());
-    setEditSource((p.source || "").toString());
-    setEditProblemText((p.problem_text || "").toString());
-    const options = Array.isArray(p.options) ? p.options : [];
-    if (options.length > 0) {
-      const normalized = options.map((opt) => {
-        const entry: { key: string; text: string; latex_blocks?: string[] } = {
-          key: String(opt.key || "").trim(),
-          text: String(opt.text || "").trim(),
-        };
-        if (Array.isArray(opt.latex_blocks) && opt.latex_blocks.length > 0) {
-          entry.latex_blocks = opt.latex_blocks;
-        }
-        return entry;
-      });
-      setEditOptionsJson(JSON.stringify(normalized, null, 2));
-    } else {
-      setEditOptionsJson("");
-    }
-    setEditOptionsError("");
-    setEditKnowledgeTags(Array.isArray(p.knowledge_tags) ? p.knowledge_tags : []);
-    setEditErrorTags(Array.isArray(p.error_tags) ? p.error_tags : []);
-    setEditUserTags(Array.isArray(p.user_tags) ? p.user_tags : []);
-  }, [data]);
-
-  const saveEdit = useCallback(async (problemId: string) => {
-    if (!data) return;
-    setEditSaving(true);
-    setEditMessage("");
-    setEditOptionsError("");
-    try {
-      const rawOptions = editOptionsJson.trim();
-      let parsedOptions: Array<{ key: string; text: string; latex_blocks?: string[] }> = [];
-      if (rawOptions) {
-        let raw: Array<{ key?: string; text?: string; latex_blocks?: string[] }> = [];
-        try {
-          const parsed = JSON.parse(rawOptions) as Array<{ key?: string; text?: string; latex_blocks?: string[] }>;
-          if (!Array.isArray(parsed)) {
-            throw new Error("选项 JSON 必须是数组");
-          }
-          raw = parsed;
-        } catch (err) {
-          const message = err instanceof Error ? err.message : "选项 JSON 解析失败";
-          setEditOptionsError(message);
-          setEditSaving(false);
-          return;
-        }
-
-        parsedOptions = raw
-          .map((opt) => ({
-            key: String(opt?.key || "").trim(),
-            text: String(opt?.text || "").trim(),
-            latex_blocks: Array.isArray(opt?.latex_blocks) ? opt!.latex_blocks : undefined,
-          }))
-          .filter((opt) => opt.key && opt.text);
-
-        if (parsedOptions.length === 0) {
-          setEditOptionsError("选项 JSON 为空或格式不正确");
-          setEditSaving(false);
-          return;
-        }
-      }
-
-      await overrideProblem(taskId, problemId, {
-        question_no: editQuestionNo.trim() || null,
-        source: editSource.trim() || null,
-        problem_text: editProblemText,
-        options: parsedOptions,
-        knowledge_tags: editKnowledgeTags,
-        error_tags: editErrorTags,
-        user_tags: editUserTags,
-      });
-      setEditMessage("已保存");
-      setEditingKey("");
-      await loadOnce();
-    } catch (err) {
-      setEditMessage(err instanceof Error ? err.message : "保存失败");
-    } finally {
-      setEditSaving(false);
-    }
-  }, [
-    data,
-    editErrorTags,
-    editKnowledgeTags,
-    editOptionsJson,
-    editProblemText,
-    editQuestionNo,
-    editSource,
-    editUserTags,
-    loadOnce,
-    taskId,
-  ]);
 
   const copyMarkdown = useCallback(async (problemId: string) => {
     if (!data) return;
@@ -590,7 +476,7 @@ export function TaskLiveView({ taskId }: { taskId: string }) {
                     </Text>
 
                     <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', mb: 2 }}>
-                      <Button size="small" onClick={() => loadEdit(problem.problem_id)}>
+                      <Button size="small" onClick={() => setEditingKey(problem.problem_id)}>
                         编辑
                       </Button>
                       <Button size="small" onClick={() => copyMarkdown(problem.problem_id)}>
@@ -602,103 +488,19 @@ export function TaskLiveView({ taskId }: { taskId: string }) {
                     </Box>
 
                     {editingKey === problem.problem_id ? (
-                      <Box sx={{ mb: 3, p: 3, border: '1px solid', borderColor: 'border.default', borderRadius: 2, bg: 'canvas.default' }}>
-                        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-                          <Text sx={{ fontWeight: 'bold' }}>编辑题目</Text>
-                          <Button size="small" onClick={() => setEditingKey("")}>关闭</Button>
-                        </Box>
-                        {editMessage ? (
-                          <Flash variant={editMessage === "已保存" ? "success" : "danger"} sx={{ mb: 2 }}>
-                            {editMessage}
-                          </Flash>
-                        ) : null}
-                        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-                          <Box sx={{ display: 'grid', gridTemplateColumns: ['1fr', '1fr 1fr'], gap: 3 }}>
-                            <FormControl>
-                              <FormControl.Label>题号</FormControl.Label>
-                              <TextInput value={editQuestionNo} onChange={(e) => setEditQuestionNo(e.target.value)} block />
-                            </FormControl>
-                            <FormControl>
-                              <FormControl.Label>来源</FormControl.Label>
-                              <TextInput value={editSource} onChange={(e) => setEditSource(e.target.value)} block />
-                            </FormControl>
-                          </Box>
-
-                          <FormControl>
-                            <FormControl.Label>题干</FormControl.Label>
-                            <Textarea value={editProblemText} onChange={(e) => setEditProblemText(e.target.value)} block rows={6} />
-                          </FormControl>
-
-                          <FormControl>
-                            <FormControl.Label>选项（JSON）</FormControl.Label>
-                            <Textarea
-                              value={editOptionsJson}
-                              onChange={(e) => {
-                                setEditOptionsJson(e.target.value);
-                                if (editOptionsError) setEditOptionsError("");
-                              }}
-                              block
-                              rows={4}
-                            />
-                            {editOptionsError ? (
-                              <Text sx={{ color: 'danger.fg', mt: 1, display: 'block' }}>{editOptionsError}</Text>
-                            ) : null}
-                          </FormControl>
-
-                          <TagPicker
-                            title="知识体系"
-                            dimension="knowledge"
-                            value={editKnowledgeTags}
-                            onChange={setEditKnowledgeTags}
-                            styles={tagStyles}
-                            placeholder="输入搜索，Tab 补全，Enter 选第一"
-                          />
-                          <TagPicker
-                            title="错题归因"
-                            dimension="error"
-                            value={editErrorTags}
-                            onChange={setEditErrorTags}
-                            styles={tagStyles}
-                            placeholder="输入搜索，Tab 补全，Enter 选第一"
-                          />
-                          <TagPicker
-                            title="自定义"
-                            dimension="custom"
-                            value={editUserTags}
-                            onChange={setEditUserTags}
-                            styles={tagStyles}
-                            enableRemoteSearch={false}
-                            placeholder="输入后回车添加"
-                          />
-
-                          <Box sx={{ display: 'flex', gap: 2 }}>
-                            <Button
-                              variant="primary"
-                              onClick={() => saveEdit(problem.problem_id)}
-                              disabled={editSaving}
-                            >
-                              {editSaving ? (
-                                <>
-                                  <Spinner size="small" sx={{ mr: 1 }} />
-                                  保存中…
-                                </>
-                              ) : (
-                                '保存'
-                              )}
-                            </Button>
-                          </Box>
-                        </Box>
-                      </Box>
+                      <ProblemEditPanel
+                        taskId={taskId}
+                        problem={problem}
+                        tagStyles={tagStyles}
+                        onClose={() => setEditingKey("")}
+                        onSaved={loadOnce}
+                      />
                     ) : null}
                     
-                    <Box
-                      sx={{
-                        mb: 3,
-                        fontFamily: "'Times New Roman','SimSun','宋体',serif",
-                        "& *": { fontFamily: "'Times New Roman','SimSun','宋体',serif" },
-                      }}
-                    >
-                      <ProblemContent
+                    <Box sx={{ mb: 3 }}>
+                      <ProblemCard
+                        questionType={problem.question_type}
+                        source={problem.source}
                         problemText={problem.problem_text || ""}
                         options={problem.options}
                         itemKeyPrefix={problem.problem_id}

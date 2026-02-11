@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useState } from "react";
 import Link from "next/link";
 import {
   Box,
@@ -13,8 +13,7 @@ import {
   Spinner,
   Flash,
 } from "@primer/react";
-import { listProblems, listTasks } from "../../features/tasks";
-import type { ProblemSummary, TaskSummary } from "../../types/api";
+import { useActiveTaskList, useProblemList } from "../../features/tasks";
 import { ProblemListItem } from "../../components/ProblemListItem";
 
 const SUBJECT_OPTIONS = [
@@ -27,94 +26,18 @@ const SUBJECT_OPTIONS = [
 export default function LibraryPage() {
   const [subject, setSubject] = useState<string>("");
   const [tag, setTag] = useState<string>("");
-  const [items, setItems] = useState<ProblemSummary[]>([]);
-  const [activeTasks, setActiveTasks] = useState<TaskSummary[]>([]);
-  const [isLoadingActive, setIsLoadingActive] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string>("");
+  const {
+    items,
+    isLoading,
+    error,
+  } = useProblemList({ subject: subject || undefined, tag: tag || undefined });
+  const {
+    items: activeTasks,
+    activeItems: activeTaskItems,
+    isLoading: isLoadingActive,
+  } = useActiveTaskList({ active_only: true, subject: subject || undefined });
   const [selectedIds, setSelectedIds] = useState<Record<string, boolean>>({});
 
-  const activeTaskItems = useMemo(
-    () => activeTasks.filter((t) => t.status === "pending" || t.status === "processing"),
-    [activeTasks],
-  );
-
-  useEffect(() => {
-    let cancelled = false;
-
-    async function loadActive() {
-      setIsLoadingActive(true);
-      try {
-        const data = await listTasks({ active_only: true, subject: subject || undefined });
-        if (!cancelled) {
-          setActiveTasks((prev) => {
-            const prevIds = prev.map((t) => `${t.id}:${t.status}`).join(",");
-            const nextIds = data.items.map((t) => `${t.id}:${t.status}`).join(",");
-            return prevIds === nextIds ? prev : data.items;
-          });
-        }
-      } catch {
-        // Active task list is best-effort; keep the library usable even if it fails.
-      } finally {
-        if (!cancelled) setIsLoadingActive(false);
-      }
-    }
-
-    void loadActive();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [subject]);
-
-  useEffect(() => {
-    if (activeTaskItems.length === 0) return;
-    const timer = window.setInterval(async () => {
-      try {
-        const data = await listTasks({ active_only: true, subject: subject || undefined });
-        setActiveTasks((prev) => {
-          const prevIds = prev.map((t) => `${t.id}:${t.status}`).join(",");
-          const nextIds = data.items.map((t) => `${t.id}:${t.status}`).join(",");
-          return prevIds === nextIds ? prev : data.items;
-        });
-      } catch {
-        // ignore polling errors
-      }
-    }, 1500);
-    return () => {
-      window.clearInterval(timer);
-    };
-  }, [activeTaskItems.length, subject]);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    async function load() {
-      setIsLoading(true);
-      setError("");
-
-      try {
-        const data = await listProblems({ subject: subject || undefined, tag: tag || undefined });
-        if (!cancelled) {
-          setItems(data.items);
-        }
-      } catch (err) {
-        if (!cancelled) {
-          setError(err instanceof Error ? err.message : "加载题库失败");
-        }
-      } finally {
-        if (!cancelled) {
-          setIsLoading(false);
-        }
-      }
-    }
-
-    void load();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [subject, tag]);
 
   const toggleSelected = useCallback((key: string) => {
     setSelectedIds((prev) => ({ ...prev, [key]: !prev[key] }));
