@@ -142,6 +142,7 @@ class LLMAgent:
                 user_prompt,
                 response_model=self.response_model,
                 on_delta=on_delta,
+                thinking=thinking if isinstance(thinking, bool) else None,
             )
         except Exception:
             elapsed_ms = (time.perf_counter() - started) * 1000

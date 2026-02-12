@@ -29,6 +29,7 @@ class AIClient(Protocol):
         user_prompt: str,
         response_model: type[BaseModel] | None = None,
         on_delta: Callable[[str], None] | None = None,
+        thinking: bool | None = None,
     ) -> dict[str, Any]:
         """Generic structured generation that returns a JSON-like dict."""
 
@@ -40,5 +41,6 @@ class AIClient(Protocol):
         mime_type: str,
         response_model: type[BaseModel] | None = None,
         on_delta: Callable[[str], None] | None = None,
+        thinking: bool | None = None,
     ) -> dict[str, Any]:
         """Structured generation that can also consume a single image."""

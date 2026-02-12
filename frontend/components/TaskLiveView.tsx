@@ -2,24 +2,22 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { 
-  Box, 
-  Heading, 
-  Text, 
-  Button, 
-  Label, 
+import {
+  Box,
+  Heading,
+  Text,
   Flash,
-  Spinner
+  Spinner,
 } from "@primer/react";
-import { SyncIcon } from "@primer/octicons-react";
 import { fetchJson } from "../lib/api";
 import type { TaskResponse } from "../types/api";
 import { LiveStreamRenderer } from "./LiveStreamRenderer";
-import { MarkdownRenderer } from "./MarkdownRenderer";
-import { ProblemCard } from "./ProblemCard";
-import { ProblemEditPanel } from "./ProblemEditPanel";
-import { deleteProblem, deleteTask } from "../features/tasks";
+import { TaskActions } from "./task/TaskActions";
+import { TaskProblemList } from "./task/TaskProblemList";
+import { deleteTask } from "../features/tasks";
 import { useTagDimensions } from "../features/tags";
+import { useTaskStream } from "../hooks/useTaskStream";
+import { ErrorBanner } from "./ErrorBanner";
 
 type RenderMathInElement = (
   element: HTMLElement,
@@ -41,8 +39,6 @@ export function TaskLiveView({ taskId }: { taskId: string }) {
   const [data, setData] = useState<TaskResponse | null>(null);
   const [error, setError] = useState<string>("");
   const [statusMessage, setStatusMessage] = useState<string>("");
-  const [progressLines, setProgressLines] = useState<string[]>([]);
-  const [streamText, setStreamText] = useState<string>("");
   const [isLoading, setIsLoading] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
   const [isRetrying, setIsRetrying] = useState(false);
@@ -50,36 +46,6 @@ export function TaskLiveView({ taskId }: { taskId: string }) {
   const [editingKey, setEditingKey] = useState<string>("");
 
   const mathContainerRef = useRef<HTMLDivElement | null>(null);
-
-  const eventSourceRef = useRef<EventSource | null>(null);
-  const streamBufferRef = useRef<string>("");
-  const streamFlushTimerRef = useRef<number | null>(null);
-  const hasLoadedStreamRef = useRef<boolean>(false);
-
-  const flushStreamBuffer = useCallback(() => {
-    if (!streamBufferRef.current) return;
-    const chunk = streamBufferRef.current;
-    streamBufferRef.current = "";
-    setStreamText((prev) => {
-      const next = prev + chunk;
-      const MAX_CHARS = 200_000;
-      return next.length > MAX_CHARS ? next.slice(next.length - MAX_CHARS) : next;
-    });
-  }, []);
-
-  const loadStreamOnce = useCallback(async () => {
-    try {
-      const payload = await fetchJson<{ task_id: string; text?: string }>(
-        `/tasks/${taskId}/stream?max_chars=200000`
-      );
-      const text = payload.text || "";
-      streamBufferRef.current = "";
-      setStreamText(text);
-      hasLoadedStreamRef.current = true;
-    } catch {
-      // ignore: stream history is best-effort
-    }
-  }, [taskId]);
 
   const loadOnce = useCallback(async () => {
     setIsLoading(true);
@@ -95,6 +61,13 @@ export function TaskLiveView({ taskId }: { taskId: string }) {
       setIsLoading(false);
     }
   }, [taskId]);
+
+  const { streamText, progressLines: streamProgress, loadStreamOnce, resetStream } = useTaskStream({
+    taskId,
+    status: data?.task?.status,
+    onStatusMessage: setStatusMessage,
+    onDone: loadOnce,
+  });
 
   const cancelTask = useCallback(async () => {
     if (!data) return;
@@ -121,19 +94,7 @@ export function TaskLiveView({ taskId }: { taskId: string }) {
     setIsRetrying(true);
     setError("");
     setStatusMessage("准备重试...");
-    setProgressLines([]);
-    streamBufferRef.current = "";
-    setStreamText("");
-    hasLoadedStreamRef.current = false;
-
-    if (eventSourceRef.current) {
-      try {
-        eventSourceRef.current.close();
-      } catch {
-        // ignore
-      }
-      eventSourceRef.current = null;
-    }
+    resetStream();
 
     try {
       await fetchJson<TaskResponse>(
@@ -150,63 +111,6 @@ export function TaskLiveView({ taskId }: { taskId: string }) {
   }, [data, loadOnce, loadStreamOnce, taskId]);
 
 
-  const copyMarkdown = useCallback(async (problemId: string) => {
-    if (!data) return;
-    try {
-      const p = data.task.problems.find((x) => x.problem_id === problemId);
-      if (!p) throw new Error("题目不存在");
-      const tagResult = data.task.tags.find((x) => x.problem_id === problemId);
-      const s = data.task.solutions.find((x) => x.problem_id === problemId);
-
-      const lines: string[] = [];
-      lines.push(`# ${p.question_no ? `题号 ${p.question_no}` : "题目"}`);
-      if (p.source) lines.push(`来源：${p.source}`);
-      lines.push("");
-      lines.push("## 题干");
-      lines.push(p.problem_text || "");
-      lines.push("");
-
-      const knowledgeTags = Array.isArray(p.knowledge_tags) ? p.knowledge_tags : [];
-      const errorTags = Array.isArray(p.error_tags) ? p.error_tags : [];
-      const userTags = Array.isArray(p.user_tags) ? p.user_tags : [];
-      const aiKnowledge = tagResult?.knowledge_points || [];
-
-      lines.push("## 标签");
-      if (knowledgeTags.length) lines.push(`- 知识体系：${knowledgeTags.join("，")}`);
-      if (errorTags.length) lines.push(`- 错题归因：${errorTags.join("，")}`);
-      if (userTags.length) lines.push(`- 自定义：${userTags.join("，")}`);
-      if (aiKnowledge.length) lines.push(`- AI 知识点：${aiKnowledge.join("，")}`);
-      if (!knowledgeTags.length && !errorTags.length && !userTags.length && !aiKnowledge.length) {
-        lines.push("- （无）");
-      }
-      lines.push("");
-
-      if (s) {
-        lines.push("## 答案");
-        lines.push(s.answer || "");
-        lines.push("");
-        lines.push("## 解析");
-        lines.push(s.explanation || "");
-        lines.push("");
-      }
-
-      await navigator.clipboard.writeText(lines.join("\n"));
-      setStatusMessage("已复制 Markdown");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "复制失败");
-    }
-  }, [data]);
-
-  const removeProblem = useCallback(async (problemId: string) => {
-    if (!window.confirm("确认删除这道题？")) return;
-    try {
-      await deleteProblem(taskId, problemId);
-      await loadOnce();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "删除失败");
-    }
-  }, [loadOnce, taskId]);
-
   const removeTask = useCallback(async () => {
     if (!window.confirm("确认删除这个任务（将删除其所有题目）？")) return;
     try {
@@ -218,10 +122,10 @@ export function TaskLiveView({ taskId }: { taskId: string }) {
   }, [taskId]);
 
   useEffect(() => {
-    hasLoadedStreamRef.current = false;
+    resetStream();
     void loadOnce();
     void loadStreamOnce();
-  }, [loadOnce, loadStreamOnce]);
+  }, [loadOnce, loadStreamOnce, resetStream]);
 
   // When navigating from the library, the route changes first and data arrives later.
   // Re-run math renderer after task data is rendered to avoid "sometimes not rendered".
@@ -270,121 +174,6 @@ export function TaskLiveView({ taskId }: { taskId: string }) {
     };
   }, [data]);
 
-  useEffect(() => {
-    if (!data) return;
-    const status = data.task.status;
-    const shouldConnectSse = status === "pending" || status === "processing" || !hasLoadedStreamRef.current;
-    if (!shouldConnectSse) return;
-
-    if (eventSourceRef.current) {
-      eventSourceRef.current.close();
-      eventSourceRef.current = null;
-    }
-
-    const API_BASE = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
-    const es = new EventSource(`${API_BASE}/tasks/${taskId}/events`);
-    eventSourceRef.current = es;
-
-    es.addEventListener("progress", (evt) => {
-      try {
-        const payload = JSON.parse((evt as MessageEvent).data as string) as {
-          status?: string;
-          stage?: string | null;
-          message?: string | null;
-        };
-        const message = payload.message || payload.stage || payload.status || "处理中";
-        setStatusMessage(message);
-        setProgressLines((prev) => {
-          if (prev.length > 0 && prev[prev.length - 1] === message) return prev;
-          return [...prev, message];
-        });
-      } catch {
-        // ignore
-      }
-    });
-
-    es.addEventListener("llm_delta", (evt) => {
-      try {
-        const payload = JSON.parse((evt as MessageEvent).data as string) as { delta?: string };
-        if (!payload.delta) return;
-        streamBufferRef.current += payload.delta;
-        if (!streamFlushTimerRef.current) {
-          streamFlushTimerRef.current = window.setTimeout(() => {
-            streamFlushTimerRef.current = null;
-            flushStreamBuffer();
-          }, 80);
-        }
-      } catch {
-        // ignore
-      }
-    });
-
-    es.addEventListener("llm_snapshot", (evt) => {
-      try {
-        const payload = JSON.parse((evt as MessageEvent).data as string) as { text?: string };
-        const text = payload.text || "";
-        streamBufferRef.current = "";
-        setStreamText(text);
-        hasLoadedStreamRef.current = true;
-      } catch {
-        // ignore
-      }
-    });
-
-    es.addEventListener("done", async () => {
-      try {
-        es.close();
-      } catch {
-        // ignore
-      }
-      if (eventSourceRef.current === es) {
-        eventSourceRef.current = null;
-      }
-      flushStreamBuffer();
-      await loadOnce();
-    });
-
-    es.addEventListener("error", () => {
-      try {
-        es.close();
-      } catch {
-        // ignore
-      }
-      if (eventSourceRef.current === es) {
-        eventSourceRef.current = null;
-      }
-      setStatusMessage("进度流断开，可点击“查看最新状态”刷新。");
-      flushStreamBuffer();
-    });
-
-    return () => {
-      try {
-        es.close();
-      } catch {
-        // ignore
-      }
-      if (eventSourceRef.current === es) {
-        eventSourceRef.current = null;
-      }
-      if (streamFlushTimerRef.current) {
-        window.clearTimeout(streamFlushTimerRef.current);
-        streamFlushTimerRef.current = null;
-      }
-    };
-  }, [data, flushStreamBuffer, loadOnce, taskId]);
-
-  useEffect(() => {
-    return () => {
-      if (eventSourceRef.current) {
-        eventSourceRef.current.close();
-        eventSourceRef.current = null;
-      }
-      if (streamFlushTimerRef.current) {
-        window.clearTimeout(streamFlushTimerRef.current);
-        streamFlushTimerRef.current = null;
-      }
-    };
-  }, []);
 
   return (
     <Box ref={mathContainerRef} sx={{ p: 3, border: '1px solid', borderColor: 'border.default', borderRadius: 2 }}>
@@ -393,41 +182,16 @@ export function TaskLiveView({ taskId }: { taskId: string }) {
           <Text sx={{ fontSize: 0, color: 'fg.muted', textTransform: 'uppercase' }}>Task</Text>
           <Heading as="h2" sx={{ fontSize: 3 }}>任务 {taskId}</Heading>
         </Box>
-        <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
-          {data?.task?.status && <Label variant="secondary">状态：{data.task.status}</Label>}
-          {(data?.task?.status === "pending" || data?.task?.status === "processing") && (
-            <Button
-              variant="danger"
-              onClick={cancelTask}
-              disabled={isCancelling || isLoading}
-            >
-              {isCancelling ? "作废中..." : "停止并作废"}
-            </Button>
-          )}
-          {(data?.task?.status === "failed" || data?.task?.status === "completed") && (
-            <Button
-              onClick={retryTask}
-              disabled={isRetrying || isLoading || isCancelling}
-              leadingVisual={SyncIcon}
-            >
-              {isRetrying ? "重试中..." : "重试"}
-            </Button>
-          )}
-          <Button 
-            onClick={loadOnce} 
-            disabled={isLoading}
-            leadingVisual={SyncIcon}
-          >
-            {isLoading ? "刷新中..." : "查看最新状态"}
-          </Button>
-          <Button
-            variant="danger"
-            onClick={removeTask}
-            disabled={isLoading || isCancelling}
-          >
-            删除任务
-          </Button>
-        </Box>
+        <TaskActions
+          status={data?.task?.status}
+          isCancelling={isCancelling}
+          isRetrying={isRetrying}
+          isLoading={isLoading}
+          onCancel={cancelTask}
+          onRetry={retryTask}
+          onRefresh={loadOnce}
+          onDelete={removeTask}
+        />
       </Box>
 
       <Text as="p" sx={{ fontSize: 1, color: 'fg.muted', mb: 3 }}>
@@ -435,13 +199,13 @@ export function TaskLiveView({ taskId }: { taskId: string }) {
       </Text>
 
       {statusMessage && <Flash variant="success" sx={{ mb: 3 }}>{statusMessage}</Flash>}
-      {error && <Flash variant="danger" sx={{ mb: 3 }}>{error}</Flash>}
+      <ErrorBanner message={error} />
 
-      {progressLines.length > 0 && (
+      {streamProgress.length > 0 && (
         <Box sx={{ p: 2, bg: 'canvas.subtle', borderRadius: 2, mb: 3 }}>
           <Text sx={{ fontWeight: 'bold', display: 'block', mb: 1 }}>进度</Text>
           <Box sx={{ whiteSpace: 'pre-wrap', fontFamily: 'mono', fontSize: 1 }}>
-            {progressLines.map((line) => `• ${line}`).join("\n")}
+            {streamProgress.map((line) => `• ${line}`).join("\n")}
           </Box>
         </Box>
       )}
@@ -456,83 +220,19 @@ export function TaskLiveView({ taskId }: { taskId: string }) {
       )}
 
       {data && (
-        <Box sx={{ mt: 4 }}>
-          <Heading as="h3" sx={{ fontSize: 2, mb: 2, borderBottom: '1px solid', borderColor: 'border.muted', pb: 1 }}>题目与解答</Heading>
-          {data.task.problems.length === 0 ? (
-            <Box sx={{ textAlign: 'center', p: 4, color: 'fg.muted' }}>
-              <Text as="p" sx={{ fontWeight: 'bold' }}>尚未解析出题目。</Text>
-              <Text as="p" sx={{ fontSize: 1 }}>如果任务仍在处理中，稍等片刻或刷新状态。</Text>
-            </Box>
-          ) : (
-            <Box as="ul" sx={{ listStyle: 'none', p: 0, m: 0, display: 'flex', flexDirection: 'column', gap: 3 }}>
-              {data.task.problems.map((problem, idx) => {
-                const solution = data!.task.solutions.find((s) => s.problem_id === problem.problem_id);
-                const tag = data!.task.tags.find((t) => t.problem_id === problem.problem_id);
-
-                return (
-                  <Box as="li" key={problem.problem_id} sx={{ p: 3, bg: 'canvas.subtle', borderRadius: 2 }}>
-                    <Text sx={{ fontWeight: 'bold', display: 'block', mb: 2, fontSize: 2 }}>
-                      {problem.question_no ? `题号 ${problem.question_no}` : `题目 ${idx + 1}`}
-                    </Text>
-
-                    <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', mb: 2 }}>
-                      <Button size="small" onClick={() => setEditingKey(problem.problem_id)}>
-                        编辑
-                      </Button>
-                      <Button size="small" onClick={() => copyMarkdown(problem.problem_id)}>
-                        复制 Markdown
-                      </Button>
-                      <Button size="small" variant="danger" onClick={() => removeProblem(problem.problem_id)}>
-                        删除题目
-                      </Button>
-                    </Box>
-
-                    {editingKey === problem.problem_id ? (
-                      <ProblemEditPanel
-                        taskId={taskId}
-                        problem={problem}
-                        tagStyles={tagStyles}
-                        onClose={() => setEditingKey("")}
-                        onSaved={loadOnce}
-                      />
-                    ) : null}
-                    
-                    <Box sx={{ mb: 3 }}>
-                      <ProblemCard
-                        questionType={problem.question_type}
-                        source={problem.source}
-                        problemText={problem.problem_text || ""}
-                        options={problem.options}
-                        itemKeyPrefix={problem.problem_id}
-                        fontSize={2}
-                      />
-                    </Box>
-
-                    {solution && (
-                      <Box sx={{ mb: 2 }}>
-                        <Text sx={{ fontWeight: 'bold', display: 'block' }}>答案：</Text>
-                        <MarkdownRenderer text={solution.answer || ""} />
-                        <Text sx={{ fontWeight: 'bold', display: 'block' }}>解析：</Text>
-                        <MarkdownRenderer text={solution.explanation || ""} />
-                      </Box>
-                    )}
-
-                    {tag && (
-                      <Box sx={{ mt: 2, pt: 2, borderTop: '1px dashed', borderColor: 'border.muted' }}>
-                        <Text sx={{ fontWeight: 'bold', mr: 1 }}>知识点：</Text>
-                        {tag.knowledge_points.length > 0 ? (
-                          tag.knowledge_points.map(kp => <Label key={kp} variant="secondary" sx={{ mr: 1 }}>{kp}</Label>)
-                        ) : (
-                          <Text sx={{ color: 'fg.muted' }}>未标注</Text>
-                        )}
-                      </Box>
-                    )}
-                  </Box>
-                );
-              })}
-            </Box>
-          )}
-        </Box>
+        <TaskProblemList
+          taskId={taskId}
+          problems={data.task.problems}
+          solutions={data.task.solutions}
+          tags={data.task.tags}
+          editingKey={editingKey}
+          onEdit={setEditingKey}
+          onCloseEdit={() => setEditingKey("")}
+          onSaved={loadOnce}
+          tagStyles={tagStyles}
+          onStatusMessage={setStatusMessage}
+          onError={setError}
+        />
       )}
 
       <Box sx={{ mt: 4, pt: 3, borderTop: '1px solid', borderColor: 'border.muted', fontSize: 1 }}>

@@ -28,6 +28,7 @@ class GeminiClient(AIClient):
         user_prompt: str,
         response_model: type[BaseModel] | None = None,
         on_delta: Callable[[str], None] | None = None,
+        thinking: bool | None = None,
     ) -> dict[str, Any]:
         raise RuntimeError("GeminiClient 已废弃")
 
@@ -39,5 +40,6 @@ class GeminiClient(AIClient):
         mime_type: str,
         response_model: type[BaseModel] | None = None,
         on_delta: Callable[[str], None] | None = None,
+        thinking: bool | None = None,
     ) -> dict[str, Any]:
         raise RuntimeError("GeminiClient 已废弃")

@@ -1,3 +1,5 @@
+"""Persistence tests for the file-based task repository."""
+
 from __future__ import annotations
 
 import json
@@ -8,6 +10,7 @@ from app.repository import FileTaskRepository
 
 
 def test_file_task_repository_persists_across_restarts(tmp_path: Path) -> None:
+    """Ensures tasks are reloaded correctly after a restart."""
     repo1 = FileTaskRepository(base_dir=tmp_path)
     task = repo1.create(
         TaskCreateRequest(
@@ -30,6 +33,7 @@ def test_file_task_repository_persists_across_restarts(tmp_path: Path) -> None:
 
 
 def test_file_task_repository_writes_valid_json(tmp_path: Path) -> None:
+    """Ensures the repository writes valid JSON files."""
     repo = FileTaskRepository(base_dir=tmp_path)
     task = repo.create(
         TaskCreateRequest(

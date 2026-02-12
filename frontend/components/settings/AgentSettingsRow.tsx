@@ -25,7 +25,8 @@ type AgentSettingsRowProps = {
   thinkingEnabled: boolean;
   isThisSaving: boolean;
   isThisThinkingSaving: boolean;
-  isControlBusy: boolean;
+  isEnabledBusy: boolean;
+  isThinkingBusy: boolean;
   onChangeModel: (agentKey: string, value: string) => void;
   onToggleEnabled: (agentKey: string, nextValue: boolean) => void;
   onToggleThinking: (agentKey: string, nextValue: boolean) => void;
@@ -44,7 +45,8 @@ export function AgentSettingsRow({
   thinkingEnabled,
   isThisSaving,
   isThisThinkingSaving,
-  isControlBusy,
+  isEnabledBusy,
+  isThinkingBusy,
   onChangeModel,
   onToggleEnabled,
   onToggleThinking,
@@ -97,18 +99,15 @@ export function AgentSettingsRow({
           <ToggleSwitch
             size="small"
             checked={enabled}
-            disabled={locked || isControlBusy}
+            disabled={locked || isEnabledBusy}
             sx={{
               "& > span[aria-hidden=\"true\"]": { display: "none" },
               "& button svg": { display: "none" },
             }}
-            onChange={(next: unknown) => {
+            onClick={(event) => {
+              event.preventDefault();
               if (locked) return;
-              const nextChecked =
-                typeof next === "boolean"
-                  ? next
-                  : Boolean((next as { target?: { checked?: unknown } })?.target?.checked);
-              onToggleEnabled(agent.key, nextChecked);
+              onToggleEnabled(agent.key, !enabled);
             }}
             aria-label={`${agent.label} 启用`}
           />
@@ -120,17 +119,14 @@ export function AgentSettingsRow({
           <ToggleSwitch
             size="small"
             checked={thinkingEnabled}
-            disabled={isControlBusy}
+            disabled={isThinkingBusy}
             sx={{
               "& > span[aria-hidden=\"true\"]": { display: "none" },
               "& button svg": { display: "none" },
             }}
-            onChange={(next: unknown) => {
-              const nextChecked =
-                typeof next === "boolean"
-                  ? next
-                  : Boolean((next as { target?: { checked?: unknown } })?.target?.checked);
-              onToggleThinking(agent.key, nextChecked);
+            onClick={(event) => {
+              event.preventDefault();
+              onToggleThinking(agent.key, !thinkingEnabled);
             }}
             aria-label={`${agent.label} 思考`}
           />

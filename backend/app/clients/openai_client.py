@@ -19,7 +19,7 @@ from app.models import ProblemBlock, TaggingResult
 from .base import AIClient
 from app.request_context import get_request_id
 from app.trace import trace_event
-from app.llm_logging import append_llm_error_log, truncate_preview
+from app.llm_logging import append_llm_error_log, log_raw_output, should_log_raw_output, truncate_preview, truncate_raw
 
 logger = logging.getLogger(__name__)
 
@@ -99,9 +99,16 @@ class OpenAIClient(AIClient):
         user_prompt: str,
         response_model: type[BaseModel] | None = None,
         on_delta: Callable[[str], None] | None = None,
+        thinking: bool | None = None,
     ) -> dict[str, Any]:
         """Generic JSON-producing chat helper for agent-style prompts."""
-        return self._complete_json(system_prompt, user_prompt, response_model=response_model, on_delta=on_delta)
+        return self._complete_json(
+            system_prompt,
+            user_prompt,
+            response_model=response_model,
+            on_delta=on_delta,
+            thinking_enabled=thinking,
+        )
 
     def structured_chat_with_image(
         self,
@@ -111,6 +118,7 @@ class OpenAIClient(AIClient):
         mime_type: str,
         response_model: type[BaseModel] | None = None,
         on_delta: Callable[[str], None] | None = None,
+        thinking: bool | None = None,
     ) -> dict[str, Any]:
         data_url = f"data:{mime_type};base64,{base64.b64encode(image_bytes).decode('utf-8')}"
         messages = [
@@ -123,7 +131,12 @@ class OpenAIClient(AIClient):
                 ],
             },
         ]
-        return self._complete_json_messages(messages, response_model=response_model, on_delta=on_delta)
+        return self._complete_json_messages(
+            messages,
+            response_model=response_model,
+            on_delta=on_delta,
+            thinking_enabled=thinking,
+        )
 
     def _complete_json(
         self,
@@ -131,18 +144,25 @@ class OpenAIClient(AIClient):
         user_prompt: str,
         response_model: type[BaseModel] | None = None,
         on_delta: Callable[[str], None] | None = None,
+        thinking_enabled: bool | None = None,
     ) -> dict[str, Any]:
         messages = [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt},
         ]
-        return self._complete_json_messages(messages, response_model=response_model, on_delta=on_delta)
+        return self._complete_json_messages(
+            messages,
+            response_model=response_model,
+            on_delta=on_delta,
+            thinking_enabled=thinking_enabled,
+        )
 
     def _complete_json_messages(
         self,
         messages: list[dict[str, Any]],
         response_model: type[BaseModel] | None = None,
         on_delta: Callable[[str], None] | None = None,
+        thinking_enabled: bool | None = None,
     ) -> dict[str, Any]:
         started = time.perf_counter()
         has_image = any(
@@ -177,7 +197,7 @@ class OpenAIClient(AIClient):
             response_format=("json_schema" if response_model is not None else "json_object"),
         )
 
-        response_format_candidates: list[dict[str, Any]] = []
+        response_format_candidates: list[dict[str, Any] | None] = []
         model_name = (self.model or "").lower()
         use_json_object = model_name.startswith("zhipu:") or model_name.startswith("glm-") or ":glm-" in model_name
         if response_model is not None and not use_json_object:
@@ -196,9 +216,14 @@ class OpenAIClient(AIClient):
             response_format_candidates.append({"type": "json_object"})
         else:
             response_format_candidates.append({"type": "json_object"})
+            if use_json_object and has_image:
+                # Some OpenAI-compatible vision gateways return empty content when response_format is set.
+                response_format_candidates.append(None)
 
         debug_payload = os.getenv("AI_DEBUG_LLM_PAYLOAD", "false").lower() == "true"
         include_image_payload = os.getenv("AI_DEBUG_LLM_PAYLOAD_INCLUDE_IMAGE", "false").lower() == "true"
+        thinking_payload = {"type": "enabled"} if thinking_enabled is True else None
+        extra_body = {"thinking": thinking_payload} if thinking_payload is not None else None
         if debug_payload:
             try:
                 def _redact_messages(msgs: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -244,30 +269,51 @@ class OpenAIClient(AIClient):
                     "response_format": response_format_candidates[0],
                     "messages": _redact_messages(messages),
                     "include_image": include_image_payload,
+                    "thinking": thinking_payload,
                 }
                 with open(payload_log_path, "a", encoding="utf-8") as f:
                     f.write(json.dumps(payload_record, ensure_ascii=False) + "\n")
             except Exception:
                 pass
 
-        def _call_once(*, model: str, msg_payload: list[dict[str, Any]], rf: dict[str, Any]):
+        def _call_once(*, model: str, msg_payload: list[dict[str, Any]], rf: dict[str, Any] | None):
             if on_delta is None:
+                if rf is None:
+                    return self._client.chat.completions.create(
+                        model=model,
+                        temperature=self.temperature,
+                        max_tokens=self.max_tokens,
+                        messages=msg_payload,
+                        extra_body=extra_body,
+                    )
                 return self._client.chat.completions.create(
                     model=model,
                     temperature=self.temperature,
                     max_tokens=self.max_tokens,
                     messages=msg_payload,
                     response_format=rf,
+                    extra_body=extra_body,
                 )
 
-            chunks = self._client.chat.completions.create(
-                model=model,
-                temperature=self.temperature,
-                max_tokens=self.max_tokens,
-                messages=msg_payload,
-                response_format=rf,
-                stream=True,
-            )
+            if rf is None:
+                chunks = self._client.chat.completions.create(
+                    model=model,
+                    temperature=self.temperature,
+                    max_tokens=self.max_tokens,
+                    messages=msg_payload,
+                    extra_body=extra_body,
+                    stream=True,
+                )
+            else:
+                chunks = self._client.chat.completions.create(
+                    model=model,
+                    temperature=self.temperature,
+                    max_tokens=self.max_tokens,
+                    messages=msg_payload,
+                    response_format=rf,
+                    extra_body=extra_body,
+                    stream=True,
+                )
             parts: list[str] = []
             finish_reason = None
             suppress_ws = os.getenv("AI_STREAM_SUPPRESS_WHITESPACE", "false").lower() == "true"
@@ -323,6 +369,20 @@ class OpenAIClient(AIClient):
         for rf in response_format_candidates:
             try:
                 response = _call_once(model=self.model, msg_payload=messages, rf=rf)
+                content = response.choices[0].message.content or ""
+                if (
+                    rf is not None
+                    and use_json_object
+                    and has_image
+                    and response_model is not None
+                    and content.strip() == ""
+                ):
+                    logger.warning(
+                        "OpenAI gateway returned empty content; retry without response_format rid=%s model=%s",
+                        get_request_id(),
+                        self.model,
+                    )
+                    continue
                 selected_rf = rf
                 break
             except OpenAIError as exc:
@@ -377,6 +437,39 @@ class OpenAIClient(AIClient):
         finish_reason = getattr(response.choices[0], "finish_reason", None)
 
         content = response.choices[0].message.content or ""
+        if should_log_raw_output():
+            log_raw_output(
+                {
+                    "rid": get_request_id(),
+                    "event": "raw_model_output",
+                    "provider": "openai",
+                    "model": self.model,
+                    "has_image": has_image,
+                    "finish_reason": finish_reason,
+                    "response_format": selected_rf,
+                    "response_len": len(content),
+                    "response_content": truncate_raw(content),
+                }
+            )
+        if on_delta is not None and should_log_raw_output():
+            try:
+                on_delta(
+                    json.dumps(
+                        {
+                            "stage": "llm",
+                            "event": "raw_output",
+                            "provider": "openai",
+                            "model": self.model,
+                            "finish_reason": finish_reason,
+                            "response_format": selected_rf,
+                            "response_len": len(content),
+                            "response_content": truncate_raw(content),
+                        },
+                        ensure_ascii=False,
+                    )
+                )
+            except Exception:
+                pass
         try:
             data = _parse_json_block(content)
         except ValueError:

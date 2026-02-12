@@ -18,6 +18,7 @@ type ProblemCardProps = {
   options?: ProblemOption[];
   itemKeyPrefix?: string;
   fontSize?: number;
+  showTitle?: boolean;
   showMeta?: boolean;
 };
 
@@ -37,6 +38,7 @@ export function ProblemCard({
   options,
   itemKeyPrefix,
   fontSize,
+  showTitle = true,
   showMeta = true,
 }: ProblemCardProps) {
   const resolvedTitle = title || (questionNo ? `题号 ${questionNo}` : "");
@@ -50,11 +52,11 @@ export function ProblemCard({
         "& *": { fontFamily: "'Times New Roman','SimSun','宋体',serif" },
       }}
     >
-      {resolvedTitle ? (
+      {showTitle && resolvedTitle ? (
         <Text sx={{ fontWeight: "bold", display: "block", mb: 1, fontSize: 2 }}>{resolvedTitle}</Text>
       ) : null}
       {metaParts.length > 0 ? (
-        <Text sx={{ color: "fg.muted", fontSize: 1, display: "block", mb: 2 }}>{metaParts.join(" · ")}</Text>
+        <Text sx={{ color: "fg.muted", fontSize: 0, display: "block", mb: 2 }}>{metaParts.join(" · ")}</Text>
       ) : null}
       <ProblemContent
         problemText={problemText}

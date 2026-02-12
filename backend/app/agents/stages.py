@@ -66,7 +66,7 @@ class ProblemRebuilder:
                     latex_blocks=[latex],
                     media_notes="Auto rebuilt from detector results",
                     source=payload.notes or None,
-                    crop_bbox=region.bbox,
+                    crop_bbox=None,
                 )
             )
         return problems

@@ -68,6 +68,7 @@ class StubAIClient:
         user_prompt: str,
         response_model: type[BaseModel] | None = None,
         on_delta: Callable[[str], None] | None = None,
+        thinking: bool | None = None,
     ) -> dict[str, Any]:
         lower = (system_prompt + "\n" + user_prompt).lower()
 
@@ -100,6 +101,7 @@ class StubAIClient:
         mime_type: str,
         response_model: type[BaseModel] | None = None,
         on_delta: Callable[[str], None] | None = None,
+        thinking: bool | None = None,
     ) -> dict[str, Any]:
         lower = (system_prompt + "\n" + user_prompt).lower()
 

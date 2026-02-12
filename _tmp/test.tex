@@ -1,0 +1,109 @@
+\documentclass[UTF8]{ctexart}
+
+% ========== 页面与行距 ==========
+\usepackage[a4paper,
+  left=2.5cm,
+  right=2.5cm,
+  top=2.5cm,
+  bottom=2.5cm
+]{geometry}
+
+\usepackage{setspace}
+\setstretch{1.25}
+
+\setlength{\parindent}{2em}
+\setlength{\parskip}{0pt}
+
+% ========== 字体 ==========
+\setCJKmainfont{SimSun}   % 正文宋体
+\usepackage{newtxtext,newtxmath}
+
+% ========== 数学 ==========
+\usepackage{amsmath,amssymb}
+
+% ========== 枚举与题号 ==========
+\usepackage{enumitem}
+\setlist[enumerate,1]{
+  label=\arabic*．,
+  leftmargin=0pt,
+  itemindent=2em,
+  itemsep=6pt,
+  topsep=6pt
+}
+
+% ========== 选择题选项 ==========
+\newcommand{\choice}[4]{
+\begin{tabular}{@{}p{0.45\textwidth}p{0.45\textwidth}@{}}
+A.~#1 & B.~#2\\
+C.~#3 & D.~#4
+\end{tabular}
+}
+
+% ========== 文档开始 ==========
+\begin{document}
+\zihao{-4}
+
+% ======== 试卷头 ========
+\begin{center}
+{\zihao{-2}\bfseries 2026年普通高等学校招生全国统一考试}\\[6pt]
+{\zihao{3} 数学}\\[10pt]
+{\zihao{-4}（考试时间：120分钟\quad 满分：150分）}
+\end{center}
+
+\vspace{10pt}
+
+% ======== 注意事项 ========
+\noindent
+\textbf{注意事项：}
+\begin{enumerate}[label=（\arabic*）,leftmargin=0pt,itemindent=2em,itemsep=0pt]
+\item 答卷前，考生务必将自己的姓名、准考证号填写在答题卡上。
+\item 回答选择题时，选出每小题答案后，用2B铅笔把答题卡上对应题目的答案标号涂黑。
+\item 非选择题用黑色字迹的签字笔在答题卡上作答。
+\end{enumerate}
+
+\vspace{10pt}
+
+% ======== 一、选择题 ========
+\section*{一、选择题：本题共12小题，每小题5分，共60分。在每小题给出的四个选项中，只有一项是符合题目要求的。}
+
+\begin{enumerate}
+\item 已知集合 $A=\{x\mid x^2-3x<0\}$，则集合 $A$ 等于
+\choice{$(0,3)$}{$(1,3)$}{$(0,1)$}{$(1,+\infty)$}
+
+\item 已知复数 $z=1+i$，则 $|z|=$
+\choice{$\sqrt{2}$}{$2$}{$1$}{$\sqrt{3}$}
+
+\item 设函数 $f(x)=x^2-2x+1$，则其最小值为
+\choice{$0$}{$1$}{$-1$}{$2$}
+\end{enumerate}
+
+% ======== 二、填空题 ========
+\section*{二、填空题：本题共4小题，每小题5分，共20分。}
+
+\begin{enumerate}
+\item 已知函数 $f(x)=\sin x$，则 $f(\pi)=$ \underline{\hspace{3cm}}。
+
+\item 椭圆 $\frac{x^2}{4}+\frac{y^2}{3}=1$ 的离心率为 \underline{\hspace{3cm}}。
+\end{enumerate}
+
+% ======== 三、解答题 ========
+\section*{三、解答题：本题共6小题，共70分。解答应写出必要的文字说明、证明过程或演算步骤。}
+
+\begin{enumerate}
+\item（10分）已知等差数列 $\{a_n\}$ 的首项为 $1$，公差为 $2$。
+\begin{enumerate}[label=（\arabic*）,itemsep=4pt]
+\item 求 $a_n$ 的通项公式；
+\item 求前 $n$ 项和 $S_n$。
+\end{enumerate}
+
+\item（12分）已知函数
+\[
+f(x)=x^3-3x^2+2.
+\]
+\begin{enumerate}[label=（\arabic*）,itemsep=4pt]
+\item 求函数的单调区间；
+\item 求函数的极值。
+\end{enumerate}
+\end{enumerate}
+
+\end{document}

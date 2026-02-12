@@ -3,6 +3,7 @@
 import { Box, Button, Flash, Heading, Label, Spinner, Text } from "@primer/react";
 import { SyncIcon } from "@primer/octicons-react";
 import { AgentSettingsRow } from "./AgentSettingsRow";
+import { ErrorBanner } from "../ErrorBanner";
 
 type AgentDescriptor = {
   key: string;
@@ -103,12 +104,12 @@ export function SettingsModelSection({
         </Label>
       )}
       {statusMessage && <Flash variant="success" sx={{ mb: 3 }}>{statusMessage}</Flash>}
-      {agentModelsErrorMessage && <Flash variant="danger" sx={{ mb: 3 }}>{agentModelsErrorMessage}</Flash>}
-      {modelsErrorMessage && <Flash variant="danger" sx={{ mb: 3 }}>{modelsErrorMessage}</Flash>}
+      <ErrorBanner message={agentModelsErrorMessage} />
+      <ErrorBanner message={modelsErrorMessage} />
       {enabledStatusMessage && <Flash variant="success" sx={{ mb: 3 }}>{enabledStatusMessage}</Flash>}
-      {enabledErrorMessage && <Flash variant="danger" sx={{ mb: 3 }}>{enabledErrorMessage}</Flash>}
+      <ErrorBanner message={enabledErrorMessage} />
       {thinkingStatusMessage && <Flash variant="success" sx={{ mb: 3 }}>{thinkingStatusMessage}</Flash>}
-      {thinkingErrorMessage && <Flash variant="danger" sx={{ mb: 3 }}>{thinkingErrorMessage}</Flash>}
+      <ErrorBanner message={thinkingErrorMessage} />
 
       <Box sx={{ p: 3, bg: "canvas.subtle", borderRadius: 2, mb: 4 }}>
         <Text as="p" sx={{ mb: 1 }}>
@@ -132,7 +133,8 @@ export function SettingsModelSection({
           const isThisSaving = savingEnabledAgent === agent.key;
           const thinkingEnabled = Boolean(agentThinking[agent.key] ?? true);
           const isThisThinkingSaving = savingThinkingAgent === agent.key;
-          const isControlBusy = isLoadingEnabled || isThisSaving || isLoadingThinking || isThisThinkingSaving;
+          const isEnabledBusy = isLoadingEnabled || isThisSaving;
+          const isThinkingBusy = isLoadingThinking || isThisThinkingSaving;
 
           return (
             <AgentSettingsRow
@@ -149,7 +151,8 @@ export function SettingsModelSection({
               thinkingEnabled={thinkingEnabled}
               isThisSaving={isThisSaving}
               isThisThinkingSaving={isThisThinkingSaving}
-              isControlBusy={isControlBusy}
+              isEnabledBusy={isEnabledBusy}
+              isThinkingBusy={isThinkingBusy}
               onChangeModel={onChangeModel}
               onToggleEnabled={onToggleEnabled}
               onToggleThinking={onToggleThinking}

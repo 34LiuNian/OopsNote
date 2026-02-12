@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -40,7 +41,18 @@ _APP_CONFIG: AppConfig | None = None
 def create_app() -> FastAPI:
     configure_app_logging()
 
-    app = FastAPI(title="AI Mistake Organizer Backend")
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):
+        tasks_service.ensure_workers_started()
+        log_llm_payload_startup(config)
+        try:
+            models_service.prefetch_cache()
+        except Exception:
+            pass
+        check_ai_gateway(ai_gateway_status, config=config)
+        yield
+
+    app = FastAPI(title="AI Mistake Organizer Backend", lifespan=lifespan)
 
     app.add_middleware(
         CORSMiddleware,
@@ -64,22 +76,6 @@ def create_app() -> FastAPI:
     app.include_router(latex_router)
     app.include_router(papers_router)
 
-    @app.on_event("startup")
-    def _start_task_workers() -> None:
-        tasks_service.ensure_workers_started()
-        log_llm_payload_startup(config)
-
-    @app.on_event("startup")
-    def _prefetch_models_cache() -> None:
-        try:
-            models_service.prefetch_cache()
-        except Exception:
-            pass
-
-    @app.on_event("startup")
-    def _check_ai_gateway_on_startup() -> None:
-        check_ai_gateway(ai_gateway_status, config=config)
-
     return app
 
 
@@ -101,8 +97,15 @@ def _build_state() -> tuple[BackendState, ModelsService, TasksService, dict[str,
     ai_client = build_ai_client(config=config)
 
     models_service = ModelsService(
-        guess_config=_guess_openai_gateway_config,
-        fetch_models=_fetch_openai_models,
+        # Use dynamic lookups so tests can monkeypatch module-level helpers.
+        guess_config=lambda: _guess_openai_gateway_config(),
+        fetch_models=lambda base_url, api_key, authorization, auth_header_name, timeout_seconds: _fetch_openai_models(
+            base_url,
+            api_key,
+            authorization,
+            auth_header_name,
+            timeout_seconds,
+        ),
         cache_getter=_models_cache_getter,
         cache_setter=_models_cache_setter,
     )

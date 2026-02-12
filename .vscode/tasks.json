@@ -6,7 +6,10 @@
       "type": "shell",
       "command": "${workspaceFolder}/.venv/Scripts/python.exe -m pip install -e .[dev]; ${workspaceFolder}/.venv/Scripts/python.exe -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000",
       "options": {
-        "cwd": "${workspaceFolder}/backend"
+        "cwd": "${workspaceFolder}/backend",
+        "env": {
+          "AI_DEBUG_LLM": "true"
+        }
       },
       "isBackground": true,
       "problemMatcher": []

@@ -27,8 +27,8 @@ dist/
 backend/storage/
 backend/storage/**
 
-# Local scratch
-_tmp_image_cropper/*.jpg
+# VSCode pulgins
+.VSCodeCounter/
 
 # Misc
 .DS_Store

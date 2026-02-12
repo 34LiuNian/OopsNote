@@ -1,3 +1,5 @@
+"""Pipeline and API integration tests."""
+
 import base64
 
 from fastapi.testclient import TestClient
@@ -11,6 +13,7 @@ from app.repository import ArchiveStore
 
 
 def test_pipeline_single_problem_extraction():
+    """Runs the pipeline once and validates the single-problem flow."""
     stub_client = StubAIClient(seed=123)
     rebuilder = ProblemRebuilder()
     extractor = HandwrittenExtractor(rebuilder=rebuilder)
@@ -37,6 +40,7 @@ def test_pipeline_single_problem_extraction():
 
 
 def test_fastapi_create_and_process_task():
+    """Creates a task via API and checks completion fields."""
     client = TestClient(app)
 
     response = client.post(
@@ -57,6 +61,7 @@ def test_fastapi_create_and_process_task():
 
 
 def test_upload_endpoint_with_base64():
+    """Uploads base64 content and verifies asset metadata."""
     client = TestClient(app)
     payload = base64.b64encode(b"unit-test-image").decode()
 
@@ -78,6 +83,7 @@ def test_upload_endpoint_with_base64():
 
 
 def test_end_to_end_upload_and_fetch_flow():
+    """Exercises upload then fetch to validate persistence."""
     client = TestClient(app)
     payload = base64.b64encode(b"end-to-end-image").decode()
 
@@ -111,6 +117,7 @@ def test_end_to_end_upload_and_fetch_flow():
 
 
 def test_problems_library_endpoint_flattens_problems():
+    """Ensures the library endpoint returns flattened problems."""
     client = TestClient(app)
 
     # Create one math and one physics task so that the library view has content.

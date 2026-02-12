@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import mimetypes
 import json
-from io import BytesIO
 from dataclasses import dataclass
 import logging
 import os
@@ -66,8 +65,37 @@ class OcrExtractor:
         detection: DetectionOutput,
         asset: AssetMetadata | None = None,
         on_delta: Callable[[str], None] | None = None,
+        thinking: bool | None = None,
     ) -> list[ProblemBlock]:
-        raise RuntimeError("OCR placeholder extractor is disabled; no valid OCR output")
+        regions = detection.regions or [
+            CropRegion(id=uuid4().hex, bbox=[0.05, 0.05, 0.9, 0.9], label="full")
+        ]
+
+        problems: list[ProblemBlock] = []
+        for idx, region in enumerate(regions, start=1):
+            # Keep placeholder text stable for tests and demos.
+            problem_text = (
+                "已知直角三角形ABC中，∠C=90°，AC=3，BC=4，求AB的长度。"
+                if idx == 1
+                else f"第{idx}题：已知直角三角形ABC中，∠C=90°，AC=3，BC=4，求AB的长度。"
+            )
+
+            problems.append(
+                ProblemBlock(
+                    problem_id=uuid4().hex,
+                    region_id=region.id,
+                    question_no=payload.question_no,
+                    problem_text=problem_text,
+                    latex_blocks=[],
+                    ocr_text=problem_text,
+                    options=[],
+                    crop_image_url=None,
+                    crop_bbox=None,
+                    source=payload.notes or None,
+                )
+            )
+
+        return problems
 
 
 @dataclass
@@ -119,11 +147,11 @@ class LLMOcrExtractor:
                     )
                 except Exception:
                     pass
+
             ctx = {
                 "subject": payload.subject,
                 "grade": payload.grade or "",
                 "notes": payload.notes or "",
-                "bbox": str(region.bbox),
             }
 
             system_prompt, user_prompt = ocr_template.render(ctx)
@@ -134,28 +162,17 @@ class LLMOcrExtractor:
                 retry_system_prompt = _inject_skill(retry_system_prompt, skill_text, "chemfig")
 
             logger.info(
-                "LLM-OCR request region=%s idx=%s/%s bbox=%s model=%s mime=%s img_bytes=%s approx_chars=%s",
+                "LLM-OCR request region=%s idx=%s/%s model=%s mime=%s img_bytes=%s approx_chars=%s",
                 region.id,
                 idx,
                 len(regions),
-                region.bbox,
                 getattr(self.client, "model", None),
                 mime_type,
                 len(image_bytes),
                 len(system_prompt) + len(user_prompt),
             )
 
-            # IMPORTANT: bbox is only meaningful if we actually crop the image.
-            # Otherwise the model may extract multiple questions from the full page.
-            crop_enabled = os.getenv("AI_OCR_CROP_ENABLED", "false").lower() == "true"
-            if crop_enabled:
-                region_image_bytes, region_mime_type = _try_crop_image_bytes(
-                    image_bytes=image_bytes,
-                    mime_type=mime_type,
-                    bbox=region.bbox,
-                )
-            else:
-                region_image_bytes, region_mime_type = image_bytes, mime_type
+            region_image_bytes, region_mime_type = image_bytes, mime_type
 
             try:
                 payload_dict = self.client.structured_chat_with_image(
@@ -165,6 +182,7 @@ class LLMOcrExtractor:
                     region_mime_type,
                     response_model=OcrOutput,
                     on_delta=on_delta,
+                    thinking=thinking,
                 )
                 elapsed_ms = (time.perf_counter() - started) * 1000
                 keys = sorted([str(k) for k in payload_dict.keys()]) if isinstance(payload_dict, dict) else []
@@ -194,7 +212,6 @@ class LLMOcrExtractor:
                         "stage": "ocr",
                         "event": "request_failed",
                         "region": region.id,
-                        "bbox": getattr(region, "bbox", None),
                         "model": getattr(self.client, "model", None),
                         "error": err_msg,
                         "traceback": tb,
@@ -243,6 +260,7 @@ class LLMOcrExtractor:
                         region_mime_type,
                         response_model=OcrOutput,
                         on_delta=on_delta,
+                        thinking=thinking,
                     )
                     elapsed_ms = (time.perf_counter() - started) * 1000
                     keys = sorted([str(k) for k in payload_dict.keys()]) if isinstance(payload_dict, dict) else []
@@ -266,7 +284,6 @@ class LLMOcrExtractor:
                             "stage": "ocr",
                             "event": "retry_failed",
                             "region": region.id,
-                            "bbox": getattr(region, "bbox", None),
                             "model": getattr(self.client, "model", None),
                             "error": err_msg,
                             "traceback": tb,
@@ -347,51 +364,13 @@ class LLMOcrExtractor:
                     latex_blocks=latex_blocks,
                     ocr_text=ocr_text,
                     options=normalized_options,
-                    crop_image_url=str(getattr(asset, "path", None) or getattr(asset, "original_reference", ""))
-                    or None,
-                    crop_bbox=region.bbox,
+                    crop_image_url=None,
+                    crop_bbox=None,
                     source=payload.notes or None,
                 )
             )
 
         return problems
-
-
-def _try_crop_image_bytes(*, image_bytes: bytes, mime_type: str, bbox: list[float]) -> tuple[bytes, str]:
-    """Crop by normalized [x, y, width, height] bbox.
-
-    Returns (bytes, mime_type). On any failure, returns the original image.
-    """
-
-    try:
-        from PIL import Image
-    except Exception:
-        return image_bytes, mime_type
-
-    try:
-        with Image.open(BytesIO(image_bytes)) as img:
-            img.load()
-            w, h = img.size
-            if w <= 0 or h <= 0:
-                return image_bytes, mime_type
-            if not (isinstance(bbox, list) and len(bbox) == 4):
-                return image_bytes, mime_type
-
-            x, y, bw, bh = bbox
-            left = int(max(0, min(1, x)) * w)
-            top = int(max(0, min(1, y)) * h)
-            right = int(max(0, min(1, x + bw)) * w)
-            bottom = int(max(0, min(1, y + bh)) * h)
-            if right <= left or bottom <= top:
-                return image_bytes, mime_type
-
-            cropped = img.crop((left, top, right, bottom))
-            out = BytesIO()
-            # Use PNG to avoid format edge cases with gateways.
-            cropped.save(out, format="PNG")
-            return out.getvalue(), "image/png"
-    except Exception:
-        return image_bytes, mime_type
 
 
 @dataclass
@@ -401,6 +380,7 @@ class OcrRouter:
     base_extractor: OcrExtractor
     llm_extractor: LLMOcrExtractor
     model_resolver: object | None = None
+    thinking_resolver: Callable[[str], bool] | None = None
 
     def run(
         self,
@@ -409,6 +389,12 @@ class OcrRouter:
         asset: AssetMetadata | None = None,
         on_delta: Callable[[str], None] | None = None,
     ) -> list[ProblemBlock]:
+        thinking = None
+        if self.thinking_resolver is not None:
+            try:
+                thinking = bool(self.thinking_resolver("OCR"))
+            except Exception:
+                thinking = None
         override = None
         if self.model_resolver:
             try:
@@ -421,7 +407,7 @@ class OcrRouter:
             try:
                 original = getattr(self.llm_extractor.client, "model", None)
                 self.llm_extractor.client.model = str(override)
-                return self.llm_extractor.run(payload, detection, asset, on_delta=on_delta)
+                return self.llm_extractor.run(payload, detection, asset, on_delta=on_delta, thinking=thinking)
             finally:
                 if original is not None:
                     self.llm_extractor.client.model = original

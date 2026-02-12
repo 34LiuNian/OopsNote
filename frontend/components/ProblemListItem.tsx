@@ -56,6 +56,7 @@ export const ProblemListItem = memo(function ProblemListItem(props: {
               options={item.options}
               itemKeyPrefix={item.problem_id}
               fontSize={2}
+              showTitle={false}
             />
           </Box>
         </Link>
@@ -68,6 +69,7 @@ export const ProblemListItem = memo(function ProblemListItem(props: {
           options={item.options}
           itemKeyPrefix={item.problem_id}
           fontSize={2}
+          showTitle={false}
         />
       )}
     </Box>

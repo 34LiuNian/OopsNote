@@ -1,14 +1,17 @@
+"""Trace logging tests."""
+
+# pylint: disable=duplicate-code
+
 from __future__ import annotations
 
-import os
+from app.request_context import reset_request_id, set_request_id
+from app.trace import trace_event
 
 
 def test_trace_event_writes_jsonl(tmp_path, monkeypatch):
+    """Writes a JSONL trace entry with request context."""
     monkeypatch.setenv("AI_TRACE", "true")
     monkeypatch.setenv("AI_TRACE_DIR", str(tmp_path))
-
-    from app.request_context import set_request_id, reset_request_id
-    from app.trace import trace_event
 
     token = set_request_id("ridtest")
     try:
