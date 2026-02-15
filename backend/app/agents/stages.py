@@ -35,14 +35,18 @@ class HandwrittenExtractor:
     def __init__(self, rebuilder: "ProblemRebuilder") -> None:
         self.rebuilder = rebuilder
 
-    def run(self, payload: TaskCreateRequest) -> Tuple[DetectionOutput, List[ProblemBlock]]:
+    def run(
+        self, payload: TaskCreateRequest
+    ) -> Tuple[DetectionOutput, List[ProblemBlock]]:
         detection = _default_detection()
         problems = self.rebuilder.run(payload, detection)
         return detection, problems
 
 
 class ProblemRebuilder:
-    def run(self, payload: TaskCreateRequest, detection: DetectionOutput) -> List[ProblemBlock]:
+    def run(
+        self, payload: TaskCreateRequest, detection: DetectionOutput
+    ) -> List[ProblemBlock]:
         regions = detection.regions or [
             CropRegion(
                 id=uuid4().hex,
@@ -53,7 +57,9 @@ class ProblemRebuilder:
         problems: List[ProblemBlock] = []
         for idx, region in enumerate(regions, start=1):
             latex = (
-                r"$$ F = ma $$" if payload.subject.lower().startswith("phy") else r"$$ a^2 + b^2 = c^2 $$"
+                r"$$ F = ma $$"
+                if payload.subject.lower().startswith("phy")
+                else r"$$ a^2 + b^2 = c^2 $$"
             )
             problems.append(
                 ProblemBlock(
@@ -61,7 +67,9 @@ class ProblemRebuilder:
                     region_id=region.id,
                     question_no=payload.question_no,
                     problem_text=(
-                        "根据图示求解未知量" if payload.subject.lower().startswith("phy") else "求解直角三角形未知边"
+                        "根据图示求解未知量"
+                        if payload.subject.lower().startswith("phy")
+                        else "求解直角三角形未知边"
                     ),
                     latex_blocks=[latex],
                     media_notes="Auto rebuilt from detector results",
@@ -95,7 +103,9 @@ class SolutionWriter:
             answer, explanation = self.ai_client.generate_solution(
                 payload.subject,
                 problem,
-                on_delta=(lambda delta, p=problem: on_token(p, delta)) if on_token is not None else None,
+                on_delta=(lambda delta, p=problem: on_token(p, delta))
+                if on_token is not None
+                else None,
             )
             solved.append(
                 SolutionBlock(

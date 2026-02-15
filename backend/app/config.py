@@ -26,7 +26,9 @@ class AppConfig:
 
 
 def load_app_config() -> AppConfig:
-    running_under_pytest = ("pytest" in sys.modules) or ("PYTEST_CURRENT_TEST" in os.environ)
+    running_under_pytest = ("pytest" in sys.modules) or (
+        "PYTEST_CURRENT_TEST" in os.environ
+    )
     persist_tasks = os.getenv("PERSIST_TASKS", "true").lower() == "true"
     tasks_dir = os.getenv("TASKS_DIR")
     agent_config_path = os.getenv("AGENT_CONFIG_PATH") or os.getenv("AI_AGENT_CONFIG")
@@ -35,7 +37,9 @@ def load_app_config() -> AppConfig:
     openai_base_url = os.getenv("OPENAI_BASE_URL")
     openai_model = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
     openai_temperature = float_env("OPENAI_TEMPERATURE", 0.2)
-    openai_authorization = os.getenv("OPENAI_AUTHORIZATION") or os.getenv("OPENAI_AUTH_HEADER_VALUE")
+    openai_authorization = os.getenv("OPENAI_AUTHORIZATION") or os.getenv(
+        "OPENAI_AUTH_HEADER_VALUE"
+    )
     openai_auth_header_name = os.getenv("OPENAI_AUTH_HEADER_NAME") or "Authorization"
 
     require_gateway = os.getenv("AI_REQUIRE_GATEWAY", "false").lower() == "true"

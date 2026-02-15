@@ -79,7 +79,9 @@ def create_app() -> FastAPI:
     return app
 
 
-def _build_state() -> tuple[BackendState, ModelsService, TasksService, dict[str, object], AppConfig]:
+def _build_state() -> tuple[
+    BackendState, ModelsService, TasksService, dict[str, object], AppConfig
+]:
     config = load_app_config()
     global _APP_CONFIG
     _APP_CONFIG = config
@@ -99,12 +101,14 @@ def _build_state() -> tuple[BackendState, ModelsService, TasksService, dict[str,
     models_service = ModelsService(
         # Use dynamic lookups so tests can monkeypatch module-level helpers.
         guess_config=lambda: _guess_openai_gateway_config(),
-        fetch_models=lambda base_url, api_key, authorization, auth_header_name, timeout_seconds: _fetch_openai_models(
-            base_url,
-            api_key,
-            authorization,
-            auth_header_name,
-            timeout_seconds,
+        fetch_models=lambda base_url, api_key, authorization, auth_header_name, timeout_seconds: (
+            _fetch_openai_models(
+                base_url,
+                api_key,
+                authorization,
+                auth_header_name,
+                timeout_seconds,
+            )
         ),
         cache_getter=_models_cache_getter,
         cache_setter=_models_cache_setter,
@@ -158,6 +162,6 @@ def _fetch_openai_models(
     auth_header_name: str,
     timeout_seconds: float,
 ) -> list[dict[str, object]]:
-    return fetch_openai_models(base_url, api_key, authorization, auth_header_name, timeout_seconds)
-
-
+    return fetch_openai_models(
+        base_url, api_key, authorization, auth_header_name, timeout_seconds
+    )

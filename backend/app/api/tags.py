@@ -71,7 +71,9 @@ def list_tags(
 
     if not q:
         base = tag_store.list(dimension=dimension, limit=5000)
-        base.sort(key=lambda t: (-ref_counts.get(t.value.casefold().strip(), 0), t.value))
+        base.sort(
+            key=lambda t: (-ref_counts.get(t.value.casefold().strip(), 0), t.value)
+        )
         items = base[:lim]
     else:
         candidates = tag_store.search(dimension=dimension, query=q, limit=5000)
@@ -112,10 +114,14 @@ def list_tags(
 
 @router.post("/tags", response_model=TagsResponse, status_code=201)
 def create_tag(payload: TagCreateRequest) -> TagsResponse:
-    item, _created = tag_store.upsert(payload.dimension, payload.value, aliases=payload.aliases)
+    item, _created = tag_store.upsert(
+        payload.dimension, payload.value, aliases=payload.aliases
+    )
     from ..tags import TagItemView
 
-    return TagsResponse(items=[TagItemView(**item.model_dump(mode="json"), ref_count=0)])
+    return TagsResponse(
+        items=[TagItemView(**item.model_dump(mode="json"), ref_count=0)]
+    )
 
 
 @router.get("/settings/tag-dimensions", response_model=TagDimensionsResponse)

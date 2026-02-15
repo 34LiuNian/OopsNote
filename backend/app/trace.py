@@ -1,3 +1,5 @@
+"""Lightweight JSONL tracing utilities."""
+
 from __future__ import annotations
 
 import json
@@ -10,7 +12,10 @@ from .request_context import get_request_id
 
 
 def _is_enabled() -> bool:
-    return os.getenv("AI_TRACE", "false").lower() == "true" or os.getenv("AI_DEBUG_LLM", "false").lower() == "true"
+    return (
+        os.getenv("AI_TRACE", "false").lower() == "true"
+        or os.getenv("AI_DEBUG_LLM", "false").lower() == "true"
+    )
 
 
 def _trace_dir() -> Path:
@@ -32,7 +37,9 @@ def _truncate(value: Any) -> Any:
     if isinstance(value, str):
         max_chars = _max_chars()
         if len(value) > max_chars:
-            return value[:max_chars] + f"\n...<truncated {len(value) - max_chars} chars>"
+            return (
+                value[:max_chars] + f"\n...<truncated {len(value) - max_chars} chars>"
+            )
     return value
 
 

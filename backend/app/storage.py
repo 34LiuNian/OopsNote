@@ -1,3 +1,5 @@
+"""Local file storage utilities for assets."""
+
 from __future__ import annotations
 
 import base64
@@ -17,10 +19,18 @@ class LocalAssetStore:
     """Persists uploaded assets onto disk and tracks metadata in-memory."""
 
     def __init__(self, base_dir: Optional[Path] = None) -> None:
-        self.base_dir = base_dir or Path(__file__).resolve().parent.parent / "storage" / "assets"
+        self.base_dir = (
+            base_dir or Path(__file__).resolve().parent.parent / "storage" / "assets"
+        )
         self.base_dir.mkdir(parents=True, exist_ok=True)
 
-    def save_base64(self, data: str, mime_type: Optional[str] = None, filename: Optional[str] = None) -> AssetMetadata:
+    def save_base64(
+        self,
+        data: str,
+        mime_type: Optional[str] = None,
+        filename: Optional[str] = None,
+    ) -> AssetMetadata:
+        """Persist a base64 payload and return its metadata."""
         payload, resolved_mime = self._extract_payload(data, mime_type)
         asset_id = uuid4().hex
         extension = self._determine_extension(filename, resolved_mime)
@@ -39,7 +49,10 @@ class LocalAssetStore:
             created_at=datetime.now(timezone.utc),
         )
 
-    def register_remote(self, url: str, mime_type: Optional[str] = None) -> AssetMetadata:
+    def register_remote(
+        self, url: str, mime_type: Optional[str] = None
+    ) -> AssetMetadata:
+        """Register a remote asset without downloading it."""
         return AssetMetadata(
             asset_id=uuid4().hex,
             source=AssetSource.REMOTE,
@@ -51,7 +64,9 @@ class LocalAssetStore:
         )
 
     @staticmethod
-    def _extract_payload(data: str, fallback_mime: Optional[str]) -> tuple[str, Optional[str]]:
+    def _extract_payload(
+        data: str, fallback_mime: Optional[str]
+    ) -> tuple[str, Optional[str]]:
         match = DATA_URI_RE.match(data)
         if match:
             return match.group("data"), match.group("mime")

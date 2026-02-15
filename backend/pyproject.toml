@@ -29,3 +29,16 @@ dev = [
 [build-system]
 requires = ["setuptools>=68.0.0", "wheel"]
 build-backend = "setuptools.build_meta"
+
+[tool.pylint.messages_control]
+# Ignore docstring requirements for this codebase.
+disable = [
+  # Style/doc guidelines we don't enforce.
+  "missing-module-docstring",
+  "missing-class-docstring",
+  "missing-function-docstring",
+
+  # Allow pragmatic error handling and interface-compatible signatures.
+  "broad-exception-caught",
+  "unused-argument",
+]

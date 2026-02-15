@@ -1,3 +1,5 @@
+"""Startup hooks and environment checks."""
+
 from __future__ import annotations
 
 import json
@@ -13,7 +15,10 @@ from .gateway import collect_openai_gateway_urls, probe_openai_gateway
 logger = logging.getLogger(__name__)
 
 
-def check_ai_gateway(ai_gateway_status: dict[str, object], *, config: AppConfig) -> None:
+def check_ai_gateway(
+    ai_gateway_status: dict[str, object], *, config: AppConfig
+) -> None:
+    """Probe the configured OpenAI gateway endpoints at startup."""
     if config.running_under_pytest:
         ai_gateway_status.update({"checked": False, "skipped": "pytest"})
         return
@@ -29,7 +34,9 @@ def check_ai_gateway(ai_gateway_status: dict[str, object], *, config: AppConfig)
     any_down = False
     for label, base_url in urls:
         ok, detail = probe_openai_gateway(base_url)
-        results.append({"label": label, "base_url": base_url, "ok": ok, "detail": detail})
+        results.append(
+            {"label": label, "base_url": base_url, "ok": ok, "detail": detail}
+        )
         if not ok:
             any_down = True
 
@@ -54,12 +61,15 @@ def check_ai_gateway(ai_gateway_status: dict[str, object], *, config: AppConfig)
 
 
 def log_llm_payload_startup(config: AppConfig) -> None:
+    """Write a startup entry when LLM payload logging is enabled."""
     if not config.debug_llm_payload:
         return
     try:
         payload_log_path = config.debug_llm_payload_path
         if not payload_log_path:
-            payload_log_path = str(Path(__file__).resolve().parents[1] / "storage" / "llm_payloads.log")
+            payload_log_path = str(
+                Path(__file__).resolve().parents[1] / "storage" / "llm_payloads.log"
+            )
         startup_record = {
             "type": "startup_check",
             "ts": datetime.now(timezone.utc).isoformat(),
@@ -71,5 +81,5 @@ def log_llm_payload_startup(config: AppConfig) -> None:
             "LLM payload log enabled; test record written path=%s",
             payload_log_path,
         )
-    except Exception:
+    except Exception:  # pylint: disable=broad-exception-caught
         pass

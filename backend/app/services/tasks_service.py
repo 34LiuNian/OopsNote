@@ -13,10 +13,11 @@ from fastapi import HTTPException
 from starlette.responses import StreamingResponse
 
 from ..models import (
+    CropRegion,
     DetectionOutput,
     ProblemSummary,
     ProblemsResponse,
-    TaskResponse,
+    TaskCreateRequest,
     TaskStatus,
     TaskSummary,
     TasksResponse,
@@ -33,7 +34,9 @@ class TaskEventBroker:
 
     def __init__(self) -> None:
         self._lock = threading.Lock()
-        self._subscribers: dict[str, set[queue.Queue[tuple[str, dict[str, object]]]]] = {}
+        self._subscribers: dict[
+            str, set[queue.Queue[tuple[str, dict[str, object]]]]
+        ] = {}
 
     def subscribe(self, task_id: str) -> queue.Queue[tuple[str, dict[str, object]]]:
         q: queue.Queue[tuple[str, dict[str, object]]] = queue.Queue(maxsize=1000)
@@ -41,7 +44,9 @@ class TaskEventBroker:
             self._subscribers.setdefault(task_id, set()).add(q)
         return q
 
-    def unsubscribe(self, task_id: str, q: queue.Queue[tuple[str, dict[str, object]]]) -> None:
+    def unsubscribe(
+        self, task_id: str, q: queue.Queue[tuple[str, dict[str, object]]]
+    ) -> None:
         with self._lock:
             subs = self._subscribers.get(task_id)
             if not subs:
@@ -57,7 +62,7 @@ class TaskEventBroker:
         for q in subs:
             try:
                 q.put_nowait((event, payload))
-            except Exception:
+            except Exception:  # pylint: disable=broad-exception-caught
                 pass
 
 
@@ -78,7 +83,7 @@ def _read_text_tail(path: Path, max_chars: int) -> str:
         size = path.stat().st_size
     except FileNotFoundError:
         return ""
-    except Exception:
+    except Exception:  # pylint: disable=broad-exception-caught
         return ""
 
     max_bytes = max_chars * 4
@@ -90,7 +95,7 @@ def _read_text_tail(path: Path, max_chars: int) -> str:
             data = f.read()
         text = data.decode("utf-8", errors="ignore")
         return text[-max_chars:] if len(text) > max_chars else text
-    except Exception:
+    except Exception:  # pylint: disable=broad-exception-caught
         return ""
 
 
@@ -114,7 +119,9 @@ class TasksService:
 
         self._task_queue_maxsize = _int_env("TASK_QUEUE_MAXSIZE", 1000)
         self._task_queue: queue.Queue[str] = (
-            queue.Queue(maxsize=self._task_queue_maxsize) if self._task_queue_maxsize > 0 else queue.Queue()
+            queue.Queue(maxsize=self._task_queue_maxsize)
+            if self._task_queue_maxsize > 0
+            else queue.Queue()
         )
 
         self._workers_lock = threading.Lock()
@@ -140,13 +147,13 @@ class TasksService:
         with self._task_stream_lock:
             prev = self._task_stream_cache.get(task_id, "")
             next_text = prev + delta
-            if max_chars > 0 and len(next_text) > max_chars:
+            if 0 < max_chars < len(next_text):
                 next_text = next_text[-max_chars:]
             self._task_stream_cache[task_id] = next_text
 
             try:
                 self._task_stream_path(task_id).open("a", encoding="utf-8").write(delta)
-            except Exception:
+            except Exception:  # pylint: disable=broad-exception-caught
                 pass
 
     def _get_task_stream(self, task_id: str) -> str:
@@ -167,6 +174,7 @@ class TasksService:
             return task_id in self._task_cancelled
 
     def cancel_task(self, task_id: str):
+        """Cancel a task and mark it as failed."""
         try:
             task = self.repository.get(task_id)
         except KeyError as exc:
@@ -179,7 +187,9 @@ class TasksService:
             self._task_cancelled.add(task_id)
 
         self.repository.mark_failed(task_id, "cancelled")
-        updated = self.repository.patch_task(task_id, stage="cancelled", stage_message="已作废")
+        updated = self.repository.patch_task(
+            task_id, stage="cancelled", stage_message="已作废"
+        )
 
         try:
             self._event_broker.publish(
@@ -192,7 +202,7 @@ class TasksService:
                     "message": "已作废",
                 },
             )
-        except Exception:
+        except Exception:  # pylint: disable=broad-exception-caught
             pass
 
         return updated
@@ -215,23 +225,27 @@ class TasksService:
                 if self._is_task_cancelled(task_id):
                     try:
                         self.repository.mark_failed(task_id, "cancelled")
-                        self.repository.patch_task(task_id, stage="cancelled", stage_message="已作废")
-                    except Exception:
+                        self.repository.patch_task(
+                            task_id, stage="cancelled", stage_message="已作废"
+                        )
+                    except Exception:  # pylint: disable=broad-exception-caught
                         pass
                     continue
                 self.process_task_sync(task_id)
             except HTTPException:
                 pass
-            except Exception:
+            except Exception:  # pylint: disable=broad-exception-caught
                 import logging
 
-                logging.getLogger(__name__).exception("Unexpected worker error task_id=%s", task_id)
+                logging.getLogger(__name__).exception(
+                    "Unexpected worker error task_id=%s", task_id
+                )
             finally:
                 with self._processing_lock:
                     self._processing_inflight.discard(task_id)
                 try:
                     self._task_queue.task_done()
-                except Exception:
+                except Exception:  # pylint: disable=broad-exception-caught
                     pass
 
     def ensure_workers_started(self) -> None:
@@ -252,6 +266,7 @@ class TasksService:
                 thread.start()
 
     def start_processing_in_background(self, task_id: str) -> None:
+        """Queue a task for background processing."""
         self.ensure_workers_started()
 
         try:
@@ -272,7 +287,9 @@ class TasksService:
             raise HTTPException(status_code=429, detail="Task queue is full") from exc
 
         try:
-            self.repository.patch_task(task_id, stage="queued", stage_message="已加入队列，等待处理")
+            self.repository.patch_task(
+                task_id, stage="queued", stage_message="已加入队列，等待处理"
+            )
             task = self.repository.get(task_id)
             self._event_broker.publish(
                 task_id,
@@ -284,18 +301,20 @@ class TasksService:
                     "message": "已加入队列，等待处理",
                 },
             )
-        except Exception:
+        except Exception:  # pylint: disable=broad-exception-caught
             pass
 
     # -------------------- basic CRUD --------------------
 
     def create_task(self, payload, *, auto_process: bool = True):
+        """Create a task from payload and optionally process it."""
         task = self.repository.create(payload)
         if auto_process:
             task = self.process_task_sync(task.id)
         return task
 
     def upload_task(self, upload, *, auto_process: bool = True):
+        """Create a task from an upload and optionally process it."""
         if upload.image_base64:
             asset = self.asset_store.save_base64(
                 upload.image_base64,
@@ -305,10 +324,10 @@ class TasksService:
             derived_url = f"https://assets.local/{asset.asset_id}"
         else:
             assert upload.image_url is not None
-            asset = self.asset_store.register_remote(str(upload.image_url), upload.mime_type)
+            asset = self.asset_store.register_remote(
+                str(upload.image_url), upload.mime_type
+            )
             derived_url = str(upload.image_url)
-
-        from ..models import TaskCreateRequest
 
         payload = TaskCreateRequest(
             image_url=derived_url,
@@ -331,7 +350,14 @@ class TasksService:
             task = self.process_task_sync(task.id)
         return task
 
-    def list_tasks(self, *, status: TaskStatus | None = None, active_only: bool = False, subject: str | None = None) -> TasksResponse:
+    def list_tasks(
+        self,
+        *,
+        status: TaskStatus | None = None,
+        active_only: bool = False,
+        subject: str | None = None,
+    ) -> TasksResponse:
+        """List tasks with optional filtering by status and subject."""
         tasks = list(self.repository.list_all().values())
 
         stale_seconds = _int_env("TASK_STALE_SECONDS", 600)
@@ -350,7 +376,7 @@ class TasksService:
                             stage="failed",
                             stage_message="处理超时（可能后端重启/崩溃），请重新提交或手动重试处理",
                         )
-            except Exception:
+            except Exception:  # pylint: disable=broad-exception-caught
                 continue
 
         tasks = list(self.repository.list_all().values())
@@ -359,7 +385,11 @@ class TasksService:
             tasks = [t for t in tasks if t.payload.subject == subject]
 
         if active_only:
-            tasks = [t for t in tasks if t.status in (TaskStatus.PENDING, TaskStatus.PROCESSING)]
+            tasks = [
+                t
+                for t in tasks
+                if t.status in (TaskStatus.PENDING, TaskStatus.PROCESSING)
+            ]
         elif status is not None:
             tasks = [t for t in tasks if t.status == status]
 
@@ -381,18 +411,22 @@ class TasksService:
         return TasksResponse(items=items)
 
     def get_task(self, task_id: str):
+        """Fetch a task by id or raise 404."""
         try:
             return self.repository.get(task_id)
         except KeyError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
 
     def process_task(self, task_id: str, *, background: bool = False):
+        """Process a task in foreground or background."""
         if background:
             self.start_processing_in_background(task_id)
             return self.repository.get(task_id)
         return self.process_task_sync(task_id)
 
-    def retry_task(self, task_id: str, *, background: bool = True, clear_stream: bool = True):
+    def retry_task(
+        self, task_id: str, *, background: bool = True, clear_stream: bool = True
+    ):
         """Retry a task (failed or completed).
 
         This is a convenience wrapper around processing that also clears cancellation
@@ -415,24 +449,31 @@ class TasksService:
                 self._task_stream_cache.pop(task_id, None)
             try:
                 self._task_stream_path(task_id).unlink(missing_ok=True)
-            except Exception:
+            except Exception:  # pylint: disable=broad-exception-caught
                 pass
 
         try:
-            self.repository.patch_task(task_id, stage="retrying", stage_message="准备重试")
-        except Exception:
+            self.repository.patch_task(
+                task_id, stage="retrying", stage_message="准备重试"
+            )
+        except Exception:  # pylint: disable=broad-exception-caught
             pass
 
         return self.process_task(task_id, background=background)
 
-    def get_task_stream(self, task_id: str, *, max_chars: int = 200_000) -> dict[str, object]:
+    def get_task_stream(
+        self, task_id: str, *, max_chars: int = 200_000
+    ) -> dict[str, object]:
+        """Return the cached LLM stream for a task."""
         _ = self.get_task(task_id)
         text = self._get_task_stream(task_id)
-        if max_chars > 0 and len(text) > max_chars:
+        if 0 < max_chars < len(text):
             text = text[-max_chars:]
         return {"task_id": task_id, "text": text}
 
     def task_events(self, task_id: str) -> StreamingResponse:
+        """Stream task progress and LLM deltas via SSE."""
+
         async def gen():
             subscriber_q = self._event_broker.subscribe(task_id)
             try:
@@ -451,7 +492,10 @@ class TasksService:
                 }
                 yield f"event: progress\ndata: {json.dumps(snapshot, ensure_ascii=False)}\n\n"
 
-                stream_snapshot = {"task_id": task.id, "text": self._get_task_stream(task.id)}
+                stream_snapshot = {
+                    "task_id": task.id,
+                    "text": self._get_task_stream(task.id),
+                }
                 yield f"event: llm_snapshot\ndata: {json.dumps(stream_snapshot, ensure_ascii=False)}\n\n"
 
                 last_snapshot = snapshot
@@ -460,9 +504,11 @@ class TasksService:
 
                 while True:
                     try:
-                        event, payload = await asyncio.to_thread(subscriber_q.get, True, 0.5)
+                        event, payload = await asyncio.to_thread(
+                            subscriber_q.get, True, 0.5
+                        )
                         yield f"event: {event}\ndata: {json.dumps(payload, ensure_ascii=False)}\n\n"
-                    except Exception:
+                    except Exception:  # pylint: disable=broad-exception-caught
                         pass
 
                     now = time.monotonic()
@@ -474,14 +520,18 @@ class TasksService:
                         try:
                             task = self.repository.get(task_id)
                         except KeyError:
-                            data = json.dumps({"error": "not_found"}, ensure_ascii=False)
+                            data = json.dumps(
+                                {"error": "not_found"}, ensure_ascii=False
+                            )
                             yield f"event: error\ndata: {data}\n\n"
                             return
 
                         try:
                             stale_seconds = _int_env("TASK_STALE_SECONDS", 600)
                             if task.status == TaskStatus.PROCESSING:
-                                age = (datetime.now(timezone.utc) - task.updated_at).total_seconds()
+                                age = (
+                                    datetime.now(timezone.utc) - task.updated_at
+                                ).total_seconds()
                                 with self._processing_lock:
                                     inflight = task.id in self._processing_inflight
                                 if (not inflight) and age > stale_seconds:
@@ -492,7 +542,7 @@ class TasksService:
                                         stage="failed",
                                         stage_message="处理超时（可能后端重启/崩溃），请重新提交或手动重试处理",
                                     )
-                        except Exception:
+                        except Exception:  # pylint: disable=broad-exception-caught
                             pass
 
                         snapshot = {
@@ -520,10 +570,15 @@ class TasksService:
         for problem in task.problems:
             if problem.problem_id == problem_id:
                 return problem
-        raise HTTPException(status_code=404, detail=f"Problem {problem_id} not found in task {task.id}")
+        raise HTTPException(
+            status_code=404, detail=f"Problem {problem_id} not found in task {task.id}"
+        )
 
     def _update_problem(self, task, updated_problem) -> None:
-        task.problems = [updated_problem if p.problem_id == updated_problem.problem_id else p for p in task.problems]
+        task.problems = [
+            updated_problem if p.problem_id == updated_problem.problem_id else p
+            for p in task.problems
+        ]
 
     def _retag_single(self, task, problem, *, force: bool = False) -> None:
         if problem.locked_tags and not force:
@@ -535,13 +590,12 @@ class TasksService:
         task.tags = [t for t in task.tags if t.problem_id != problem.problem_id] + tags
 
     def rerun_ocr(self, task_id: str, problem_id: str):
+        """Re-run OCR for a single problem and retag."""
         task = self.repository.get(task_id)
         problem = self._get_problem(task, problem_id)
         extractor = self.pipeline.deps.ocr_extractor
         if extractor is None:
             raise HTTPException(status_code=400, detail="OCR extractor not configured")
-
-        from ..models import CropRegion
 
         if task.detection:
             regions = [r for r in task.detection.regions if r.id == problem.region_id]
@@ -549,7 +603,11 @@ class TasksService:
             regions = []
         if not regions:
             bbox = problem.crop_bbox or [0.05, 0.05, 0.9, 0.25]
-            regions = [CropRegion(id=problem.region_id or problem.problem_id, bbox=bbox, label="full")]
+            regions = [
+                CropRegion(
+                    id=problem.region_id or problem.problem_id, bbox=bbox, label="full"
+                )
+            ]
         detection = DetectionOutput(action="single", regions=regions)
         extracted = extractor.run(task.payload, detection, task.asset)[0]
         extracted.problem_id = problem.problem_id
@@ -557,10 +615,13 @@ class TasksService:
         extracted.locked_tags = problem.locked_tags
         self._update_problem(task, extracted)
         self._retag_single(task, extracted, force=False)
-        updated = self.repository.patch_task(task_id, problems=task.problems, tags=task.tags, detection=task.detection)
+        updated = self.repository.patch_task(
+            task_id, problems=task.problems, tags=task.tags, detection=task.detection
+        )
         return updated
 
     def retag_problem(self, task_id: str, problem_id: str, *, force: bool):
+        """Re-run tagging for a single problem."""
         task = self.repository.get(task_id)
         problem = self._get_problem(task, problem_id)
         self._retag_single(task, problem, force=force)
@@ -568,24 +629,45 @@ class TasksService:
         return updated
 
     def override_problem(self, task_id: str, problem_id: str, override):
+        """Override problem fields and optionally retag."""
         task = self.repository.get(task_id)
         problem = self._get_problem(task, problem_id)
         updates = problem.model_copy(
             update={
-                "question_no": override.question_no if override.question_no is not None else problem.question_no,
-                "question_type": override.question_type if override.question_type is not None else problem.question_type,
+                "question_no": override.question_no
+                if override.question_no is not None
+                else problem.question_no,
+                "question_type": override.question_type
+                if override.question_type is not None
+                else problem.question_type,
                 "problem_text": override.problem_text or problem.problem_text,
-                "latex_blocks": override.latex_blocks if override.latex_blocks is not None else problem.latex_blocks,
-                "options": override.options if override.options is not None else problem.options,
-                "locked_tags": override.locked_tags if override.locked_tags is not None else problem.locked_tags,
-                "source": override.source if override.source is not None else problem.source,
+                "latex_blocks": override.latex_blocks
+                if override.latex_blocks is not None
+                else problem.latex_blocks,
+                "options": override.options
+                if override.options is not None
+                else problem.options,
+                "locked_tags": override.locked_tags
+                if override.locked_tags is not None
+                else problem.locked_tags,
+                "source": override.source
+                if override.source is not None
+                else problem.source,
                 "knowledge_tags": override.knowledge_tags
                 if override.knowledge_tags is not None
                 else getattr(problem, "knowledge_tags", []),
-                "error_tags": override.error_tags if override.error_tags is not None else getattr(problem, "error_tags", []),
-                "user_tags": override.user_tags if override.user_tags is not None else getattr(problem, "user_tags", []),
-                "crop_bbox": override.crop_bbox if override.crop_bbox is not None else problem.crop_bbox,
-                "crop_image_url": override.crop_image_url if override.crop_image_url is not None else problem.crop_image_url,
+                "error_tags": override.error_tags
+                if override.error_tags is not None
+                else getattr(problem, "error_tags", []),
+                "user_tags": override.user_tags
+                if override.user_tags is not None
+                else getattr(problem, "user_tags", []),
+                "crop_bbox": override.crop_bbox
+                if override.crop_bbox is not None
+                else problem.crop_bbox,
+                "crop_image_url": override.crop_image_url
+                if override.crop_image_url is not None
+                else problem.crop_image_url,
             }
         )
         self._update_problem(task, updates)
@@ -602,64 +684,88 @@ class TasksService:
         ):
             task.tags = [t for t in task.tags if t.problem_id != problem_id]
             task.tags.append(
-                self.pipeline.deps.tagger.ai_client.classify_problem(task.payload.subject, updates)
+                self.pipeline.deps.tagger.ai_client.classify_problem(
+                    task.payload.subject, updates
+                )
                 if hasattr(self.pipeline.deps.tagger, "ai_client")
                 else self.pipeline.deps.tagger.run(task.payload, [updates], [])[-1]
             )
         elif override.retag:
             self._retag_single(task, updates, force=True)
 
-        updated = self.repository.patch_task(task_id, problems=task.problems, tags=task.tags)
+        updated = self.repository.patch_task(
+            task_id, problems=task.problems, tags=task.tags
+        )
         return updated
 
     def delete_task(self, task_id: str):
+        """Delete a completed task and its stream."""
         try:
             task = self.repository.get(task_id)
         except KeyError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
 
         if task.status in (TaskStatus.PENDING, TaskStatus.PROCESSING):
-            raise HTTPException(status_code=409, detail="Task is in progress; cancel/finish before delete")
+            raise HTTPException(
+                status_code=409,
+                detail="Task is in progress; cancel/finish before delete",
+            )
 
         try:
             self.repository.delete(task_id)
-        except Exception as exc:
+        except Exception as exc:  # pylint: disable=broad-exception-caught
             raise HTTPException(status_code=500, detail=str(exc)) from exc
 
         try:
             self._task_stream_path(task_id).unlink(missing_ok=True)
-        except Exception:
+        except Exception:  # pylint: disable=broad-exception-caught
             pass
 
         return task
 
     def delete_problem(self, task_id: str, problem_id: str):
+        """Delete a single problem and its associated outputs."""
         task = self.repository.get(task_id)
         _ = self._get_problem(task, problem_id)
 
         task.problems = [p for p in task.problems if p.problem_id != problem_id]
         task.solutions = [s for s in task.solutions if s.problem_id != problem_id]
         task.tags = [t for t in task.tags if t.problem_id != problem_id]
-        updated = self.repository.patch_task(task_id, problems=task.problems, solutions=task.solutions, tags=task.tags)
+        updated = self.repository.patch_task(
+            task_id, problems=task.problems, solutions=task.solutions, tags=task.tags
+        )
         return updated
 
     def retry_problem(self, task_id: str, problem_id: str):
+        """Re-solve and retag a single problem."""
         task = self.repository.get(task_id)
         problem = self._get_problem(task, problem_id)
         if self.pipeline.orchestrator:
-            solutions, tags = self.pipeline.orchestrator.solve_and_tag(task.payload, [problem])
+            solutions, tags = self.pipeline.orchestrator.solve_and_tag(
+                task.payload, [problem]
+            )
         else:
             solutions = self.pipeline.deps.solution_writer.run(task.payload, [problem])
             tags = self.pipeline.deps.tagger.run(task.payload, [problem], solutions)
 
-        task.solutions = [s for s in task.solutions if s.problem_id != problem_id] + solutions
+        task.solutions = [
+            s for s in task.solutions if s.problem_id != problem_id
+        ] + solutions
         task.tags = [t for t in task.tags if t.problem_id != problem_id] + tags
-        updated = self.repository.patch_task(task_id, solutions=task.solutions, tags=task.tags)
+        updated = self.repository.patch_task(
+            task_id, solutions=task.solutions, tags=task.tags
+        )
         return updated
 
     # -------------------- library view --------------------
 
-    def list_problems(self, *, subject: str | None = None, tag: str | None = None) -> ProblemsResponse:
+    def list_problems(
+        self,
+        *,
+        subject: str | None = None,
+        tag: str | None = None,
+    ) -> ProblemsResponse:  # pylint: disable=too-many-locals
+        """Return a flattened library view of problems."""
         tasks = self.repository.list_all().values()
         items: list[ProblemSummary] = []
 
@@ -676,7 +782,11 @@ class TasksService:
                 manual_knowledge = list(getattr(problem, "knowledge_tags", []) or [])
                 manual_error = list(getattr(problem, "error_tags", []) or [])
                 manual_custom = list(getattr(problem, "user_tags", []) or [])
-                ai_knowledge = list(getattr(tag_result, "knowledge_points", [])) if tag_result else []
+                ai_knowledge = (
+                    list(getattr(tag_result, "knowledge_points", []))
+                    if tag_result
+                    else []
+                )
 
                 def _merge_unique(values: list[str]) -> list[str]:
                     out: list[str] = []
@@ -721,10 +831,16 @@ class TasksService:
 
     # -------------------- pipeline execution --------------------
 
-    def process_task_sync(self, task_id: str):
+    def process_task_sync(
+        self,
+        task_id: str,
+    ):  # pylint: disable=too-many-locals,too-many-branches,too-many-statements,too-many-nested-blocks
+        """Run the full pipeline synchronously for a task."""
         if self._is_task_cancelled(task_id):
             self.repository.mark_failed(task_id, "cancelled")
-            self.repository.patch_task(task_id, stage="cancelled", stage_message="已作废")
+            self.repository.patch_task(
+                task_id, stage="cancelled", stage_message="已作废"
+            )
             return self.repository.get(task_id)
 
         self.repository.mark_processing(task_id)
@@ -783,8 +899,16 @@ class TasksService:
                 on_llm_delta=_llm_delta,
             )
 
-            manual_knowledge = [str(t).strip() for t in (task.payload.knowledge_tags or []) if str(t).strip()]
-            manual_error = [str(t).strip() for t in (task.payload.error_tags or []) if str(t).strip()]
+            manual_knowledge = [
+                str(t).strip()
+                for t in (task.payload.knowledge_tags or [])
+                if str(t).strip()
+            ]
+            manual_error = [
+                str(t).strip()
+                for t in (task.payload.error_tags or [])
+                if str(t).strip()
+            ]
             manual_source = (task.payload.source or "").strip()
 
             def _merge_unique(prefix: list[str], tail: list[str]) -> list[str]:
@@ -804,7 +928,10 @@ class TasksService:
             if manual_source:
                 result = result.model_copy(
                     update={
-                        "problems": [p.model_copy(update={"source": p.source or manual_source}) for p in result.problems]
+                        "problems": [
+                            p.model_copy(update={"source": p.source or manual_source})
+                            for p in result.problems
+                        ]
                     }
                 )
 
@@ -814,8 +941,12 @@ class TasksService:
                     patched_tags.append(
                         t.model_copy(
                             update={
-                                "knowledge_points": _merge_unique(manual_knowledge, t.knowledge_points),
-                                "error_hypothesis": _merge_unique(manual_error, t.error_hypothesis),
+                                "knowledge_points": _merge_unique(
+                                    manual_knowledge, t.knowledge_points
+                                ),
+                                "error_hypothesis": _merge_unique(
+                                    manual_error, t.error_hypothesis
+                                ),
                             }
                         )
                     )
@@ -831,14 +962,14 @@ class TasksService:
                 discovered_error: list[str] = []
                 for t in result.tags:
                     discovered_knowledge.extend(t.knowledge_points or [])
-                    for e in (t.error_hypothesis or []):
+                    for e in t.error_hypothesis or []:
                         s = str(e).strip()
                         if not s or len(s) > 40 or "\n" in s:
                             continue
                         discovered_error.append(s)
                 self.tag_store.ensure(TagDimension.KNOWLEDGE, discovered_knowledge)
                 self.tag_store.ensure(TagDimension.ERROR, discovered_error)
-            except Exception:
+            except Exception:  # pylint: disable=broad-exception-caught
                 pass
 
             updated = self.repository.save_pipeline_result(task_id, result)
@@ -857,16 +988,22 @@ class TasksService:
             return updated
         except _TaskCancelled:
             self.repository.mark_failed(task_id, "cancelled")
-            updated = self.repository.patch_task(task_id, stage="cancelled", stage_message="已作废")
+            updated = self.repository.patch_task(
+                task_id, stage="cancelled", stage_message="已作废"
+            )
             return updated
         except HTTPException:
             raise
-        except Exception as exc:
+        except Exception as exc:  # pylint: disable=broad-exception-caught
             # Persist failure state.
             self.repository.mark_failed(task_id, str(exc))
-            updated = self.repository.patch_task(task_id, stage="failed", stage_message="处理失败")
+            updated = self.repository.patch_task(
+                task_id, stage="failed", stage_message="处理失败"
+            )
             try:
-                self._append_task_stream(task_id, f'{{"stage":"failed","message":"{str(exc)}"}}')
+                self._append_task_stream(
+                    task_id, f'{{"stage":"failed","message":"{str(exc)}"}}'
+                )
                 self._event_broker.publish(
                     task_id,
                     "progress",
@@ -877,6 +1014,6 @@ class TasksService:
                         "message": str(exc),
                     },
                 )
-            except Exception:
+            except Exception:  # pylint: disable=broad-exception-caught
                 pass
             raise HTTPException(status_code=500, detail=str(exc)) from exc

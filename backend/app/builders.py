@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 from pathlib import Path
 from typing import Any
 
@@ -91,7 +90,6 @@ def build_pipeline(
         base_extractor=OcrExtractor(),
         llm_extractor=LLMOcrExtractor(ocr_client),
         model_resolver=agent_settings_service.resolve_saved_model,
-        thinking_resolver=agent_settings_service.is_agent_thinking,
     )
 
     return AgentPipeline(

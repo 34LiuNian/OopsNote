@@ -14,7 +14,13 @@ from uuid import uuid4
 
 from ..clients import AIClient
 from ..llm_schemas import OcrOutput
-from ..models import AssetMetadata, CropRegion, DetectionOutput, ProblemBlock, TaskCreateRequest
+from ..models import (
+    AssetMetadata,
+    CropRegion,
+    DetectionOutput,
+    ProblemBlock,
+    TaskCreateRequest,
+)
 from .agent_flow import PromptTemplate
 from ..llm_logging import append_llm_error_log
 
@@ -41,7 +47,9 @@ def _load_ocr_templates() -> tuple[PromptTemplate, PromptTemplate]:
 def _load_chemfig_skill() -> str:
     global _CHEMFIG_SKILL
     if _CHEMFIG_SKILL is None:
-        _CHEMFIG_SKILL = (_SKILL_DIR / "chemfig.txt").read_text(encoding="utf-8").strip()
+        _CHEMFIG_SKILL = (
+            (_SKILL_DIR / "chemfig.txt").read_text(encoding="utf-8").strip()
+        )
     return _CHEMFIG_SKILL
 
 
@@ -108,6 +116,7 @@ class LLMOcrExtractor:
         detection: DetectionOutput,
         asset: AssetMetadata | None = None,
         on_delta: Callable[[str], None] | None = None,
+        thinking: bool | None = None,
     ) -> list[ProblemBlock]:
         # If we can't access a local image file, fallback to placeholder extractor.
         if not asset or not asset.path:
@@ -118,7 +127,9 @@ class LLMOcrExtractor:
             return OcrExtractor().run(payload, detection, asset)
 
         image_bytes = image_path.read_bytes()
-        mime_type = asset.mime_type or mimetypes.guess_type(str(image_path))[0] or "image/png"
+        mime_type = (
+            asset.mime_type or mimetypes.guess_type(str(image_path))[0] or "image/png"
+        )
 
         logger.info(
             "LLM-OCR start model=%s mime=%s bytes=%s regions=%s",
@@ -141,7 +152,7 @@ class LLMOcrExtractor:
                 try:
                     on_delta(
                         (
-                            f'{{"stage":"ocr","event":"start","region":"{region.id}",' 
+                            f'{{"stage":"ocr","event":"start","region":"{region.id}",'
                             f'"idx":{idx},"count":{len(regions)}}}'
                         )
                     )
@@ -159,7 +170,9 @@ class LLMOcrExtractor:
             if _should_inject_chemfig_skill(payload):
                 skill_text = _load_chemfig_skill()
                 system_prompt = _inject_skill(system_prompt, skill_text, "chemfig")
-                retry_system_prompt = _inject_skill(retry_system_prompt, skill_text, "chemfig")
+                retry_system_prompt = _inject_skill(
+                    retry_system_prompt, skill_text, "chemfig"
+                )
 
             logger.info(
                 "LLM-OCR request region=%s idx=%s/%s model=%s mime=%s img_bytes=%s approx_chars=%s",
@@ -185,7 +198,11 @@ class LLMOcrExtractor:
                     thinking=thinking,
                 )
                 elapsed_ms = (time.perf_counter() - started) * 1000
-                keys = sorted([str(k) for k in payload_dict.keys()]) if isinstance(payload_dict, dict) else []
+                keys = (
+                    sorted([str(k) for k in payload_dict.keys()])
+                    if isinstance(payload_dict, dict)
+                    else []
+                )
                 logger.info(
                     "LLM-OCR done region=%s ms=%.1f keys=%s",
                     region.id,
@@ -196,7 +213,7 @@ class LLMOcrExtractor:
                     try:
                         on_delta(
                             (
-                                f'{{"stage":"ocr","event":"done","region":"{region.id}",' 
+                                f'{{"stage":"ocr","event":"done","region":"{region.id}",'
                                 f'"ms":{elapsed_ms:.1f},"keys":{keys}}}'
                             )
                         )
@@ -204,7 +221,11 @@ class LLMOcrExtractor:
                         pass
             except Exception as exc:
                 elapsed_ms = (time.perf_counter() - started) * 1000
-                logger.exception("LLM-OCR failed region=%s ms=%.1f; retry with reduced schema", region.id, elapsed_ms)
+                logger.exception(
+                    "LLM-OCR failed region=%s ms=%.1f; retry with reduced schema",
+                    region.id,
+                    elapsed_ms,
+                )
                 err_msg = str(exc) or exc.__class__.__name__
                 tb = traceback.format_exc()
                 append_llm_error_log(
@@ -263,7 +284,11 @@ class LLMOcrExtractor:
                         thinking=thinking,
                     )
                     elapsed_ms = (time.perf_counter() - started) * 1000
-                    keys = sorted([str(k) for k in payload_dict.keys()]) if isinstance(payload_dict, dict) else []
+                    keys = (
+                        sorted([str(k) for k in payload_dict.keys()])
+                        if isinstance(payload_dict, dict)
+                        else []
+                    )
                     logger.info(
                         "LLM-OCR retry ok region=%s ms=%.1f keys=%s",
                         region.id,
@@ -331,7 +356,9 @@ class LLMOcrExtractor:
 
             # Some models spam trailing whitespace/newlines when hitting max tokens.
             # Trim tail to prevent UI looking like it's "infinitely printing".
-            rstrip_enabled = os.getenv("AI_OCR_RSTRIP_OUTPUT", "false").lower() == "true"
+            rstrip_enabled = (
+                os.getenv("AI_OCR_RSTRIP_OUTPUT", "false").lower() == "true"
+            )
             if rstrip_enabled:
                 if isinstance(problem_text, str):
                     problem_text = problem_text.rstrip()
@@ -351,7 +378,9 @@ class LLMOcrExtractor:
                     {
                         "key": key,
                         "text": text,
-                        "latex_blocks": _coerce_str_list(getattr(item, "latex_blocks", [])),
+                        "latex_blocks": _coerce_str_list(
+                            getattr(item, "latex_blocks", [])
+                        ),
                     }
                 )
 
@@ -407,7 +436,9 @@ class OcrRouter:
             try:
                 original = getattr(self.llm_extractor.client, "model", None)
                 self.llm_extractor.client.model = str(override)
-                return self.llm_extractor.run(payload, detection, asset, on_delta=on_delta, thinking=thinking)
+                return self.llm_extractor.run(
+                    payload, detection, asset, on_delta=on_delta, thinking=thinking
+                )
             finally:
                 if original is not None:
                     self.llm_extractor.client.model = original

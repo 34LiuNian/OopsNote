@@ -1,0 +1,759 @@
+This is XeTeX, Version 3.141592653-2.6-0.999997 (TeX Live 2025) (preloaded format=xelatex 2026.2.7)  12 FEB 2026 11:21
+entering extended mode
+ restricted \write18 enabled.
+ %&-line parsing enabled.
+**test.tex
+(./test.tex
+LaTeX2e <2024-11-01> patch level 2
+L3 programming layer <2025-01-18>
+(c:/texlive/2025/texmf-dist/tex/latex/ctex/ctexart.cls
+(c:/texlive/2025/texmf-dist/tex/latex/ctex/config/ctexbackend.cfg
+File: ctexbackend.cfg 2022/07/14 v2.5.10 Backend configuration file (CTEX)
+)
+(c:/texlive/2025/texmf-dist/tex/latex/l3kernel/expl3.sty
+Package: expl3 2025-01-18 L3 programming layer (loader) 
+
+(c:/texlive/2025/texmf-dist/tex/latex/l3backend/l3backend-xetex.def
+File: l3backend-xetex.def 2024-05-08 L3 backend support: XeTeX
+\g__graphics_track_int=\count192
+\l__pdf_internal_box=\box52
+\g__pdf_backend_annotation_int=\count193
+\g__pdf_backend_link_int=\count194
+))
+Document Class: ctexart 2022/07/14 v2.5.10 Chinese adapter for class article (C
+TEX)
+(c:/texlive/2025/texmf-dist/tex/latex/ctex/ctexhook.sty
+Package: ctexhook 2022/07/14 v2.5.10 Document and package hooks (CTEX)
+)
+(c:/texlive/2025/texmf-dist/tex/latex/ctex/ctexpatch.sty
+Package: ctexpatch 2022/07/14 v2.5.10 Patching commands (CTEX)
+)
+(c:/texlive/2025/texmf-dist/tex/latex/base/fix-cm.sty
+Package: fix-cm 2020/11/24 v1.1t fixes to LaTeX
+
+(c:/texlive/2025/texmf-dist/tex/latex/base/ts1enc.def
+File: ts1enc.def 2001/06/05 v3.0e (jk/car/fm) Standard LaTeX file
+LaTeX Font Info:    Redeclaring font encoding TS1 on input line 47.
+))
+\l__ctex_tmp_int=\count195
+\l__ctex_tmp_box=\box53
+\l__ctex_tmp_dim=\dimen141
+\g__ctex_section_depth_int=\count196
+\g__ctex_font_size_int=\count197
+
+(c:/texlive/2025/texmf-dist/tex/latex/ctex/config/ctexopts.cfg
+File: ctexopts.cfg 2022/07/14 v2.5.10 Option configuration file (CTEX)
+)
+(c:/texlive/2025/texmf-dist/tex/latex/base/article.cls
+Document Class: article 2024/06/29 v1.4n Standard LaTeX document class
+(c:/texlive/2025/texmf-dist/tex/latex/base/size10.clo
+File: size10.clo 2024/06/29 v1.4n Standard LaTeX file (size option)
+)
+\c@part=\count198
+\c@section=\count199
+\c@subsection=\count266
+\c@subsubsection=\count267
+\c@paragraph=\count268
+\c@subparagraph=\count269
+\c@figure=\count270
+\c@table=\count271
+\abovecaptionskip=\skip49
+\belowcaptionskip=\skip50
+\bibindent=\dimen142
+)
+(c:/texlive/2025/texmf-dist/tex/latex/ctex/engine/ctex-engine-xetex.def
+File: ctex-engine-xetex.def 2022/07/14 v2.5.10 XeLaTeX adapter (CTEX)
+
+(c:/texlive/2025/texmf-dist/tex/xelatex/xecjk/xeCJK.sty
+Package: xeCJK 2022/08/05 v3.9.1 Typesetting CJK scripts with XeLaTeX
+
+(c:/texlive/2025/texmf-dist/tex/latex/l3packages/xtemplate/xtemplate.sty
+Package: xtemplate 2024-08-16 L3 Experimental prototype document functions
+)
+\l__xeCJK_tmp_int=\count272
+\l__xeCJK_tmp_box=\box54
+\l__xeCJK_tmp_dim=\dimen143
+\l__xeCJK_tmp_skip=\skip51
+\g__xeCJK_space_factor_int=\count273
+\l__xeCJK_begin_int=\count274
+\l__xeCJK_end_int=\count275
+\c__xeCJK_CJK_class_int=\XeTeXcharclass1
+\c__xeCJK_FullLeft_class_int=\XeTeXcharclass2
+\c__xeCJK_FullRight_class_int=\XeTeXcharclass3
+\c__xeCJK_HalfLeft_class_int=\XeTeXcharclass4
+\c__xeCJK_HalfRight_class_int=\XeTeXcharclass5
+\c__xeCJK_NormalSpace_class_int=\XeTeXcharclass6
+\c__xeCJK_CM_class_int=\XeTeXcharclass7
+\c__xeCJK_HangulJamo_class_int=\XeTeXcharclass8
+\l__xeCJK_last_skip=\skip52
+\c__xeCJK_none_node=\count276
+\g__xeCJK_node_int=\count277
+\c__xeCJK_CJK_node_dim=\dimen144
+\c__xeCJK_CJK-space_node_dim=\dimen145
+\c__xeCJK_default_node_dim=\dimen146
+\c__xeCJK_CJK-widow_node_dim=\dimen147
+\c__xeCJK_normalspace_node_dim=\dimen148
+\c__xeCJK_default-space_node_skip=\skip53
+\l__xeCJK_ccglue_skip=\skip54
+\l__xeCJK_ecglue_skip=\skip55
+\l__xeCJK_punct_kern_skip=\skip56
+\l__xeCJK_indent_box=\box55
+\l__xeCJK_last_penalty_int=\count278
+\l__xeCJK_last_bound_dim=\dimen149
+\l__xeCJK_last_kern_dim=\dimen150
+\l__xeCJK_widow_penalty_int=\count279
+
+LaTeX template Info: Declaring template type 'xeCJK/punctuation' taking 0
+(template)           argument(s) on line 2396.
+
+\l__xeCJK_fixed_punct_width_dim=\dimen151
+\l__xeCJK_mixed_punct_width_dim=\dimen152
+\l__xeCJK_middle_punct_width_dim=\dimen153
+\l__xeCJK_fixed_margin_width_dim=\dimen154
+\l__xeCJK_mixed_margin_width_dim=\dimen155
+\l__xeCJK_middle_margin_width_dim=\dimen156
+\l__xeCJK_bound_punct_width_dim=\dimen157
+\l__xeCJK_bound_margin_width_dim=\dimen158
+\l__xeCJK_margin_minimum_dim=\dimen159
+\l__xeCJK_kerning_total_width_dim=\dimen160
+\l__xeCJK_same_align_margin_dim=\dimen161
+\l__xeCJK_different_align_margin_dim=\dimen162
+\l__xeCJK_kerning_margin_width_dim=\dimen163
+\l__xeCJK_kerning_margin_minimum_dim=\dimen164
+\l__xeCJK_bound_dim=\dimen165
+\l__xeCJK_reverse_bound_dim=\dimen166
+\l__xeCJK_margin_dim=\dimen167
+\l__xeCJK_minimum_bound_dim=\dimen168
+\l__xeCJK_kerning_margin_dim=\dimen169
+\g__xeCJK_family_int=\count280
+\l__xeCJK_fam_int=\count281
+\g__xeCJK_fam_allocation_int=\count282
+\l__xeCJK_verb_case_int=\count283
+\l__xeCJK_verb_exspace_skip=\skip57
+
+(c:/texlive/2025/texmf-dist/tex/latex/fontspec/fontspec.sty
+(c:/texlive/2025/texmf-dist/tex/latex/l3packages/xparse/xparse.sty
+Package: xparse 2024-08-16 L3 Experimental document command parser
+)
+Package: fontspec 2024/05/11 v2.9e Font selection for XeLaTeX and LuaLaTeX
+
+(c:/texlive/2025/texmf-dist/tex/latex/fontspec/fontspec-xetex.sty
+Package: fontspec-xetex 2024/05/11 v2.9e Font selection for XeLaTeX and LuaLaTe
+X
+\l__fontspec_script_int=\count284
+\l__fontspec_language_int=\count285
+\l__fontspec_strnum_int=\count286
+\l__fontspec_tmp_int=\count287
+\l__fontspec_tmpa_int=\count288
+\l__fontspec_tmpb_int=\count289
+\l__fontspec_tmpc_int=\count290
+\l__fontspec_em_int=\count291
+\l__fontspec_emdef_int=\count292
+\l__fontspec_strong_int=\count293
+\l__fontspec_strongdef_int=\count294
+\l__fontspec_tmpa_dim=\dimen170
+\l__fontspec_tmpb_dim=\dimen171
+\l__fontspec_tmpc_dim=\dimen172
+
+(c:/texlive/2025/texmf-dist/tex/latex/base/fontenc.sty
+Package: fontenc 2021/04/29 v2.0v Standard LaTeX package
+)
+(c:/texlive/2025/texmf-dist/tex/latex/fontspec/fontspec.cfg)))
+(c:/texlive/2025/texmf-dist/tex/xelatex/xecjk/xeCJK.cfg
+File: xeCJK.cfg 2022/08/05 v3.9.1 Configuration file for xeCJK package
+))
+\ccwd=\dimen173
+\l__ctex_ccglue_skip=\skip58
+)
+\l__ctex_ziju_dim=\dimen174
+
+(c:/texlive/2025/texmf-dist/tex/latex/zhnumber/zhnumber.sty
+Package: zhnumber 2022/07/14 v3.0 Typesetting numbers with Chinese glyphs
+\l__zhnum_scale_int=\count295
+\l__zhnum_tmp_int=\count296
+
+(c:/texlive/2025/texmf-dist/tex/latex/zhnumber/zhnumber-utf8.cfg
+File: zhnumber-utf8.cfg 2022/07/14 v3.0 Chinese numerals with UTF8 encoding
+))
+\l__ctex_heading_skip=\skip59
+
+(c:/texlive/2025/texmf-dist/tex/latex/ctex/scheme/ctex-scheme-chinese-article.d
+ef
+File: ctex-scheme-chinese-article.def 2022/07/14 v2.5.10 Chinese scheme for art
+icle (CTEX)
+ (c:/texlive/2025/texmf-dist/tex/latex/ctex/config/ctex-name-utf8.cfg
+File: ctex-name-utf8.cfg 2022/07/14 v2.5.10 Caption with encoding UTF-8 (CTEX)
+))
+(c:/texlive/2025/texmf-dist/tex/latex/ctex/ctex-c5size.clo
+File: ctex-c5size.clo 2022/07/14 v2.5.10 c5size option (CTEX)
+)
+(c:/texlive/2025/texmf-dist/tex/latex/ctex/fontset/ctex-fontset-windows.def
+File: ctex-fontset-windows.def 2022/07/14 v2.5.10 Windows fonts definition (CTE
+X)
+
+Package fontspec Info: 
+(fontspec)             Could not resolve font "KaiTi/B" (it probably doesn't
+(fontspec)             exist).
+
+
+Package fontspec Info: 
+(fontspec)             Could not resolve font "SimHei/I" (it probably doesn't
+(fontspec)             exist).
+
+
+Package fontspec Info: 
+(fontspec)             Could not resolve font "SimSun/BI" (it probably doesn't
+(fontspec)             exist).
+
+
+Package fontspec Info: 
+(fontspec)             Font family 'SimSun(0)' created for font 'SimSun' with
+(fontspec)             options
+(fontspec)             [Script={CJK},BoldFont={SimHei},ItalicFont={KaiTi}].
+(fontspec)              
+(fontspec)              This font family consists of the following NFSS
+(fontspec)             series/shapes:
+(fontspec)              
+(fontspec)             - 'normal' (m/n) with NFSS spec.:
+(fontspec)             <->"SimSun/OT:script=hani;language=dflt;"
+(fontspec)             - 'bold' (b/n) with NFSS spec.:
+(fontspec)             <->"SimHei/OT:script=hani;language=dflt;"
+(fontspec)             - 'italic' (m/it) with NFSS spec.:
+(fontspec)             <->"KaiTi/OT:script=hani;language=dflt;"
+
+))
+(c:/texlive/2025/texmf-dist/tex/latex/ctex/config/ctex.cfg
+File: ctex.cfg 2022/07/14 v2.5.10 Configuration file (CTEX)
+)
+(c:/texlive/2025/texmf-dist/tex/latex/geometry/geometry.sty
+Package: geometry 2020/01/02 v5.9 Page Geometry
+
+(c:/texlive/2025/texmf-dist/tex/latex/graphics/keyval.sty
+Package: keyval 2022/05/29 v1.15 key=value parser (DPC)
+\KV@toks@=\toks17
+)
+(c:/texlive/2025/texmf-dist/tex/generic/iftex/ifvtex.sty
+Package: ifvtex 2019/10/25 v1.7 ifvtex legacy package. Use iftex instead.
+
+(c:/texlive/2025/texmf-dist/tex/generic/iftex/iftex.sty
+Package: iftex 2024/12/12 v1.0g TeX engine tests
+))
+\Gm@cnth=\count297
+\Gm@cntv=\count298
+\c@Gm@tempcnt=\count299
+\Gm@bindingoffset=\dimen175
+\Gm@wd@mp=\dimen176
+\Gm@odd@mp=\dimen177
+\Gm@even@mp=\dimen178
+\Gm@layoutwidth=\dimen179
+\Gm@layoutheight=\dimen180
+\Gm@layouthoffset=\dimen181
+\Gm@layoutvoffset=\dimen182
+\Gm@dimlist=\toks18
+)
+(c:/texlive/2025/texmf-dist/tex/latex/setspace/setspace.sty
+Package: setspace 2022/12/04 v6.7b set line spacing
+)
+
+Package xeCJK Warning: Redefining CJKfamily `\CJKrmdefault' (SimSun(0)).
+
+
+Package fontspec Info: 
+(fontspec)             Could not resolve font "SimSun/BI" (it probably doesn't
+(fontspec)             exist).
+
+
+Package fontspec Info: 
+(fontspec)             Could not resolve font "SimSun/B" (it probably doesn't
+(fontspec)             exist).
+
+
+Package fontspec Info: 
+(fontspec)             Could not resolve font "SimSun/I" (it probably doesn't
+(fontspec)             exist).
+
+
+Package fontspec Info: 
+(fontspec)             Font family 'SimSun(1)' created for font 'SimSun' with
+(fontspec)             options [Script={CJK}].
+(fontspec)              
+(fontspec)              This font family consists of the following NFSS
+(fontspec)             series/shapes:
+(fontspec)              
+(fontspec)             - 'normal' (m/n) with NFSS spec.:
+(fontspec)             <->"SimSun/OT:script=hani;language=dflt;"
+
+(c:/texlive/2025/texmf-dist/tex/latex/newtx/newtxtext.sty
+Package: newtxtext 2024/04/01 v1.744(Michael Sharpe) latex and unicode latex su
+pport for TeXGyreTermesX
+
+`newtxtext' v1.744, 2024/04/01 Text macros taking advantage of TeXGyre Termes a
+nd its extensions (msharpe)
+(c:/texlive/2025/texmf-dist/tex/latex/xpatch/xpatch.sty
+Package: xpatch 2020/03/25 v0.3a Extending etoolbox patching commands
+
+(c:/texlive/2025/texmf-dist/tex/latex/etoolbox/etoolbox.sty
+Package: etoolbox 2025/02/11 v2.5l e-TeX tools for LaTeX (JAW)
+\etb@tempcnta=\count300
+))
+(c:/texlive/2025/texmf-dist/tex/latex/xcolor/xcolor.sty
+Package: xcolor 2024/09/29 v3.02 LaTeX color extensions (UK)
+
+(c:/texlive/2025/texmf-dist/tex/latex/graphics-cfg/color.cfg
+File: color.cfg 2016/01/02 v1.6 sample color configuration
+)
+Package xcolor Info: Driver file: xetex.def on input line 274.
+
+(c:/texlive/2025/texmf-dist/tex/latex/graphics-def/xetex.def
+File: xetex.def 2022/09/22 v5.0n Graphics/color driver for xetex
+)
+(c:/texlive/2025/texmf-dist/tex/latex/graphics/mathcolor.ltx)
+Package xcolor Info: Model `cmy' substituted by `cmy0' on input line 1349.
+Package xcolor Info: Model `RGB' extended on input line 1365.
+Package xcolor Info: Model `HTML' substituted by `rgb' on input line 1367.
+Package xcolor Info: Model `Hsb' substituted by `hsb' on input line 1368.
+Package xcolor Info: Model `tHsb' substituted by `hsb' on input line 1369.
+Package xcolor Info: Model `HSB' substituted by `hsb' on input line 1370.
+Package xcolor Info: Model `Gray' substituted by `gray' on input line 1371.
+Package xcolor Info: Model `wave' substituted by `hsb' on input line 1372.
+)
+(c:/texlive/2025/texmf-dist/tex/latex/xkeyval/xkeyval.sty
+Package: xkeyval 2022/06/16 v2.9 package option processing (HA)
+
+(c:/texlive/2025/texmf-dist/tex/generic/xkeyval/xkeyval.tex
+(c:/texlive/2025/texmf-dist/tex/generic/xkeyval/xkvutils.tex
+\XKV@toks=\toks19
+\XKV@tempa@toks=\toks20
+)
+\XKV@depth=\count301
+File: xkeyval.tex 2014/12/03 v2.7a key=value parser (HA)
+))
+(c:/texlive/2025/texmf-dist/tex/latex/base/textcomp.sty
+Package: textcomp 2024/04/24 v2.1b Standard LaTeX package
+)
+(c:/texlive/2025/texmf-dist/tex/generic/xstring/xstring.sty
+(c:/texlive/2025/texmf-dist/tex/generic/xstring/xstring.tex
+\xs_counta=\count302
+\xs_countb=\count303
+)
+Package: xstring 2023/08/22 v1.86 String manipulations (CT)
+)
+(c:/texlive/2025/texmf-dist/tex/latex/base/ifthen.sty
+Package: ifthen 2024/03/16 v1.1e Standard LaTeX ifthen package (DPC)
+)
+(c:/texlive/2025/texmf-dist/tex/latex/carlisle/scalefnt.sty)
+LaTeX Font Info:    Setting ntxLF sub-encoding to TS1/0 on input line 24.
+LaTeX Font Info:    Setting ntxTLF sub-encoding to TS1/0 on input line 24.
+LaTeX Font Info:    Setting ntxOsF sub-encoding to TS1/0 on input line 24.
+LaTeX Font Info:    Setting ntxTOsF sub-encoding to TS1/0 on input line 24.
+
+(c:/texlive/2025/texmf-dist/tex/generic/kastrup/binhex.tex)
+\ntx@tmpcnta=\count304
+\ntx@cnt=\count305
+LaTeX Info: Redefining \oldstylenums on input line 611.
+LaTeX Info: Redefining \liningnums on input line 615.
+\tx@sixem=\dimen183
+\tx@y=\dimen184
+\tx@x=\dimen185
+\tx@tmpdima=\dimen186
+\tx@tmpdimb=\dimen187
+\tx@tmpdimc=\dimen188
+\tx@tmpdimd=\dimen189
+\tx@tmpdime=\dimen190
+\tx@tmpdimf=\dimen191
+\tx@dimA=\dimen192
+\tx@dimAA=\dimen193
+\tx@dimB=\dimen194
+\tx@dimBB=\dimen195
+\tx@dimC=\dimen196
+)
+(c:/texlive/2025/texmf-dist/tex/latex/newtx/newtxmath.sty
+Package: newtxmath 2024/09/22 v1.754
+
+`newtxmath' v1.754, 2024/09/22 Math macros based originally on txfonts (msharpe
+) (c:/texlive/2025/texmf-dist/tex/latex/amsmath/amsmath.sty
+Package: amsmath 2024/11/05 v2.17t AMS math features
+\@mathmargin=\skip60
+
+For additional information on amsmath, use the `?' option.
+(c:/texlive/2025/texmf-dist/tex/latex/amsmath/amstext.sty
+Package: amstext 2021/08/26 v2.01 AMS text
+
+(c:/texlive/2025/texmf-dist/tex/latex/amsmath/amsgen.sty
+File: amsgen.sty 1999/11/30 v2.0 generic functions
+\@emptytoks=\toks21
+\ex@=\dimen197
+))
+(c:/texlive/2025/texmf-dist/tex/latex/amsmath/amsbsy.sty
+Package: amsbsy 1999/11/29 v1.2d Bold Symbols
+\pmbraise@=\dimen198
+)
+(c:/texlive/2025/texmf-dist/tex/latex/amsmath/amsopn.sty
+Package: amsopn 2022/04/08 v2.04 operator names
+)
+\inf@bad=\count306
+LaTeX Info: Redefining \frac on input line 233.
+\uproot@=\count307
+\leftroot@=\count308
+LaTeX Info: Redefining \overline on input line 398.
+LaTeX Info: Redefining \colon on input line 409.
+\classnum@=\count309
+\DOTSCASE@=\count310
+LaTeX Info: Redefining \ldots on input line 495.
+LaTeX Info: Redefining \dots on input line 498.
+LaTeX Info: Redefining \cdots on input line 619.
+\Mathstrutbox@=\box56
+\strutbox@=\box57
+LaTeX Info: Redefining \big on input line 721.
+LaTeX Info: Redefining \Big on input line 722.
+LaTeX Info: Redefining \bigg on input line 723.
+LaTeX Info: Redefining \Bigg on input line 724.
+\big@size=\dimen199
+LaTeX Font Info:    Redeclaring font encoding OML on input line 742.
+LaTeX Font Info:    Redeclaring font encoding OMS on input line 743.
+\macc@depth=\count311
+LaTeX Info: Redefining \bmod on input line 904.
+LaTeX Info: Redefining \pmod on input line 909.
+LaTeX Info: Redefining \smash on input line 939.
+LaTeX Info: Redefining \relbar on input line 969.
+LaTeX Info: Redefining \Relbar on input line 970.
+\c@MaxMatrixCols=\count312
+\dotsspace@=\muskip17
+\c@parentequation=\count313
+\dspbrk@lvl=\count314
+\tag@help=\toks22
+\row@=\count315
+\column@=\count316
+\maxfields@=\count317
+\andhelp@=\toks23
+\eqnshift@=\dimen256
+\alignsep@=\dimen257
+\tagshift@=\dimen258
+\tagwidth@=\dimen259
+\totwidth@=\dimen260
+\lineht@=\dimen261
+\@envbody=\toks24
+\multlinegap=\skip61
+\multlinetaggap=\skip62
+\mathdisplay@stack=\toks25
+LaTeX Info: Redefining \[ on input line 2953.
+LaTeX Info: Redefining \] on input line 2954.
+)
+(c:/texlive/2025/texmf-dist/tex/latex/oberdiek/centernot.sty
+Package: centernot 2016/05/16 v1.4 Centers the not symbol horizontally (HO)
+)
+\tx@cntz=\count318
+
+(c:/texlive/2025/texmf-dist/tex/generic/kastrup/binhex.tex)
+\tx@Isdigit=\count319
+\tx@IsAlNum=\count320
+\tx@tA=\toks26
+\tx@tB=\toks27
+\tx@su=\read2
+
+amsthm NOT loaded
+LaTeX Font Info:    Redeclaring symbol font `operators' on input line 402.
+LaTeX Font Info:    Overwriting symbol font `operators' in version `normal'
+(Font)                  OT1/cmr/m/n --> OT1/minntx/m/n on input line 402.
+LaTeX Font Info:    Overwriting symbol font `operators' in version `bold'
+(Font)                  OT1/cmr/bx/n --> OT1/minntx/m/n on input line 402.
+LaTeX Font Info:    Overwriting symbol font `operators' in version `bold'
+(Font)                  OT1/minntx/m/n --> OT1/minntx/b/n on input line 403.
+LaTeX Font Info:    Redeclaring math alphabet \mathsf on input line 410.
+LaTeX Font Info:    Overwriting math alphabet `\mathsf' in version `normal'
+(Font)                  OT1/cmss/m/n --> OT1/lmss/m/n on input line 410.
+LaTeX Font Info:    Overwriting math alphabet `\mathsf' in version `bold'
+(Font)                  OT1/cmss/bx/n --> OT1/lmss/m/n on input line 410.
+LaTeX Font Info:    Overwriting math alphabet `\mathsf' in version `bold'
+(Font)                  OT1/lmss/m/n --> OT1/lmss/b/n on input line 412.
+LaTeX Font Info:    Redeclaring math alphabet \mathit on input line 419.
+LaTeX Font Info:    Overwriting math alphabet `\mathit' in version `normal'
+(Font)                  OT1/cmr/m/it --> OT1/minntx/m/it on input line 419.
+LaTeX Font Info:    Overwriting math alphabet `\mathit' in version `bold'
+(Font)                  OT1/cmr/bx/it --> OT1/minntx/m/it on input line 419.
+LaTeX Font Info:    Redeclaring math alphabet \mathtt on input line 420.
+LaTeX Font Info:    Overwriting math alphabet `\mathtt' in version `normal'
+(Font)                  OT1/cmtt/m/n --> TU/lmtt/m/n on input line 420.
+LaTeX Font Info:    Overwriting math alphabet `\mathtt' in version `bold'
+(Font)                  OT1/cmtt/m/n --> TU/lmtt/m/n on input line 420.
+LaTeX Font Info:    Redeclaring math alphabet \mathbf on input line 422.
+LaTeX Font Info:    Overwriting math alphabet `\mathbf' in version `normal'
+(Font)                  OT1/cmr/bx/n --> OT1/minntx/b/n on input line 422.
+LaTeX Font Info:    Overwriting math alphabet `\mathbf' in version `bold'
+(Font)                  OT1/cmr/bx/n --> OT1/minntx/b/n on input line 422.
+LaTeX Font Info:    Overwriting math alphabet `\mathit' in version `bold'
+(Font)                  OT1/minntx/m/it --> OT1/minntx/b/it on input line 423.
+LaTeX Font Info:    Overwriting math alphabet `\mathtt' in version `bold'
+(Font)                  TU/lmtt/m/n --> TU/lmtt/b/n on input line 426.
+LaTeX Font Info:    Redeclaring symbol font `letters' on input line 534.
+LaTeX Font Info:    Overwriting symbol font `letters' in version `normal'
+(Font)                  OML/cmm/m/it --> OML/ntxmi/m/it on input line 534.
+LaTeX Font Info:    Overwriting symbol font `letters' in version `bold'
+(Font)                  OML/cmm/b/it --> OML/ntxmi/m/it on input line 534.
+LaTeX Font Info:    Overwriting symbol font `letters' in version `bold'
+(Font)                  OML/ntxmi/m/it --> OML/ntxmi/b/it on input line 535.
+\symlettersA=\mathgroup4
+LaTeX Font Info:    Overwriting symbol font `lettersA' in version `bold'
+(Font)                  U/ntxmia/m/it --> U/ntxmia/b/it on input line 582.
+LaTeX Font Info:    Redeclaring symbol font `symbols' on input line 604.
+LaTeX Font Info:    Encoding `OMS' has changed to `LMS' for symbol font
+(Font)              `symbols' in the math version `normal' on input line 604.
+LaTeX Font Info:    Overwriting symbol font `symbols' in version `normal'
+(Font)                  OMS/cmsy/m/n --> LMS/ntxsy/m/n on input line 604.
+LaTeX Font Info:    Encoding `OMS' has changed to `LMS' for symbol font
+(Font)              `symbols' in the math version `bold' on input line 604.
+LaTeX Font Info:    Overwriting symbol font `symbols' in version `bold'
+(Font)                  OMS/cmsy/b/n --> LMS/ntxsy/m/n on input line 604.
+LaTeX Font Info:    Overwriting symbol font `symbols' in version `bold'
+(Font)                  LMS/ntxsy/m/n --> LMS/ntxsy/b/n on input line 605.
+\symAMSm=\mathgroup5
+LaTeX Font Info:    Overwriting symbol font `AMSm' in version `bold'
+(Font)                  U/ntxsym/m/n --> U/ntxsym/b/n on input line 630.
+\symsymbolsC=\mathgroup6
+LaTeX Font Info:    Overwriting symbol font `symbolsC' in version `bold'
+(Font)                  U/ntxsyc/m/n --> U/ntxsyc/b/n on input line 651.
+LaTeX Font Info:    Redeclaring symbol font `largesymbols' on input line 664.
+LaTeX Font Info:    Encoding `OMX' has changed to `LMX' for symbol font
+(Font)              `largesymbols' in the math version `normal' on input line 6
+64.
+LaTeX Font Info:    Overwriting symbol font `largesymbols' in version `normal'
+(Font)                  OMX/cmex/m/n --> LMX/ntxexx/m/n on input line 664.
+LaTeX Font Info:    Encoding `OMX' has changed to `LMX' for symbol font
+(Font)              `largesymbols' in the math version `bold' on input line 664
+.
+LaTeX Font Info:    Overwriting symbol font `largesymbols' in version `bold'
+(Font)                  OMX/cmex/m/n --> LMX/ntxexx/m/n on input line 664.
+LaTeX Font Info:    Overwriting symbol font `largesymbols' in version `bold'
+(Font)                  LMX/ntxexx/m/n --> LMX/ntxexx/b/n on input line 665.
+\symlargesymbolsTXA=\mathgroup7
+LaTeX Font Info:    Overwriting symbol font `largesymbolsTXA' in version `bold'
+
+(Font)                  U/ntxexa/m/n --> U/ntxexa/b/n on input line 679.
+\tx@sbptoks=\toks28
+LaTeX Font Info:    Redeclaring math delimiter \lfloor on input line 902.
+LaTeX Font Info:    Redeclaring math delimiter \rfloor on input line 903.
+LaTeX Font Info:    Redeclaring math delimiter \lceil on input line 904.
+LaTeX Font Info:    Redeclaring math delimiter \rceil on input line 905.
+LaTeX Font Info:    Redeclaring math delimiter \lbrace on input line 910.
+LaTeX Font Info:    Redeclaring math delimiter \rbrace on input line 911.
+LaTeX Font Info:    Redeclaring math delimiter \langle on input line 913.
+LaTeX Font Info:    Redeclaring math delimiter \rangle on input line 915.
+LaTeX Font Info:    Redeclaring math delimiter \arrowvert on input line 919.
+LaTeX Font Info:    Redeclaring math delimiter \vert on input line 920.
+LaTeX Font Info:    Redeclaring math symbol \hbar on input line 966.
+LaTeX Font Info:    Redeclaring math accent \dot on input line 991.
+LaTeX Font Info:    Redeclaring math accent \ddot on input line 992.
+LaTeX Font Info:    Redeclaring math accent \vec on input line 2057.
+LaTeX Info: Redefining \Bbbk on input line 2847.
+LaTeX Info: Redefining \not on input line 2995.
+) (c:/texlive/2025/texmf-dist/tex/latex/amsfonts/amssymb.sty
+Package: amssymb 2013/01/14 v3.01 AMS font symbols
+
+(c:/texlive/2025/texmf-dist/tex/latex/amsfonts/amsfonts.sty
+Package: amsfonts 2013/01/14 v3.01 Basic AMSFonts support
+\symAMSa=\mathgroup8
+\symAMSb=\mathgroup9
+LaTeX Font Info:    Redeclaring math delimiter \ulcorner on input line 74.
+LaTeX Font Info:    Redeclaring math delimiter \urcorner on input line 75.
+LaTeX Font Info:    Redeclaring math delimiter \llcorner on input line 76.
+LaTeX Font Info:    Redeclaring math delimiter \lrcorner on input line 77.
+LaTeX Font Info:    Redeclaring math symbol \square on input line 141.
+LaTeX Font Info:    Redeclaring math symbol \lozenge on input line 142.
+)
+LaTeX Font Info:    Redeclaring math symbol \boxdot on input line 44.
+LaTeX Font Info:    Redeclaring math symbol \boxplus on input line 45.
+LaTeX Font Info:    Redeclaring math symbol \boxtimes on input line 46.
+LaTeX Font Info:    Redeclaring math symbol \blacksquare on input line 48.
+LaTeX Font Info:    Redeclaring math symbol \centerdot on input line 49.
+LaTeX Font Info:    Redeclaring math symbol \blacklozenge on input line 51.
+LaTeX Font Info:    Redeclaring math symbol \circlearrowright on input line 52.
+
+LaTeX Font Info:    Redeclaring math symbol \circlearrowleft on input line 53.
+LaTeX Font Info:    Redeclaring math symbol \leftrightharpoons on input line 56
+.
+LaTeX Font Info:    Redeclaring math symbol \boxminus on input line 57.
+LaTeX Font Info:    Redeclaring math symbol \Vdash on input line 58.
+LaTeX Font Info:    Redeclaring math symbol \Vvdash on input line 59.
+LaTeX Font Info:    Redeclaring math symbol \vDash on input line 60.
+LaTeX Font Info:    Redeclaring math symbol \twoheadrightarrow on input line 61
+.
+LaTeX Font Info:    Redeclaring math symbol \twoheadleftarrow on input line 62.
+
+LaTeX Font Info:    Redeclaring math symbol \leftleftarrows on input line 63.
+LaTeX Font Info:    Redeclaring math symbol \rightrightarrows on input line 64.
+
+LaTeX Font Info:    Redeclaring math symbol \upuparrows on input line 65.
+LaTeX Font Info:    Redeclaring math symbol \downdownarrows on input line 66.
+LaTeX Font Info:    Redeclaring math symbol \upharpoonright on input line 67.
+LaTeX Font Info:    Redeclaring math symbol \downharpoonright on input line 69.
+
+LaTeX Font Info:    Redeclaring math symbol \upharpoonleft on input line 70.
+LaTeX Font Info:    Redeclaring math symbol \downharpoonleft on input line 71.
+LaTeX Font Info:    Redeclaring math symbol \rightarrowtail on input line 72.
+LaTeX Font Info:    Redeclaring math symbol \leftarrowtail on input line 73.
+LaTeX Font Info:    Redeclaring math symbol \leftrightarrows on input line 74.
+LaTeX Font Info:    Redeclaring math symbol \rightleftarrows on input line 75.
+LaTeX Font Info:    Redeclaring math symbol \Lsh on input line 76.
+LaTeX Font Info:    Redeclaring math symbol \Rsh on input line 77.
+LaTeX Font Info:    Redeclaring math symbol \leftrightsquigarrow on input line 
+79.
+LaTeX Font Info:    Redeclaring math symbol \looparrowleft on input line 80.
+LaTeX Font Info:    Redeclaring math symbol \looparrowright on input line 81.
+LaTeX Font Info:    Redeclaring math symbol \circeq on input line 82.
+LaTeX Font Info:    Redeclaring math symbol \succsim on input line 83.
+LaTeX Font Info:    Redeclaring math symbol \gtrsim on input line 84.
+LaTeX Font Info:    Redeclaring math symbol \gtrapprox on input line 85.
+LaTeX Font Info:    Redeclaring math symbol \multimap on input line 86.
+LaTeX Font Info:    Redeclaring math symbol \therefore on input line 87.
+LaTeX Font Info:    Redeclaring math symbol \because on input line 88.
+LaTeX Font Info:    Redeclaring math symbol \doteqdot on input line 89.
+LaTeX Font Info:    Redeclaring math symbol \triangleq on input line 91.
+LaTeX Font Info:    Redeclaring math symbol \precsim on input line 92.
+LaTeX Font Info:    Redeclaring math symbol \lesssim on input line 93.
+LaTeX Font Info:    Redeclaring math symbol \lessapprox on input line 94.
+LaTeX Font Info:    Redeclaring math symbol \eqslantless on input line 95.
+LaTeX Font Info:    Redeclaring math symbol \eqslantgtr on input line 96.
+LaTeX Font Info:    Redeclaring math symbol \curlyeqprec on input line 97.
+LaTeX Font Info:    Redeclaring math symbol \curlyeqsucc on input line 98.
+LaTeX Font Info:    Redeclaring math symbol \preccurlyeq on input line 99.
+LaTeX Font Info:    Redeclaring math symbol \leqq on input line 100.
+LaTeX Font Info:    Redeclaring math symbol \leqslant on input line 101.
+LaTeX Font Info:    Redeclaring math symbol \lessgtr on input line 102.
+LaTeX Font Info:    Redeclaring math symbol \backprime on input line 103.
+LaTeX Font Info:    Redeclaring math symbol \risingdotseq on input line 104.
+LaTeX Font Info:    Redeclaring math symbol \fallingdotseq on input line 105.
+LaTeX Font Info:    Redeclaring math symbol \succcurlyeq on input line 106.
+LaTeX Font Info:    Redeclaring math symbol \geqq on input line 107.
+LaTeX Font Info:    Redeclaring math symbol \geqslant on input line 108.
+LaTeX Font Info:    Redeclaring math symbol \gtrless on input line 109.
+LaTeX Font Info:    Redeclaring math symbol \bigstar on input line 117.
+LaTeX Font Info:    Redeclaring math symbol \between on input line 118.
+LaTeX Font Info:    Redeclaring math symbol \blacktriangledown on input line 11
+9.
+LaTeX Font Info:    Redeclaring math symbol \blacktriangleright on input line 1
+20.
+LaTeX Font Info:    Redeclaring math symbol \blacktriangleleft on input line 12
+1.
+LaTeX Font Info:    Redeclaring math symbol \vartriangle on input line 122.
+LaTeX Font Info:    Redeclaring math symbol \blacktriangle on input line 123.
+LaTeX Font Info:    Redeclaring math symbol \triangledown on input line 124.
+LaTeX Font Info:    Redeclaring math symbol \eqcirc on input line 125.
+LaTeX Font Info:    Redeclaring math symbol \lesseqgtr on input line 126.
+LaTeX Font Info:    Redeclaring math symbol \gtreqless on input line 127.
+LaTeX Font Info:    Redeclaring math symbol \lesseqqgtr on input line 128.
+LaTeX Font Info:    Redeclaring math symbol \gtreqqless on input line 129.
+LaTeX Font Info:    Redeclaring math symbol \Rrightarrow on input line 130.
+LaTeX Font Info:    Redeclaring math symbol \Lleftarrow on input line 131.
+LaTeX Font Info:    Redeclaring math symbol \veebar on input line 132.
+LaTeX Font Info:    Redeclaring math symbol \barwedge on input line 133.
+LaTeX Font Info:    Redeclaring math symbol \doublebarwedge on input line 134.
+LaTeX Font Info:    Redeclaring math symbol \measuredangle on input line 137.
+LaTeX Font Info:    Redeclaring math symbol \sphericalangle on input line 138.
+LaTeX Font Info:    Redeclaring math symbol \varpropto on input line 139.
+LaTeX Font Info:    Redeclaring math symbol \smallsmile on input line 140.
+LaTeX Font Info:    Redeclaring math symbol \smallfrown on input line 141.
+LaTeX Font Info:    Redeclaring math symbol \Subset on input line 142.
+LaTeX Font Info:    Redeclaring math symbol \Supset on input line 143.
+LaTeX Font Info:    Redeclaring math symbol \Cup on input line 144.
+LaTeX Font Info:    Redeclaring math symbol \Cap on input line 146.
+LaTeX Font Info:    Redeclaring math symbol \curlywedge on input line 148.
+LaTeX Font Info:    Redeclaring math symbol \curlyvee on input line 149.
+LaTeX Font Info:    Redeclaring math symbol \leftthreetimes on input line 150.
+LaTeX Font Info:    Redeclaring math symbol \rightthreetimes on input line 151.
+
+LaTeX Font Info:    Redeclaring math symbol \subseteqq on input line 152.
+LaTeX Font Info:    Redeclaring math symbol \supseteqq on input line 153.
+LaTeX Font Info:    Redeclaring math symbol \bumpeq on input line 154.
+LaTeX Font Info:    Redeclaring math symbol \Bumpeq on input line 155.
+LaTeX Font Info:    Redeclaring math symbol \lll on input line 156.
+LaTeX Font Info:    Redeclaring math symbol \ggg on input line 158.
+LaTeX Font Info:    Redeclaring math symbol \circledS on input line 160.
+LaTeX Font Info:    Redeclaring math symbol \pitchfork on input line 161.
+LaTeX Font Info:    Redeclaring math symbol \dotplus on input line 162.
+LaTeX Font Info:    Redeclaring math symbol \backsim on input line 163.
+LaTeX Font Info:    Redeclaring math symbol \backsimeq on input line 164.
+LaTeX Font Info:    Redeclaring math symbol \complement on input line 165.
+LaTeX Font Info:    Redeclaring math symbol \intercal on input line 166.
+LaTeX Font Info:    Redeclaring math symbol \circledcirc on input line 167.
+LaTeX Font Info:    Redeclaring math symbol \circledast on input line 168.
+LaTeX Font Info:    Redeclaring math symbol \circleddash on input line 169.
+LaTeX Font Info:    Redeclaring math symbol \lvertneqq on input line 171.
+LaTeX Font Info:    Redeclaring math symbol \gvertneqq on input line 172.
+LaTeX Font Info:    Redeclaring math symbol \nleq on input line 173.
+LaTeX Font Info:    Redeclaring math symbol \ngeq on input line 174.
+LaTeX Font Info:    Redeclaring math symbol \nless on input line 175.
+LaTeX Font Info:    Redeclaring math symbol \ngtr on input line 176.
+LaTeX Font Info:    Redeclaring math symbol \nprec on input line 177.
+LaTeX Font Info:    Redeclaring math symbol \nsucc on input line 178.
+LaTeX Font Info:    Redeclaring math symbol \lneqq on input line 179.
+LaTeX Font Info:    Redeclaring math symbol \gneqq on input line 180.
+LaTeX Font Info:    Redeclaring math symbol \nleqslant on input line 181.
+LaTeX Font Info:    Redeclaring math symbol \ngeqslant on input line 182.
+LaTeX Font Info:    Redeclaring math symbol \lneq on input line 183.
+LaTeX Font Info:    Redeclaring math symbol \gneq on input line 184.
+LaTeX Font Info:    Redeclaring math symbol \npreceq on input line 185.
+LaTeX Font Info:    Redeclaring math symbol \nsucceq on input line 186.
+LaTeX Font Info:    Redeclaring math symbol \precnsim on input line 187.
+LaTeX Font Info:    Redeclaring math symbol \succnsim on input line 188.
+LaTeX Font Info:    Redeclaring math symbol \lnsim on input line 189.
+LaTeX Font Info:    Redeclaring math symbol \gnsim on input line 190.
+LaTeX Font Info:    Redeclaring math symbol \nleqq on input line 191.
+LaTeX Font Info:    Redeclaring math symbol \ngeqq on input line 192.
+LaTeX Font Info:    Redeclaring math symbol \precneqq on input line 193.
+LaTeX Font Info:    Redeclaring math symbol \succneqq on input line 194.
+LaTeX Font Info:    Redeclaring math symbol \precnapprox on input line 195.
+LaTeX Font Info:    Redeclaring math symbol \succnapprox on input line 196.
+LaTeX Font Info:    Redeclaring math symbol \lnapprox on input line 197.
+LaTeX Font Info:    Redeclaring math symbol \gnapprox on input line 198.
+LaTeX Font Info:    Redeclaring math symbol \nsim on input line 199.
+LaTeX Font Info:    Redeclaring math symbol \ncong on input line 200.
+LaTeX Font Info:    Redeclaring math symbol \diagup on input line 201.
+LaTeX Font Info:    Redeclaring math symbol \diagdown on input line 202.
+LaTeX Font Info:    Redeclaring math symbol \varsubsetneq on input line 203.
+LaTeX Font Info:    Redeclaring math symbol \varsupsetneq on input line 204.
+LaTeX Font Info:    Redeclaring math symbol \nsubseteqq on input line 205.
+LaTeX Font Info:    Redeclaring math symbol \nsupseteqq on input line 206.
+LaTeX Font Info:    Redeclaring math symbol \subsetneqq on input line 207.
+LaTeX Font Info:    Redeclaring math symbol \supsetneqq on input line 208.
+LaTeX Font Info:    Redeclaring math symbol \varsubsetneqq on input line 209.
+LaTeX Font Info:    Redeclaring math symbol \varsupsetneqq on input line 210.
+LaTeX Font Info:    Redeclaring math symbol \subsetneq on input line 211.
+LaTeX Font Info:    Redeclaring math symbol \supsetneq on input line 212.
+LaTeX Font Info:    Redeclaring math symbol \nsubseteq on input line 213.
+LaTeX Font Info:    Redeclaring math symbol \nsupseteq on input line 214.
+LaTeX Font Info:    Redeclaring math symbol \nparallel on input line 215.
+LaTeX Font Info:    Redeclaring math symbol \nmid on input line 216.
+LaTeX Font Info:    Redeclaring math symbol \nshortmid on input line 217.
+LaTeX Font Info:    Redeclaring math symbol \nshortparallel on input line 218.
+LaTeX Font Info:    Redeclaring math symbol \nvdash on input line 219.
+LaTeX Font Info:    Redeclaring math symbol \nVdash on input line 220.
+LaTeX Font Info:    Redeclaring math symbol \nvDash on input line 221.
+LaTeX Font Info:    Redeclaring math symbol \nVDash on input line 222.
+LaTeX Font Info:    Redeclaring math symbol \ntrianglerighteq on input line 223
+.
+LaTeX Font Info:    Redeclaring math symbol \ntrianglelefteq on input line 224.
+
+LaTeX Font Info:    Redeclaring math symbol \ntriangleleft on input line 225.
+LaTeX Font Info:    Redeclaring math symbol \ntriangleright on input line 226.
+LaTeX Font Info:    Redeclaring math symbol \nleftarrow on input line 227.
+LaTeX Font Info:    Redeclaring math symbol \nrightarrow on input line 228.
+LaTeX Font Info:    Redeclaring math symbol \nLeftarrow on input line 229.
+LaTeX Font Info:    Redeclaring math symbol \nRightarrow on input line 230.
+LaTeX Font Info:    Redeclaring math symbol \nLeftrightarrow on input line 231.
+
+LaTeX Font Info:    Redeclaring math symbol \nleftrightarrow on input line 232.
+
+LaTeX Font Info:    Redeclaring math symbol \divideontimes on input line 233.
+LaTeX Font Info:    Redeclaring math symbol \varnothing on input line 234.
+LaTeX Font Info:    Redeclaring math symbol \nexists on input line 235.
+LaTeX Font Info:    Redeclaring math symbol \Finv on input line 236.
+LaTeX Font Info:    Redeclaring math symbol \Game on input line 237.
+LaTeX Font Info:    Redeclaring math symbol \eth on input line 240.
+LaTeX Font Info:    Redeclaring math symbol \eqsim on input line 241.
+LaTeX Font Info:    Redeclaring math symbol \beth on input line 242.
+LaTeX Font Info:    Redeclaring math symbol \gimel on input line 243.
+LaTeX Font Info:    Redeclaring math symbol \daleth on input line 244.
+LaTeX Font Info:    Redeclaring math symbol \lessdot on input line 245.
+LaTeX Font Info:    Redeclaring math symbol \gtrdot on input line 246.
+LaTeX Font Info:    Redeclaring math symbol \ltimes on input line 247.
+LaTeX Font I

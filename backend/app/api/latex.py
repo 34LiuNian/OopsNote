@@ -39,9 +39,7 @@ def _latex_template(content: str, title: Optional[str], author: Optional[str]) -
         "\\date{\\today}\n"
         "\\begin{document}\n"
         "\\maketitle\n"
-        "\\thispagestyle{plain}\n"
-        + content
-        + "\n\\end{document}\n"
+        "\\thispagestyle{plain}\n" + content + "\n\\end{document}\n"
     )
 
 
@@ -66,9 +64,7 @@ def _chemfig_template(content: str, inline: bool) -> str:
         "\\documentclass[12pt]{standalone}\n"
         "\\usepackage{chemfig}\n"
         "\\usepackage{amsmath,amssymb}\n"
-        "\\begin{document}\n"
-        + body
-        + "\n\\end{document}\n"
+        "\\begin{document}\n" + body + "\n\\end{document}\n"
     )
 
 
@@ -303,7 +299,13 @@ def render_chemfig(payload: ChemfigRenderRequest) -> Response:
                 svg_stderr = _read_text_tail(svg_result.stderr or "")
                 combined_log = "\n".join(
                     part
-                    for part in [log_tail, "[dvisvgm stdout]", svg_stdout, "[dvisvgm stderr]", svg_stderr]
+                    for part in [
+                        log_tail,
+                        "[dvisvgm stdout]",
+                        svg_stdout,
+                        "[dvisvgm stderr]",
+                        svg_stderr,
+                    ]
                     if part
                 )
                 raise HTTPException(

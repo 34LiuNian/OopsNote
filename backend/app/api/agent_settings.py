@@ -26,7 +26,9 @@ def get_agent_models(request: Request) -> AgentModelsResponse:
 
 
 @router.put("/settings/agent-models", response_model=AgentModelsResponse)
-def update_agent_models(request: Request, payload: AgentModelsUpdateRequest) -> AgentModelsResponse:
+def update_agent_models(
+    request: Request, payload: AgentModelsUpdateRequest
+) -> AgentModelsResponse:
     svc = _service(request)
     saved = svc.save_models(payload.models)
     return AgentModelsResponse(models=saved)
@@ -39,7 +41,9 @@ def get_agent_enabled(request: Request) -> AgentEnabledResponse:
 
 
 @router.put("/settings/agent-enabled", response_model=AgentEnabledResponse)
-def update_agent_enabled(request: Request, payload: AgentEnabledUpdateRequest) -> AgentEnabledResponse:
+def update_agent_enabled(
+    request: Request, payload: AgentEnabledUpdateRequest
+) -> AgentEnabledResponse:
     svc = _service(request)
     saved = svc.save_enabled(payload.enabled)
     return AgentEnabledResponse(enabled=saved)
@@ -52,7 +56,9 @@ def get_agent_thinking(request: Request) -> AgentThinkingResponse:
 
 
 @router.put("/settings/agent-thinking", response_model=AgentThinkingResponse)
-def update_agent_thinking(request: Request, payload: AgentThinkingUpdateRequest) -> AgentThinkingResponse:
+def update_agent_thinking(
+    request: Request, payload: AgentThinkingUpdateRequest
+) -> AgentThinkingResponse:
     svc = _service(request)
     saved = svc.save_thinking(payload.thinking)
     return AgentThinkingResponse(thinking=saved)

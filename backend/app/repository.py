@@ -22,7 +22,9 @@ class InMemoryTaskRepository:
     def __init__(self) -> None:
         self._tasks: Dict[str, TaskRecord] = {}
 
-    def create(self, payload: TaskCreateRequest, asset: AssetMetadata | None = None) -> TaskRecord:
+    def create(
+        self, payload: TaskCreateRequest, asset: AssetMetadata | None = None
+    ) -> TaskRecord:
         task_id = uuid4().hex
         now = datetime.now(timezone.utc)
         record = TaskRecord(
@@ -121,7 +123,9 @@ class FileTaskRepository:
     """
 
     def __init__(self, base_dir: Path | None = None) -> None:
-        self.base_dir = base_dir or (Path(__file__).resolve().parents[1] / "storage" / "tasks")
+        self.base_dir = base_dir or (
+            Path(__file__).resolve().parents[1] / "storage" / "tasks"
+        )
         self.base_dir.mkdir(parents=True, exist_ok=True)
         self._tasks: Dict[str, TaskRecord] = {}
         self._load_all()
@@ -133,7 +137,9 @@ class FileTaskRepository:
         path = self._task_path(record.id)
         tmp = path.with_suffix(".json.tmp")
         payload = record.model_dump(mode="json")
-        tmp.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+        tmp.write_text(
+            json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8"
+        )
         tmp.replace(path)
 
     def _load_all(self) -> None:
@@ -146,7 +152,9 @@ class FileTaskRepository:
                 # Ignore corrupted/partial files; they can be repaired manually.
                 continue
 
-    def create(self, payload: TaskCreateRequest, asset: AssetMetadata | None = None) -> TaskRecord:
+    def create(
+        self, payload: TaskCreateRequest, asset: AssetMetadata | None = None
+    ) -> TaskRecord:
         task_id = uuid4().hex
         now = datetime.now(timezone.utc)
         record = TaskRecord(

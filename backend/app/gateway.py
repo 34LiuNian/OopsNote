@@ -10,7 +10,9 @@ from typing import Any
 from fastapi import HTTPException
 
 
-def probe_openai_gateway(base_url: str, timeout_seconds: float = 1.2) -> tuple[bool, str]:
+def probe_openai_gateway(
+    base_url: str, timeout_seconds: float = 1.2
+) -> tuple[bool, str]:
     """Best-effort reachability probe.
 
     Treat any HTTP response (including 401/403/404) as "reachable".
@@ -18,7 +20,9 @@ def probe_openai_gateway(base_url: str, timeout_seconds: float = 1.2) -> tuple[b
     """
 
     url = base_url.rstrip("/") + "/models"
-    request = urllib.request.Request(url, headers={"Content-Type": "application/json"}, method="GET")
+    request = urllib.request.Request(
+        url, headers={"Content-Type": "application/json"}, method="GET"
+    )
     try:
         with urllib.request.urlopen(request, timeout=timeout_seconds) as response:
             return True, f"http_{response.status}"
@@ -28,7 +32,9 @@ def probe_openai_gateway(base_url: str, timeout_seconds: float = 1.2) -> tuple[b
         return False, f"{type(exc).__name__}: {exc}"
 
 
-def collect_openai_gateway_urls(config: AppConfig, agent_config_bundle: Any) -> list[tuple[str, str]]:
+def collect_openai_gateway_urls(
+    config: AppConfig, agent_config_bundle: Any
+) -> list[tuple[str, str]]:
     """Collect configured OpenAI-compatible base URLs from env + agent config.
 
     Returns a list of (label, base_url).
@@ -106,7 +112,11 @@ def guess_openai_gateway_config(
 
     if authorization and not api_key:
         prefix = "Bearer "
-        api_key = authorization[len(prefix) :].strip() if authorization.startswith(prefix) else authorization.strip()
+        api_key = (
+            authorization[len(prefix) :].strip()
+            if authorization.startswith(prefix)
+            else authorization.strip()
+        )
 
     return base_url, api_key, authorization, auth_header_name
 
@@ -140,7 +150,9 @@ def fetch_openai_models(
         body = exc.read().decode("utf-8", errors="ignore") if exc.fp else ""
         raise HTTPException(status_code=exc.code, detail=body or str(exc)) from exc
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"Failed to reach gateway: {exc}") from exc
+        raise HTTPException(
+            status_code=502, detail=f"Failed to reach gateway: {exc}"
+        ) from exc
 
     payload = json.loads(body)
     data = payload.get("data", []) if isinstance(payload, dict) else []

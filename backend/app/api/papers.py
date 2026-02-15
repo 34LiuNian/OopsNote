@@ -56,7 +56,7 @@ def _norm_question_type(raw: Optional[str], has_choices: bool) -> str:
 
 
 def _normalize_text(raw: str) -> str:
-    text = (raw or "")
+    text = raw or ""
     text = _convert_chemfig_markdown(text)
     text = text.replace("\\n", "\n")
     text = text.replace("\\r", "\r")
@@ -140,8 +140,18 @@ def _convert_chemfig_markdown(text: str) -> str:
             code = code.lstrip()[len("chemfig") :].lstrip()
         return f"\\chemfig{{{code}}}"
 
-    text = re.sub(r"```chemfig\s*([\s\S]*?)```", lambda m: normalize_content(m.group(1)), text, flags=re.IGNORECASE)
-    text = re.sub(r"`\s*chemfig\s+([^`]+)`", lambda m: normalize_content(m.group(1)), text, flags=re.IGNORECASE)
+    text = re.sub(
+        r"```chemfig\s*([\s\S]*?)```",
+        lambda m: normalize_content(m.group(1)),
+        text,
+        flags=re.IGNORECASE,
+    )
+    text = re.sub(
+        r"`\s*chemfig\s+([^`]+)`",
+        lambda m: normalize_content(m.group(1)),
+        text,
+        flags=re.IGNORECASE,
+    )
     return text
 
 
@@ -184,7 +194,9 @@ def _paper_template(
     sections: list[tuple[str, list[str]]],
 ) -> str:
     template = _load_paper_template()
-    sections_text = "\n".join(_render_section(sec_title, blocks) for sec_title, blocks in sections if blocks)
+    sections_text = "\n".join(
+        _render_section(sec_title, blocks) for sec_title, blocks in sections if blocks
+    )
     return (
         template.replace("{{TITLE}}", title)
         .replace("{{SUBTITLE}}", subtitle or "")
@@ -198,10 +210,14 @@ def compile_paper(request: Request, payload: PaperCompileRequest) -> Response:
     state = getattr(request.app.state, "oops", None)
     svc = getattr(state, "tasks", None)
     if svc is None:
-        raise HTTPException(status_code=500, detail={"message": "任务服务不可用。", "log": ""})
+        raise HTTPException(
+            status_code=500, detail={"message": "任务服务不可用。", "log": ""}
+        )
 
     if not payload.items:
-        raise HTTPException(status_code=400, detail={"message": "请选择至少一道题目。", "log": ""})
+        raise HTTPException(
+            status_code=400, detail={"message": "请选择至少一道题目。", "log": ""}
+        )
 
     tasks_by_id = {t.id: t for t in svc.repository.list_all().values()}
     sections_map: dict[str, list[str]] = {
@@ -216,11 +232,17 @@ def compile_paper(request: Request, payload: PaperCompileRequest) -> Response:
         task = tasks_by_id.get(item.task_id)
         if not task:
             continue
-        problem = next((p for p in task.problems if p.problem_id == item.problem_id), None)
+        problem = next(
+            (p for p in task.problems if p.problem_id == item.problem_id), None
+        )
         if not problem:
             continue
-        tag_result = next((t for t in task.tags if t.problem_id == item.problem_id), None)
-        raw_type = getattr(problem, "question_type", None) or getattr(tag_result, "question_type", None)
+        tag_result = next(
+            (t for t in task.tags if t.problem_id == item.problem_id), None
+        )
+        raw_type = getattr(problem, "question_type", None) or getattr(
+            tag_result, "question_type", None
+        )
         question_type = _norm_question_type(raw_type, bool(problem.options))
         if question_type in ("选择题", "多选题", "填空题"):
             block = _build_question_block(problem.problem_text or "", problem.options)
@@ -249,7 +271,10 @@ def compile_paper(request: Request, payload: PaperCompileRequest) -> Response:
     if not xelatex_path:
         raise HTTPException(
             status_code=500,
-            detail={"message": "未找到 xelatex，请先安装并加入 PATH 或设置 XELATEX_PATH。", "log": ""},
+            detail={
+                "message": "未找到 xelatex，请先安装并加入 PATH 或设置 XELATEX_PATH。",
+                "log": "",
+            },
         )
 
     pdf_bytes = _compile_pdf(tex_content, xelatex_path=xelatex_path)
@@ -266,7 +291,9 @@ def compile_paper(request: Request, payload: PaperCompileRequest) -> Response:
     assets_dir = _paper_assets_dir()
     paper_dir.mkdir(parents=True, exist_ok=True)
     assets_dir.mkdir(parents=True, exist_ok=True)
-    (paper_dir / f"{paper_id}.json").write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
+    (paper_dir / f"{paper_id}.json").write_text(
+        json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
     (assets_dir / f"{paper_id}.pdf").write_bytes(pdf_bytes)
 
     return Response(

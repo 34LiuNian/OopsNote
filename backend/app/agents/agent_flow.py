@@ -38,7 +38,11 @@ class PromptTemplate:
             raise ValueError(f"Prompt file {path} must contain a 'USER:' section")
         system_part, user_part = raw.split("USER:", 1)
         system_text = system_part.replace("SYSTEM:", "", 1)
-        return cls(name=path.stem, system_prompt=system_text.strip(), user_template=user_part.strip())
+        return cls(
+            name=path.stem,
+            system_prompt=system_text.strip(),
+            user_template=user_part.strip(),
+        )
 
     def render(self, context: Mapping[str, Any]) -> tuple[str, str]:
         """Render prompts by replacing `{key}` placeholders only.
@@ -84,7 +88,9 @@ class LLMAgent:
         self.response_model = response_model
         self.model_resolver = model_resolver
 
-    def run(self, context: Mapping[str, Any], on_delta: Callable[[str], None] | None = None) -> AgentResult:
+    def run(
+        self, context: Mapping[str, Any], on_delta: Callable[[str], None] | None = None
+    ) -> AgentResult:
         system_prompt, user_prompt = self.template.render(context)
 
         skills = context.get("skills")
@@ -97,7 +103,9 @@ class LLMAgent:
                 if text:
                     skill_blocks.append(f"[Skill: {name}]\n{text}")
             if skill_blocks:
-                system_prompt = f"{system_prompt}\n\n" + "\n\n".join(skill_blocks) + "\n"
+                system_prompt = (
+                    f"{system_prompt}\n\n" + "\n\n".join(skill_blocks) + "\n"
+                )
 
         # Optional per-agent "thinking" toggle.
         # We implement this as a prompt style hint (provider-agnostic).
@@ -146,15 +154,31 @@ class LLMAgent:
             )
         except Exception:
             elapsed_ms = (time.perf_counter() - started) * 1000
-            logger.exception("Agent failed rid=%s name=%s ms=%.1f", rid, self.name, elapsed_ms)
+            logger.exception(
+                "Agent failed rid=%s name=%s ms=%.1f", rid, self.name, elapsed_ms
+            )
             trace_event("agent_failed", name=self.name, ms=elapsed_ms)
             raise
 
         elapsed_ms = (time.perf_counter() - started) * 1000
-        keys = sorted([str(k) for k in payload.keys()]) if isinstance(payload, dict) else []
-        logger.info("Agent done rid=%s name=%s ms=%.1f keys=%s", rid, self.name, elapsed_ms, keys)
+        keys = (
+            sorted([str(k) for k in payload.keys()])
+            if isinstance(payload, dict)
+            else []
+        )
+        logger.info(
+            "Agent done rid=%s name=%s ms=%.1f keys=%s",
+            rid,
+            self.name,
+            elapsed_ms,
+            keys,
+        )
         trace_event("agent_done", name=self.name, ms=elapsed_ms, keys=keys)
-        output = payload if not self.required_keys else {k: payload.get(k) for k in self.required_keys}
+        output = (
+            payload
+            if not self.required_keys
+            else {k: payload.get(k) for k in self.required_keys}
+        )
         return AgentResult(name=self.name, output=output, raw_text=str(payload))
 
 
@@ -223,12 +247,16 @@ class AgentOrchestrator:
         return solutions, tags
 
     @staticmethod
-    def _build_context(payload: TaskCreateRequest, problem: ProblemBlock) -> dict[str, Any]:
+    def _build_context(
+        payload: TaskCreateRequest, problem: ProblemBlock
+    ) -> dict[str, Any]:
         latex = "\n".join(problem.latex_blocks)
         skills: list[str] = []
         if _needs_chemfig_skill(problem, latex):
             skills.append("chemfig")
-        knowledge_candidates = tag_store.list(dimension=TagDimension.KNOWLEDGE, limit=200)
+        knowledge_candidates = tag_store.list(
+            dimension=TagDimension.KNOWLEDGE, limit=200
+        )
         error_candidates = tag_store.list(dimension=TagDimension.ERROR, limit=200)
         meta_candidates = tag_store.list(dimension=TagDimension.META, limit=200)
 
@@ -245,8 +273,12 @@ class AgentOrchestrator:
             "latex": latex,
             "source": problem.source or "",
             "skills": skills,
-            "manual_knowledge_tags": "、".join([t for t in (payload.knowledge_tags or []) if str(t).strip()]),
-            "manual_error_tags": "、".join([t for t in (payload.error_tags or []) if str(t).strip()]),
+            "manual_knowledge_tags": "、".join(
+                [t for t in (payload.knowledge_tags or []) if str(t).strip()]
+            ),
+            "manual_error_tags": "、".join(
+                [t for t in (payload.error_tags or []) if str(t).strip()]
+            ),
             "manual_source": (payload.source or "").strip(),
             "knowledge_candidates": _render_candidates(knowledge_candidates),
             "error_candidates": _render_candidates(error_candidates),
@@ -257,10 +289,14 @@ class AgentOrchestrator:
     def _to_tagging(problem_id: str, data: Mapping[str, Any]) -> TaggingResult:
         return TaggingResult(
             problem_id=problem_id,
-            knowledge_points=_coerce_list(data.get("knowledge_points"), default=["未标注"]),
+            knowledge_points=_coerce_list(
+                data.get("knowledge_points"), default=["未标注"]
+            ),
             question_type=str(data.get("question_type", "解答题")),
             skills=_coerce_list(data.get("skills"), default=["分析推理"]),
-            error_hypothesis=_coerce_list(data.get("error_hypothesis"), default=["待复盘"]),
+            error_hypothesis=_coerce_list(
+                data.get("error_hypothesis"), default=["待复盘"]
+            ),
             recommended_actions=_coerce_list(
                 data.get("recommended_actions"), default=["完成 2 道同类题"]
             ),

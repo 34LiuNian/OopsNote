@@ -19,9 +19,9 @@ class OcrOutput(BaseModel):
     )
 
     problem_text: str
-    latex_blocks: List[str] = Field(default_factory=list)
-    options: List[OptionItem] = Field(default_factory=list)
-    ocr_text: Optional[str] = None
+    # latex_blocks: List[str] = Field(default_factory=list)
+    options: Optional[List[OptionItem]] = Field(default=None)
+    # ocr_text: Optional[str] = None
 
     @model_validator(mode="after")
     def validate_problem_text(self) -> "OcrOutput":

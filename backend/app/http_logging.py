@@ -40,7 +40,9 @@ def configure_app_logging() -> None:
     ) and not app_log_level:
         app_log_level = "INFO"
     if app_log_level:
-        logging.getLogger().setLevel(getattr(logging, app_log_level.upper(), logging.INFO))
+        logging.getLogger().setLevel(
+            getattr(logging, app_log_level.upper(), logging.INFO)
+        )
 
     logging.getLogger("uvicorn.access").addFilter(DropHealthAccessLogs())
 

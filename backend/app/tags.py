@@ -1,3 +1,7 @@
+"""Tag models and file-backed tag store."""
+
+# pylint: disable=import-error,too-few-public-methods
+
 from __future__ import annotations
 
 import json
@@ -20,14 +24,20 @@ class TagDimension(str, Enum):
 
 
 class TagDimensionStyle(BaseModel):
+    """Styling metadata for a tag dimension."""
+
     label: str
     label_variant: str = Field(
         default="secondary",
-        description="Primer Label variant, e.g. secondary/accent/success/attention/danger/done",
+        description=(
+            "Primer Label variant, e.g. secondary/accent/success/attention/danger/done"
+        ),
     )
 
 
 class TagItem(BaseModel):
+    """Stored tag metadata."""
+
     id: str
     dimension: TagDimension
     value: str
@@ -36,24 +46,37 @@ class TagItem(BaseModel):
 
 
 class TagItemView(TagItem):
-    ref_count: int = Field(default=0, description="How many times this tag is referenced in tasks/problems")
+    """Tag data with usage count for UI display."""
+
+    ref_count: int = Field(
+        default=0,
+        description="How many times this tag is referenced in tasks/problems",
+    )
 
 
 class TagCreateRequest(BaseModel):
+    """Request payload for creating a tag."""
+
     dimension: TagDimension
     value: str
     aliases: List[str] = Field(default_factory=list)
 
 
 class TagsResponse(BaseModel):
+    """List response for tags."""
+
     items: List[TagItemView]
 
 
 class TagDimensionsResponse(BaseModel):
+    """Response payload for tag dimension styles."""
+
     dimensions: dict[str, TagDimensionStyle]
 
 
 class TagDimensionsUpdateRequest(BaseModel):
+    """Request payload for updating tag dimension styles."""
+
     dimensions: dict[str, TagDimensionStyle]
 
 
@@ -81,6 +104,7 @@ class TagStore:
         self._lock = threading.Lock()
 
     def load_dimensions(self) -> dict[str, TagDimensionStyle]:
+        """Load or initialize tag dimension styles."""
         with self._lock:
             if not self.dims_path.exists():
                 styles = self._default_dimensions()
@@ -92,7 +116,7 @@ class TagStore:
             for key, value in (dims or {}).items():
                 try:
                     parsed[str(key)] = TagDimensionStyle.model_validate(value)
-                except Exception:
+                except Exception:  # pylint: disable=broad-exception-caught
                     continue
             # Ensure defaults exist.
             defaults = self._default_dimensions()
@@ -102,7 +126,11 @@ class TagStore:
                 self._write_dimensions(parsed)
             return parsed
 
-    def save_dimensions(self, dimensions: dict[str, TagDimensionStyle]) -> dict[str, TagDimensionStyle]:
+    def save_dimensions(
+        self,
+        dimensions: dict[str, TagDimensionStyle],
+    ) -> dict[str, TagDimensionStyle]:
+        """Persist updated tag dimension styles."""
         with self._lock:
             defaults = self._default_dimensions()
             merged = dict(defaults)
@@ -110,7 +138,12 @@ class TagStore:
             self._write_dimensions(merged)
             return merged
 
-    def list(self, dimension: TagDimension | None = None, limit: int = 2000) -> List[TagItem]:
+    def list(
+        self,
+        dimension: TagDimension | None = None,
+        limit: int = 2000,
+    ) -> List[TagItem]:
+        """List tags by dimension with a hard cap."""
         state = self._load_state()
         items = state.items
         if dimension is not None:
@@ -124,6 +157,7 @@ class TagStore:
         query: str | None = None,
         limit: int = 50,
     ) -> List[TagItem]:
+        """Search tags by value or alias."""
         query = (query or "").strip()
         if not query:
             return self.list(dimension=dimension, limit=limit)
@@ -144,11 +178,17 @@ class TagStore:
                 return (2, 0, item.value)
             return (3, 0, item.value)
 
-        filtered = [t for t in items if q in t.value.casefold() or any(q in str(a).casefold() for a in (t.aliases or []))]
+        filtered = [
+            t
+            for t in items
+            if q in t.value.casefold()
+            or any(q in str(a).casefold() for a in (t.aliases or []))
+        ]
         filtered.sort(key=score)
         return filtered[: max(1, int(limit))]
 
     def ensure(self, dimension: TagDimension, values: Iterable[str]) -> List[TagItem]:
+        """Ensure tags exist for the provided values."""
         created: List[TagItem] = []
         for value in values:
             value = (value or "").strip()
@@ -159,7 +199,13 @@ class TagStore:
                 created.append(item)
         return created
 
-    def upsert(self, dimension: TagDimension, value: str, aliases: Optional[List[str]] = None) -> tuple[TagItem, bool]:
+    def upsert(
+        self,
+        dimension: TagDimension,
+        value: str,
+        aliases: Optional[List[str]] = None,
+    ) -> tuple[TagItem, bool]:
+        """Create or update a tag entry and return (tag, created)."""
         value = (value or "").strip()
         if not value:
             raise ValueError("tag value is required")
@@ -175,7 +221,9 @@ class TagStore:
                         merged = list(dict.fromkeys([*(item.aliases or []), *aliases]))
                         if merged != (item.aliases or []):
                             updated = item.model_copy(update={"aliases": merged})
-                            state.items = [updated if t.id == item.id else t for t in state.items]
+                            state.items = [
+                                updated if t.id == item.id else t for t in state.items
+                            ]
                             self._write_state_unlocked(state)
                             return updated, False
                     return item, False
@@ -199,15 +247,32 @@ class TagStore:
     @staticmethod
     def _default_dimensions() -> dict[str, TagDimensionStyle]:
         return {
-            TagDimension.KNOWLEDGE.value: TagDimensionStyle(label="知识体系", label_variant="accent"),
-            TagDimension.ERROR.value: TagDimensionStyle(label="错题归因", label_variant="danger"),
-            TagDimension.META.value: TagDimensionStyle(label="题目属性", label_variant="success"),
-            TagDimension.CUSTOM.value: TagDimensionStyle(label="自定义", label_variant="secondary"),
+            TagDimension.KNOWLEDGE.value: TagDimensionStyle(
+                label="知识体系",
+                label_variant="accent",
+            ),
+            TagDimension.ERROR.value: TagDimensionStyle(
+                label="错题归因",
+                label_variant="danger",
+            ),
+            TagDimension.META.value: TagDimensionStyle(
+                label="题目属性",
+                label_variant="success",
+            ),
+            TagDimension.CUSTOM.value: TagDimensionStyle(
+                label="自定义",
+                label_variant="secondary",
+            ),
         }
 
     def _write_dimensions(self, dimensions: dict[str, TagDimensionStyle]) -> None:
-        payload = {"dimensions": {k: v.model_dump(mode="json") for k, v in dimensions.items()}}
-        self.dims_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+        payload = {
+            "dimensions": {k: v.model_dump(mode="json") for k, v in dimensions.items()}
+        }
+        self.dims_path.write_text(
+            json.dumps(payload, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
 
     def _load_state(self) -> _TagState:
         with self._lock:
@@ -221,17 +286,20 @@ class TagStore:
         raw = json.loads(self.tags_path.read_text(encoding="utf-8"))
         items = raw.get("items", []) if isinstance(raw, dict) else []
         parsed: List[TagItem] = []
-        for item in (items or []):
+        for item in items or []:
             try:
                 parsed.append(TagItem.model_validate(item))
-            except Exception:
+            except Exception:  # pylint: disable=broad-exception-caught
                 continue
         return _TagState(items=parsed)
 
     def _write_state_unlocked(self, state: _TagState) -> None:
         payload = {"items": [item.model_dump(mode="json") for item in state.items]}
         tmp = self.tags_path.with_suffix(".json.tmp")
-        tmp.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+        tmp.write_text(
+            json.dumps(payload, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
         tmp.replace(self.tags_path)
 
 

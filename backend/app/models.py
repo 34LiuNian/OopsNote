@@ -1,10 +1,17 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime
 from enum import Enum
 from typing import List, Literal, Optional
 
-from pydantic import BaseModel, ConfigDict, Field, HttpUrl, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    HttpUrl,
+    field_validator,
+    model_validator,
+)
 
 
 class TaskStatus(str, Enum):
@@ -57,18 +64,38 @@ class ProblemBlock(BaseModel):
         default=None,
         description="User-provided problem identifier (can be alphanumeric); used for display only",
     )
-    question_type: Optional[str] = Field(default=None, description="Optional manual question type label")
+    question_type: Optional[str] = Field(
+        default=None, description="Optional manual question type label"
+    )
     problem_text: str
     latex_blocks: List[str] = Field(default_factory=list)
-    ocr_text: Optional[str] = Field(default=None, description="Raw OCR text before cleanup")
-    crop_image_url: Optional[str] = Field(default=None, description="URL or path of the cropped region")
-    locked_tags: bool = Field(default=False, description="If true, skip auto-retag unless forced")
+    ocr_text: Optional[str] = Field(
+        default=None, description="Raw OCR text before cleanup"
+    )
+    crop_image_url: Optional[str] = Field(
+        default=None, description="URL or path of the cropped region"
+    )
+    locked_tags: bool = Field(
+        default=False, description="If true, skip auto-retag unless forced"
+    )
     media_notes: Optional[str] = None
-    options: List[OptionItem] = Field(default_factory=list, description="Optional choice items")
-    source: Optional[str] = Field(default=None, description="Paper/exam source, e.g. 2024-XX-mock-exam")
-    knowledge_tags: List[str] = Field(default_factory=list, description="Manual knowledge-system tags for this problem")
-    error_tags: List[str] = Field(default_factory=list, description="Manual error-attribution tags for this problem")
-    user_tags: List[str] = Field(default_factory=list, description="Manual custom tags for this problem")
+    options: List[OptionItem] = Field(
+        default_factory=list, description="Optional choice items"
+    )
+    source: Optional[str] = Field(
+        default=None, description="Paper/exam source, e.g. 2024-XX-mock-exam"
+    )
+    knowledge_tags: List[str] = Field(
+        default_factory=list,
+        description="Manual knowledge-system tags for this problem",
+    )
+    error_tags: List[str] = Field(
+        default_factory=list,
+        description="Manual error-attribution tags for this problem",
+    )
+    user_tags: List[str] = Field(
+        default_factory=list, description="Manual custom tags for this problem"
+    )
     crop_bbox: Optional[List[float]] = Field(
         default=None,
         min_length=4,
@@ -81,7 +108,9 @@ class SolutionBlock(BaseModel):
     problem_id: str
     answer: str
     explanation: str
-    short_answer: Optional[str] = Field(default=None, description="Optional short-form answer for summary views")
+    short_answer: Optional[str] = Field(
+        default=None, description="Optional short-form answer for summary views"
+    )
 
 
 class TaggingResult(BaseModel):
@@ -122,25 +151,41 @@ class AssetMetadata(BaseModel):
 
 class TaskCreateRequest(BaseModel):
     image_url: HttpUrl
-    subject: str = Field(default="math", description="Subject tag for downstream agents")
+    subject: str = Field(
+        default="math", description="Subject tag for downstream agents"
+    )
     grade: Optional[str] = Field(default=None, description="Grade or difficulty hint")
-    notes: Optional[str] = Field(default=None, description="Free-form hints such as multi-problem cues")
+    notes: Optional[str] = Field(
+        default=None, description="Free-form hints such as multi-problem cues"
+    )
     question_no: Optional[str] = Field(
         default=None,
         description="User-provided problem identifier (alphanumeric). Stored for display; internal problem_id uses UUID",
     )
-    question_type: Optional[str] = Field(default=None, description="Optional manual question type label")
+    question_type: Optional[str] = Field(
+        default=None, description="Optional manual question type label"
+    )
     mock_problem_count: Optional[int] = Field(
         default=None,
         ge=1,
         le=8,
         description="For demos: override detector to emit specific count",
     )
-    difficulty: Optional[str] = Field(default=None, description="Score ratio a/b used for ordering")
-    source: Optional[str] = Field(default=None, description="Optional paper/exam source label")
-    options: List[OptionItem] = Field(default_factory=list, description="Optional manual choice items")
-    knowledge_tags: List[str] = Field(default_factory=list, description="Manual knowledge-system tags")
-    error_tags: List[str] = Field(default_factory=list, description="Manual error-attribution tags")
+    difficulty: Optional[str] = Field(
+        default=None, description="Score ratio a/b used for ordering"
+    )
+    source: Optional[str] = Field(
+        default=None, description="Optional paper/exam source label"
+    )
+    options: List[OptionItem] = Field(
+        default_factory=list, description="Optional manual choice items"
+    )
+    knowledge_tags: List[str] = Field(
+        default_factory=list, description="Manual knowledge-system tags"
+    )
+    error_tags: List[str] = Field(
+        default_factory=list, description="Manual error-attribution tags"
+    )
     user_tags: List[str] = Field(default_factory=list)
 
 
@@ -149,8 +194,12 @@ class TaskRecord(BaseModel):
     payload: TaskCreateRequest
     asset: Optional[AssetMetadata] = None
     status: TaskStatus = TaskStatus.PENDING
-    stage: Optional[str] = Field(default=None, description="Coarse progress stage identifier")
-    stage_message: Optional[str] = Field(default=None, description="Human-readable progress message")
+    stage: Optional[str] = Field(
+        default=None, description="Coarse progress stage identifier"
+    )
+    stage_message: Optional[str] = Field(
+        default=None, description="Human-readable progress message"
+    )
     created_at: datetime
     updated_at: datetime
     last_error: Optional[str] = None
@@ -256,7 +305,9 @@ class PaperCompileRequest(BaseModel):
     items: List[PaperItemRequest]
     title: Optional[str] = Field(default="试卷", description="Paper title")
     subtitle: Optional[str] = Field(default=None, description="Paper subtitle")
-    show_answers: bool = Field(default=False, description="Whether to show answers in paper")
+    show_answers: bool = Field(
+        default=False, description="Whether to show answers in paper"
+    )
 
 
 class ChemfigRenderRequest(BaseModel):
@@ -281,11 +332,15 @@ class OverrideProblemRequest(BaseModel):
     locked_tags: Optional[bool] = None
     crop_bbox: Optional[List[float]] = Field(default=None, min_length=4, max_length=4)
     crop_image_url: Optional[str] = None
-    retag: bool = Field(default=False, description="If true, run tagger again after override")
+    retag: bool = Field(
+        default=False, description="If true, run tagger again after override"
+    )
 
 
 class RetagRequest(BaseModel):
-    model: Optional[str] = Field(default=None, description="Optional model override for tagging")
+    model: Optional[str] = Field(
+        default=None, description="Optional model override for tagging"
+    )
     force: bool = Field(default=False, description="Ignore locked_tags and force retag")
 
 

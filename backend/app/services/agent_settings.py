@@ -17,7 +17,9 @@ class AgentSettingsService:
     model_store: AgentModelSettingsStore
     enable_store: AgentEnableSettingsStore
     thinking_store: AgentThinkingSettingsStore
-    force_enabled_agents: set[str] = field(default_factory=lambda: {"OCR", "SOLVER", "TAGGER"})
+    force_enabled_agents: set[str] = field(
+        default_factory=lambda: {"OCR", "SOLVER", "TAGGER"}
+    )
 
     def resolve_saved_model(self, agent: str) -> str | None:
         settings = self.model_store.load()

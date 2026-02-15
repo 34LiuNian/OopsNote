@@ -32,13 +32,17 @@ class AgentModelSettingsStore:
             models = data.get("models", {}) if isinstance(data, dict) else {}
             if not isinstance(models, dict):
                 models = {}
-            normalized = {str(k).upper(): str(v) for k, v in models.items() if v is not None}
+            normalized = {
+                str(k).upper(): str(v) for k, v in models.items() if v is not None
+            }
             return AgentModelSettings(models=normalized)
 
     def save(self, settings: AgentModelSettings) -> AgentModelSettings:
         with self._lock:
             payload = {"models": {k.upper(): v for k, v in settings.models.items()}}
-            self.path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+            self.path.write_text(
+                json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8"
+            )
             return settings
 
     def set_model(self, agent_name: str, model: str) -> AgentModelSettings:
@@ -83,8 +87,12 @@ class AgentEnableSettingsStore:
 
     def save(self, settings: AgentEnableSettings) -> AgentEnableSettings:
         with self._lock:
-            payload = {"enabled": {k.upper(): bool(v) for k, v in settings.enabled.items()}}
-            self.path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+            payload = {
+                "enabled": {k.upper(): bool(v) for k, v in settings.enabled.items()}
+            }
+            self.path.write_text(
+                json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8"
+            )
             return settings
 
 
@@ -124,6 +132,10 @@ class AgentThinkingSettingsStore:
 
     def save(self, settings: AgentThinkingSettings) -> AgentThinkingSettings:
         with self._lock:
-            payload = {"thinking": {k.upper(): bool(v) for k, v in settings.thinking.items()}}
-            self.path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+            payload = {
+                "thinking": {k.upper(): bool(v) for k, v in settings.thinking.items()}
+            }
+            self.path.write_text(
+                json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8"
+            )
             return settings

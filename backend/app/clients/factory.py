@@ -99,7 +99,11 @@ def load_agent_config_bundle(path: str | os.PathLike[str] | None) -> AgentConfig
 
     data = tomllib.loads(file_path.read_text(encoding="utf-8"))
 
-    default_cfg = _parse_cfg(data.get("default")) if isinstance(data.get("default"), dict) else None
+    default_cfg = (
+        _parse_cfg(data.get("default"))
+        if isinstance(data.get("default"), dict)
+        else None
+    )
 
     agents_raw = data.get("agents")
     agents_cfg: dict[str, AgentClientConfig] = {}
@@ -168,7 +172,9 @@ def build_client_from_config(config: AgentClientConfig):
     raise RuntimeError(f"Unknown provider: {provider}")
 
 
-def build_client_for_agent(agent_name: str, fallback_client, bundle: AgentConfigBundle | None = None):
+def build_client_for_agent(
+    agent_name: str, fallback_client, bundle: AgentConfigBundle | None = None
+):
     """Resolve client for agent.
 
     Priority:

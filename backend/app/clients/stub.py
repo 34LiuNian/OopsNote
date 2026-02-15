@@ -8,8 +8,6 @@ from pydantic import BaseModel
 
 from app.models import ProblemBlock, TaggingResult
 
-from .base import AIClient
-
 
 class StubAIClient:
     """Deterministic AI client used for local development without API keys."""
@@ -42,7 +40,9 @@ class StubAIClient:
 
         if on_delta is not None:
             # Simulate token streaming by chunking the JSON-ish content.
-            text = json.dumps({"answer": answer, "explanation": explanation}, ensure_ascii=False)
+            text = json.dumps(
+                {"answer": answer, "explanation": explanation}, ensure_ascii=False
+            )
             for i in range(0, len(text), 12):
                 try:
                     on_delta(text[i : i + 12])
@@ -51,8 +51,14 @@ class StubAIClient:
         return answer, explanation
 
     def classify_problem(self, subject: str, problem: ProblemBlock) -> TaggingResult:
-        knowledge = ["勾股定理"] if subject.lower().startswith("math") else ["牛顿第二定律"]
-        skills = ["几何推理"] if subject.lower().startswith("math") else ["物理建模", "代数推导"]
+        knowledge = (
+            ["勾股定理"] if subject.lower().startswith("math") else ["牛顿第二定律"]
+        )
+        skills = (
+            ["几何推理"]
+            if subject.lower().startswith("math")
+            else ["物理建模", "代数推导"]
+        )
         return TaggingResult(
             problem_id=problem.problem_id,
             knowledge_points=knowledge,
@@ -127,7 +133,9 @@ class StubAIClient:
         return payload
 
 
-def _maybe_stream_payload(on_delta: Callable[[str], None] | None, payload: dict[str, Any]) -> None:
+def _maybe_stream_payload(
+    on_delta: Callable[[str], None] | None, payload: dict[str, Any]
+) -> None:
     if on_delta is None:
         return
     try:

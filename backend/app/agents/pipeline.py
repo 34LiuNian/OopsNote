@@ -5,7 +5,14 @@ import logging
 from typing import Callable, Protocol
 from uuid import uuid4
 
-from ..models import AssetMetadata, CropRegion, DetectionOutput, PipelineResult, ProblemBlock, TaskCreateRequest
+from ..models import (
+    AssetMetadata,
+    CropRegion,
+    DetectionOutput,
+    PipelineResult,
+    ProblemBlock,
+    TaskCreateRequest,
+)
 from ..repository import ArchiveStore
 from .agent_flow import AgentOrchestrator
 from .stages import Archiver, HandwrittenExtractor, SolutionWriter, TaggingProfiler
@@ -35,7 +42,9 @@ class PipelineDependencies:
 
 
 class AgentPipeline:
-    def __init__(self, deps: PipelineDependencies, orchestrator: AgentOrchestrator | None = None) -> None:
+    def __init__(
+        self, deps: PipelineDependencies, orchestrator: AgentOrchestrator | None = None
+    ) -> None:
         self.deps = deps
         self.orchestrator = orchestrator
 
@@ -79,7 +88,8 @@ class AgentPipeline:
             if len(problems) == 1:
                 updated = problems[0].model_copy(
                     update={
-                        "question_type": payload.question_type or problems[0].question_type,
+                        "question_type": payload.question_type
+                        or problems[0].question_type,
                         "options": payload.options or problems[0].options,
                     }
                 )
@@ -100,7 +110,9 @@ class AgentPipeline:
         emit("solving", "解题与标注")
         if self.orchestrator:
             # Multi-agent orchestration runs as a batch; keep coarse updates.
-            solutions, tags = self.orchestrator.solve_and_tag(payload, problems, on_llm_delta=on_llm_delta)
+            solutions, tags = self.orchestrator.solve_and_tag(
+                payload, problems, on_llm_delta=on_llm_delta
+            )
         else:
             total = len(problems)
             if total > 0:
@@ -143,7 +155,9 @@ class AgentPipeline:
             task_id=task_id,
             solutions=len(solutions),
             tags=len(tags),
-            archive_items=len(archive.items) if hasattr(archive, "items") and archive.items is not None else None,
+            archive_items=len(archive.items)
+            if hasattr(archive, "items") and archive.items is not None
+            else None,
         )
         emit("done", "完成")
         return PipelineResult(
@@ -163,7 +177,11 @@ class AgentPipeline:
         if asset and self.deps.ocr_extractor:
             detection = DetectionOutput(
                 action="single",
-                regions=[CropRegion(id=uuid4().hex, bbox=[0.05, 0.05, 0.9, 0.9], label="full")],
+                regions=[
+                    CropRegion(
+                        id=uuid4().hex, bbox=[0.05, 0.05, 0.9, 0.9], label="full"
+                    )
+                ],
             )
 
             logger.info(

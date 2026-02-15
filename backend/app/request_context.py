@@ -3,7 +3,9 @@ from __future__ import annotations
 import contextvars
 
 
-_request_id: contextvars.ContextVar[str] = contextvars.ContextVar("request_id", default="-")
+_request_id: contextvars.ContextVar[str] = contextvars.ContextVar(
+    "request_id", default="-"
+)
 
 
 def set_request_id(value: str) -> contextvars.Token[str]:
