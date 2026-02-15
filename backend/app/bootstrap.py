@@ -7,10 +7,6 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .clients import load_agent_config_bundle
-from .config import AppConfig, load_app_config
-from .gateway import fetch_openai_models, guess_openai_gateway_config
-from .http_logging import configure_app_logging, request_logging_middleware
-from .startup_hooks import check_ai_gateway, log_llm_payload_startup
 from .repository import ArchiveStore
 from .storage import LocalAssetStore
 from .app_state import BackendState
@@ -39,17 +35,12 @@ _APP_CONFIG: AppConfig | None = None
 
 
 def create_app() -> FastAPI:
-    configure_app_logging()
-
     @asynccontextmanager
     async def lifespan(app: FastAPI):
-        tasks_service.ensure_workers_started()
-        log_llm_payload_startup(config)
         try:
             models_service.prefetch_cache()
         except Exception:
             pass
-        check_ai_gateway(ai_gateway_status, config=config)
         yield
 
     app = FastAPI(title="AI Mistake Organizer Backend", lifespan=lifespan)
@@ -61,8 +52,6 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
-
-    app.middleware("http")(request_logging_middleware)
 
     state, models_service, tasks_service, ai_gateway_status, config = _build_state()
     app.state.oops = state

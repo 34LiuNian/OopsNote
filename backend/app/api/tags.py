@@ -10,8 +10,18 @@ from ..tags import (
     TagsResponse,
     tag_store,
 )
+from .deps import get_backend_state
 
 router = APIRouter()
+
+
+def _tasks_service(request: Request):
+    """Resolve task service from app state for read-only tag reference counting."""
+    try:
+        state = get_backend_state(request)
+    except Exception:
+        return None
+    return getattr(state, "tasks", None)
 
 
 @router.get("/tags", response_model=TagsResponse)
@@ -41,9 +51,8 @@ def list_tags(
 
     ref_counts: dict[str, int] = {}
     try:
-        state = getattr(request.app.state, "oops", None)
-        repository = getattr(state, "repository", None)
-        tasks = repository.list_all().values() if repository is not None else []
+        tasks_service = _tasks_service(request)
+        tasks = tasks_service.iter_tasks() if tasks_service is not None else []
 
         for task in tasks:
             payload = getattr(task, "payload", None)

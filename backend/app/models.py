@@ -19,6 +19,7 @@ class TaskStatus(str, Enum):
     PROCESSING = "processing"
     COMPLETED = "completed"
     FAILED = "failed"
+    CANCELLED = "cancelled"
 
 
 class CropRegion(BaseModel):
@@ -250,9 +251,6 @@ class ProblemSummary(BaseModel):
     grade: Optional[str] = None
     source: Optional[str] = None
     knowledge_points: List[str] = Field(default_factory=list)
-    knowledge_tags: List[str] = Field(default_factory=list)
-    error_tags: List[str] = Field(default_factory=list)
-    user_tags: List[str] = Field(default_factory=list)
     knowledge_tags: List[str] = Field(default_factory=list)
     error_tags: List[str] = Field(default_factory=list)
     user_tags: List[str] = Field(default_factory=list)

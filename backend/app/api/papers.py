@@ -12,8 +12,14 @@ from starlette.responses import Response
 
 from ..api.latex import _compile_pdf, _find_xelatex
 from ..models import PaperCompileRequest
+from .deps import get_tasks_service
 
 router = APIRouter()
+
+
+def _tasks_service(request: Request):
+    """Resolve task service from shared API dependencies."""
+    return get_tasks_service(request)
 
 
 def _paper_dir() -> Path:
@@ -207,19 +213,14 @@ def _paper_template(
 
 @router.post("/papers/compile")
 def compile_paper(request: Request, payload: PaperCompileRequest) -> Response:
-    state = getattr(request.app.state, "oops", None)
-    svc = getattr(state, "tasks", None)
-    if svc is None:
-        raise HTTPException(
-            status_code=500, detail={"message": "任务服务不可用。", "log": ""}
-        )
+    svc = _tasks_service(request)
 
     if not payload.items:
         raise HTTPException(
             status_code=400, detail={"message": "请选择至少一道题目。", "log": ""}
         )
 
-    tasks_by_id = {t.id: t for t in svc.repository.list_all().values()}
+    tasks_by_id = {t.id: t for t in svc.iter_tasks()}
     sections_map: dict[str, list[str]] = {
         "选择题": [],
         "多选题": [],

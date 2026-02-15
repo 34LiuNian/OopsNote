@@ -164,11 +164,6 @@ def build_client_from_config(config: AgentClientConfig):
             temperature=config.temperature if config.temperature is not None else 0.2,
         )
 
-    if provider == "gemini":
-        raise RuntimeError(
-            "gemini provider has been removed. Use provider=openai with an OpenAI-compatible gateway (BASE_URL)."
-        )
-
     raise RuntimeError(f"Unknown provider: {provider}")
 
 

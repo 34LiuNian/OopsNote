@@ -1,16 +1,13 @@
 from __future__ import annotations
 
-import asyncio
 import json
 import os
-import queue
 import threading
 import time
 from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import HTTPException
-from starlette.responses import StreamingResponse
 
 from ..models import (
     CropRegion,
@@ -29,43 +26,6 @@ class _TaskCancelled(Exception):
     pass
 
 
-class TaskEventBroker:
-    """In-memory pub/sub for per-task SSE events."""
-
-    def __init__(self) -> None:
-        self._lock = threading.Lock()
-        self._subscribers: dict[
-            str, set[queue.Queue[tuple[str, dict[str, object]]]]
-        ] = {}
-
-    def subscribe(self, task_id: str) -> queue.Queue[tuple[str, dict[str, object]]]:
-        q: queue.Queue[tuple[str, dict[str, object]]] = queue.Queue(maxsize=1000)
-        with self._lock:
-            self._subscribers.setdefault(task_id, set()).add(q)
-        return q
-
-    def unsubscribe(
-        self, task_id: str, q: queue.Queue[tuple[str, dict[str, object]]]
-    ) -> None:
-        with self._lock:
-            subs = self._subscribers.get(task_id)
-            if not subs:
-                return
-            subs.discard(q)
-            if not subs:
-                self._subscribers.pop(task_id, None)
-
-    def publish(self, task_id: str, event: str, payload: dict[str, object]) -> None:
-        with self._lock:
-            subs = list(self._subscribers.get(task_id, set()))
-
-        for q in subs:
-            try:
-                q.put_nowait((event, payload))
-            except Exception:  # pylint: disable=broad-exception-caught
-                pass
-
-
 def _int_env(name: str, default: int) -> int:
     value = os.getenv(name)
     if value is None:
@@ -76,29 +36,6 @@ def _int_env(name: str, default: int) -> int:
         return default
 
 
-def _read_text_tail(path: Path, max_chars: int) -> str:
-    if max_chars <= 0:
-        return ""
-    try:
-        size = path.stat().st_size
-    except FileNotFoundError:
-        return ""
-    except Exception:  # pylint: disable=broad-exception-caught
-        return ""
-
-    max_bytes = max_chars * 4
-    start = max(0, size - max_bytes)
-    try:
-        with path.open("rb") as f:
-            if start:
-                f.seek(start)
-            data = f.read()
-        text = data.decode("utf-8", errors="ignore")
-        return text[-max_chars:] if len(text) > max_chars else text
-    except Exception:  # pylint: disable=broad-exception-caught
-        return ""
-
-
 class TasksService:
     def __init__(self, *, repository, pipeline, asset_store, tag_store) -> None:
         self.repository = repository
@@ -106,205 +43,50 @@ class TasksService:
         self.asset_store = asset_store
         self.tag_store = tag_store
 
-        self._event_broker = TaskEventBroker()
-
-        self._task_stream_lock = threading.Lock()
-        self._task_stream_cache: dict[str, str] = {}
-
         self._task_cancel_lock = threading.Lock()
         self._task_cancelled: set[str] = set()
 
         self._processing_lock = threading.Lock()
         self._processing_inflight: set[str] = set()
 
-        self._task_queue_maxsize = _int_env("TASK_QUEUE_MAXSIZE", 1000)
-        self._task_queue: queue.Queue[str] = (
-            queue.Queue(maxsize=self._task_queue_maxsize)
-            if self._task_queue_maxsize > 0
-            else queue.Queue()
-        )
-
-        self._workers_lock = threading.Lock()
-        self._worker_threads: list[threading.Thread] = []
-
-    # -------------------- stream persistence --------------------
-
-    def _task_stream_dir(self) -> Path:
-        configured = os.getenv("TASK_STREAM_DIR")
-        if configured:
-            return Path(configured)
-        return Path(__file__).resolve().parents[2] / "storage" / "task_streams"
-
-    def _task_stream_path(self, task_id: str) -> Path:
-        out_dir = self._task_stream_dir()
-        out_dir.mkdir(parents=True, exist_ok=True)
-        return out_dir / f"{task_id}.txt"
-
-    def _append_task_stream(self, task_id: str, delta: str) -> None:
-        if not delta:
-            return
-        max_chars = _int_env("TASK_STREAM_CACHE_MAX_CHARS", 200_000)
-        with self._task_stream_lock:
-            prev = self._task_stream_cache.get(task_id, "")
-            next_text = prev + delta
-            if 0 < max_chars < len(next_text):
-                next_text = next_text[-max_chars:]
-            self._task_stream_cache[task_id] = next_text
-
-            try:
-                self._task_stream_path(task_id).open("a", encoding="utf-8").write(delta)
-            except Exception:  # pylint: disable=broad-exception-caught
-                pass
-
-    def _get_task_stream(self, task_id: str) -> str:
-        with self._task_stream_lock:
-            cached = self._task_stream_cache.get(task_id)
-            if cached is not None:
-                return cached
-
-            max_chars = _int_env("TASK_STREAM_CACHE_MAX_CHARS", 200_000)
-            text = _read_text_tail(self._task_stream_path(task_id), max_chars)
-            self._task_stream_cache[task_id] = text
-            return text
-
-    # -------------------- cancellation --------------------
-
-    def _is_task_cancelled(self, task_id: str) -> bool:
-        with self._task_cancel_lock:
-            return task_id in self._task_cancelled
-
-    def cancel_task(self, task_id: str):
-        """Cancel a task and mark it as failed."""
-        try:
-            task = self.repository.get(task_id)
-        except KeyError as exc:
-            raise HTTPException(status_code=404, detail=str(exc)) from exc
-
-        if task.status in (TaskStatus.COMPLETED, TaskStatus.FAILED):
-            return task
-
-        with self._task_cancel_lock:
-            self._task_cancelled.add(task_id)
-
-        self.repository.mark_failed(task_id, "cancelled")
-        updated = self.repository.patch_task(
-            task_id, stage="cancelled", stage_message="已作废"
-        )
-
-        try:
-            self._event_broker.publish(
-                task_id,
-                "progress",
-                {
-                    "task_id": task_id,
-                    "status": str(updated.status),
-                    "stage": "cancelled",
-                    "message": "已作废",
-                },
-            )
-        except Exception:  # pylint: disable=broad-exception-caught
-            pass
-
-        return updated
+    @staticmethod
+    def _merge_unique_tags(prefix: list[str], tail: list[str]) -> list[str]:
+        out: list[str] = []
+        seen: set[str] = set()
+        for item in [*prefix, *tail]:
+            s = str(item).strip()
+            if not s:
+                continue
+            key = s.casefold()
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append(s)
+        return out
 
     # -------------------- workers --------------------
 
-    def _in_tests(self) -> bool:
-        import sys
-
-        return ("pytest" in sys.modules) or ("PYTEST_CURRENT_TEST" in os.environ)
-
-    def _task_worker_loop(self) -> None:
-        while True:
-            try:
-                task_id = self._task_queue.get(timeout=0.5)
-            except queue.Empty:
-                continue
-
-            try:
-                if self._is_task_cancelled(task_id):
-                    try:
-                        self.repository.mark_failed(task_id, "cancelled")
-                        self.repository.patch_task(
-                            task_id, stage="cancelled", stage_message="已作废"
-                        )
-                    except Exception:  # pylint: disable=broad-exception-caught
-                        pass
-                    continue
-                self.process_task_sync(task_id)
-            except HTTPException:
-                pass
-            except Exception:  # pylint: disable=broad-exception-caught
-                import logging
-
-                logging.getLogger(__name__).exception(
-                    "Unexpected worker error task_id=%s", task_id
-                )
-            finally:
-                with self._processing_lock:
-                    self._processing_inflight.discard(task_id)
-                try:
-                    self._task_queue.task_done()
-                except Exception:  # pylint: disable=broad-exception-caught
-                    pass
-
-    def ensure_workers_started(self) -> None:
-        if self._in_tests():
-            return
-        with self._workers_lock:
-            if self._worker_threads:
-                return
-
-            worker_count = max(1, _int_env("TASK_WORKERS", 2))
-            for i in range(worker_count):
-                thread = threading.Thread(
-                    target=self._task_worker_loop,
-                    name=f"task-worker-{i + 1}",
-                    daemon=True,
-                )
-                self._worker_threads.append(thread)
-                thread.start()
-
     def start_processing_in_background(self, task_id: str) -> None:
-        """Queue a task for background processing."""
-        self.ensure_workers_started()
-
+        """Process a task in a background thread without a complex queue."""
         try:
             self.repository.get(task_id)
         except KeyError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
 
-        with self._processing_lock:
-            if task_id in self._processing_inflight:
-                return
-            self._processing_inflight.add(task_id)
-
-        try:
-            self._task_queue.put_nowait(task_id)
-        except queue.Full as exc:
-            with self._processing_lock:
-                self._processing_inflight.discard(task_id)
-            raise HTTPException(status_code=429, detail="Task queue is full") from exc
-
-        try:
-            self.repository.patch_task(
-                task_id, stage="queued", stage_message="已加入队列，等待处理"
-            )
-            task = self.repository.get(task_id)
-            self._event_broker.publish(
-                task_id,
-                "progress",
-                {
-                    "task_id": task_id,
-                    "status": str(task.status),
-                    "stage": "queued",
-                    "message": "已加入队列，等待处理",
-                },
-            )
-        except Exception:  # pylint: disable=broad-exception-caught
-            pass
+        # Fire and forget thread for simplified background processing
+        thread = threading.Thread(
+            target=self.process_task_sync,
+            args=(task_id,),
+            name=f"task-bg-{task_id}",
+            daemon=True,
+        )
+        thread.start()
 
     # -------------------- basic CRUD --------------------
+
+    def iter_tasks(self):
+        """Return a snapshot iterable of all task records for read-only API views."""
+        return self.repository.list_all().values()
 
     def create_task(self, payload, *, auto_process: bool = True):
         """Create a task from payload and optionally process it."""
@@ -425,12 +207,12 @@ class TasksService:
         return self.process_task_sync(task_id)
 
     def retry_task(
-        self, task_id: str, *, background: bool = True, clear_stream: bool = True
+        self, task_id: str, *, background: bool = True
     ):
         """Retry a task (failed or completed).
 
         This is a convenience wrapper around processing that also clears cancellation
-        flags and (optionally) clears previous LLM stream output.
+        flags.
         """
 
         try:
@@ -443,14 +225,6 @@ class TasksService:
 
         with self._task_cancel_lock:
             self._task_cancelled.discard(task_id)
-
-        if clear_stream:
-            with self._task_stream_lock:
-                self._task_stream_cache.pop(task_id, None)
-            try:
-                self._task_stream_path(task_id).unlink(missing_ok=True)
-            except Exception:  # pylint: disable=broad-exception-caught
-                pass
 
         try:
             self.repository.patch_task(
@@ -556,7 +330,7 @@ class TasksService:
                             last_snapshot = snapshot
                         last_snapshot_at = now
 
-                        if task.status in (TaskStatus.COMPLETED, TaskStatus.FAILED):
+                        if task.status in (TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.CANCELLED):
                             yield "event: done\ndata: {}\n\n"
                             return
             finally:
@@ -585,31 +359,24 @@ class TasksService:
             return
         solutions = {s.problem_id: s for s in task.solutions}
         solution = solutions.get(problem.problem_id)
-        tagger = self.pipeline.deps.tagger
-        tags = tagger.run(task.payload, [problem], [solution] if solution else [])
-        task.tags = [t for t in task.tags if t.problem_id != problem.problem_id] + tags
+        tag = self.pipeline.retag_problem(
+            payload=task.payload,
+            problem=problem,
+            solution=solution,
+        )
+        task.tags = [t for t in task.tags if t.problem_id != problem.problem_id] + [tag]
 
     def rerun_ocr(self, task_id: str, problem_id: str):
         """Re-run OCR for a single problem and retag."""
         task = self.repository.get(task_id)
         problem = self._get_problem(task, problem_id)
-        extractor = self.pipeline.deps.ocr_extractor
-        if extractor is None:
-            raise HTTPException(status_code=400, detail="OCR extractor not configured")
-
-        if task.detection:
-            regions = [r for r in task.detection.regions if r.id == problem.region_id]
-        else:
-            regions = []
-        if not regions:
-            bbox = problem.crop_bbox or [0.05, 0.05, 0.9, 0.25]
-            regions = [
-                CropRegion(
-                    id=problem.region_id or problem.problem_id, bbox=bbox, label="full"
-                )
-            ]
-        detection = DetectionOutput(action="single", regions=regions)
-        extracted = extractor.run(task.payload, detection, task.asset)[0]
+        region_id = problem.region_id or problem.problem_id
+        extracted = self.pipeline.rerun_ocr_for_problem(
+            payload=task.payload,
+            asset=task.asset,
+            region_id=region_id,
+            crop_bbox=problem.crop_bbox,
+        )
         extracted.problem_id = problem.problem_id
         extracted.region_id = problem.region_id
         extracted.locked_tags = problem.locked_tags
@@ -684,11 +451,7 @@ class TasksService:
         ):
             task.tags = [t for t in task.tags if t.problem_id != problem_id]
             task.tags.append(
-                self.pipeline.deps.tagger.ai_client.classify_problem(
-                    task.payload.subject, updates
-                )
-                if hasattr(self.pipeline.deps.tagger, "ai_client")
-                else self.pipeline.deps.tagger.run(task.payload, [updates], [])[-1]
+                self.pipeline.classify_problem(payload=task.payload, problem=updates)
             )
         elif override.retag:
             self._retag_single(task, updates, force=True)
@@ -740,18 +503,15 @@ class TasksService:
         """Re-solve and retag a single problem."""
         task = self.repository.get(task_id)
         problem = self._get_problem(task, problem_id)
-        if self.pipeline.orchestrator:
-            solutions, tags = self.pipeline.orchestrator.solve_and_tag(
-                task.payload, [problem]
-            )
-        else:
-            solutions = self.pipeline.deps.solution_writer.run(task.payload, [problem])
-            tags = self.pipeline.deps.tagger.run(task.payload, [problem], solutions)
+        solution, tag = self.pipeline.solve_and_tag_single(
+            payload=task.payload,
+            problem=problem,
+        )
 
         task.solutions = [
             s for s in task.solutions if s.problem_id != problem_id
-        ] + solutions
-        task.tags = [t for t in task.tags if t.problem_id != problem_id] + tags
+        ] + [solution]
+        task.tags = [t for t in task.tags if t.problem_id != problem_id] + [tag]
         updated = self.repository.patch_task(
             task_id, solutions=task.solutions, tags=task.tags
         )
@@ -831,189 +591,70 @@ class TasksService:
 
     # -------------------- pipeline execution --------------------
 
+    def _mark_processing_started(self, task_id: str) -> None:
+        self.repository.mark_processing(task_id)
+        self.repository.patch_task(task_id, stage="starting", stage_message="开始处理")
+
+    def _finalize_success(self, task_id: str, result):
+        updated = self.repository.save_pipeline_result(task_id, result)
+        self.repository.patch_task(task_id, stage="done", stage_message="完成")
+        return updated
+
+    def _finalize_cancelled(self, task_id: str):
+        self.repository.mark_cancelled(task_id, "cancelled")
+        updated = self.repository.patch_task(
+            task_id, stage="cancelled", stage_message="已作废"
+        )
+        return updated
+
+    def _finalize_failed(self, task_id: str, exc: Exception):
+        self.repository.mark_failed(task_id, str(exc))
+        updated = self.repository.patch_task(
+            task_id, stage="failed", stage_message="处理失败"
+        )
+        return updated
+
     def process_task_sync(
         self,
         task_id: str,
-    ):  # pylint: disable=too-many-locals,too-many-branches,too-many-statements,too-many-nested-blocks
+    ):
         """Run the full pipeline synchronously for a task."""
-        if self._is_task_cancelled(task_id):
-            self.repository.mark_failed(task_id, "cancelled")
-            self.repository.patch_task(
-                task_id, stage="cancelled", stage_message="已作废"
-            )
-            return self.repository.get(task_id)
-
-        self.repository.mark_processing(task_id)
-        self.repository.patch_task(task_id, stage="starting", stage_message="开始处理")
-        self._event_broker.publish(
-            task_id,
-            "progress",
-            {
-                "task_id": task_id,
-                "status": "processing",
-                "stage": "starting",
-                "message": "开始处理",
-            },
-        )
-
-        def _progress(stage: str, message: str | None) -> None:
-            if self._is_task_cancelled(task_id):
-                raise _TaskCancelled()
-            self.repository.patch_task(task_id, stage=stage, stage_message=message)
-            self._event_broker.publish(
-                task_id,
-                "progress",
-                {
-                    "task_id": task_id,
-                    "status": self.repository.get(task_id).status,
-                    "stage": stage,
-                    "message": message,
-                },
-            )
-
-        def _llm_delta(problem_id: str, kind: str, delta: str) -> None:
-            if not delta:
-                return
-            if self._is_task_cancelled(task_id):
-                raise _TaskCancelled()
-
-            self._append_task_stream(task_id, delta)
-            self._event_broker.publish(
-                task_id,
-                "llm_delta",
-                {
-                    "task_id": task_id,
-                    "problem_id": problem_id,
-                    "kind": kind,
-                    "delta": delta,
-                },
-            )
+        with self._processing_lock:
+            if task_id in self._processing_inflight:
+                return self.get_task(task_id)
+            self._processing_inflight.add(task_id)
 
         try:
-            task = self.repository.get(task_id)
-            result = self.pipeline.run(
-                task_id,
-                task.payload,
-                task.asset,
-                on_progress=_progress,
-                on_llm_delta=_llm_delta,
-            )
+            if self._is_task_cancelled(task_id):
+                return self._finalize_cancelled(task_id)
 
-            manual_knowledge = [
-                str(t).strip()
-                for t in (task.payload.knowledge_tags or [])
-                if str(t).strip()
-            ]
-            manual_error = [
-                str(t).strip()
-                for t in (task.payload.error_tags or [])
-                if str(t).strip()
-            ]
-            manual_source = (task.payload.source or "").strip()
-
-            def _merge_unique(prefix: list[str], tail: list[str]) -> list[str]:
-                out: list[str] = []
-                seen: set[str] = set()
-                for item in [*prefix, *tail]:
-                    s = str(item).strip()
-                    if not s:
-                        continue
-                    key = s.casefold()
-                    if key in seen:
-                        continue
-                    seen.add(key)
-                    out.append(s)
-                return out
-
-            if manual_source:
-                result = result.model_copy(
-                    update={
-                        "problems": [
-                            p.model_copy(update={"source": p.source or manual_source})
-                            for p in result.problems
-                        ]
-                    }
-                )
-
-            if manual_knowledge or manual_error:
-                patched_tags = []
-                for t in result.tags:
-                    patched_tags.append(
-                        t.model_copy(
-                            update={
-                                "knowledge_points": _merge_unique(
-                                    manual_knowledge, t.knowledge_points
-                                ),
-                                "error_hypothesis": _merge_unique(
-                                    manual_error, t.error_hypothesis
-                                ),
-                            }
-                        )
-                    )
-                result = result.model_copy(update={"tags": patched_tags})
+            self._mark_processing_started(task_id)
 
             try:
-                self.tag_store.ensure(TagDimension.KNOWLEDGE, manual_knowledge)
-                self.tag_store.ensure(TagDimension.ERROR, manual_error)
-                if manual_source:
-                    self.tag_store.ensure(TagDimension.META, [manual_source])
-
-                discovered_knowledge: list[str] = []
-                discovered_error: list[str] = []
-                for t in result.tags:
-                    discovered_knowledge.extend(t.knowledge_points or [])
-                    for e in t.error_hypothesis or []:
-                        s = str(e).strip()
-                        if not s or len(s) > 40 or "\n" in s:
-                            continue
-                        discovered_error.append(s)
-                self.tag_store.ensure(TagDimension.KNOWLEDGE, discovered_knowledge)
-                self.tag_store.ensure(TagDimension.ERROR, discovered_error)
-            except Exception:  # pylint: disable=broad-exception-caught
-                pass
-
-            updated = self.repository.save_pipeline_result(task_id, result)
-            self.repository.patch_task(task_id, stage="done", stage_message="完成")
-            self._event_broker.publish(
-                task_id,
-                "progress",
-                {
-                    "task_id": task_id,
-                    "status": "completed",
-                    "stage": "done",
-                    "message": "完成",
-                },
-            )
-
-            return updated
-        except _TaskCancelled:
-            self.repository.mark_failed(task_id, "cancelled")
-            updated = self.repository.patch_task(
-                task_id, stage="cancelled", stage_message="已作废"
-            )
-            return updated
-        except HTTPException:
-            raise
-        except Exception as exc:  # pylint: disable=broad-exception-caught
-            # Persist failure state.
-            self.repository.mark_failed(task_id, str(exc))
-            updated = self.repository.patch_task(
-                task_id, stage="failed", stage_message="处理失败"
-            )
-            try:
-                self._append_task_stream(
-                    task_id, f'{{"stage":"failed","message":"{str(exc)}"}}'
-                )
-                self._event_broker.publish(
+                task = self.repository.get(task_id)
+                result = self.pipeline.run(
                     task_id,
-                    "progress",
-                    {
-                        "task_id": task_id,
-                        "status": "failed",
-                        "stage": "failed",
-                        "message": str(exc),
-                    },
+                    task.payload,
+                    task.asset,
                 )
-            except Exception:  # pylint: disable=broad-exception-caught
-                pass
-            raise HTTPException(status_code=500, detail=str(exc)) from exc
+                result, manual_knowledge, manual_error, manual_source = (
+                    self._apply_manual_payload_to_result(task, result)
+                )
+                self._sync_tag_store_after_pipeline(
+                    manual_knowledge=manual_knowledge,
+                    manual_error=manual_error,
+                    manual_source=manual_source,
+                    tags=result.tags,
+                )
+
+                return self._finalize_success(task_id, result)
+            except _TaskCancelled:
+                return self._finalize_cancelled(task_id)
+            except HTTPException:
+                raise
+            except Exception as exc:  # pylint: disable=broad-exception-caught
+                self._finalize_failed(task_id, exc)
+                raise HTTPException(status_code=500, detail=str(exc)) from exc
+        finally:
+            with self._processing_lock:
+                self._processing_inflight.discard(task_id)

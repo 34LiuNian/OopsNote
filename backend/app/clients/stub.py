@@ -6,8 +6,6 @@ from typing import Any, Callable
 
 from pydantic import BaseModel
 
-from app.models import ProblemBlock, TaggingResult
-
 
 class StubAIClient:
     """Deterministic AI client used for local development without API keys."""
@@ -16,57 +14,6 @@ class StubAIClient:
 
     def __init__(self, seed: int | None = None) -> None:
         self._random = random.Random(seed)
-
-    def generate_solution(
-        self,
-        subject: str,
-        problem: ProblemBlock,
-        on_delta: Callable[[str], None] | None = None,
-    ) -> tuple[str, str]:
-        if subject.lower().startswith("phy"):
-            answer = "a = F / m"
-            explanation = (
-                "1. 根据题意列出牛顿第二定律; "
-                "2. 将力和质量代入 F = ma; "
-                "3. 化简得到 a = F / m。"
-            )
-        else:
-            answer = "c = sqrt(a^2 + b^2)"
-            explanation = (
-                "1. 识别直角三角形; "
-                "2. 应用勾股定理 a^2 + b^2 = c^2; "
-                "3. 求出所需未知量。"
-            )
-
-        if on_delta is not None:
-            # Simulate token streaming by chunking the JSON-ish content.
-            text = json.dumps(
-                {"answer": answer, "explanation": explanation}, ensure_ascii=False
-            )
-            for i in range(0, len(text), 12):
-                try:
-                    on_delta(text[i : i + 12])
-                except Exception:
-                    break
-        return answer, explanation
-
-    def classify_problem(self, subject: str, problem: ProblemBlock) -> TaggingResult:
-        knowledge = (
-            ["勾股定理"] if subject.lower().startswith("math") else ["牛顿第二定律"]
-        )
-        skills = (
-            ["几何推理"]
-            if subject.lower().startswith("math")
-            else ["物理建模", "代数推导"]
-        )
-        return TaggingResult(
-            problem_id=problem.problem_id,
-            knowledge_points=knowledge,
-            question_type="解答题",
-            skills=skills,
-            error_hypothesis=["审题不清", "计算缺陷"],
-            recommended_actions=["回顾公式", "针对性练习 3 道题"],
-        )
 
     def structured_chat(
         self,

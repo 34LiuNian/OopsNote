@@ -7,20 +7,14 @@ import logging
 import re
 from typing import Any, Callable, Iterable, Mapping, Sequence
 
-from pydantic import BaseModel
-
 from ..clients import AIClient
 from ..models import ProblemBlock, SolutionBlock, TaggingResult, TaskCreateRequest
 from ..tags import TagDimension, tag_store
-from ..request_context import get_request_id
-from ..trace import trace_event
 
 logger = logging.getLogger(__name__)
 
 
 _PLACEHOLDER_RE = re.compile(r"\{([a-zA-Z_][a-zA-Z0-9_]*)\}")
-_SKILL_DIR = Path(__file__).parent / "skills"
-_SKILL_CACHE: dict[str, str] = {}
 _CHEMFIG_RE = re.compile(r"\\chemfig|chemfig", re.IGNORECASE)
 _CHEM_HINT_RE = re.compile(r"化学|有机|结构式|分子式|反应", re.IGNORECASE)
 
@@ -78,108 +72,50 @@ class LLMAgent:
         client: AIClient,
         template: PromptTemplate,
         required_keys: Sequence[str] | None = None,
-        response_model: type[BaseModel] | None = None,
         model_resolver: Callable[[str], str | None] | None = None,
     ) -> None:
         self.name = name
         self.client = client
         self.template = template
         self.required_keys = list(required_keys or [])
-        self.response_model = response_model
         self.model_resolver = model_resolver
 
     def run(
-        self, context: Mapping[str, Any], on_delta: Callable[[str], None] | None = None
+        self, context: Mapping[str, Any]
     ) -> AgentResult:
         system_prompt, user_prompt = self.template.render(context)
-
-        skills = context.get("skills")
-        if isinstance(skills, (list, tuple)) and skills:
-            skill_blocks = []
-            for name in skills:
-                if not name:
-                    continue
-                text = _load_skill(self.name, str(name))
-                if text:
-                    skill_blocks.append(f"[Skill: {name}]\n{text}")
-            if skill_blocks:
-                system_prompt = (
-                    f"{system_prompt}\n\n" + "\n\n".join(skill_blocks) + "\n"
-                )
-
-        # Optional per-agent "thinking" toggle.
-        # We implement this as a prompt style hint (provider-agnostic).
         thinking = context.get("agent_thinking")
-        if thinking is False:
-            system_prompt = (
-                "你现在处于【简洁模式】。\n"
-                "- 不要输出推理过程/分析文字，只输出最终结论。\n"
-                "- 必须严格输出 JSON（不要包裹在 Markdown 代码块里）。\n\n"
-                + system_prompt
-            )
+
         override = None
         if self.model_resolver:
             override = self.model_resolver(self.name)
             if override:
                 self.client.model = override
-        started = time.perf_counter()
-        approx_chars = len(system_prompt) + len(user_prompt)
-        rid = get_request_id()
-        logger.info(
-            "Agent request rid=%s name=%s template=%s client=%s model=%s override=%s approx_chars=%s",
-            rid,
-            self.name,
-            self.template.name,
-            type(self.client).__name__,
-            getattr(self.client, "model", None),
-            override,
-            approx_chars,
-        )
-        trace_event(
-            "agent_request",
-            name=self.name,
-            template=self.template.name,
-            client=type(self.client).__name__,
-            model=getattr(self.client, "model", None),
-            override=override,
-            approx_chars=approx_chars,
-        )
-        try:
-            payload = self.client.structured_chat(
-                system_prompt,
-                user_prompt,
-                response_model=self.response_model,
-                on_delta=on_delta,
-                thinking=thinking if isinstance(thinking, bool) else None,
-            )
-        except Exception:
-            elapsed_ms = (time.perf_counter() - started) * 1000
-            logger.exception(
-                "Agent failed rid=%s name=%s ms=%.1f", rid, self.name, elapsed_ms
-            )
-            trace_event("agent_failed", name=self.name, ms=elapsed_ms)
-            raise
 
-        elapsed_ms = (time.perf_counter() - started) * 1000
-        keys = (
-            sorted([str(k) for k in payload.keys()])
-            if isinstance(payload, dict)
-            else []
+        try:
+            if "image_bytes" in context:
+                output = self.client.structured_chat_with_image(
+                    system_prompt,
+                    user_prompt,
+                    image_bytes=context["image_bytes"],
+                    mime_type=context.get("mime_type", "image/jpeg"),
+                    thinking=thinking if isinstance(thinking, bool) else None,
+                )
+            else:
+                output = self.client.structured_chat(
+                    system_prompt,
+                    user_prompt,
+                    thinking=thinking if isinstance(thinking, bool) else None,
+                )
+        except Exception as e:
+            logger.error(f"Agent {self.name} failed: {e}")
+            output = {}
+
+        return AgentResult(
+            name=self.name,
+            output=output,
+            raw_text="",
         )
-        logger.info(
-            "Agent done rid=%s name=%s ms=%.1f keys=%s",
-            rid,
-            self.name,
-            elapsed_ms,
-            keys,
-        )
-        trace_event("agent_done", name=self.name, ms=elapsed_ms, keys=keys)
-        output = (
-            payload
-            if not self.required_keys
-            else {k: payload.get(k) for k in self.required_keys}
-        )
-        return AgentResult(name=self.name, output=output, raw_text=str(payload))
 
 
 class AgentOrchestrator:
@@ -201,7 +137,6 @@ class AgentOrchestrator:
         self,
         payload: TaskCreateRequest,
         problems: Iterable[ProblemBlock],
-        on_llm_delta: Callable[[str, str, str], None] | None = None,
     ) -> tuple[list[SolutionBlock], list[TaggingResult]]:
         solutions: list[SolutionBlock] = []
         tags: list[TaggingResult] = []
@@ -217,20 +152,8 @@ class AgentOrchestrator:
                 except Exception:
                     context["agent_thinking"] = True
 
-            def _emit(kind: str) -> Callable[[str], None] | None:
-                if on_llm_delta is None:
-                    return None
-
-                def _cb(delta: str) -> None:
-                    try:
-                        on_llm_delta(problem.problem_id, kind, delta)
-                    except Exception:
-                        pass
-
-                return _cb
-
             _set_thinking("SOLVER")
-            solve = self.solver.run(context, on_delta=_emit("solver")).output
+            solve = self.solver.run(context).output
             context.update({k: v for k, v in solve.items() if v is not None})
             solutions.append(
                 SolutionBlock(
@@ -242,7 +165,7 @@ class AgentOrchestrator:
             )
 
             _set_thinking("TAGGER")
-            tag_payload = self.tagger.run(context, on_delta=_emit("tagger")).output
+            tag_payload = self.tagger.run(context).output
             tags.append(self._to_tagging(problem.problem_id, tag_payload))
         return solutions, tags
 

@@ -11,13 +11,14 @@ from ..models import (
     TaskStatus,
     UploadRequest,
 )
+from .deps import get_tasks_service
 
 router = APIRouter()
 
 
 def _svc(request: Request):
-    state = getattr(request.app.state, "oops", None)
-    return getattr(state, "tasks", None)
+    """Resolve task service from shared API dependencies."""
+    return get_tasks_service(request)
 
 
 @router.post("/tasks", response_model=TaskResponse, status_code=201)
@@ -67,10 +68,9 @@ def retry_task(
     request: Request,
     task_id: str,
     background: bool = True,
-    clear_stream: bool = True,
 ) -> TaskResponse:
     task = _svc(request).retry_task(
-        task_id, background=background, clear_stream=clear_stream
+        task_id, background=background
     )
     return TaskResponse(task=task)
 
@@ -79,18 +79,6 @@ def retry_task(
 def cancel_task(request: Request, task_id: str) -> TaskResponse:
     task = _svc(request).cancel_task(task_id)
     return TaskResponse(task=task)
-
-
-@router.get("/tasks/{task_id}/stream")
-def get_task_stream(
-    request: Request, task_id: str, max_chars: int = 200_000
-) -> dict[str, object]:
-    return _svc(request).get_task_stream(task_id, max_chars=max_chars)
-
-
-@router.get("/tasks/{task_id}/events")
-async def task_events(request: Request, task_id: str):
-    return _svc(request).task_events(task_id)
 
 
 @router.post("/tasks/{task_id}/problems/{problem_id}/ocr", response_model=TaskResponse)

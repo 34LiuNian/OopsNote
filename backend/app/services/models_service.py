@@ -4,6 +4,10 @@ from dataclasses import dataclass
 from typing import Callable
 
 
+class ModelsServiceConfigError(ValueError):
+    """Raised when model-listing prerequisites are missing in runtime config."""
+
+
 @dataclass
 class ModelsService:
     """List models with caching.
@@ -38,18 +42,12 @@ class ModelsService:
 
         base_url, api_key, authorization, auth_header_name = self.guess_config()
         if not base_url:
-            from fastapi import HTTPException
-
-            raise HTTPException(
-                status_code=400,
-                detail="Missing OPENAI_BASE_URL or default.base_url in agent config",
+            raise ModelsServiceConfigError(
+                "Missing OPENAI_BASE_URL or default.base_url in agent config"
             )
         if not api_key and not authorization:
-            from fastapi import HTTPException
-
-            raise HTTPException(
-                status_code=400,
-                detail="Missing OPENAI_API_KEY (or OPENAI_AUTHORIZATION) or default.api_key in agent config",
+            raise ModelsServiceConfigError(
+                "Missing OPENAI_API_KEY (or OPENAI_AUTHORIZATION) or default.api_key in agent config"
             )
 
         items = self.fetch_models(

@@ -76,6 +76,20 @@ class InMemoryTaskRepository:
         self._tasks[task_id] = updated
         return updated
 
+    def mark_cancelled(self, task_id: str, reason: str = "cancelled") -> TaskRecord:
+        """Mark a task as cancelled and persist the terminal reason."""
+        record = self.get(task_id)
+        now = datetime.now(timezone.utc)
+        updated = record.model_copy(
+            update={
+                "status": TaskStatus.CANCELLED,
+                "updated_at": now,
+                "last_error": reason,
+            }
+        )
+        self._tasks[task_id] = updated
+        return updated
+
     def mark_processing(self, task_id: str) -> TaskRecord:
         record = self.get(task_id)
         now = datetime.now(timezone.utc)
@@ -201,6 +215,21 @@ class FileTaskRepository:
         updated = record.model_copy(
             update={
                 "status": TaskStatus.FAILED,
+                "updated_at": now,
+                "last_error": reason,
+            }
+        )
+        self._tasks[task_id] = updated
+        self._write(updated)
+        return updated
+
+    def mark_cancelled(self, task_id: str, reason: str = "cancelled") -> TaskRecord:
+        """Mark a task as cancelled and persist the terminal reason."""
+        record = self.get(task_id)
+        now = datetime.now(timezone.utc)
+        updated = record.model_copy(
+            update={
+                "status": TaskStatus.CANCELLED,
                 "updated_at": now,
                 "last_error": reason,
             }

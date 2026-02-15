@@ -9,7 +9,6 @@ from .agents.pipeline import AgentPipeline, PipelineDependencies
 from .agents.stages import Archiver, HandwrittenExtractor, ProblemRebuilder, SolutionWriter, TaggingProfiler
 from .clients import OpenAIClient, StubAIClient, build_client_for_agent
 from .config import AppConfig
-from .llm_schemas import SolverOutput, TaggerOutput
 from .repository import ArchiveStore, FileTaskRepository, InMemoryTaskRepository
 from .services.agent_settings import AgentSettingsService
 from .services.tasks_service import TasksService
@@ -68,7 +67,6 @@ def build_pipeline(
             solver_client,
             _load_prompt("solver"),
             ("answer", "explanation", "short_answer"),
-            response_model=SolverOutput,
             model_resolver=agent_settings_service.resolve_saved_model,
         ),
         tagger=LLMAgent(
@@ -76,7 +74,6 @@ def build_pipeline(
             tagger_client,
             _load_prompt("tagger"),
             ("knowledge_points", "question_type", "skills", "error_hypothesis", "recommended_actions"),
-            response_model=TaggerOutput,
             model_resolver=agent_settings_service.resolve_saved_model,
         ),
         is_enabled=agent_settings_service.is_agent_enabled,

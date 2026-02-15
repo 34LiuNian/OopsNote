@@ -6,29 +6,13 @@ import logging
 import os
 import re
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 from openai import OpenAI, OpenAIError
-from pydantic import BaseModel
-
-from app.models import ProblemBlock, TaggingResult
 
 from .base import AIClient
 
 logger = logging.getLogger(__name__)
-
-_PROMPT_DIR = Path(__file__).parent / "prompts"
-_PROMPT_CACHE: dict[str, str] = {}
-
-
-def _load_prompt(filename: str) -> str:
-    """读取并缓存提示词文件内容。"""
-    cached = _PROMPT_CACHE.get(filename)
-    if cached is not None:
-        return cached
-    text = (_PROMPT_DIR / filename).read_text(encoding="utf-8")
-    _PROMPT_CACHE[filename] = text
-    return text
 
 
 class OpenAIClient(AIClient):
@@ -60,57 +44,18 @@ class OpenAIClient(AIClient):
             else OpenAI(api_key=api_key)
         )
 
-    def generate_solution(
-        self,
-        subject: str,
-        problem: ProblemBlock,
-        on_delta: Callable[[str], None] | None = None,
-    ) -> tuple[str, str]:
-        """使用解题提示词生成 answer 与 explanation。"""
-        system_prompt = _load_prompt("solution_system.txt").strip()
-        user_prompt = self._format_problem_prompt(subject, problem)
-        payload = self._complete_json(
-            system_prompt,
-            user_prompt + "\n" + _load_prompt("solution_user_suffix.txt").strip(),
-            on_delta=on_delta,
-        )
-        return str(payload.get("answer", "")), str(payload.get("explanation", ""))
-
-    def classify_problem(self, subject: str, problem: ProblemBlock) -> TaggingResult:
-        """使用打标提示词生成结构化标签结果。"""
-        system_prompt = _load_prompt("tagging_system.txt").strip()
-        user_prompt = self._format_problem_prompt(subject, problem)
-        payload = self._complete_json(
-            system_prompt,
-            user_prompt + "\n" + _load_prompt("tagging_user_suffix.txt").strip(),
-        )
-        return TaggingResult(
-            problem_id=problem.problem_id,
-            knowledge_points=_ensure_list(payload.get("knowledge_points"), ["未标注"]),
-            question_type=str(payload.get("question_type", "解答题")),
-            skills=_ensure_list(payload.get("skills"), ["分析推理"]),
-            error_hypothesis=_ensure_list(payload.get("error_hypothesis"), ["知识点不熟"]),
-            recommended_actions=_ensure_list(
-                payload.get("recommended_actions"), ["回顾笔记", "完成 2 道同类题"]
-            ),
-        )
-
     def structured_chat(
         self,
         system_prompt: str,
         user_prompt: str,
-        response_model: type[BaseModel] | None = None,
-        on_delta: Callable[[str], None] | None = None,
         thinking: bool | None = None,
     ) -> dict[str, Any]:
         """通用结构化文本对话入口。"""
-        return self._complete_json(
-            system_prompt,
-            user_prompt,
-            response_model=response_model,
-            on_delta=on_delta,
-            thinking=thinking,
-        )
+        messages: list[dict[str, Any]] = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},
+        ]
+        return self._complete_json(messages)
 
     def structured_chat_with_image(
         self,
@@ -118,8 +63,6 @@ class OpenAIClient(AIClient):
         user_prompt: str,
         image_bytes: bytes,
         mime_type: str,
-        response_model: type[BaseModel] | None = None,
-        on_delta: Callable[[str], None] | None = None,
         thinking: bool | None = None,
     ) -> dict[str, Any]:
         """通用结构化图文对话入口。"""
@@ -134,162 +77,32 @@ class OpenAIClient(AIClient):
                 ],
             },
         ]
-        return self._complete_json_messages(
-            messages,
-            response_model=response_model,
-            on_delta=on_delta,
-            thinking=thinking,
-        )
+        return self._complete_json(messages)
 
     def _complete_json(
         self,
-        system_prompt: str,
-        user_prompt: str,
-        response_model: type[BaseModel] | None = None,
-        on_delta: Callable[[str], None] | None = None,
-        thinking: bool | None = None,
-    ) -> dict[str, Any]:
-        """将 system/user 文本包装成 messages 并请求模型。"""
-        messages: list[dict[str, Any]] = [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt},
-        ]
-        return self._complete_json_messages(
-            messages,
-            response_model=response_model,
-            on_delta=on_delta,
-            thinking=thinking,
-        )
-
-    def _complete_json_messages(
-        self,
         messages: list[dict[str, Any]],
-        response_model: type[BaseModel] | None = None,
-        on_delta: Callable[[str], None] | None = None,
-        thinking: bool | None = None,
     ) -> dict[str, Any]:
         """请求 chat.completions 并将返回文本解析为 JSON 对象。"""
-        _ = thinking
-        self._log_payload(messages)
-
         try:
-            content = self._call_model(messages, on_delta=on_delta)
-        except OpenAIError as exc:
-            raise RuntimeError("OpenAI request failed") from exc
-
-        try:
-            data = _parse_json_block(content)
-        except ValueError as exc:
-            raise RuntimeError("Model output is not JSON") from exc
-
-        if response_model is not None:
-            data = _trim_payload_for_model(data, response_model)
-            data = response_model.model_validate(data).model_dump()
-        return data
+            content = self._call_model(messages)
+            return _parse_json_block(content)
+        except Exception as exc:
+            logger.error("LLM request or parsing failed: %s", exc)
+            return {}
 
     def _call_model(
         self,
         messages: list[dict[str, Any]],
-        on_delta: Callable[[str], None] | None = None,
     ) -> str:
-        """调用 OpenAI chat.completions，支持流式与非流式两种模式。"""
-        if on_delta is None:
-            response = self._client.chat.completions.create(
-                model=self.model,
-                temperature=self.temperature,
-                max_tokens=self.max_tokens,
-                messages=messages,
-            )
-            return str(response.choices[0].message.content or "")
-
-        chunks = self._client.chat.completions.create(
+        """调用 OpenAI chat.completions，仅支持非流式。"""
+        response = self._client.chat.completions.create(
             model=self.model,
             temperature=self.temperature,
             max_tokens=self.max_tokens,
             messages=messages,
-            stream=True,
         )
-        parts: list[str] = []
-        for chunk in chunks:
-            try:
-                delta = getattr(chunk.choices[0].delta, "content", None)
-            except Exception:
-                delta = None
-            if not delta:
-                continue
-            parts.append(delta)
-            try:
-                on_delta(delta)
-            except Exception:
-                pass
-        return "".join(parts)
-
-    def _log_payload(self, messages: list[dict[str, Any]]) -> None:
-        """按调试开关记录请求 payload，默认隐藏图片 data URL。"""
-        if os.getenv("AI_DEBUG_LLM_PAYLOAD", "false").lower() != "true":
-            return
-
-        include_image = (
-            os.getenv("AI_DEBUG_LLM_PAYLOAD_INCLUDE_IMAGE", "false").lower() == "true"
-        )
-
-        def _redact(msgs: list[dict[str, Any]]) -> list[dict[str, Any]]:
-            redacted: list[dict[str, Any]] = []
-            for m in msgs:
-                content = m.get("content") if isinstance(m, dict) else None
-                if not isinstance(content, list):
-                    redacted.append(m)
-                    continue
-                parts: list[Any] = []
-                for part in content:
-                    if not isinstance(part, dict) or part.get("type") != "image_url":
-                        parts.append(part)
-                        continue
-                    if include_image:
-                        parts.append(part)
-                        continue
-                    url = ""
-                    image_url = part.get("image_url")
-                    if isinstance(image_url, dict):
-                        url = str(image_url.get("url", ""))
-                    elif isinstance(image_url, str):
-                        url = image_url
-                    parts.append(
-                        {
-                            "type": "image_url",
-                            "image_url": "<omitted>",
-                            "image_url_len": len(url),
-                        }
-                    )
-                redacted.append({**m, "content": parts})
-            return redacted
-
-        payload_path = os.getenv("AI_DEBUG_LLM_PAYLOAD_PATH")
-        if not payload_path:
-            payload_path = str(Path(__file__).resolve().parents[2] / "storage" / "llm_payloads.log")
-
-        record = {
-            "request_id": "-",
-            "model": self.model,
-            "response_format": None,
-            "messages": _redact(messages),
-            "include_image": include_image,
-        }
-        try:
-            with open(payload_path, "a", encoding="utf-8") as f:
-                f.write(json.dumps(record, ensure_ascii=False) + "\n")
-        except Exception:
-            logger.exception("failed to write llm payload log")
-
-    @staticmethod
-    def _format_problem_prompt(subject: str, problem: ProblemBlock) -> str:
-        """把题目对象拼装为标准文本提示。"""
-        latex = "\n".join(problem.latex_blocks)
-        return (
-            f"学科: {subject}\n"
-            f"题干: {problem.problem_text}\n"
-            f"Latex: {latex if latex else 'N/A'}"
-        )
+        return str(response.choices[0].message.content or "")
 
 
 def _parse_json_block(text: str) -> dict[str, Any]:
@@ -600,24 +413,3 @@ def _balance_unclosed_json_brackets(snippet: str) -> str:
     if not stack:
         return snippet
     return snippet + "".join(reversed(stack))
-
-
-def _ensure_list(value: Any, fallback: list[str]) -> list[str]:
-    """将值归一化为字符串列表，缺失时使用 fallback。"""
-    if isinstance(value, list) and value:
-        return [str(item) for item in value]
-    if isinstance(value, str) and value:
-        return [value]
-    return fallback
-
-
-def _trim_payload_for_model(
-    payload: dict[str, Any],
-    response_model: type[BaseModel],
-) -> dict[str, Any]:
-    """按 response_model 字段白名单裁剪 payload，避免额外字段触发校验失败。"""
-    model_fields = getattr(response_model, "model_fields", {})
-    if not isinstance(payload, dict) or not model_fields:
-        return payload
-    allowed = set(model_fields.keys())
-    return {key: value for key, value in payload.items() if key in allowed}

@@ -35,5 +35,5 @@ class BackendState:
     repository: TaskRepositoryLike
     ai_gateway_status: dict[str, object]
     agent_settings: AgentSettingsLike
-    tasks: TasksServiceLike | None = None
-    models: ModelsServiceLike | None = None
+    tasks: TasksServiceLike
+    models: ModelsServiceLike

@@ -10,13 +10,14 @@ from ..models import (
     AgentThinkingResponse,
     AgentThinkingUpdateRequest,
 )
+from .deps import get_agent_settings_service
 
 router = APIRouter()
 
 
 def _service(request: Request):
-    state = getattr(request.app.state, "oops", None)
-    return getattr(state, "agent_settings", None)
+    """Resolve agent-settings service from shared API dependencies."""
+    return get_agent_settings_service(request)
 
 
 @router.get("/settings/agent-models", response_model=AgentModelsResponse)
