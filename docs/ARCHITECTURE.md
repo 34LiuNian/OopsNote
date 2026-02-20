@@ -79,8 +79,8 @@ OCR 增量日志统一为结构化事件：
 此外：
 
 - OCR 输出 schema 临时放宽（`extra=ignore`）
-- 增加 `latex_blocks`、`ocr_text` 字段对齐实际消费
-- 首次 schema 校验失败时自动触发 retry prompt
+- 增加 `question_type` 字段以标注题型（取值示例：`单选`、`多选`、`填空`、`解答`）
+- 首次 schema 校验失败时直接进入任务失败态（严格模式）
 
 涉及文件：
 

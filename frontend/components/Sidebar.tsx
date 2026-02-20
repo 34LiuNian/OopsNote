@@ -8,7 +8,6 @@ import {
   TagIcon, 
   GearIcon, 
   BookIcon,
-  BeakerIcon,
   ChecklistIcon
 } from "@primer/octicons-react";
 import Link from "next/link";
@@ -18,7 +17,6 @@ const NAV_ITEMS = [
   { href: "/library", label: "题库", icon: RepoIcon },
   { href: "/paper-builder", label: "组卷", icon: ChecklistIcon },
   { href: "/markdown-test", label: "Markdown 测试", icon: BookIcon },
-  { href: "/latex-test", label: "LaTeX 测试", icon: BeakerIcon },
   { href: "/tags", label: "标签管理", icon: TagIcon },
   { href: "/settings", label: "设置", icon: GearIcon },
 ];

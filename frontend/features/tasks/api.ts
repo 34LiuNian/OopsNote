@@ -37,7 +37,7 @@ export type OverrideProblemPayload = {
   question_no: string | null;
   source: string | null;
   problem_text: string;
-  options: Array<{ key: string; text: string; latex_blocks?: string[] }>;
+  options: Array<{ key: string; text: string }>;
   knowledge_tags: string[];
   error_tags: string[];
   user_tags: string[];

@@ -42,6 +42,8 @@ def build_ai_client(*, config: AppConfig):
             base_url=config.openai_base_url,
             model=config.openai_model,
             temperature=config.openai_temperature,
+            debug_payload=config.debug_llm_payload,
+            debug_payload_path=config.debug_llm_payload_path,
         )
     return StubAIClient()
 

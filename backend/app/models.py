@@ -47,7 +47,6 @@ class OptionItem(BaseModel):
 
     key: str = Field(description="Option key such as A/B/C/D")
     text: str = Field(description="Rendered option text, may contain LaTeX markup")
-    latex_blocks: List[str] = Field(default_factory=list)
 
     @field_validator("key", "text")
     @classmethod
@@ -69,10 +68,6 @@ class ProblemBlock(BaseModel):
         default=None, description="Optional manual question type label"
     )
     problem_text: str
-    latex_blocks: List[str] = Field(default_factory=list)
-    ocr_text: Optional[str] = Field(
-        default=None, description="Raw OCR text before cleanup"
-    )
     crop_image_url: Optional[str] = Field(
         default=None, description="URL or path of the cropped region"
     )
@@ -316,7 +311,6 @@ class ChemfigRenderRequest(BaseModel):
 class OverrideProblemRequest(BaseModel):
     question_no: Optional[str] = None
     problem_text: Optional[str] = None
-    latex_blocks: Optional[List[str]] = None
     options: Optional[List[OptionItem]] = None
     source: Optional[str] = None
     knowledge_tags: Optional[List[str]] = None

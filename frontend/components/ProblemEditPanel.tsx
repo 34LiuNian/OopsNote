@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Box, Button, Flash, FormControl, Spinner, Text, TextInput, Textarea } from "@primer/react";
+import { Box, Button, FormControl, Spinner, Text, TextInput, Textarea } from "@primer/react";
+import { sileo } from "sileo";
 import type { TagDimensionStyle } from "../types/api";
 import { overrideProblem } from "../features/tasks";
 import { TagPicker } from "./TagPicker";
@@ -39,7 +40,6 @@ export function ProblemEditPanel({ taskId, problem, tagStyles, onClose, onSaved 
   const [errorTags, setErrorTags] = useState<string[]>([]);
   const [userTags, setUserTags] = useState<string[]>([]);
   const [isSaving, setIsSaving] = useState(false);
-  const [message, setMessage] = useState<string>("");
 
   const optionIdRef = useRef(0);
   const nextOptionId = useCallback(() => {
@@ -60,7 +60,6 @@ export function ProblemEditPanel({ taskId, problem, tagStyles, onClose, onSaved 
   }, []);
 
   useEffect(() => {
-    setMessage("");
     setOptionsError("");
     setQuestionNo((problem.question_no || "").toString());
     setSourceTags(problem.source ? [String(problem.source)] : []);
@@ -83,7 +82,6 @@ export function ProblemEditPanel({ taskId, problem, tagStyles, onClose, onSaved 
 
   const save = useCallback(async () => {
     setIsSaving(true);
-    setMessage("");
     setOptionsError("");
 
     try {
@@ -112,11 +110,14 @@ export function ProblemEditPanel({ taskId, problem, tagStyles, onClose, onSaved 
         error_tags: errorTags,
         user_tags: userTags,
       });
-      setMessage("已保存");
+      sileo.success({ title: "已保存" });
       await onSaved();
       onClose();
     } catch (err) {
-      setMessage(err instanceof Error ? err.message : "保存失败");
+      sileo.error({
+        title: "保存失败",
+        description: err instanceof Error ? err.message : "请稍后重试",
+      });
     } finally {
       setIsSaving(false);
     }
@@ -147,12 +148,6 @@ export function ProblemEditPanel({ taskId, problem, tagStyles, onClose, onSaved 
       </Box>
 
       <Box sx={{ p: 3, display: "flex", flexDirection: "column", gap: 3 }}>
-        {message ? (
-          <Flash variant={message === "已保存" ? "success" : "danger"}>
-            {message}
-          </Flash>
-        ) : null}
-
         <Box sx={{ display: "grid", gridTemplateColumns: ["1fr", "1fr 1fr"], gap: 3 }}>
           <FormControl>
             <FormControl.Label>题号</FormControl.Label>

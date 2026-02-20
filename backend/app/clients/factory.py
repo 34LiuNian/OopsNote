@@ -16,6 +16,14 @@ def _debug_llm_enabled() -> bool:
     return os.getenv("AI_DEBUG_LLM", "false").lower() == "true"
 
 
+def _debug_payload_enabled() -> bool:
+    return os.getenv("AI_DEBUG_LLM_PAYLOAD", "false").lower() == "true"
+
+
+def _debug_payload_path() -> str | None:
+    return os.getenv("AI_DEBUG_LLM_PAYLOAD_PATH")
+
+
 @dataclass(frozen=True)
 class AgentClientConfig:
     provider: str
@@ -162,6 +170,8 @@ def build_client_from_config(config: AgentClientConfig):
             base_url=config.base_url,
             model=config.model or "gpt-4o-mini",
             temperature=config.temperature if config.temperature is not None else 0.2,
+            debug_payload=_debug_payload_enabled(),
+            debug_payload_path=_debug_payload_path(),
         )
 
     raise RuntimeError(f"Unknown provider: {provider}")

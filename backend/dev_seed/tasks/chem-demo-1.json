@@ -29,7 +29,12 @@
     "regions": [
       {
         "id": "chem-demo-region-1",
-        "bbox": [0.05, 0.05, 0.9, 0.9],
+        "bbox": [
+          0.05,
+          0.05,
+          0.9,
+          0.9
+        ],
         "label": "full"
       }
     ]
@@ -40,12 +45,7 @@
       "region_id": "chem-demo-region-1",
       "question_no": "chem-demo-1",
       "problem_text": "【渲染测试题】\n\n1) 配平并书写化学方程式（测试 mhchem/KaTeX）：\n\n$$\\ce{KMnO4 + Fe^{2+} + H+ -> Mn^{2+} + Fe^{3+} + H2O}$$\n\n2) 写出乙醇脱水制乙烯的反应（测试条件箭头）：\n\n$$\\ce{CH3CH2OH ->[conc.\\ H2SO4][170^\\circ C] CH2=CH2 + H2O}$$\n\n3) 有机物结构渲染（测试 SMILES 代码块 -> 结构式）：\n\n- 乙醇（SMILES）：\n\n```smiles\nCCO\n```\n\n- 苯乙烯（SMILES）：\n\n```smiles\nC=Cc1ccccc1\n```\n\n- 苯环（苯，SMILES）：\n\n```smiles\nc1ccccc1\n```\n\n- 支链碳链（异丁烷，SMILES）：\n\n```smiles\nCC(C)C\n```\n\n- 酰胺基（乙酰胺，SMILES）：\n\n```smiles\nCC(=O)N\n```\n\n4) 用流程图描述“配平-检验-书写”的步骤（测试 mermaid）：\n\n见解析部分。\n",
-      "latex_blocks": [
-        "\\ce{2H2 + O2 -> 2H2O}",
-        "\\ce{CO2 + C -> 2CO}",
-        "\\ce{CH3COOH + C2H5OH <=> CH3COOC2H5 + H2O}"
-      ],
-      "ocr_text": null,
+      "question_type": "解答",
       "crop_image_url": null,
       "locked_tags": false,
       "media_notes": null,
@@ -54,7 +54,12 @@
       "knowledge_tags": [],
       "error_tags": [],
       "user_tags": [],
-      "crop_bbox": [0.05, 0.05, 0.9, 0.9]
+      "crop_bbox": [
+        0.05,
+        0.05,
+        0.9,
+        0.9
+      ]
     }
   ],
   "solutions": [
@@ -68,7 +73,9 @@
   "tags": [],
   "archive_record": {
     "task_id": "c10f6c74b5e34c0d9b4b62d3b2c2a110",
-    "stored_problem_ids": ["chem-demo-problem-1"],
+    "stored_problem_ids": [
+      "chem-demo-problem-1"
+    ],
     "timestamp": "2026-01-10T00:00:00.000000Z"
   }
 }

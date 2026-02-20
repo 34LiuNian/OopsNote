@@ -36,7 +36,7 @@ def _load_ocr_template() -> PromptTemplate:
 
 
 class OcrExtractor:
-    """Placeholder OCR/structure extractor that converts regions into problem drafts."""
+    """Base interface for OCR extraction. Placeholders are intentionally disabled."""
 
     def run(
         self,
@@ -46,35 +46,7 @@ class OcrExtractor:
         on_delta: Callable[[str], None] | None = None,
         thinking: bool | None = None,
     ) -> list[ProblemBlock]:
-        regions = detection.regions or [
-            CropRegion(id=uuid4().hex, bbox=[0.05, 0.05, 0.9, 0.9], label="full")
-        ]
-
-        problems: list[ProblemBlock] = []
-        for idx, region in enumerate(regions, start=1):
-            # Keep placeholder text stable for tests and demos.
-            problem_text = (
-                "已知直角三角形ABC中，∠C=90°，AC=3，BC=4，求AB的长度。"
-                if idx == 1
-                else f"第{idx}题：已知直角三角形ABC中，∠C=90°，AC=3，BC=4，求AB的长度。"
-            )
-
-            problems.append(
-                ProblemBlock(
-                    problem_id=uuid4().hex,
-                    region_id=region.id,
-                    question_no=payload.question_no,
-                    problem_text=problem_text,
-                    latex_blocks=[],
-                    ocr_text=problem_text,
-                    options=[],
-                    crop_image_url=None,
-                    crop_bbox=None,
-                    source=payload.notes or None,
-                )
-            )
-
-        return problems
+        raise RuntimeError("OCR extraction failed: No LLM result available and placeholders are disabled.")
 
 
 @dataclass
@@ -88,13 +60,12 @@ class LLMOcrExtractor:
         asset: AssetMetadata | None = None,
         thinking: bool | None = None,
     ) -> list[ProblemBlock]:
-        # If we can't access a local image file, fallback to placeholder extractor.
         if not asset or not asset.path:
-            return OcrExtractor().run(payload, detection, asset)
+            raise RuntimeError("OCR failed: Asset path is missing.")
 
         image_path = Path(asset.path)
         if not image_path.exists():
-            return OcrExtractor().run(payload, detection, asset)
+            raise RuntimeError(f"OCR failed: Image file not found at {image_path}")
 
         image_bytes = image_path.read_bytes()
         mime_type = (
@@ -150,12 +121,6 @@ class LLMOcrExtractor:
                     region_mime_type,
                     thinking=thinking,
                 )
-                elapsed_ms = (time.perf_counter() - started) * 1000
-                logger.info(
-                    "LLM-OCR done region=%s ms=%.1f",
-                    region.id,
-                    elapsed_ms,
-                )
             except Exception as exc:
                 elapsed_ms = (time.perf_counter() - started) * 1000
                 logger.exception(
@@ -163,13 +128,19 @@ class LLMOcrExtractor:
                     region.id,
                     elapsed_ms,
                 )
-                err_msg = str(exc) or exc.__class__.__name__
                 raise
+            
+            elapsed_ms = (time.perf_counter() - started) * 1000
+            logger.info(
+                "LLM-OCR done region=%s ms=%.1f",
+                region.id,
+                elapsed_ms,
+            )
 
             # Business Layer Extraction (Plain Dict)
             problem_text = _coerce_str(payload_dict.get("problem_text"), fallback="")
-            latex_blocks = _coerce_str_list(payload_dict.get("latex_blocks", []))
-            ocr_text = _coerce_str(payload_dict.get("ocr_text"), fallback="")
+            # OCR should provide a normalized `question_type` when possible (e.g. 单选/多选/填空/解答)
+            question_type = _coerce_str(payload_dict.get("question_type"), None)
 
             # Some models spam trailing whitespace/newlines when hitting max tokens.
             rstrip_enabled = (
@@ -178,8 +149,6 @@ class LLMOcrExtractor:
             if rstrip_enabled:
                 if isinstance(problem_text, str):
                     problem_text = problem_text.rstrip()
-                if isinstance(ocr_text, str):
-                    ocr_text = ocr_text.rstrip()
 
             if not problem_text:
                 raise RuntimeError("OCR returned empty or missing problem_text")
@@ -198,7 +167,6 @@ class LLMOcrExtractor:
                         {
                             "key": key,
                             "text": text,
-                            "latex_blocks": _coerce_str_list(item.get("latex_blocks", [])),
                         }
                     )
 
@@ -207,24 +175,13 @@ class LLMOcrExtractor:
                     problem_id=uuid4().hex,
                     region_id=region.id,
                     question_no=payload.question_no,
+                    question_type=question_type,
                     problem_text=problem_text,
-                    latex_blocks=latex_blocks,
-                    ocr_text=ocr_text,
                     options=normalized_options,
                     crop_image_url=None,
                     crop_bbox=None,
                     source=payload.notes or None,
                 )
-            )
-
-            elapsed_ms = (time.perf_counter() - started) * 1000
-            _emit_ocr_event(
-                on_delta,
-                stage="ocr",
-                event="done",
-                region=region.id,
-                ms=round(elapsed_ms, 1),
-                option_count=len(normalized_options),
             )
 
         return problems
@@ -270,8 +227,8 @@ class OcrRouter:
                 if original is not None:
                     self.llm_extractor.client.model = original
 
-        logger.info("OCR router using base extractor (no override)")
-        return self.base_extractor.run(payload, detection, asset)
+        logger.info("OCR router using default LLM extractor")
+        return self.llm_extractor.run(payload, detection, asset, thinking=thinking)
 
 
 def _coerce_str(value: object, fallback: str | None) -> str | None:

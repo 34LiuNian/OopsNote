@@ -23,28 +23,7 @@ class StubAIClient:
         on_delta: Callable[[str], None] | None = None,
         thinking: bool | None = None,
     ) -> dict[str, Any]:
-        lower = (system_prompt + "\n" + user_prompt).lower()
-
-        # Tagger
-        if "knowledge_points" in lower or "question_type" in lower:
-            payload = {
-                "knowledge_points": ["勾股定理"],
-                "question_type": "解答题",
-                "skills": ["分析推理"],
-                "error_hypothesis": ["审题不清"],
-                "recommended_actions": ["回顾公式"],
-            }
-            _maybe_stream_payload(on_delta, payload)
-            return payload
-
-        # Default solver-like
-        payload = {
-            "answer": "(stub) answer",
-            "explanation": "(stub) explanation",
-            "short_answer": "(stub)",
-        }
-        _maybe_stream_payload(on_delta, payload)
-        return payload
+        raise RuntimeError("StubAIClient: Placeholder functionality is disabled. Please configure a real AI provider.")
 
     def structured_chat_with_image(
         self,
@@ -56,28 +35,7 @@ class StubAIClient:
         on_delta: Callable[[str], None] | None = None,
         thinking: bool | None = None,
     ) -> dict[str, Any]:
-        lower = (system_prompt + "\n" + user_prompt).lower()
-
-        # OCR branch (expects problem_text/latex_blocks/etc).
-        if "ocr" in lower or "problem_text" in lower:
-            payload = {
-                "problem_text": "【LLM-OCR 占位】请根据图中内容作答",
-                "latex_blocks": [r"$$ a^2 + b^2 = c^2 $$"],
-                "options": [],
-                "ocr_text": "stub ocr text",
-            }
-            _maybe_stream_payload(on_delta, payload)
-            return payload
-
-        # Default: fall back to OCR-like output.
-        payload = {
-            "problem_text": "【LLM-OCR 占位】请根据图中内容作答",
-            "latex_blocks": [],
-            "options": [],
-            "ocr_text": "stub ocr text",
-        }
-        _maybe_stream_payload(on_delta, payload)
-        return payload
+        raise RuntimeError("StubAIClient: Placeholder functionality is disabled. Please configure a real AI provider.")
 
 
 def _maybe_stream_payload(

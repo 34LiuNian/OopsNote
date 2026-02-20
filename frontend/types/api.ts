@@ -21,11 +21,9 @@ export interface TaskResponse {
       error_tags?: string[];
       user_tags?: string[];
       problem_text: string;
-      latex_blocks?: string[];
       options?: Array<{
         key: string;
         text: string;
-        latex_blocks?: string[];
       }>;
     }>;
     solutions: Array<{
@@ -64,7 +62,6 @@ export interface ProblemSummary {
   options?: Array<{
     key: string;
     text: string;
-    latex_blocks?: string[];
   }>;
   subject: string;
   grade?: string | null;

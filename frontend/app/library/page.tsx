@@ -11,8 +11,9 @@ import {
   TextInput,
   FormControl,
   Spinner,
-  Flash,
 } from "@primer/react";
+import { sileo } from "sileo";
+import { useEffect } from "react";
 import { useActiveTaskList, useProblemList } from "../../features/tasks";
 import { ProblemListItem } from "../../components/ProblemListItem";
 
@@ -42,6 +43,13 @@ export default function LibraryPage() {
   const toggleSelected = useCallback((key: string) => {
     setSelectedIds((prev) => ({ ...prev, [key]: !prev[key] }));
   }, []);
+
+  // 显示错误通知
+  useEffect(() => {
+    if (error) {
+      sileo.error({ title: error });
+    }
+  }, [error]);
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
@@ -119,7 +127,6 @@ export default function LibraryPage() {
             <Heading as="h2" sx={{ fontSize: 3 }}>题库总览</Heading>
           </Box>
           {isLoading && <Spinner size="small" />}
-          {error && <Flash variant="danger">{error}</Flash>}
         </Box>
 
         <Box sx={{ display: 'grid', gridTemplateColumns: ['1fr', '1fr 1fr'], gap: 3, mb: 3 }}>

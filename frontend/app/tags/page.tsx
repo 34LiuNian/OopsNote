@@ -2,6 +2,7 @@
 
 import { Box, Button, Flash, FormControl, Heading, Label, Select, Spinner, Text, TextInput } from "@primer/react";
 import { useCallback, useEffect, useState } from "react";
+import { sileo } from "sileo";
 import { createTag, searchTags } from "../../features/tags/api";
 import { TAG_DIMENSIONS, useTagDimensions } from "../../features/tags";
 import type {
@@ -75,21 +76,25 @@ export default function TagsPage() {
       await createTag({ dimension: newDim, value, aliases });
       setNewValue("");
       setNewAliases("");
-      setOk("已保存");
+      sileo.success({ title: "已保存" });
       await loadTags();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "创建标签失败");
+      sileo.error({
+        title: "创建标签失败",
+        description: e instanceof Error ? e.message : "请稍后重试",
+      });
     }
   };
 
   const onSaveDims = async () => {
-    setOk("");
-    setError("");
     try {
       await saveDims();
-      setOk("已保存配置");
+      sileo.success({ title: "已保存配置" });
     } catch (e) {
-      setError(e instanceof Error ? e.message : "保存配置失败");
+      sileo.error({
+        title: "保存配置失败",
+        description: e instanceof Error ? e.message : "请稍后重试",
+      });
     }
   };
 

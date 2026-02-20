@@ -6,7 +6,6 @@ import { ProblemContent } from "./ProblemContent";
 type ProblemOption = {
   key: string;
   text: string;
-  latex_blocks?: string[];
 };
 
 type ProblemCardProps = {

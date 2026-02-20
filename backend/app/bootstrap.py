@@ -7,6 +7,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .clients import load_agent_config_bundle
+from .config import AppConfig, load_app_config
+from .gateway import fetch_openai_models, guess_openai_gateway_config
 from .repository import ArchiveStore
 from .storage import LocalAssetStore
 from .app_state import BackendState
@@ -32,6 +34,17 @@ logger = logging.getLogger(__name__)
 _MODELS_CACHE: list[dict[str, object]] | None = None
 _AGENT_CONFIG_BUNDLE = None
 _APP_CONFIG: AppConfig | None = None
+
+
+class HealthCheckFilter(logging.Filter):
+    """Filter out health check logs to keep the terminal clean."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        return "/health" not in record.getMessage()
+
+
+# Silence noisy health check logs from uvicorn access log
+logging.getLogger("uvicorn.access").addFilter(HealthCheckFilter())
 
 
 def create_app() -> FastAPI:

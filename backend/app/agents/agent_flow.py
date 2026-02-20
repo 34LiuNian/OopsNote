@@ -137,10 +137,15 @@ class AgentOrchestrator:
         self,
         payload: TaskCreateRequest,
         problems: Iterable[ProblemBlock],
+        on_progress: Callable[[str, str | None], None] | None = None,
     ) -> tuple[list[SolutionBlock], list[TaggingResult]]:
         solutions: list[SolutionBlock] = []
         tags: list[TaggingResult] = []
-        for problem in problems:
+        
+        problems_list = list(problems)
+        total = len(problems_list)
+        
+        for i, problem in enumerate(problems_list, 1):
             context = self._build_context(payload, problem)
 
             def _set_thinking(agent_key: str) -> None:
@@ -152,6 +157,9 @@ class AgentOrchestrator:
                 except Exception:
                     context["agent_thinking"] = True
 
+            if on_progress:
+                on_progress("solving", f"正在解题 ({i}/{total})...")
+            
             _set_thinking("SOLVER")
             solve = self.solver.run(context).output
             context.update({k: v for k, v in solve.items() if v is not None})
@@ -164,6 +172,9 @@ class AgentOrchestrator:
                 )
             )
 
+            if on_progress:
+                on_progress("tagging", f"正在标注 ({i}/{total})...")
+
             _set_thinking("TAGGER")
             tag_payload = self.tagger.run(context).output
             tags.append(self._to_tagging(problem.problem_id, tag_payload))
@@ -173,9 +184,8 @@ class AgentOrchestrator:
     def _build_context(
         payload: TaskCreateRequest, problem: ProblemBlock
     ) -> dict[str, Any]:
-        latex = "\n".join(problem.latex_blocks)
         skills: list[str] = []
-        if _needs_chemfig_skill(problem, latex):
+        if _needs_chemfig_skill(problem):
             skills.append("chemfig")
         knowledge_candidates = tag_store.list(
             dimension=TagDimension.KNOWLEDGE, limit=200
@@ -193,7 +203,6 @@ class AgentOrchestrator:
             "grade": payload.grade or "",
             "notes": payload.notes or "",
             "problem_text": problem.problem_text,
-            "latex": latex,
             "source": problem.source or "",
             "skills": skills,
             "manual_knowledge_tags": "、".join(
@@ -239,9 +248,7 @@ def _load_skill(agent_name: str, name: str) -> str:
     return text
 
 
-def _needs_chemfig_skill(problem: ProblemBlock, latex: str) -> bool:
-    if _CHEMFIG_RE.search(latex or ""):
-        return True
+def _needs_chemfig_skill(problem: ProblemBlock) -> bool:
     if _CHEMFIG_RE.search(problem.problem_text or ""):
         return True
     if _CHEM_HINT_RE.search(problem.problem_text or ""):
@@ -250,9 +257,6 @@ def _needs_chemfig_skill(problem: ProblemBlock, latex: str) -> bool:
         text = getattr(opt, "text", "") or ""
         if _CHEMFIG_RE.search(text) or _CHEM_HINT_RE.search(text):
             return True
-        for block in getattr(opt, "latex_blocks", []) or []:
-            if _CHEMFIG_RE.search(block):
-                return True
     return False
 
 

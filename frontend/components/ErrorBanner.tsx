@@ -1,6 +1,7 @@
 "use client";
 
-import { Flash } from "@primer/react";
+import { useEffect } from "react";
+import { sileo } from "sileo";
 
 type ErrorBannerProps = {
   message: string;
@@ -8,6 +9,12 @@ type ErrorBannerProps = {
 };
 
 export function ErrorBanner({ message, marginBottom = 3 }: ErrorBannerProps) {
-  if (!message) return null;
-  return <Flash variant="danger" sx={{ mb: marginBottom }}>{message}</Flash>;
+  useEffect(() => {
+    if (message) {
+      sileo.error({ title: message });
+    }
+  }, [message]);
+
+  // 返回 null，因为我们不再渲染 Flash
+  return null;
 }

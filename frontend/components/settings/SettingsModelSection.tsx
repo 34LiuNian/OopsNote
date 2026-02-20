@@ -1,9 +1,11 @@
 "use client";
 
-import { Box, Button, Flash, Heading, Label, Spinner, Text } from "@primer/react";
+import { Box, Button, Heading, Label, Spinner, Text } from "@primer/react";
 import { SyncIcon } from "@primer/octicons-react";
 import { AgentSettingsRow } from "./AgentSettingsRow";
 import { ErrorBanner } from "../ErrorBanner";
+import { sileo } from "sileo";
+import { useEffect } from "react";
 
 type AgentDescriptor = {
   key: string;
@@ -76,6 +78,25 @@ export function SettingsModelSection({
   onToggleEnabled,
   onToggleThinking,
 }: SettingsModelSectionProps) {
+  // 显示 Sileo 通知
+  useEffect(() => {
+    if (statusMessage) {
+      sileo.success({ title: statusMessage });
+    }
+  }, [statusMessage]);
+
+  useEffect(() => {
+    if (enabledStatusMessage) {
+      sileo.success({ title: enabledStatusMessage });
+    }
+  }, [enabledStatusMessage]);
+
+  useEffect(() => {
+    if (thinkingStatusMessage) {
+      sileo.success({ title: thinkingStatusMessage });
+    }
+  }, [thinkingStatusMessage]);
+
   return (
     <Box sx={{ p: 3, border: "1px solid", borderColor: "border.default", borderRadius: 2 }}>
       <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 3 }}>
@@ -103,12 +124,9 @@ export function SettingsModelSection({
           有未保存更改
         </Label>
       )}
-      {statusMessage && <Flash variant="success" sx={{ mb: 3 }}>{statusMessage}</Flash>}
       <ErrorBanner message={agentModelsErrorMessage} />
       <ErrorBanner message={modelsErrorMessage} />
-      {enabledStatusMessage && <Flash variant="success" sx={{ mb: 3 }}>{enabledStatusMessage}</Flash>}
       <ErrorBanner message={enabledErrorMessage} />
-      {thinkingStatusMessage && <Flash variant="success" sx={{ mb: 3 }}>{thinkingStatusMessage}</Flash>}
       <ErrorBanner message={thinkingErrorMessage} />
 
       <Box sx={{ p: 3, bg: "canvas.subtle", borderRadius: 2, mb: 4 }}>

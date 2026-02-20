@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import asyncio
 import json
+import logging
 import os
 import threading
 import time
@@ -12,8 +14,10 @@ from fastapi import HTTPException
 from ..models import (
     CropRegion,
     DetectionOutput,
+    PipelineResult,
     ProblemSummary,
     ProblemsResponse,
+    TaggingResult,
     TaskCreateRequest,
     TaskStatus,
     TaskSummary,
@@ -48,6 +52,17 @@ class TasksService:
 
         self._processing_lock = threading.Lock()
         self._processing_inflight: set[str] = set()
+
+        self._event_queues: dict[str, list[asyncio.Queue]] = {}
+        self._event_lock = threading.Lock()
+
+        # Track base directory for streams
+        self.streams_dir = (
+            Path(repository.base_dir).parent / "task_streams"
+            if hasattr(repository, "base_dir") and repository.base_dir
+            else Path("storage/task_streams")
+        )
+        self.streams_dir.mkdir(parents=True, exist_ok=True)
 
     @staticmethod
     def _merge_unique_tags(prefix: list[str], tail: list[str]) -> list[str]:
@@ -132,6 +147,73 @@ class TasksService:
             task = self.process_task_sync(task.id)
         return task
 
+    def get_task_stream(self, task_id: str, max_chars: int = 200000) -> str:
+        """Read historical stream from disk."""
+        path = self.streams_dir / f"{task_id}.txt"
+        if not path.exists():
+            return ""
+        try:
+            content = path.read_text(encoding="utf-8")
+            if len(content) > max_chars:
+                return content[-max_chars:]
+            return content
+        except Exception as e:
+            logger.warning("Failed to read task stream %s: %s", task_id, e)
+            return ""
+
+    async def subscribe_task_events(self, task_id: str):
+        """Subscribe to real-time events for a task."""
+        queue = asyncio.Queue()
+        with self._event_lock:
+            if task_id not in self._event_queues:
+                self._event_queues[task_id] = []
+            self._event_queues[task_id].append(queue)
+
+        try:
+            while True:
+                data = await queue.get()
+                if data is None:  # Sentinel for end of stream
+                    break
+                yield f"event: {data['event']}\ndata: {json.dumps(data['payload'], ensure_ascii=False)}\n\n"
+        finally:
+            with self._event_lock:
+                if task_id in self._event_queues:
+                    self._event_queues[task_id].remove(queue)
+                    if not self._event_queues[task_id]:
+                        del self._event_queues[task_id]
+
+    def _broadcast(self, task_id: str, event: str, payload: dict):
+        """Broadcast an event to all subscribers and write to disk."""
+        data = {"event": event, "payload": payload, "ts": datetime.now(timezone.utc).isoformat()}
+        
+        # Write to disk
+        path = self.streams_dir / f"{task_id}.txt"
+        try:
+            with open(path, "a", encoding="utf-8") as f:
+                f.write(json.dumps(data, ensure_ascii=False) + "\n")
+        except Exception as e:
+            logger.warning("Failed to write to stream file %s: %s", task_id, e)
+
+        # Notify active listeners
+        with self._event_lock:
+            queues = self._event_queues.get(task_id, [])
+            for q in queues:
+                try:
+                    # Thread-safe way to push to asyncio queue
+                    q.get_loop().call_soon_threadsafe(q.put_nowait, data)
+                except Exception:
+                    pass
+
+    def _finish_broadcast(self, task_id: str):
+        """Send sentinel to all subscribers to close connection."""
+        with self._event_lock:
+            queues = self._event_queues.get(task_id, [])
+            for q in queues:
+                try:
+                    q.get_loop().call_soon_threadsafe(q.put_nowait, None)
+                except Exception:
+                    pass
+
     def list_tasks(
         self,
         *,
@@ -142,7 +224,7 @@ class TasksService:
         """List tasks with optional filtering by status and subject."""
         tasks = list(self.repository.list_all().values())
 
-        stale_seconds = _int_env("TASK_STALE_SECONDS", 600)
+        stale_seconds = _int_env("TASK_STALE_SECONDS", 1800)
         now = datetime.now(timezone.utc)
         for t in tasks:
             try:
@@ -235,109 +317,6 @@ class TasksService:
 
         return self.process_task(task_id, background=background)
 
-    def get_task_stream(
-        self, task_id: str, *, max_chars: int = 200_000
-    ) -> dict[str, object]:
-        """Return the cached LLM stream for a task."""
-        _ = self.get_task(task_id)
-        text = self._get_task_stream(task_id)
-        if 0 < max_chars < len(text):
-            text = text[-max_chars:]
-        return {"task_id": task_id, "text": text}
-
-    def task_events(self, task_id: str) -> StreamingResponse:
-        """Stream task progress and LLM deltas via SSE."""
-
-        async def gen():
-            subscriber_q = self._event_broker.subscribe(task_id)
-            try:
-                try:
-                    task = self.repository.get(task_id)
-                except KeyError:
-                    data = json.dumps({"error": "not_found"}, ensure_ascii=False)
-                    yield f"event: error\ndata: {data}\n\n"
-                    return
-
-                snapshot = {
-                    "task_id": task.id,
-                    "status": task.status,
-                    "stage": getattr(task, "stage", None),
-                    "message": getattr(task, "stage_message", None),
-                }
-                yield f"event: progress\ndata: {json.dumps(snapshot, ensure_ascii=False)}\n\n"
-
-                stream_snapshot = {
-                    "task_id": task.id,
-                    "text": self._get_task_stream(task.id),
-                }
-                yield f"event: llm_snapshot\ndata: {json.dumps(stream_snapshot, ensure_ascii=False)}\n\n"
-
-                last_snapshot = snapshot
-                last_keepalive = time.monotonic()
-                last_snapshot_at = time.monotonic()
-
-                while True:
-                    try:
-                        event, payload = await asyncio.to_thread(
-                            subscriber_q.get, True, 0.5
-                        )
-                        yield f"event: {event}\ndata: {json.dumps(payload, ensure_ascii=False)}\n\n"
-                    except Exception:  # pylint: disable=broad-exception-caught
-                        pass
-
-                    now = time.monotonic()
-                    if now - last_keepalive > 10:
-                        yield ": ping\n\n"
-                        last_keepalive = now
-
-                    if now - last_snapshot_at > 1.0:
-                        try:
-                            task = self.repository.get(task_id)
-                        except KeyError:
-                            data = json.dumps(
-                                {"error": "not_found"}, ensure_ascii=False
-                            )
-                            yield f"event: error\ndata: {data}\n\n"
-                            return
-
-                        try:
-                            stale_seconds = _int_env("TASK_STALE_SECONDS", 600)
-                            if task.status == TaskStatus.PROCESSING:
-                                age = (
-                                    datetime.now(timezone.utc) - task.updated_at
-                                ).total_seconds()
-                                with self._processing_lock:
-                                    inflight = task.id in self._processing_inflight
-                                if (not inflight) and age > stale_seconds:
-                                    task = self.repository.patch_task(
-                                        task_id,
-                                        status=TaskStatus.FAILED,
-                                        last_error="Task processing stale (backend restarted or worker crashed)",
-                                        stage="failed",
-                                        stage_message="处理超时（可能后端重启/崩溃），请重新提交或手动重试处理",
-                                    )
-                        except Exception:  # pylint: disable=broad-exception-caught
-                            pass
-
-                        snapshot = {
-                            "task_id": task.id,
-                            "status": task.status,
-                            "stage": getattr(task, "stage", None),
-                            "message": getattr(task, "stage_message", None),
-                        }
-                        if snapshot != last_snapshot:
-                            yield f"event: progress\ndata: {json.dumps(snapshot, ensure_ascii=False)}\n\n"
-                            last_snapshot = snapshot
-                        last_snapshot_at = now
-
-                        if task.status in (TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.CANCELLED):
-                            yield "event: done\ndata: {}\n\n"
-                            return
-            finally:
-                self._event_broker.unsubscribe(task_id, subscriber_q)
-
-        return StreamingResponse(gen(), media_type="text/event-stream")
-
     # -------------------- per-problem operations --------------------
 
     def _get_problem(self, task, problem_id: str):
@@ -408,9 +387,6 @@ class TasksService:
                 if override.question_type is not None
                 else problem.question_type,
                 "problem_text": override.problem_text or problem.problem_text,
-                "latex_blocks": override.latex_blocks
-                if override.latex_blocks is not None
-                else problem.latex_blocks,
                 "options": override.options
                 if override.options is not None
                 else problem.options,
@@ -462,7 +438,7 @@ class TasksService:
         return updated
 
     def delete_task(self, task_id: str):
-        """Delete a completed task and its stream."""
+        """Delete a completed task."""
         try:
             task = self.repository.get(task_id)
         except KeyError as exc:
@@ -478,11 +454,6 @@ class TasksService:
             self.repository.delete(task_id)
         except Exception as exc:  # pylint: disable=broad-exception-caught
             raise HTTPException(status_code=500, detail=str(exc)) from exc
-
-        try:
-            self._task_stream_path(task_id).unlink(missing_ok=True)
-        except Exception:  # pylint: disable=broad-exception-caught
-            pass
 
         return task
 
@@ -614,15 +585,73 @@ class TasksService:
         )
         return updated
 
+    def cancel_task(self, task_id: str):
+        """Cancel an in-progress task."""
+        with self._task_cancel_lock:
+            self._task_cancelled.add(task_id)
+        return self.get_task(task_id)
+
+    def _is_task_cancelled(self, task_id: str) -> bool:
+        with self._task_cancel_lock:
+            return task_id in self._task_cancelled
+
+    def _apply_manual_payload_to_result(self, task, result):
+        """Apply user-provided tags and source from the task payload to the pipeline result."""
+        manual_knowledge = [
+            t for t in (task.payload.knowledge_tags or []) if str(t).strip()
+        ]
+        manual_error = [t for t in (task.payload.error_tags or []) if str(t).strip()]
+        manual_source = (task.payload.source or "").strip()
+
+        for tag in result.tags:
+            tag.knowledge_points = self._merge_unique_tags(
+                manual_knowledge, tag.knowledge_points
+            )
+
+        for problem in result.problems:
+            if manual_source and not problem.source:
+                problem.source = manual_source
+
+        return result, manual_knowledge, manual_error, manual_source
+
+    def _sync_tag_store_after_pipeline(
+        self,
+        *,
+        manual_knowledge: list[str],
+        manual_error: list[str],
+        manual_source: str,
+        tags: list[TaggingResult],
+    ) -> None:
+        """Update the global tag store with tags from the pipeline run."""
+        for val in manual_knowledge:
+            self.tag_store.upsert(TagDimension.KNOWLEDGE, val)
+        for val in manual_error:
+            self.tag_store.upsert(TagDimension.ERROR, val)
+        if manual_source:
+            self.tag_store.upsert(TagDimension.META, manual_source)
+
+        for tag_res in tags:
+            for val in tag_res.knowledge_points:
+                self.tag_store.upsert(TagDimension.KNOWLEDGE, val)
+
     def process_task_sync(
         self,
         task_id: str,
+        on_progress=None,
     ):
         """Run the full pipeline synchronously for a task."""
         with self._processing_lock:
             if task_id in self._processing_inflight:
                 return self.get_task(task_id)
             self._processing_inflight.add(task_id)
+
+        def progress_bridge(stage: str, message: str | None = None):
+            self._broadcast(task_id, "progress", {"stage": stage, "message": message})
+            if on_progress:
+                try:
+                    on_progress(stage, message)
+                except Exception:
+                    pass
 
         try:
             if self._is_task_cancelled(task_id):
@@ -636,6 +665,7 @@ class TasksService:
                     task_id,
                     task.payload,
                     task.asset,
+                    on_progress=progress_bridge,
                 )
                 result, manual_knowledge, manual_error, manual_source = (
                     self._apply_manual_payload_to_result(task, result)
@@ -656,5 +686,6 @@ class TasksService:
                 self._finalize_failed(task_id, exc)
                 raise HTTPException(status_code=500, detail=str(exc)) from exc
         finally:
+            self._finish_broadcast(task_id)
             with self._processing_lock:
                 self._processing_inflight.discard(task_id)

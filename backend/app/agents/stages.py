@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Callable, Iterable, List, Tuple
+from pathlib import Path
+from typing import Any, Callable, Iterable, List, Tuple
 from uuid import uuid4
 
 from ..clients import AIClient
@@ -15,13 +16,10 @@ from ..models import (
     TaskCreateRequest,
 )
 
-def _format_problem_prompt(subject: str, problem: ProblemBlock) -> str:
-    latex = "\n".join(problem.latex_blocks)
-    return (
-        f"学科: {subject}\n"
-        f"题干: {problem.problem_text}\n"
-        f"Latex: {latex if latex else 'N/A'}"
-    )
+def _load_prompt(name: str) -> "PromptTemplate":
+    from .agent_flow import PromptTemplate
+    path = Path(__file__).parent / "prompts" / f"{name}.txt"
+    return PromptTemplate.from_file(path)
 
 def _coerce_list(value: object, fallback: list[str]) -> list[str]:
     if isinstance(value, list) and value:
@@ -29,6 +27,11 @@ def _coerce_list(value: object, fallback: list[str]) -> list[str]:
     if isinstance(value, str) and value:
         return [value]
     return fallback
+
+def _coerce_str(value: Any, fallback: str | None = None) -> str | None:
+    if value is None:
+        return fallback
+    return str(value)
 
 class HandwrittenExtractor:
     def __init__(self, rebuilder: "ProblemRebuilder") -> None:
@@ -44,54 +47,45 @@ class HandwrittenExtractor:
 
 class ProblemRebuilder:
     def run(self, payload: TaskCreateRequest, detection: DetectionOutput) -> List[ProblemBlock]:
-        regions = detection.regions or [
-            CropRegion(id=uuid4().hex, bbox=[0.05, 0.05, 0.9, 0.9], label="full")
-        ]
-        problems: List[ProblemBlock] = []
-        for idx, region in enumerate(regions, start=1):
-            problems.append(
-                ProblemBlock(
-                    problem_id=uuid4().hex,
-                    region_id=region.id,
-                    question_no=payload.question_no,
-                    problem_text="求解中...",
-                    latex_blocks=[],
-                    media_notes="Auto rebuilt",
-                    source=payload.notes or None,
-                )
-            )
-        return problems
+        raise RuntimeError("ProblemRebuilder (placeholders) is disabled. Please provide an image for OCR.")
 
 class SolutionWriter:
     def __init__(self, ai_client: AIClient) -> None:
         self.ai_client = ai_client
+        self._template = _load_prompt("solver")
 
     def run(
         self,
         payload: TaskCreateRequest,
         problems: Iterable[ProblemBlock],
         on_progress: Callable[[int, int, ProblemBlock], None] | None = None,
-        on_token: Callable[[ProblemBlock, str], None] | None = None,
     ) -> List[SolutionBlock]:
         problems_list = list(problems)
         solved: List[SolutionBlock] = []
         total = len(problems_list)
-        system_prompt = "你是一个解题助手。根据提供的题目内容，给出清晰的答案和解析。输出严格 JSON，包含字段: answer, explanation, short_answer。"
 
         for idx, problem in enumerate(problems_list, start=1):
             if on_progress: on_progress(idx, total, problem)
-            user_prompt = _format_problem_prompt(payload.subject, problem)
-            output = self.ai_client.structured_chat(
-                system_prompt,
-                user_prompt,
-                on_delta=(lambda d, p=problem: on_token(p, d)) if on_token else None,
-            )
+            
+            ctx = {
+                "subject": payload.subject,
+                "grade": payload.grade or "",
+                "problem_text": problem.problem_text,
+            }
+            system_prompt, user_prompt = self._template.render(ctx)
+            
+            output = self.ai_client.structured_chat(system_prompt, user_prompt)
+            answer = output.get("answer")
+            explanation = output.get("explanation")
+            if not answer or not explanation:
+                raise RuntimeError(f"Solver failed: missing answer or explanation for problem {problem.problem_id}")
+
             solved.append(
                 SolutionBlock(
                     problem_id=problem.problem_id,
-                    answer=str(output.get("answer", "无答案")),
-                    explanation=str(output.get("explanation", "无解析")),
-                    short_answer=str(output.get("short_answer", "")),
+                    answer=str(answer),
+                    explanation=str(explanation),
+                    short_answer=_coerce_str(output.get("short_answer"), None),
                 )
             )
         return solved
@@ -99,6 +93,7 @@ class SolutionWriter:
 class TaggingProfiler:
     def __init__(self, ai_client: AIClient) -> None:
         self.ai_client = ai_client
+        self._template = _load_prompt("tagger")
 
     def run(
         self,
@@ -108,22 +103,64 @@ class TaggingProfiler:
         on_progress: Callable[[int, int, ProblemBlock], None] | None = None,
     ) -> List[TaggingResult]:
         problems_list = list(problems)
+        solutions_map = {s.problem_id: s for s in solutions}
         tags: List[TaggingResult] = []
         total = len(problems_list)
-        system_prompt = "你是一个教育专家。请分析题目并返回 JSON，包含字段: knowledge_points (list), question_type (str), skills (list), error_hypothesis (list), recommended_actions (list)。"
+
+        for idx, problem in enumerate(problems_list, start=1):
+            if on_progress: on_progress(idx, total, problem)
+            
+            solution = solutions_map.get(problem.problem_id)
+            ctx = {
+                "subject": payload.subject,
+                "grade": payload.grade or "",
+                "problem_text": problem.problem_text,
+                "explanation": solution.explanation if solution else "",
+                "answer": solution.answer if solution else "",
+                "manual_knowledge_tags": "",  # Current pipeline doesn't have a clean way to inject these here yet
+                "manual_error_tags": "",
+                "manual_source": "",
+                "meta_candidates": "",
+                "knowledge_candidates": "",
+                "error_candidates": "",
+            }
+            system_prompt, user_prompt = self._template.render(ctx)
+            
+            output = self.ai_client.structured_chat(system_prompt, user_prompt)
+            
+            # Ensure key fields exist
+            if not output.get("knowledge_points") or not output.get("question_type"):
+                raise RuntimeError(f"Tagger failed: missing essential fields for problem {problem.problem_id}")
+
+            tags.append(
+                TaggingResult(
+                    problem_id=problem.problem_id,
+                    knowledge_points=_coerce_list(output.get("knowledge_points"), []),
+                    question_type=str(output.get("question_type")),
+                    skills=_coerce_list(output.get("skills"), []),
+                    error_hypothesis=_coerce_list(output.get("error_hypothesis"), []),
+                    recommended_actions=_coerce_list(output.get("recommended_actions"), []),
+                )
+            )
+        return tags
 
         for idx, problem in enumerate(problems_list, start=1):
             if on_progress: on_progress(idx, total, problem)
             user_prompt = _format_problem_prompt(payload.subject, problem)
             output = self.ai_client.structured_chat(system_prompt, user_prompt)
+            
+            # Ensure key fields exist
+            if not output.get("knowledge_points") or not output.get("question_type"):
+                raise RuntimeError(f"Tagger failed: missing essential fields for problem {problem.problem_id}")
+
             tags.append(
                 TaggingResult(
                     problem_id=problem.problem_id,
-                    knowledge_points=_coerce_list(output.get("knowledge_points"), ["未标注"]),
-                    question_type=str(output.get("question_type", "解答题")),
-                    skills=_coerce_list(output.get("skills"), ["默认能力"]),
-                    error_hypothesis=_coerce_list(output.get("error_hypothesis"), ["待查"]),
-                    recommended_actions=_coerce_list(output.get("recommended_actions"), ["复习相关知识点"]),
+                    knowledge_points=_coerce_list(output.get("knowledge_points"), []),
+                    question_type=str(output.get("question_type")),
+                    skills=_coerce_list(output.get("skills"), []),
+                    error_hypothesis=_coerce_list(output.get("error_hypothesis"), []),
+                    recommended_actions=_coerce_list(output.get("recommended_actions"), []),
                 )
             )
         return tags

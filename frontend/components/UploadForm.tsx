@@ -1,19 +1,18 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { 
-  Box, 
-  Button, 
-  FormControl, 
-  Heading, 
-  TextInput, 
-  Select, 
-  Text, 
+import {
+  Box,
+  Button,
+  FormControl,
+  Heading,
+  TextInput,
+  Select,
+  Text,
   Label,
-  Flash,
   Spinner
 } from "@primer/react";
-import Link from "next/link";
+import { sileo } from "sileo";
 import { fetchJson } from "../lib/api";
 import type { TaskResponse } from "../types/api";
 import { TagPicker } from "./TagPicker";
@@ -33,7 +32,9 @@ function clamp(value: number, min: number, max: number) {
 
 function ImagePanZoom({ file }: { file: File }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const imageRef = useRef<HTMLImageElement | null>(null);
   const [url, setUrl] = useState<string>("");
+  const [baseScale, setBaseScale] = useState(1);
   const [state, setState] = useState<PanZoomState>({ scale: 1, x: 0, y: 0 });
   const dragRef = useRef<{
     active: boolean;
@@ -47,6 +48,7 @@ function ImagePanZoom({ file }: { file: File }) {
   useEffect(() => {
     const nextUrl = URL.createObjectURL(file);
     setUrl(nextUrl);
+    setBaseScale(1);
     setState({ scale: 1, x: 0, y: 0 });
     return () => {
       try {
@@ -64,6 +66,27 @@ function ImagePanZoom({ file }: { file: File }) {
   const reset = useCallback(() => {
     setState({ scale: 1, x: 0, y: 0 });
   }, []);
+
+  const recomputeBaseScale = useCallback(() => {
+    const container = containerRef.current;
+    const image = imageRef.current;
+    if (!container || !image) return;
+    const containerWidth = container.clientWidth;
+    const containerHeight = container.clientHeight;
+    const naturalWidth = image.naturalWidth || image.width;
+    const naturalHeight = image.naturalHeight || image.height;
+    if (!containerWidth || !containerHeight || !naturalWidth || !naturalHeight) return;
+    setBaseScale(Math.min(containerWidth / naturalWidth, containerHeight / naturalHeight, 1));
+  }, []);
+
+  useEffect(() => {
+    recomputeBaseScale();
+    const handleResize = () => recomputeBaseScale();
+    window.addEventListener("resize", handleResize);
+    return () => {
+      window.removeEventListener("resize", handleResize);
+    };
+  }, [recomputeBaseScale]);
 
   const onPointerDown = useCallback((e: React.PointerEvent) => {
     if (!containerRef.current) return;
@@ -137,16 +160,18 @@ function ImagePanZoom({ file }: { file: File }) {
         {url ? (
           <Box
             as="img"
+            ref={imageRef}
             src={url}
             alt={file.name}
             draggable={false}
+            onLoad={recomputeBaseScale}
             sx={{
               position: 'absolute',
               top: '50%',
               left: '50%',
               maxWidth: 'none',
               maxHeight: 'none',
-              transform: `translate(calc(-50% + ${state.x}px), calc(-50% + ${state.y}px)) scale(${state.scale})`,
+              transform: `translate(calc(-50% + ${state.x}px), calc(-50% + ${state.y}px)) scale(${baseScale * state.scale})`,
               transformOrigin: 'center',
               pointerEvents: 'none',
             }}
@@ -171,7 +196,6 @@ export function UploadForm() {
   const [errorTags, setErrorTags] = useState<string[]>([]);
   const [customTags, setCustomTags] = useState<string[]>([]);
   const { effectiveDimensions: tagStyles } = useTagDimensions();
-  const [statusMessage, setStatusMessage] = useState<string>("");
   const [isLoading, setIsLoading] = useState(false);
   const [lastTaskId, setLastTaskId] = useState<string>("");
   const [error, setError] = useState<string>("");
@@ -201,7 +225,9 @@ export function UploadForm() {
     setFiles(images);
     setIndex(0);
     setLastTaskId("");
-    setStatusMessage(images.length > 0 ? `已导入 ${images.length} 张图片` : "未选择图片");
+    if (images.length > 0) {
+      sileo.success({ title: `已导入 ${images.length} 张图片` });
+    }
     setError("");
   }, []);
 
@@ -244,7 +270,7 @@ export function UploadForm() {
 
   const handleSkip = useCallback(() => {
     if (!currentFile) return;
-    setStatusMessage("已跳过，进入下一张");
+    sileo.info({ title: "已跳过，进入下一张" });
     setError("");
     moveNext();
   }, [currentFile, moveNext]);
@@ -256,7 +282,6 @@ export function UploadForm() {
     }
     setIsLoading(true);
     setError("");
-    setStatusMessage("正在入队...");
 
     try {
       const leftScore = difficultyLeft.trim();
@@ -296,10 +321,20 @@ export function UploadForm() {
       });
 
       setLastTaskId(id);
-      setStatusMessage("已入队，进入下一张");
+      sileo.success({
+        title: "已入队",
+        description: "进入下一张",
+        button: {
+          title: "查看任务",
+          onClick: () => window.location.href = `/tasks/${id}`,
+        },
+      });
       moveNext();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "上传失败");
+      sileo.error({
+        title: "上传失败",
+        description: err instanceof Error ? err.message : "请稍后重试",
+      });
       setIsLoading(false);
     }
 
@@ -361,21 +396,6 @@ export function UploadForm() {
             <Label variant="secondary">剩余 {remaining} / {files.length}</Label>
           )}
         </Box>
-
-        {statusMessage && (
-          <Flash variant="success" sx={{ display: 'flex', alignItems: 'center' }}>
-            {statusMessage}{lastTaskId ? (
-              <Text as="span" sx={{ ml: 2 }}>
-                <Link href={`/tasks/${lastTaskId}`}>打开任务</Link>
-              </Text>
-            ) : null}
-          </Flash>
-        )}
-        {error && (
-          <Flash variant="danger" sx={{ display: 'flex', alignItems: 'center' }}>
-            {error}
-          </Flash>
-        )}
 
         <Box sx={{ p: 3, border: '1px solid', borderColor: 'border.default', borderRadius: 2, display: 'flex', flexDirection: 'column', gap: 3 }}>
           <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 3 }}>

@@ -5,6 +5,7 @@ import json
 import logging
 import os
 import re
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -25,11 +26,15 @@ class OpenAIClient(AIClient):
         model: str = "gpt-4o-mini",
         temperature: float = 0.2,
         max_tokens: int | None = None,
+        debug_payload: bool = False,
+        debug_payload_path: str | None = None,
     ) -> None:
         """初始化客户端与基础推理参数。"""
         self.model = model
         self.base_url = base_url
         self.temperature = temperature
+        self.debug_payload = debug_payload
+        self.debug_payload_path = debug_payload_path
         if max_tokens is None:
             env_max = os.getenv("OPENAI_MAX_TOKENS")
             if env_max:
@@ -37,7 +42,7 @@ class OpenAIClient(AIClient):
                     max_tokens = int(env_max)
                 except ValueError:
                     max_tokens = None
-        self.max_tokens = max_tokens if max_tokens is not None else 900
+        self.max_tokens = max_tokens if max_tokens is not None else 100000
         self._client = (
             OpenAI(api_key=api_key, base_url=base_url)
             if base_url
@@ -55,7 +60,7 @@ class OpenAIClient(AIClient):
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt},
         ]
-        return self._complete_json(messages)
+        return self._complete_json(messages, thinking=thinking)
 
     def structured_chat_with_image(
         self,
@@ -77,339 +82,221 @@ class OpenAIClient(AIClient):
                 ],
             },
         ]
-        return self._complete_json(messages)
+        return self._complete_json(messages, thinking=thinking)
 
     def _complete_json(
         self,
         messages: list[dict[str, Any]],
+        thinking: bool | None = None,
     ) -> dict[str, Any]:
         """请求 chat.completions 并将返回文本解析为 JSON 对象。"""
-        try:
-            content = self._call_model(messages)
-            return _parse_json_block(content)
-        except Exception as exc:
-            logger.error("LLM request or parsing failed: %s", exc)
-            return {}
+        content = self._call_model(messages, thinking=thinking)
+        return _parse_json_block(content)
 
     def _call_model(
         self,
         messages: list[dict[str, Any]],
+        thinking: bool | None = None,
     ) -> str:
         """调用 OpenAI chat.completions，仅支持非流式。"""
-        response = self._client.chat.completions.create(
-            model=self.model,
-            temperature=self.temperature,
-            max_tokens=self.max_tokens,
-            messages=messages,
+        # Some models or gateways are picky about 'system' role in vision tasks.
+        # We also want to merge prompts into a single user message if desirable.
+        has_image = any(
+            isinstance(m.get("content"), list) and any(c.get("type") == "image_url" for c in m["content"])
+            for m in messages
         )
-        return str(response.choices[0].message.content or "")
+
+        final_messages = messages
+        if has_image:
+            # For vision models, some gateways/models (like GLM-V or older GPT-4V APIs)
+            # prefer system prompt merged into user prompt.
+            system_msgs = [m for m in messages if m["role"] == "system"]
+            user_msgs = [m for m in messages if m["role"] == "user"]
+            if system_msgs and user_msgs:
+                system_content = "\n".join([str(m["content"]) for m in system_msgs])
+                # We assume the first user message is the one to prepend to.
+                user_content = user_msgs[0]["content"]
+                if isinstance(user_content, list):
+                    # For multi-modal content, find the first text block to prepend to
+                    text_found = False
+                    for part in user_content:
+                        if part.get("type") == "text":
+                            part["text"] = f"{system_content}\n\n{part['text']}"
+                            text_found = True
+                            break
+                    if not text_found:
+                        user_content.insert(0, {"type": "text", "text": system_content})
+                else:
+                    user_msgs[0]["content"] = f"{system_content}\n\n{user_content}"
+                
+                # Remove system messages
+                final_messages = [m for m in messages if m["role"] != "system"]
+
+        kwargs: dict[str, Any] = {
+            "model": self.model,
+            "temperature": self.temperature,
+            "max_tokens": self.max_tokens,
+            "messages": final_messages,
+        }
+
+        # SiliconFlow thinking mode (only if model name contains thinking or instructed)
+        if thinking:
+            # Use extra_body for SiliconFlow-style thinking
+            kwargs["extra_body"] = {"enable_thinking": True}
+
+        # JSON Mode support - be conservative
+        if "gpt-4" in self.model or "gpt-3.5" in self.model:
+            kwargs["response_format"] = {"type": "json_object"}
+
+        try:
+            response = self._client.chat.completions.create(**kwargs)
+            content = str(response.choices[0].message.content or "")
+            finish_reason = response.choices[0].finish_reason
+            usage = response.usage.model_dump() if response.usage else {}
+
+            if self.debug_payload:
+                self._write_payload_log(
+                    messages=final_messages,
+                    response_text=content,
+                    finish_reason=finish_reason,
+                    usage=usage,
+                    thinking=thinking,
+                )
+            return content
+        except Exception as e:
+            err_msg = str(e)
+            # Fallback for thinking mode if it fails
+            if "extra_body" in kwargs and ("enable_thinking" in err_msg or "extra_body" in err_msg or "400" in err_msg):
+                logger.warning("Model/Gateway failed with thinking mode, falling back to standard. err=%s", err_msg)
+                new_kwargs = {k: v for k, v in kwargs.items() if k != "extra_body"}
+                try:
+                    response = self._client.chat.completions.create(**new_kwargs)
+                    content = str(response.choices[0].message.content or "")
+                    finish_reason = response.choices[0].finish_reason
+                    usage = response.usage.model_dump() if response.usage else {}
+                    if self.debug_payload:
+                         self._write_payload_log(
+                            messages=final_messages, 
+                            response_text=content, 
+                            finish_reason=finish_reason,
+                            usage=usage,
+                            thinking=False
+                        )
+                    return content
+                except Exception as retry_exc:
+                    err_msg = f"Standard mode also failed: {str(retry_exc)}"
+
+            if self.debug_payload:
+                self._write_payload_log(
+                    messages=final_messages,
+                    response_text=f"ERROR: {err_msg}",
+                    finish_reason="error",
+                    thinking=thinking,
+                )
+            raise 
+
+    def _write_payload_log(
+        self,
+        messages: list[dict[str, Any]],
+        response_text: str,
+        finish_reason: str | None = None,
+        usage: dict[str, Any] | None = None,
+        thinking: bool | None = None,
+    ) -> None:
+        """记录请求与响应详情到日志文件。"""
+        try:
+            log_path = self.debug_payload_path
+            if not log_path:
+                log_path = str(
+                    Path(__file__).resolve().parents[2] / "storage" / "llm_payloads.log"
+                )
+
+            # 简化消息体，避免过大的图片 base64 撑爆日志
+            include_image = (
+                os.getenv("AI_DEBUG_LLM_PAYLOAD_INCLUDE_IMAGE", "false").lower()
+                == "true"
+            )
+            logged_messages = []
+            for m in messages:
+                item = {"role": m.get("role"), "content": m.get("content")}
+                if not include_image and isinstance(item["content"], list):
+                    item["content"] = [
+                        (
+                            c
+                            if c.get("type") != "image_url"
+                            else {
+                                "type": "image_url",
+                                "image_url": {"url": f"base64_len={len(c['image_url']['url'])}"},
+                            }
+                        )
+                        for c in item["content"]
+                    ]
+                logged_messages.append(item)
+
+            entry = {
+                "ts": datetime.now(timezone.utc).isoformat(),
+                "model": self.model,
+                "base_url": self.base_url,
+                "thinking": thinking,
+                "finish_reason": finish_reason,
+                "usage": usage,
+                "messages": logged_messages,
+                "response": response_text,
+            }
+            with open(log_path, "a", encoding="utf-8") as f:
+                f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+        except Exception as exc:
+            logger.warning("Failed to write LLM payload log: %s", exc)
 
 
 def _parse_json_block(text: str) -> dict[str, Any]:
-    """从模型文本中提取第一个 JSON 对象，失败时做轻量修复。"""
+    """从模型文本中提取 第一个 或 最像 的 JSON 对象。"""
+    # 0. 预处理：去掉常见的 Markdown 代码块包装
+    if "```" in text:
+        # 寻找 ```json ... ``` 或 ``` ... ```
+        match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", text, re.DOTALL)
+        if match:
+            try:
+                return json.loads(match.group(1))
+            except json.JSONDecodeError:
+                pass
+
+    # 1. 尝试寻找从前往后第一个 { 和从后往前的最后一个 }
     start = text.find("{")
     if start < 0:
+        logger.debug("Raw content for failed JSON search: %s", text)
         raise ValueError("JSON braces not found")
-
-    decoder = json.JSONDecoder()
-    candidate = text[start:]
-
-    try:
-        obj, _ = decoder.raw_decode(candidate)
-        if not isinstance(obj, dict):
-            raise ValueError("JSON root was not an object")
-        return obj
-    except json.JSONDecodeError:
-        repaired = _repair_invalid_string_escapes(candidate)
-        repaired = _strip_disallowed_control_chars_outside_strings(repaired)
-        repaired = _remove_trailing_commas(repaired)
-        repaired = _balance_unclosed_json_brackets(repaired)
-
+    
+    end = text.rfind("}")
+    if end > start:
+        candidate = text[start : end + 1]
         try:
-            obj, _ = decoder.raw_decode(repaired)
-            if not isinstance(obj, dict):
-                raise ValueError("JSON root was not an object")
-            return obj
+            return json.loads(candidate)
         except json.JSONDecodeError:
-            extracted, _ = _extract_lenient_top_level_string_fields_with_meta(
-                repaired,
-                keys=(
-                    "answer",
-                    "explanation",
-                    "short_answer",
-                    "verdict",
-                    "notes",
-                    "question_type",
-                ),
-            )
-            if extracted:
-                return extracted
-            raise
+            pass
 
-
-_TOP_LEVEL_STRING_KEY_RE = re.compile(r'"(?P<key>[^"]+)"\s*:\s*"')
-
-
-def _extract_lenient_top_level_string_fields(
-    snippet: str,
-    keys: tuple[str, ...],
-) -> dict[str, Any]:
-    """只提取指定 key 的顶层字符串值（宽松模式）。"""
-    payload, _ = _extract_lenient_top_level_string_fields_with_meta(snippet, keys)
-    return payload
-
-
-def _extract_lenient_top_level_string_fields_with_meta(
-    snippet: str,
-    keys: tuple[str, ...],
-) -> tuple[dict[str, Any], list[str]]:
-    """宽松提取顶层字符串字段，并返回哪些字段是截断不完整的。"""
-    wanted = set(keys)
-    out: dict[str, Any] = {}
-    incomplete: list[str] = []
-
-    for match in _TOP_LEVEL_STRING_KEY_RE.finditer(snippet):
-        key = match.group("key")
-        if key not in wanted or key in out:
-            continue
-        value, _, closed = _parse_json_string_lenient(snippet, match.end() - 1)
-        out[key] = value
-        if not closed:
-            incomplete.append(key)
-
-    for key in keys:
-        if key in out:
-            continue
-        needle = f'"{key}"'
-        idx = snippet.find(needle)
-        if idx < 0:
-            continue
-        colon = snippet.find(":", idx + len(needle))
-        if colon < 0:
-            continue
-        quote = snippet.find('"', colon)
-        if quote < 0:
-            continue
-        value, _, closed = _parse_json_string_lenient(snippet, quote)
-        out[key] = value
-        if not closed:
-            incomplete.append(key)
-
-    return out, incomplete
-
-
-def _parse_json_string_lenient(s: str, start_quote_index: int) -> tuple[str, int, bool]:
-    """宽松解析 JSON 字符串，允许截断并返回 closed 标记。"""
-    if start_quote_index < 0 or start_quote_index >= len(s) or s[start_quote_index] != '"':
-        return "", start_quote_index, True
-
-    out: list[str] = []
-    i = start_quote_index + 1
-    while i < len(s):
-        ch = s[i]
-        if ch == '"':
-            return "".join(out), i + 1, True
-        if ch == "\\":
-            if i + 1 >= len(s):
-                return "".join(out), len(s), False
-            nxt = s[i + 1]
-            if nxt in ('"', "\\", "/"):
-                out.append(nxt)
-                i += 2
-                continue
-            if nxt == "b":
-                out.append("\b")
-                i += 2
-                continue
-            if nxt == "f":
-                out.append("\f")
-                i += 2
-                continue
-            if nxt == "n":
-                out.append("\n")
-                i += 2
-                continue
-            if nxt == "r":
-                out.append("\r")
-                i += 2
-                continue
-            if nxt == "t":
-                out.append("\t")
-                i += 2
-                continue
-            if nxt == "u":
-                hex_part = s[i + 2 : i + 6]
-                if len(hex_part) == 4 and all(c in "0123456789abcdefABCDEF" for c in hex_part):
-                    out.append(chr(int(hex_part, 16)))
-                    i += 6
+    # 2. 尝试从后往前寻找最后一个能让 json.loads 成功的 { ... } 块
+    # 针对思考模型（如 DeepSeek R1），JSON 通常位于输出的最末尾
+    for i in range(text.rfind("{"), -1, -1):
+        if text[i] == "{":
+            snippet = text[i:].strip()
+            # 寻找对应的 }
+            last_bracket = snippet.rfind("}")
+            if last_bracket > 0:
+                try:
+                    return json.loads(snippet[: last_bracket + 1])
+                except json.JSONDecodeError:
                     continue
-                out.append("\\u")
-                i += 2
-                continue
-            out.append(nxt)
-            i += 2
-            continue
-        out.append(ch)
-        i += 1
 
-    return "".join(out), len(s), False
+    # 3. 极简提取方案：针对完全损坏的包裹（如 Markdown 代码块未闭合）
+    results = {}
+    pattern = r'"(\w+)":\s*"((?:\\.|[^"\\])*)"'
+    for match in re.finditer(pattern, text):
+        results[match.group(1)] = match.group(2)
+    
+    if results:
+        logger.warning("Standard JSON parsing failed, used regex fallback.")
+        return results
 
-
-def _repair_invalid_string_escapes(snippet: str) -> str:
-    """修复字符串内无效反斜杠转义和字面控制字符。"""
-    out: list[str] = []
-    in_string = False
-    i = 0
-
-    while i < len(snippet):
-        ch = snippet[i]
-
-        if in_string and ch in ("\n", "\r", "\t"):
-            out.append("\\n" if ch == "\n" else "\\r" if ch == "\r" else "\\t")
-            i += 1
-            continue
-
-        if in_string and ord(ch) < 0x20:
-            out.append(f"\\u{ord(ch):04x}")
-            i += 1
-            continue
-
-        if ch == '"':
-            slash_count = 0
-            j = i - 1
-            while j >= 0 and snippet[j] == "\\":
-                slash_count += 1
-                j -= 1
-            if slash_count % 2 == 0:
-                in_string = not in_string
-            out.append(ch)
-            i += 1
-            continue
-
-        if in_string and ch == "\\":
-            if i + 1 >= len(snippet):
-                out.append("\\\\")
-                i += 1
-                continue
-            nxt = snippet[i + 1]
-            if nxt in ('"', "\\", "/", "b", "f", "n", "r", "t"):
-                out.append("\\" + nxt)
-                i += 2
-                continue
-            if nxt == "u":
-                out.append("\\u")
-                i += 2
-                continue
-            out.append("\\\\")
-            i += 1
-            continue
-
-        out.append(ch)
-        i += 1
-
-    return "".join(out)
-
-
-def _strip_disallowed_control_chars_outside_strings(snippet: str) -> str:
-    """移除字符串外不符合 JSON 规范的控制字符。"""
-    out: list[str] = []
-    in_string = False
-    i = 0
-
-    while i < len(snippet):
-        ch = snippet[i]
-        if ch == '"':
-            slash_count = 0
-            j = i - 1
-            while j >= 0 and snippet[j] == "\\":
-                slash_count += 1
-                j -= 1
-            if slash_count % 2 == 0:
-                in_string = not in_string
-            out.append(ch)
-            i += 1
-            continue
-
-        if not in_string:
-            if ch.isspace() and ch not in (" ", "\t", "\n", "\r"):
-                out.append(" ")
-                i += 1
-                continue
-            if ord(ch) < 0x20 and ch not in (" ", "\t", "\n", "\r"):
-                i += 1
-                continue
-
-        out.append(ch)
-        i += 1
-
-    return "".join(out)
-
-
-def _remove_trailing_commas(snippet: str) -> str:
-    """移除对象/数组结束前的多余逗号。"""
-    out: list[str] = []
-    in_string = False
-    i = 0
-
-    while i < len(snippet):
-        ch = snippet[i]
-        if ch == '"':
-            slash_count = 0
-            j = i - 1
-            while j >= 0 and snippet[j] == "\\":
-                slash_count += 1
-                j -= 1
-            if slash_count % 2 == 0:
-                in_string = not in_string
-            out.append(ch)
-            i += 1
-            continue
-
-        if not in_string and ch == ",":
-            j = i + 1
-            while j < len(snippet) and snippet[j] in (" ", "\t", "\n", "\r"):
-                j += 1
-            if j < len(snippet) and snippet[j] in ("]", "}"):
-                i += 1
-                continue
-
-        out.append(ch)
-        i += 1
-
-    return "".join(out)
-
-
-def _balance_unclosed_json_brackets(snippet: str) -> str:
-    """为截断 JSON 自动补齐缺失的 ] 或 }。"""
-    stack: list[str] = []
-    in_string = False
-    i = 0
-
-    while i < len(snippet):
-        ch = snippet[i]
-        if ch == '"':
-            slash_count = 0
-            j = i - 1
-            while j >= 0 and snippet[j] == "\\":
-                slash_count += 1
-                j -= 1
-            if slash_count % 2 == 0:
-                in_string = not in_string
-            i += 1
-            continue
-
-        if not in_string:
-            if ch == "{":
-                stack.append("}")
-            elif ch == "[":
-                stack.append("]")
-            elif ch == "}" and stack and stack[-1] == "}":
-                stack.pop()
-            elif ch == "]" and stack and stack[-1] == "]":
-                stack.pop()
-
-        i += 1
-
-    if not stack:
-        return snippet
-    return snippet + "".join(reversed(stack))
+    logger.debug("Failed candidate (last 500 chars): %s", text[-500:])
+    raise ValueError("Final JSON parse attempt failed")

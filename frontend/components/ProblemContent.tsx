@@ -8,7 +8,6 @@ import { OptionsList } from "./OptionsList";
 type ProblemOption = {
   key: string;
   text: string;
-  latex_blocks?: string[];
 };
 
 type ProblemContentProps = {
@@ -62,7 +61,7 @@ export function ProblemContent({
           renderOptionText={(opt) =>
             enableInlineMath && looksLikeStandaloneMath(opt.text) ? (
               <Box as="span" sx={{ "& .katex": { fontSize: "1.05em" } }}>
-                <InlineMath math={normalizeLatexInline(opt.text)} />
+                <InlineMath math={`\\displaystyle ${normalizeLatexInline(opt.text)}`} />
               </Box>
             ) : (
               <MarkdownRenderer text={opt.text || ""} fontSize={fontSize} />

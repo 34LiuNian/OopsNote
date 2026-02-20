@@ -6,7 +6,6 @@ import { Box, Text } from "@primer/react";
 export type OptionItem = {
   key: string;
   text: string;
-  latex_blocks?: string[];
 };
 
 export function OptionsList(props: {

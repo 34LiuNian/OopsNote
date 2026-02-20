@@ -14,7 +14,24 @@ import { useEffect, useMemo, useRef } from "react";
 export function MarkdownRenderer({ text, fontSize }: { text: string; fontSize?: number }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
 
+  const processedText = useMemo(() => {
+    if (!text) return "";
+    // Force displaystyle for inline math markers to match LaTeX output and avoid compression.
+    // Handles $...$ and \(...\) while avoiding $$...$$ and \[...\]
+    return text
+      .replace(/\$(?!\$)([\s\S]*?)\$/g, (match, p1) => {
+        if (p1.trim().startsWith("\\displaystyle")) return match;
+        return `$\\displaystyle ${p1}$`;
+      })
+      .replace(/\\\(([\s\S]*?)\\\)/g, (match, p1) => {
+        if (p1.trim().startsWith("\\displaystyle")) return match;
+        return `\\(\\displaystyle ${p1}\\)`;
+      });
+  }, [text]);
+
   useEffect(() => {
+    // We ignore TypeScript errors for this dynamic import since katex doesn't have proper types for it
+    // @ts-ignore
     void import("katex/contrib/mhchem");
   }, []);
 
@@ -23,7 +40,7 @@ export function MarkdownRenderer({ text, fontSize }: { text: string; fontSize?: 
   }, []);
 
   const rehypePlugins = useMemo(() => {
-    return [[rehypeKatex, { throwOnError: false }]];
+    return [rehypeKatex];
   }, []);
 
   return (
@@ -98,7 +115,7 @@ export function MarkdownRenderer({ text, fontSize }: { text: string; fontSize?: 
           },
         }}
       >
-        {text}
+        {processedText}
       </ReactMarkdown>
     </Box>
   );

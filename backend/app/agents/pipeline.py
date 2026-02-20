@@ -76,9 +76,9 @@ class AgentPipeline:
         emit("extracting", "识别题目")
         detection, problems = self._extract(payload, asset)
         if self.orchestrator:
-            # Multi-agent orchestration runs as a batch; keep coarse updates.
+            # Multi-agent orchestration runs as a batch.
             solutions, tags = self.orchestrator.solve_and_tag(
-                payload, problems
+                payload, problems, on_progress=emit
             )
         else:
             total = len(problems)

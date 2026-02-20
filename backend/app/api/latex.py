@@ -113,6 +113,8 @@ def _compile_pdf(tex_content: str, *, xelatex_path: str) -> bytes:
                 cwd=workdir,
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
+                errors="replace",
                 check=False,
             )
             if result.returncode != 0:
@@ -238,6 +240,8 @@ def render_chemfig(payload: ChemfigRenderRequest) -> Response:
                 cwd=workdir,
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
+                errors="replace",
                 check=False,
             )
 
@@ -290,6 +294,8 @@ def render_chemfig(payload: ChemfigRenderRequest) -> Response:
                 cwd=workdir,
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
+                errors="replace",
                 check=False,
             )
 

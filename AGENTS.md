@@ -5,7 +5,7 @@
 ## 总览（实现版）
 
 1. **多题检测器** – 当前已暂时弃用（不参与执行）。
-2. **OCR 提取器** – 针对每个裁剪块输出结构化题面（含选项与 `latex_blocks`）。
+2. **OCR 提取器** – 针对每个裁剪块输出结构化题面（含选项）。
 3. **解题 → 打标** – 对每题逐题解题与打标。
 4. **持久化** – 将任务、流式输出、资产与标签库落盘，供前端回放/编辑。
 
@@ -62,21 +62,20 @@
 | 项目 | 说明 |
 | --- | --- |
 | 输入 | 裁剪后的图片、`action`、用户设置（语言/风格） |
-| 输出 | `problems[]`: `[ { problem_id, problem_text, latex_blocks[], options[], ocr_text } ]` |
-| 技术 | 多模态 LLM 输出严格 JSON；失败时可走 retry prompt（见 `backend/app/agents/extractor.py`） |
-| 特性 | 题面和选项同时产出 `latex_blocks`（列表），便于前端稳定渲染与复用 |
+| 输出 | `problems[]`: `[ { problem_id, question_type?, problem_text, options[]? } ]` （`question_type` 与 `options` 均可选） |
+| 技术 | 多模态 LLM 输出严格 JSON；失败时记录错误并进入任务失败态（见 `backend/app/agents/extractor.py`） |
+| 特性 | 题面和选项直接包含 LaTeX 公式，由前端渲染器统一处理 |
 | 校验 | 解析端使用 `DOMParser` + schema 校验；若失败，回退到 OCR + 文本修补策略 |
 
 ### 提示词位置
 
 - `backend/app/agents/prompts/ocr.txt`
-- `backend/app/agents/prompts/ocr_retry.txt`
 
 补充说明：
 
-- OCR 目标是“结构化题面”，并区分 `problem_text`、`options` 与 `latex_blocks`。
-- `latex_blocks` 为列表，供前端稳定渲染，避免重复解析。
-- 若 LLM JSON 格式错误，会使用 retry prompt 强化约束。
+- OCR 目标是“结构化题面”，并区分 `question_type`、`problem_text` 与 `options`。
+- 题面直接采用 Markdown + LaTeX 格式。
+- 若 LLM JSON 格式错误，直接进入失败态。
 
 ---
 
@@ -191,7 +190,7 @@ Use concise Chinese labels; prefer selecting from the provided candidate lists.
 | 阶段 | 失败模式 | 行为 |
 | --- | --- | --- |
 | Detector | 已禁用 | 不参与执行 |
-| OCR Extractor | JSON 格式错误 | retry prompt + 解析修复 |
+| OCR Extractor | JSON 格式错误 | 记录错误并进入任务失败态 |
 | Solver | 模型异常 | 记录错误并进入任务失败态 |
 | Tagger | JSON 格式错误 | 以重试或降级策略输出最小结构 |
 

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import asyncio
 from fastapi import APIRouter, Request
+from fastapi.responses import StreamingResponse
 
 from ..models import (
     OverrideProblemRequest,
@@ -53,6 +55,22 @@ def upload_task(
 def get_task(request: Request, task_id: str) -> TaskResponse:
     task = _svc(request).get_task(task_id)
     return TaskResponse(task=task)
+
+
+@router.get("/tasks/{task_id}/events")
+async def task_events(request: Request, task_id: str):
+    """Subscribe to real-time task events (SSE)."""
+    return StreamingResponse(
+        _svc(request).subscribe_task_events(task_id),
+        media_type="text/event-stream",
+    )
+
+
+@router.get("/tasks/{task_id}/stream")
+def get_task_stream(request: Request, task_id: str, max_chars: int = 200000):
+    """Fetch historical stream content."""
+    text = _svc(request).get_task_stream(task_id, max_chars=max_chars)
+    return {"task_id": task_id, "text": text}
 
 
 @router.post("/tasks/{task_id}/process", response_model=TaskResponse)
