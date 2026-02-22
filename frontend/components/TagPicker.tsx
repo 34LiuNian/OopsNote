@@ -178,19 +178,35 @@ export function TagPicker({
   }, [dimension, enableRemoteSearch, input, maxSuggestions]);
 
   return (
-    <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
+    <Box sx={{ display: "flex", flexDirection: "row", alignItems: "flex-start", gap: 2 }}>
       <Text sx={{ fontWeight: "bold" }}>{title}</Text>
 
-      <Box sx={{ display: "flex", flexWrap: "wrap", gap: 2 }}>
+      <Box sx={{ display: "flex", flexWrap: "wrap", gap: 2, flex: 1, minWidth: 0 }}>
         {value.length === 0 ? (
           <Text sx={{ color: "fg.muted", fontSize: 1 }}>未选择</Text>
         ) : (
           value.map((t) => (
-            <Box key={`${dimension}:${t}`} sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-              <Label variant={variant as any}>{t}</Label>
-              <Button size="small" onClick={() => removeTag(t)}>
-                移除
-              </Button>
+            <Box
+              key={`${dimension}:${t}`}
+              as="button"
+              type="button"
+              onClick={() => removeTag(t)}
+              sx={{
+                display: "inline-flex",
+                alignItems: "center",
+                bg: "transparent",
+                border: "none",
+                cursor: "pointer",
+                p: 0,
+                position: "relative",
+                "&:hover .tag-label": { opacity: 0 },
+                "&:hover .delete-icon": { opacity: 1 },
+              }}
+            >
+              <Label variant={variant as any} className="tag-label" sx={{ transition: "opacity 0.15s" }}>{t}</Label>
+              <Box className="delete-icon" sx={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", color: "danger.fg", opacity: 0, transition: "opacity 0.15s" }}>
+                <Text sx={{ fontSize: 14 }}>✕</Text>
+              </Box>
             </Box>
           ))
         )}
@@ -230,6 +246,14 @@ export function TagPicker({
               setOpen(true);
               if (filteredSuggestions.length === 0) return;
               setHighlightIndex((prev) => Math.max(prev - 1, 0));
+              return;
+            }
+
+            if (e.key === "Backspace") {
+              if (input === "" && value.length > 0) {
+                e.preventDefault();
+                removeTag(value[value.length - 1]);
+              }
               return;
             }
 

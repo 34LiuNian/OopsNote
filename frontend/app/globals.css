@@ -31,3 +31,70 @@ body {
   overflow-y: hidden;
   padding: 0.2rem 0;
 }
+
+/* KaTeX array/table: ensure proper display */
+.katex .array {
+  display: inline-table;
+}
+
+.katex-display .array {
+  display: table;
+}
+
+.katex .array col {
+  display: table-column;
+}
+
+.katex .array colgroup {
+  display: table-column-group;
+}
+
+.katex .array tr {
+  display: table-row;
+}
+
+.katex .array td {
+  display: table-cell;
+  padding: 0;
+}
+
+.katex .array th {
+  display: table-cell;
+  padding: 0;
+  font-weight: bold;
+}
+
+.katex .vertical-separator {
+  display: inline-block;
+}
+
+.katex .hline {
+  border-top: 1px solid currentColor;
+}
+
+.katex .vline {
+  border-left: 1px solid currentColor;
+}
+
+/* TaskProgressBar animations */
+@keyframes pulse {
+  0% { box-shadow: 0 0 0 0 rgba(9, 105, 218, 0.4); }
+  70% { box-shadow: 0 0 0 0.5rem rgba(9, 105, 218, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(9, 105, 218, 0); }
+}
+
+@keyframes ripple {
+  0% { box-shadow: 0 0 0 0 rgba(9, 105, 218, 0); }
+  50% { box-shadow: 0 0 0 0.5rem rgba(9, 105, 218, 0.25); }
+  100% { box-shadow: 0 0 0 1.25rem rgba(9, 105, 218, 0); }
+}
+
+@keyframes progressLine {
+  0% { width: 0%; }
+  100% { width: 100%; }
+}
+
+@keyframes fadeIn {
+  0% { opacity: 0.5; }
+  100% { opacity: 1; }
+}

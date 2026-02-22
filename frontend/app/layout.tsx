@@ -7,6 +7,7 @@ import AppLayout from '@/components/AppLayout';
 import { ThemeProvider } from '@/components/ThemeProvider';
 import StyledComponentsRegistry from '@/lib/registry';
 import { SileoToaster } from '@/components/SileoToaster';
+import { KatexAutoRender } from '@/components/KatexAutoRender';
 
 export const metadata: Metadata = {
   title: "AI Mistake Organizer",
@@ -45,6 +46,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
       <body style={{ backgroundColor: "Canvas", color: "CanvasText" }}>
         <StyledComponentsRegistry>
           <ThemeProvider initialPreference={initialPreference}>
+            <KatexAutoRender />
             <SileoToaster />
             <AppLayout>
               {children}

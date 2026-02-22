@@ -188,10 +188,10 @@ export function UploadForm() {
   const [subject, setSubject] = useState(DEFAULT_SUBJECT);
   const [questionNo, setQuestionNo] = useState("");
   const [notes, setNotes] = useState("");
-  const [source, setSource] = useState("");
   const [difficultyLeft, setDifficultyLeft] = useState("");
   const [difficultyRight, setDifficultyRight] = useState("");
   const [questionType, setQuestionType] = useState("");
+  const [sourceTags, setSourceTags] = useState<string[]>([]);
   const [knowledgeTags, setKnowledgeTags] = useState<string[]>([]);
   const [errorTags, setErrorTags] = useState<string[]>([]);
   const [customTags, setCustomTags] = useState<string[]>([]);
@@ -297,7 +297,7 @@ export function UploadForm() {
         subject,
         notes,
         question_no: questionNo.trim() || undefined,
-        source: source.trim() || undefined,
+        source: sourceTags.length > 0 ? sourceTags[0] : undefined,
         question_type: questionType || undefined,
         difficulty: difficultyValue,
         knowledge_tags: knowledgeTags,
@@ -351,7 +351,7 @@ export function UploadForm() {
     notes,
     questionNo,
     questionType,
-    source,
+    sourceTags,
     subject,
   ]);
 
@@ -360,7 +360,7 @@ export function UploadForm() {
       {/* Left: Annotation */}
       <Box sx={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 3 }}>
         <Box>
-          <Heading as="h1" sx={{ fontSize: 4, mb: 1 }}>快速打标</Heading>
+          <Heading as="h1" sx={{ fontSize: 4, mb: 1 }}>新建题目</Heading>
         </Box>
 
         <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -408,61 +408,87 @@ export function UploadForm() {
               </Select>
             </FormControl>
             <FormControl>
-              <FormControl.Label>备注（可选）</FormControl.Label>
-              <TextInput
-                placeholder="比如：易错点、你自己的想法..."
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                block
-              />
+              <FormControl.Label>难度</FormControl.Label>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <TextInput
+                  placeholder="a"
+                  value={difficultyLeft}
+                  onChange={(e) => {
+                    const next = e.target.value;
+                    if (next.includes("/")) {
+                      const [left, right] = next.split("/");
+                      setDifficultyLeft(left.trim());
+                      setDifficultyRight(right.trim());
+                      difficultyRightRef.current?.focus();
+                      return;
+                    }
+                    setDifficultyLeft(next);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "/") {
+                      e.preventDefault();
+                      difficultyRightRef.current?.focus();
+                    }
+                  }}
+                  sx={{ flex: 1 }}
+                />
+                <Text
+                  sx={{
+                    color: 'fg.muted',
+                    px: 1,
+                    cursor: 'pointer',
+                    userSelect: 'none',
+                  }}
+                  onClick={() => difficultyRightRef.current?.focus()}
+                >
+                  /
+                </Text>
+                <TextInput
+                  placeholder="b"
+                  value={difficultyRight}
+                  onChange={(e) => setDifficultyRight(e.target.value)}
+                  ref={difficultyRightRef}
+                  sx={{ flex: 1 }}
+                />
+              </Box>
             </FormControl>
           </Box>
+          
+          <TagPicker
+            title="来源"
+            dimension="meta"
+            value={sourceTags}
+            onChange={setSourceTags}
+            // placeholder="输入后回车添加，例如：2025-一模"
+            styles={tagStyles}
+          />
+          <TagPicker
+            title="知识体系"
+            dimension="knowledge"
+            value={knowledgeTags}
+            onChange={setKnowledgeTags}
+            // placeholder="输入几个字搜索，例如：函数/单调"
+            styles={tagStyles}
+          />
 
-          <FormControl>
-            <FormControl.Label>分数（可选，a/b）</FormControl.Label>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              <TextInput
-                placeholder="a"
-                value={difficultyLeft}
-                onChange={(e) => {
-                  const next = e.target.value;
-                  if (next.includes("/")) {
-                    const [left, right] = next.split("/");
-                    setDifficultyLeft(left.trim());
-                    setDifficultyRight(right.trim());
-                    difficultyRightRef.current?.focus();
-                    return;
-                  }
-                  setDifficultyLeft(next);
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === "/") {
-                    e.preventDefault();
-                    difficultyRightRef.current?.focus();
-                  }
-                }}
-                sx={{ flex: 1 }}
-              />
-              <Text
-                sx={{
-                  color: 'fg.muted',
-                  px: 1,
-                  cursor: 'pointer',
-                  userSelect: 'none',
-                }}
-                onClick={() => difficultyRightRef.current?.focus()}
-              >
-                /
-              </Text>
-              <TextInput
-                placeholder="b"
-                value={difficultyRight}
-                onChange={(e) => setDifficultyRight(e.target.value)}
-                ref={difficultyRightRef}
-                sx={{ flex: 1 }}
-              />
-            </Box>
-          </FormControl>
+          <TagPicker
+            title="错题归因"
+            dimension="error"
+            value={errorTags}
+            onChange={setErrorTags}
+            // placeholder="输入几个字搜索，例如：计算/概念/思路"
+            styles={tagStyles}
+          />
+
+          <TagPicker
+            title="自定义标签"
+            dimension="custom"
+            value={customTags}
+            onChange={setCustomTags}
+            placeholder=""
+            styles={tagStyles}
+            enableRemoteSearch={false}
+          />
 
           <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end' }}>
             <Button
@@ -478,28 +504,28 @@ export function UploadForm() {
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
               <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 3 }}>
                 <FormControl>
-                  <FormControl.Label>题号（可选）</FormControl.Label>
+                  <FormControl.Label>题号</FormControl.Label>
                   <TextInput
-                    placeholder="例如：A100502.14"
+                    // placeholder="例如：A100502.14"
                     value={questionNo}
                     onChange={(e) => setQuestionNo(e.target.value)}
                     block
                   />
                 </FormControl>
                 <FormControl>
-                  <FormControl.Label>来源（可选，批量）</FormControl.Label>
+                  <FormControl.Label>备注</FormControl.Label>
                   <TextInput
-                    placeholder="例如：2025-一模"
-                    value={source}
-                    onChange={(e) => setSource(e.target.value)}
+                    // placeholder="比如：易错点、你自己的想法..."
+                    value={notes}
+                    onChange={(e) => setNotes(e.target.value)}
                     block
                   />
                 </FormControl>
               </Box>
               <FormControl>
-                <FormControl.Label>题型（可选）</FormControl.Label>
+                <FormControl.Label>题型</FormControl.Label>
                 <Select value={questionType} onChange={(e) => setQuestionType(e.target.value)} block>
-                  <Select.Option value="">（不填）</Select.Option>
+                  <Select.Option value="">自动识别</Select.Option>
                   <Select.Option value="选择题">选择题</Select.Option>
                   <Select.Option value="多选题">多选题</Select.Option>
                   <Select.Option value="填空题">填空题</Select.Option>
@@ -509,34 +535,6 @@ export function UploadForm() {
               </FormControl>
             </Box>
           )}
-
-          <TagPicker
-            title="知识体系（可多选，支持模糊搜索）"
-            dimension="knowledge"
-            value={knowledgeTags}
-            onChange={setKnowledgeTags}
-            placeholder="输入几个字搜索，例如：函数/单调"
-            styles={tagStyles}
-          />
-
-          <TagPicker
-            title="错题归因（可多选，支持模糊搜索）"
-            dimension="error"
-            value={errorTags}
-            onChange={setErrorTags}
-            placeholder="输入几个字搜索，例如：计算/概念/思路"
-            styles={tagStyles}
-          />
-
-          <TagPicker
-            title="自定义标签（自由输入）"
-            dimension="custom"
-            value={customTags}
-            onChange={setCustomTags}
-            placeholder=""
-            styles={tagStyles}
-            enableRemoteSearch={false}
-          />
 
           <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
             <Button

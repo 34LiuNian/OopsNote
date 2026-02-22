@@ -16,7 +16,7 @@ const NAV_ITEMS = [
   { href: "/", label: "新建题目", icon: PlusIcon },
   { href: "/library", label: "题库", icon: RepoIcon },
   { href: "/paper-builder", label: "组卷", icon: ChecklistIcon },
-  { href: "/markdown-test", label: "Markdown 测试", icon: BookIcon },
+  { href: "/debug", label: "Debug 页面", icon: BookIcon },
   { href: "/tags", label: "标签管理", icon: TagIcon },
   { href: "/settings", label: "设置", icon: GearIcon },
 ];

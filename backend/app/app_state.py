@@ -30,6 +30,10 @@ class ModelsServiceLike(Protocol):
     def prefetch_cache(self) -> None: ...
 
 
+class SseServiceLike(Protocol):
+    async def subscribe_task_events(self, task_id: str): ...
+
+
 @dataclass
 class BackendState:
     repository: TaskRepositoryLike
@@ -37,3 +41,4 @@ class BackendState:
     agent_settings: AgentSettingsLike
     tasks: TasksServiceLike
     models: ModelsServiceLike
+    sse: SseServiceLike

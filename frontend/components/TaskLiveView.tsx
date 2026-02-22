@@ -6,9 +6,9 @@ import {
   Box,
   Heading,
   Text,
-  Flash,
   Spinner,
 } from "@primer/react";
+import { sileo } from "sileo";
 import { fetchJson } from "../lib/api";
 import type { TaskResponse } from "../types/api";
 import { LiveStreamRenderer } from "./LiveStreamRenderer";
@@ -17,6 +17,8 @@ import { TaskProblemList } from "./task/TaskProblemList";
 import { deleteTask } from "../features/tasks";
 import { useTagDimensions } from "../features/tags";
 import { useTaskStream } from "../hooks/useTaskStream";
+import { useTaskProgress } from "../hooks/useTaskProgress";
+import { TaskProgressBar } from "./task/TaskProgressBar";
 import { ErrorBanner } from "./ErrorBanner";
 
 type RenderMathInElement = (
@@ -46,6 +48,7 @@ export function TaskLiveView({ taskId }: { taskId: string }) {
   const [editingKey, setEditingKey] = useState<string>("");
 
   const mathContainerRef = useRef<HTMLDivElement | null>(null);
+  const lastToastMessageRef = useRef<string>("");
 
   const loadOnce = useCallback(async () => {
     setIsLoading(true);
@@ -174,6 +177,30 @@ export function TaskLiveView({ taskId }: { taskId: string }) {
     };
   }, [data]);
 
+  useEffect(() => {
+    if (!statusMessage) return;
+    if (statusMessage === lastToastMessageRef.current) return;
+
+    const status = data?.task?.status;
+    if (status === "completed") {
+      sileo.success({ title: "任务完成", position: "bottom-right" });
+    } else if (status === "failed") {
+      sileo.error({ title: statusMessage || "任务失败", position: "bottom-right" });
+    } else {
+      sileo.info({ title: statusMessage, position: "bottom-right" });
+    }
+
+    lastToastMessageRef.current = statusMessage;
+  }, [statusMessage, data?.task?.status]);
+
+  const progressState = useTaskProgress({
+    status: data?.task?.status,
+    stage: data?.task?.stage,
+    stageMessage: data?.task?.stage_message,
+    statusMessage,
+    streamProgress,
+  });
+
 
   return (
     <Box ref={mathContainerRef} sx={{ p: 3, border: '1px solid', borderColor: 'border.default', borderRadius: 2 }}>
@@ -194,18 +221,39 @@ export function TaskLiveView({ taskId }: { taskId: string }) {
         />
       </Box>
 
-      <Text as="p" sx={{ fontSize: 1, color: 'fg.muted', mb: 3 }}>
-        这里展示的是一次上传任务下抽取的所有题目、解答与标签，方便从题库视图跳转回原始上下文。
-      </Text>
+      <TaskProgressBar
+        progressState={progressState}
+        latestLine={progressState.latestLine}
+        error={error}
+        statusMessage={statusMessage}
+      />
 
-      {statusMessage && <Flash variant="success" sx={{ mb: 3 }}>{statusMessage}</Flash>}
       <ErrorBanner message={error} />
 
-      {streamProgress.length > 0 && (
-        <Box sx={{ p: 2, bg: 'canvas.subtle', borderRadius: 2, mb: 3 }}>
-          <Text sx={{ fontWeight: 'bold', display: 'block', mb: 1 }}>进度</Text>
-          <Box sx={{ whiteSpace: 'pre-wrap', fontFamily: 'mono', fontSize: 1 }}>
-            {streamProgress.map((line) => `• ${line}`).join("\n")}
+      {(data?.task?.status === "pending" || data?.task?.status === "processing") && (
+        <Box
+          sx={{
+            position: "fixed",
+            right: 24,
+            bottom: 24,
+            width: 320,
+            maxWidth: "calc(100vw - 32px)",
+            maxHeight: 240,
+            overflowY: "auto",
+            p: 2,
+            bg: "canvas.subtle",
+            borderRadius: 2,
+            border: "1px solid",
+            borderColor: "border.default",
+            boxShadow: "shadow.large",
+            zIndex: 30,
+          }}
+        >
+          <Text sx={{ fontWeight: "bold", display: "block", mb: 1 }}>实时进度</Text>
+          <Box sx={{ whiteSpace: "pre-wrap", fontFamily: "mono", fontSize: 1 }}>
+            {streamProgress.length > 0
+              ? streamProgress.map((line) => `• ${line}`).join("\n")
+              : "• 等待进度更新..."}
           </Box>
         </Box>
       )}

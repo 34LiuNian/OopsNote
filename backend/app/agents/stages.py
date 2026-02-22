@@ -18,7 +18,7 @@ from ..models import (
 
 def _load_prompt(name: str) -> "PromptTemplate":
     from .agent_flow import PromptTemplate
-    path = Path(__file__).parent / "prompts" / f"{name}.txt"
+    path = Path(__file__).parent / "prompts" / f"{name}.md"
     return PromptTemplate.from_file(path)
 
 def _coerce_list(value: object, fallback: list[str]) -> list[str]:

@@ -1,4 +1,5 @@
-export const API_BASE = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
+// Use /api proxy to avoid CORS issues
+export const API_BASE = "/api";
 
 export async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${API_BASE}${path}`, {

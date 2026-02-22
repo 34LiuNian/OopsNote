@@ -16,9 +16,15 @@ export function MarkdownRenderer({ text, fontSize }: { text: string; fontSize?: 
 
   const processedText = useMemo(() => {
     if (!text) return "";
+    // Handle potential HTML escaping from backend
+    let unescaped = text
+      .replace(/\\\$/g, "$") // Unescape escaped dollar signs
+      .replace(/\\\[\\/g, "\\[") // Unescape escaped brackets
+      .replace(/\\\]\\/g, "\\]"); // Unescape escaped brackets
+    
     // Force displaystyle for inline math markers to match LaTeX output and avoid compression.
     // Handles $...$ and \(...\) while avoiding $$...$$ and \[...\]
-    return text
+    return unescaped
       .replace(/\$(?!\$)([\s\S]*?)\$/g, (match, p1) => {
         if (p1.trim().startsWith("\\displaystyle")) return match;
         return `$\\displaystyle ${p1}$`;
@@ -33,6 +39,9 @@ export function MarkdownRenderer({ text, fontSize }: { text: string; fontSize?: 
     // We ignore TypeScript errors for this dynamic import since katex doesn't have proper types for it
     // @ts-ignore
     void import("katex/contrib/mhchem");
+    // Load additional KaTeX extensions that might be needed for array environments
+    // @ts-ignore
+    void import("katex/dist/contrib/auto-render");
   }, []);
 
   const remarkPlugins = useMemo(() => {
@@ -40,7 +49,9 @@ export function MarkdownRenderer({ text, fontSize }: { text: string; fontSize?: 
   }, []);
 
   const rehypePlugins = useMemo(() => {
-    return [rehypeKatex];
+    // Configure rehype-katex with strict: "ignore" to support array, hline, and other advanced LaTeX features
+    // Also enable trust for safety since we control the content
+    return [[rehypeKatex, { strict: "ignore", trust: true }]];
   }, []);
 
   return (

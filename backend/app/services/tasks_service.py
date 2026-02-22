@@ -8,6 +8,7 @@ import threading
 import time
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any, Callable, Optional
 
 from fastapi import HTTPException
 
@@ -24,6 +25,9 @@ from ..models import (
     TasksResponse,
 )
 from ..tags import TagDimension
+from .event_bus import EventBus
+
+logger = logging.getLogger(__name__)
 
 
 class _TaskCancelled(Exception):
@@ -41,11 +45,12 @@ def _int_env(name: str, default: int) -> int:
 
 
 class TasksService:
-    def __init__(self, *, repository, pipeline, asset_store, tag_store) -> None:
+    def __init__(self, *, repository, pipeline, asset_store, tag_store, event_bus: Optional[EventBus] = None) -> None:
         self.repository = repository
         self.pipeline = pipeline
         self.asset_store = asset_store
         self.tag_store = tag_store
+        self.event_bus = event_bus
 
         self._task_cancel_lock = threading.Lock()
         self._task_cancelled: set[str] = set()
@@ -53,10 +58,7 @@ class TasksService:
         self._processing_lock = threading.Lock()
         self._processing_inflight: set[str] = set()
 
-        self._event_queues: dict[str, list[asyncio.Queue]] = {}
-        self._event_lock = threading.Lock()
-
-        # Track base directory for streams
+        # Track base directory for streams (for backward compatibility)
         self.streams_dir = (
             Path(repository.base_dir).parent / "task_streams"
             if hasattr(repository, "base_dir") and repository.base_dir
@@ -149,70 +151,21 @@ class TasksService:
 
     def get_task_stream(self, task_id: str, max_chars: int = 200000) -> str:
         """Read historical stream from disk."""
-        path = self.streams_dir / f"{task_id}.txt"
-        if not path.exists():
-            return ""
-        try:
-            content = path.read_text(encoding="utf-8")
-            if len(content) > max_chars:
-                return content[-max_chars:]
-            return content
-        except Exception as e:
-            logger.warning("Failed to read task stream %s: %s", task_id, e)
-            return ""
-
-    async def subscribe_task_events(self, task_id: str):
-        """Subscribe to real-time events for a task."""
-        queue = asyncio.Queue()
-        with self._event_lock:
-            if task_id not in self._event_queues:
-                self._event_queues[task_id] = []
-            self._event_queues[task_id].append(queue)
-
-        try:
-            while True:
-                data = await queue.get()
-                if data is None:  # Sentinel for end of stream
-                    break
-                yield f"event: {data['event']}\ndata: {json.dumps(data['payload'], ensure_ascii=False)}\n\n"
-        finally:
-            with self._event_lock:
-                if task_id in self._event_queues:
-                    self._event_queues[task_id].remove(queue)
-                    if not self._event_queues[task_id]:
-                        del self._event_queues[task_id]
-
-    def _broadcast(self, task_id: str, event: str, payload: dict):
-        """Broadcast an event to all subscribers and write to disk."""
-        data = {"event": event, "payload": payload, "ts": datetime.now(timezone.utc).isoformat()}
-        
-        # Write to disk
-        path = self.streams_dir / f"{task_id}.txt"
-        try:
-            with open(path, "a", encoding="utf-8") as f:
-                f.write(json.dumps(data, ensure_ascii=False) + "\n")
-        except Exception as e:
-            logger.warning("Failed to write to stream file %s: %s", task_id, e)
-
-        # Notify active listeners
-        with self._event_lock:
-            queues = self._event_queues.get(task_id, [])
-            for q in queues:
-                try:
-                    # Thread-safe way to push to asyncio queue
-                    q.get_loop().call_soon_threadsafe(q.put_nowait, data)
-                except Exception:
-                    pass
-
-    def _finish_broadcast(self, task_id: str):
-        """Send sentinel to all subscribers to close connection."""
-        with self._event_lock:
-            queues = self._event_queues.get(task_id, [])
-            for q in queues:
-                try:
-                    q.get_loop().call_soon_threadsafe(q.put_nowait, None)
-                except Exception:
-                    pass
+        if self.event_bus:
+            return self.event_bus.get_task_stream(task_id, max_chars)
+        else:
+            # Fallback to legacy implementation for backward compatibility
+            path = self.streams_dir / f"{task_id}.txt"
+            if not path.exists():
+                return ""
+            try:
+                content = path.read_text(encoding="utf-8")
+                if len(content) > max_chars:
+                    return content[-max_chars:]
+                return content
+            except Exception as e:
+                logger.warning("Failed to read task stream %s: %s", task_id, e)
+                return ""
 
     def list_tasks(
         self,
@@ -646,7 +599,13 @@ class TasksService:
             self._processing_inflight.add(task_id)
 
         def progress_bridge(stage: str, message: str | None = None):
-            self._broadcast(task_id, "progress", {"stage": stage, "message": message})
+            # Publish progress event via event bus
+            if self.event_bus:
+                self.event_bus.publish(task_id, "progress", {"stage": stage, "message": message})
+            else:
+                # Fallback to legacy broadcast for backward compatibility
+                self._legacy_broadcast(task_id, "progress", {"stage": stage, "message": message})
+            
             if on_progress:
                 try:
                     on_progress(stage, message)
@@ -686,6 +645,37 @@ class TasksService:
                 self._finalize_failed(task_id, exc)
                 raise HTTPException(status_code=500, detail=str(exc)) from exc
         finally:
-            self._finish_broadcast(task_id)
+            if self.event_bus:
+                self.event_bus.finish_broadcast(task_id)
+            else:
+                self._legacy_finish_broadcast(task_id)
             with self._processing_lock:
                 self._processing_inflight.discard(task_id)
+
+    # Legacy methods for backward compatibility
+    def _legacy_broadcast(self, task_id: str, event: str, payload: dict):
+        """Legacy broadcast method for backward compatibility."""
+        import queue
+        data = {"event": event, "payload": payload, "ts": datetime.now(timezone.utc).isoformat()}
+        
+        path = self.streams_dir / f"{task_id}.txt"
+        try:
+            with open(path, "a", encoding="utf-8") as f:
+                f.write(json.dumps(data, ensure_ascii=False) + "\n")
+        except Exception as e:
+            logger.warning("Failed to write stream: %s", e)
+
+        # Note: Legacy SSE functionality is deprecated and will be removed in future versions
+
+    def _legacy_finish_broadcast(self, task_id: str):
+        """Legacy finish broadcast method for backward compatibility."""
+        # No-op for legacy mode, as we don't maintain SSE queues anymore
+        pass
+
+    async def subscribe_task_events(self, task_id: str):
+        """Subscribe to real-time events for a task (deprecated)."""
+        logger.warning("subscribe_task_events is deprecated. Use EventBus instead.")
+        # This method should not be called in the new architecture
+        # Keep it for backward compatibility but it will not work properly
+        return
+        yield  # Make it a generator

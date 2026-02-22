@@ -31,7 +31,7 @@ _OCR_TEMPLATE: PromptTemplate | None = None
 def _load_ocr_template() -> PromptTemplate:
     global _OCR_TEMPLATE
     if _OCR_TEMPLATE is None:
-        _OCR_TEMPLATE = PromptTemplate.from_file(_PROMPT_DIR / "ocr.txt")
+        _OCR_TEMPLATE = PromptTemplate.from_file(_PROMPT_DIR / "ocr.md")
     return _OCR_TEMPLATE
 
 
@@ -231,11 +231,15 @@ class OcrRouter:
         return self.llm_extractor.run(payload, detection, asset, thinking=thinking)
 
 
+def _normalize_linebreaks(text: str) -> str:
+    return text.replace("\r\n", "\n").replace("\r", "\n")
+
+
 def _coerce_str(value: object, fallback: str | None) -> str | None:
     if value is None:
         return fallback
     if isinstance(value, str):
-        return value
+        return _normalize_linebreaks(value)
     return str(value)
 
 

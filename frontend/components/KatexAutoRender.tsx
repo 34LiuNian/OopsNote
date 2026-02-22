@@ -61,6 +61,8 @@ export function KatexAutoRender() {
           },
           preProcess: (math) => `\\inline ${math}`,
           throwOnError: false,
+          strict: "ignore", // Enable array, hline, and other advanced LaTeX features
+          trust: true, // Trust the content since it's from our own AI system
         });
       };
 

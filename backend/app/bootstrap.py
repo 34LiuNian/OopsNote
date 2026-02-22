@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -28,12 +29,36 @@ from .builders import (
     build_pipeline,
     build_repository,
     build_tasks_service,
+    build_event_bus,
+    build_sse_service,
 )
 
 logger = logging.getLogger(__name__)
 _MODELS_CACHE: list[dict[str, object]] | None = None
 _AGENT_CONFIG_BUNDLE = None
 _APP_CONFIG: AppConfig | None = None
+
+
+def configure_logging():
+    """Configure application logging based on environment variables."""
+    log_level = os.getenv("APP_LOG_LEVEL", "WARNING").upper()
+    try:
+        level = getattr(logging, log_level)
+    except AttributeError:
+        level = logging.WARNING
+    
+    # Configure root logger
+    logging.basicConfig(
+        level=level,
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+        force=True  # This ensures the configuration is applied even if logging was already configured
+    )
+    
+    # Also configure uvicorn loggers to use the same level
+    uvicorn_access_logger = logging.getLogger("uvicorn.access")
+    uvicorn_error_logger = logging.getLogger("uvicorn.error")
+    uvicorn_access_logger.setLevel(level)
+    uvicorn_error_logger.setLevel(level)
 
 
 class HealthCheckFilter(logging.Filter):
@@ -48,6 +73,9 @@ logging.getLogger("uvicorn.access").addFilter(HealthCheckFilter())
 
 
 def create_app() -> FastAPI:
+    # Configure logging before creating the app
+    configure_logging()
+    
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         try:
@@ -60,7 +88,12 @@ def create_app() -> FastAPI:
 
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+        allow_origins=[
+            "http://localhost:3000",
+            "http://127.0.0.1:3000",
+            "http://[::1]:3000",
+        ],
+        allow_origin_regex=r"https?://.*\.local(:\d+)?|http://192\.168\.\d+\.\d+(:\d+)?",
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
@@ -116,6 +149,10 @@ def _build_state() -> tuple[
         cache_setter=_models_cache_setter,
     )
 
+    # Build event bus and SSE service
+    event_bus = build_event_bus(repository=repository)
+    sse_service = build_sse_service(event_bus=event_bus)
+
     pipeline = build_pipeline(
         ai_client=ai_client,
         agent_config_bundle=agent_config_bundle,
@@ -127,6 +164,7 @@ def _build_state() -> tuple[
         repository=repository,
         pipeline=pipeline,
         asset_store=asset_store,
+        event_bus=event_bus,
     )
 
     ai_gateway_status: dict[str, object] = {"checked": False}
@@ -137,6 +175,7 @@ def _build_state() -> tuple[
         agent_settings=agent_settings_service,
         tasks=tasks_service,
         models=models_service,
+        sse=sse_service,  # Add SSE service to state
     )
 
     return state, models_service, tasks_service, ai_gateway_status, config

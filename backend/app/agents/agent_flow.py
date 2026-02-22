@@ -239,7 +239,7 @@ def _load_skill(agent_name: str, name: str) -> str:
     cache_key = f"{agent_name.lower()}::{name}"
     if cache_key in _SKILL_CACHE:
         return _SKILL_CACHE[cache_key]
-    path = _SKILL_DIR / agent_name.lower() / f"{name}.txt"
+    path = _SKILL_DIR / agent_name.lower() / f"{name}.md"
     if not path.exists():
         _SKILL_CACHE[cache_key] = ""
         return ""
