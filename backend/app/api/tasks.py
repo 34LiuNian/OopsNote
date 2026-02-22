@@ -40,7 +40,7 @@ def create_task(
 def list_tasks(
     request: Request,
     status: TaskStatus | None = None,
-    active_only: bool = False,
+    active_only: bool = True,  # Default to active-only to show in-progress tasks
     subject: str | None = None,
 ) -> TasksResponse:
     return _svc(request).list_tasks(
