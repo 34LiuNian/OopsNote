@@ -1,3 +1,5 @@
+"""Tests for OpenAI client thinking mode support."""
+
 from __future__ import annotations
 
 from app.clients.openai_client import OpenAIClient
@@ -12,13 +14,14 @@ def _make_client(monkeypatch) -> OpenAIClient:
     return OpenAIClient(api_key="test-key", base_url="http://localhost:5000/v1")
 
 
-def test_structured_chat_accepts_thinking(monkeypatch):
+def test_structured_chat_accepts_thinking(monkeypatch) -> None:
+    """Test that structured_chat passes thinking parameter to completion."""
     client = _make_client(monkeypatch)
 
     seen: dict[str, object] = {}
 
-    def _fake_complete(messages, response_model=None, on_delta=None, thinking=None):
-        seen["thinking"] = thinking
+    def _fake_complete(messages, **kwargs):
+        seen["thinking"] = kwargs.get("thinking")
         return {"ok": True}
 
     monkeypatch.setattr(client, "_complete_json_messages", _fake_complete)
@@ -33,13 +36,14 @@ def test_structured_chat_accepts_thinking(monkeypatch):
     assert seen["thinking"] is True
 
 
-def test_structured_chat_with_image_accepts_thinking(monkeypatch):
+def test_structured_chat_with_image_accepts_thinking(monkeypatch) -> None:
+    """Test that structured_chat_with_image passes thinking parameter to completion."""
     client = _make_client(monkeypatch)
 
     seen: dict[str, object] = {}
 
-    def _fake_complete(messages, response_model=None, on_delta=None, thinking=None):
-        seen["thinking"] = thinking
+    def _fake_complete(messages, **kwargs):
+        seen["thinking"] = kwargs.get("thinking")
         return {"ok": True}
 
     monkeypatch.setattr(client, "_complete_json_messages", _fake_complete)

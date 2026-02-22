@@ -522,6 +522,11 @@ class TasksService:
     def _finalize_success(self, task_id: str, result):
         updated = self.repository.save_pipeline_result(task_id, result)
         self.repository.patch_task(task_id, stage="done", stage_message="完成")
+        
+        # Publish done event for SSE clients
+        if self.event_bus:
+            self.event_bus.publish(task_id, "done", {"status": "completed"})
+        
         return updated
 
     def _finalize_cancelled(self, task_id: str):
@@ -529,6 +534,11 @@ class TasksService:
         updated = self.repository.patch_task(
             task_id, stage="cancelled", stage_message="已作废"
         )
+        
+        # Publish done event for SSE clients
+        if self.event_bus:
+            self.event_bus.publish(task_id, "done", {"status": "cancelled"})
+        
         return updated
 
     def _finalize_failed(self, task_id: str, exc: Exception):
@@ -536,6 +546,11 @@ class TasksService:
         updated = self.repository.patch_task(
             task_id, stage="failed", stage_message="处理失败"
         )
+        
+        # Publish done event for SSE clients
+        if self.event_bus:
+            self.event_bus.publish(task_id, "done", {"status": "failed", "error": str(exc)})
+        
         return updated
 
     def cancel_task(self, task_id: str):

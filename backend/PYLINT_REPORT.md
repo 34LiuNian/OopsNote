@@ -2,6 +2,8 @@
 
 ## 最终评分：10.00/10 ✅✨
 
+**检查范围**：`app/` + `tests/` 目录
+
 ## 修复内容
 
 ### 1. 文件结构优化
@@ -74,10 +76,24 @@ disable = [
 运行以下命令验证：
 ```bash
 cd backend
-uv run pylint app/ --score=y
+uv run pylint app/ tests/ --score=y
 ```
 
 期望输出：`Your code has been rated at 10.00/10`
+
+## GitHub Action 配置
+
+确保 GitHub Action 使用相同的 pylint 配置：
+
+```yaml
+# .github/workflows/lint.yml
+- name: Run pylint
+  run: |
+    cd backend
+    uv run pylint app/ tests/ --score=y
+```
+
+所有豁免规则已配置在 `pyproject.toml` 中，CI/CD 和本地开发保持一致。
 
 ## 符合《什么是好的代码》标准
 

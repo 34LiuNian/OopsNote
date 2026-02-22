@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+from datetime import datetime, timezone
 from typing import AsyncGenerator
 
 from fastapi import Request
@@ -18,9 +19,19 @@ class SseService:
     def __init__(self, event_bus: EventBus):
         self.event_bus = event_bus
 
-    async def subscribe_task_events(self, task_id: str) -> AsyncGenerator[str, None]:
+    async def subscribe_task_events(self, task_id: str, request: Request) -> AsyncGenerator[str, None]:
         """Subscribe to real-time events for a task via SSE."""
         logger.info("SSE: client subscribing to task_id=%s", task_id)
+        
+        # Get task status to handle completed tasks
+        repo = request.app.state.oops.repository
+        try:
+            task = repo.get(task_id)
+            is_terminal = task.status in ["completed", "failed", "cancelled"]
+            logger.info(f"SSE: task {task_id} status={task.status}, is_terminal={is_terminal}")
+        except Exception as e:
+            logger.warning(f"SSE: failed to get task status for {task_id}: {e}")
+            is_terminal = False
         
         # Get queue pair from event bus
         async_queue, sync_queue = self.event_bus.get_sse_queues(task_id)
@@ -46,6 +57,23 @@ class SseService:
         
         # Register queues with event bus
         self.event_bus.register_sse_queues(task_id, async_queue, sync_queue, adapter_task)
+        
+        # If task is already completed, send done event and sentinel immediately
+        if is_terminal:
+            logger.info(f"SSE: task {task_id} already completed, sending done event and sentinel")
+            # Send pending events first
+            await asyncio.sleep(0.05)  # Give time for pending events to be delivered
+            # Send done event
+            done_event = {
+                "event": "done",
+                "payload": {"status": task.status, "error": getattr(task, 'last_error', None)},
+                "ts": datetime.now(timezone.utc).isoformat()
+            }
+            sync_queue.put_nowait(done_event)
+            logger.info(f"SSE: sent done event for completed task {task_id}")
+            # Send sentinel
+            sync_queue.put_nowait(None)
+            logger.info(f"SSE: sent sentinel for completed task {task_id}")
         
         logger.info("SSE: registered connection for task_id=%s", task_id)
         

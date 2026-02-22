@@ -221,12 +221,12 @@ class AgentOrchestrator:
     def _to_tagging(problem_id: str, data: Mapping[str, Any]) -> TaggingResult:
         return TaggingResult(
             problem_id=problem_id,
-            knowledge_points=_coerce_list(
+            knowledge_points=utils._coerce_list(
                 data.get("knowledge_points"), default=["未标注"]
             ),
             question_type=str(data.get("question_type", "解答题")),
-            skills=_coerce_list(data.get("skills"), default=["分析推理"]),
-            error_hypothesis=_coerce_list(
+            skills=utils._coerce_list(data.get("skills"), default=["分析推理"]),
+            error_hypothesis=utils._coerce_list(
                 data.get("error_hypothesis"), default=["待复盘"]
             ),
             recommended_actions=utils._coerce_list(

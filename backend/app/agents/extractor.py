@@ -152,8 +152,8 @@ class LLMOcrExtractor:
                 for item in raw_options:
                     if not isinstance(item, dict):
                         continue
-                    key = _coerce_str(item.get("key"), fallback="").strip()
-                    text = _coerce_str(item.get("text"), fallback="").strip()
+                    key = utils._coerce_str(item.get("key"), fallback="").strip()
+                    text = utils._coerce_str(item.get("text"), fallback="").strip()
                     if not key or not text:
                         continue
                     normalized_options.append(

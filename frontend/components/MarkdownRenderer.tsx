@@ -22,6 +22,14 @@ export function MarkdownRenderer({ text, fontSize }: { text: string; fontSize?: 
       .replace(/\\\[\\/g, "\\[") // Unescape escaped brackets
       .replace(/\\\]\\/g, "\\]"); // Unescape escaped brackets
     
+    // Convert LaTeX enumerate environments to simple line breaks
+    // Remove \begin{enumerate} and \end{enumerate}, keep \item content
+    unescaped = unescaped
+      .replace(/\\begin\{enumerate\}/g, "")
+      .replace(/\\end\{enumerate\}/g, "")
+      .replace(/\\item\[(.*?)\]/g, "\n\n$1") // \item[(1)] → \n\n(1)
+      .replace(/\\item/g, "\n\n"); // \item → \n\n
+    
     // Force displaystyle for inline math markers to match LaTeX output and avoid compression.
     // Handles $...$ and \(...\) while avoiding $$...$$ and \[...\]
     return unescaped
@@ -51,7 +59,7 @@ export function MarkdownRenderer({ text, fontSize }: { text: string; fontSize?: 
   const rehypePlugins = useMemo(() => {
     // Configure rehype-katex with strict: "ignore" to support array, hline, and other advanced LaTeX features
     // Also enable trust for safety since we control the content
-    return [[rehypeKatex, { strict: "ignore", trust: true }]];
+    return [[rehypeKatex, { strict: "ignore", trust: true }] as any];
   }, []);
 
   return (

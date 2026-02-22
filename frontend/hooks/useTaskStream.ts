@@ -62,8 +62,10 @@ export function useTaskStream({ taskId, status, onStatusMessage, onDone }: UseTa
 
   useEffect(() => {
     if (!taskId) return;
-    const shouldConnectSse = status === "pending" || status === "processing" || !hasLoadedStreamRef.current;
-    if (!shouldConnectSse) return;
+    // Only connect SSE if task is actively processing
+    // For completed/failed tasks, just load historical stream
+    const isActive = status === "pending" || status === "processing";
+    if (!isActive && hasLoadedStreamRef.current) return;
 
     // 清理之前的连接
     if (abortControllerRef.current) {
@@ -71,20 +73,26 @@ export function useTaskStream({ taskId, status, onStatusMessage, onDone }: UseTa
       abortControllerRef.current = null;
     }
 
-    // Use /api proxy to avoid CORS issues
-    const API_BASE = "/api";
+    // Use direct backend connection in development, proxy in production
+    const isDev = process.env.NODE_ENV === 'development';
+    const baseUrl = isDev ? 'http://localhost:8000' : '/api';
     const abortController = new AbortController();
     abortControllerRef.current = abortController;
 
     const connectSSE = async () => {
-      if (DEBUG) console.log('[useTaskStream] connecting to SSE for task:', taskId);
+      if (DEBUG) console.log('[useTaskStream] connecting to SSE for task:', taskId, 'status:', status);
       try {
         // SSE requests should be simple GET requests without custom headers
         // to avoid CORS preflight. The Accept header is optional for SSE.
-        const response = await fetch(`${API_BASE}/tasks/${taskId}/events`, {
+        // Add timeout to avoid hanging connections (OCR can take 60+ seconds)
+        const timeoutId = setTimeout(() => abortController.abort(), 120000); // 120s timeout
+        
+        const response = await fetch(`${baseUrl}/tasks/${taskId}/events`, {
           method: "GET",
           signal: abortController.signal,
         });
+        
+        clearTimeout(timeoutId);
         
         if (DEBUG) console.log('[useTaskStream] SSE response status:', response.status);
         

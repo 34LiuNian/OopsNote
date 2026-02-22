@@ -70,7 +70,7 @@ async def task_events(request: Request, task_id: str):
     origin = request.headers.get("origin", "")
     
     return StreamingResponse(
-        _sse_svc(request).subscribe_task_events(task_id),
+        _sse_svc(request).subscribe_task_events(task_id, request),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
