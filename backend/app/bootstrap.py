@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import logging
 import os
@@ -46,14 +46,14 @@ def configure_logging():
         level = getattr(logging, log_level)
     except AttributeError:
         level = logging.WARNING
-    
+
     # Configure root logger
     logging.basicConfig(
         level=level,
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
         force=True  # This ensures the configuration is applied even if logging was already configured
     )
-    
+
     # Also configure uvicorn loggers to use the same level
     uvicorn_access_logger = logging.getLogger("uvicorn.access")
     uvicorn_error_logger = logging.getLogger("uvicorn.error")
@@ -75,7 +75,7 @@ logging.getLogger("uvicorn.access").addFilter(HealthCheckFilter())
 def create_app() -> FastAPI:
     # Configure logging before creating the app
     configure_logging()
-    
+
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         try:
@@ -99,7 +99,7 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
-    state, models_service, tasks_service, ai_gateway_status, config = _build_state()
+    state, models_service = _build_state()[:2]
     app.state.oops = state
 
     app.include_router(health_router)

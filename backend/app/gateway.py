@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import json
-from .config import AppConfig
 import urllib.error
 import urllib.parse
 import urllib.request
 from typing import Any
 
 from fastapi import HTTPException
+
+from .config import AppConfig
 
 
 def probe_openai_gateway(

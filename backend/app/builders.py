@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from pathlib import Path
 from typing import Any
@@ -119,7 +119,7 @@ def build_tasks_service(*, repository, pipeline: AgentPipeline, asset_store: Loc
 def build_event_bus(*, repository) -> EventBus:
     """Build event bus for task events."""
     from pathlib import Path
-    
+
     streams_dir = (
         Path(repository.base_dir).parent / "task_streams"
         if hasattr(repository, "base_dir") and repository.base_dir

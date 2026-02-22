@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timezone
-from typing import Any
 from uuid import uuid4
 
 from .models import (
@@ -26,11 +25,6 @@ from .models import (
 from .protocols import Repository, EventBus
 from .domain import (
     TaskProcessingService,
-    ExtractionService,
-    SolvingService,
-    TaggingService,
-    ArchivingService,
-    ProcessingContext,
 )
 
 logger = logging.getLogger(__name__)
@@ -79,7 +73,7 @@ class ApplicationService:
         )
         
         self.repository.create_task(task)
-        logger.info(f"Task created: {task_id}")
+        logger.info("Task created: %s", task_id)
         
         return task
     
@@ -171,7 +165,7 @@ class ApplicationService:
             task.updated_at = datetime.now(timezone.utc)
             
             self.repository.update_task(task)
-            logger.info(f"Task completed: {task_id}")
+            logger.info("Task completed: %s", task_id)
             
             return task
             
@@ -180,7 +174,7 @@ class ApplicationService:
             task.last_error = str(e)
             task.updated_at = datetime.now(timezone.utc)
             self.repository.update_task(task)
-            logger.error(f"Task failed: {task_id} - {e}")
+            logger.error("Task failed: %s - %s", task_id, e)
             raise
     
     def get_task(self, task_id: str) -> TaskRecord:
@@ -239,5 +233,5 @@ class ApplicationService:
             "message": "任务已取消"
         })
         
-        logger.info(f"Task cancelled: {task_id}")
+        logger.info("Task cancelled: %s", task_id)
         return task

@@ -121,10 +121,10 @@ def simulate_processing(
         logger = logging.getLogger(__name__)
         
         try:
-            logger.info(f"Starting fake progress for task {task_id}")
-            logger.info(f"svc type: {type(svc)}")
-            logger.info(f"svc has event_bus: {hasattr(svc, 'event_bus')}")
-            logger.info(f"svc.event_bus: {getattr(svc, 'event_bus', 'NOT_FOUND')}")
+            logger.info("Starting fake progress for task %s", task_id)
+            logger.info("svc type: %s", type(svc))
+            logger.info("svc has event_bus: %s", hasattr(svc, "event_bus"))
+            logger.info("svc.event_bus: %s", getattr(svc, "event_bus", "NOT_FOUND"))
             
             stages = [
                 ("starting", "开始处理"),
@@ -138,7 +138,7 @@ def simulate_processing(
                 time.sleep(8)  # Simulate work - 20 seconds per stage
                 # Use event bus if available, otherwise use legacy method
                 if hasattr(svc, 'event_bus') and svc.event_bus:
-                    logger.info(f"Publishing event via event bus: {stage} - {message}")
+                    logger.info("Publishing event via event bus: %s - %s", stage, message)
                     svc.event_bus.publish(task_id, "progress", {"stage": stage, "message": message})
                 else:
                     logger.warning("No event bus available, using legacy broadcast")
@@ -153,10 +153,10 @@ def simulate_processing(
                 logger.warning("No event bus available, using legacy finish")
                 svc._legacy_finish_broadcast(task_id)
                 
-            logger.info(f"Fake progress completed for task {task_id}")
+            logger.info("Fake progress completed for task %s", task_id)
             
         except Exception as e:
-            logger.error(f"Error in send_fake_progress for task {task_id}: {e}", exc_info=True)
+            logger.error("Error in send_fake_progress for task %s: %s", task_id, e, exc_info=True)
             raise
         
         # Mark as completed
@@ -170,7 +170,7 @@ def simulate_processing(
             except Exception as e:
                 import logging
                 logger = logging.getLogger(__name__)
-                logger.error(f"Error in background simulate thread for task {task_id}: {e}", exc_info=True)
+                logger.error("Error in background simulate thread for task %s: %s", task_id, e, exc_info=True)
         
         thread = threading.Thread(
             target=run_with_error_handling,
