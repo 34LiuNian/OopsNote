@@ -1,17 +1,35 @@
+"""
+⚠️ DEPRECATED: This file has been split into submodules.
+
+Please import from app.models instead:
+    from app.models import TaskRecord, ProblemBlock, SolutionBlock
+
+The models package now organizes models into:
+- common: Common types (TaskStatus, CropRegion, OptionItem, etc.)
+- problem: Problem and solution models
+- task: Task-related models
+- pipeline: Pipeline execution models
+- library: Library and query models
+- api: API request/response models
+"""
+
 from __future__ import annotations
 
-from datetime import datetime
-from enum import Enum
-from typing import List, Literal, Optional
+import warnings
 
-from pydantic import (
-    BaseModel,
-    ConfigDict,
-    Field,
-    HttpUrl,
-    field_validator,
-    model_validator,
+warnings.warn(
+    "Importing from app.models.py is deprecated. "
+    "Please use 'from app.models import ...' instead.",
+    DeprecationWarning,
+    stacklevel=2,
 )
+
+# Re-export everything from the models package for backward compatibility
+from .models import *  # noqa: F401, F403
+
+__all__ = [
+    # This will be populated dynamically from models.__all__
+]
 
 
 class TaskStatus(str, Enum):

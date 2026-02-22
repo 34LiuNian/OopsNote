@@ -15,23 +15,15 @@ from ..models import (
     TaggingResult,
     TaskCreateRequest,
 )
+from . import utils
 
 def _load_prompt(name: str) -> "PromptTemplate":
-    from .agent_flow import PromptTemplate
-    path = Path(__file__).parent / "prompts" / f"{name}.md"
-    return PromptTemplate.from_file(path)
+    """Load a prompt template (legacy wrapper, use utils._load_prompt instead)."""
+    return utils._load_prompt(name)
 
-def _coerce_list(value: object, fallback: list[str]) -> list[str]:
-    if isinstance(value, list) and value:
-        return [str(item) for item in value]
-    if isinstance(value, str) and value:
-        return [value]
-    return fallback
-
-def _coerce_str(value: Any, fallback: str | None = None) -> str | None:
-    if value is None:
-        return fallback
-    return str(value)
+# Note: Type coercion helpers moved to utils.py
+# - _coerce_list
+# - _coerce_str
 
 class HandwrittenExtractor:
     def __init__(self, rebuilder: "ProblemRebuilder") -> None:
@@ -85,7 +77,7 @@ class SolutionWriter:
                     problem_id=problem.problem_id,
                     answer=str(answer),
                     explanation=str(explanation),
-                    short_answer=_coerce_str(output.get("short_answer"), None),
+                    short_answer=utils._coerce_str(output.get("short_answer"), None),
                 )
             )
         return solved
@@ -135,32 +127,11 @@ class TaggingProfiler:
             tags.append(
                 TaggingResult(
                     problem_id=problem.problem_id,
-                    knowledge_points=_coerce_list(output.get("knowledge_points"), []),
+                    knowledge_points=utils._coerce_list(output.get("knowledge_points"), []),
                     question_type=str(output.get("question_type")),
-                    skills=_coerce_list(output.get("skills"), []),
-                    error_hypothesis=_coerce_list(output.get("error_hypothesis"), []),
-                    recommended_actions=_coerce_list(output.get("recommended_actions"), []),
-                )
-            )
-        return tags
-
-        for idx, problem in enumerate(problems_list, start=1):
-            if on_progress: on_progress(idx, total, problem)
-            user_prompt = _format_problem_prompt(payload.subject, problem)
-            output = self.ai_client.structured_chat(system_prompt, user_prompt)
-            
-            # Ensure key fields exist
-            if not output.get("knowledge_points") or not output.get("question_type"):
-                raise RuntimeError(f"Tagger failed: missing essential fields for problem {problem.problem_id}")
-
-            tags.append(
-                TaggingResult(
-                    problem_id=problem.problem_id,
-                    knowledge_points=_coerce_list(output.get("knowledge_points"), []),
-                    question_type=str(output.get("question_type")),
-                    skills=_coerce_list(output.get("skills"), []),
-                    error_hypothesis=_coerce_list(output.get("error_hypothesis"), []),
-                    recommended_actions=_coerce_list(output.get("recommended_actions"), []),
+                    skills=utils._coerce_list(output.get("skills"), []),
+                    error_hypothesis=utils._coerce_list(output.get("error_hypothesis"), []),
+                    recommended_actions=utils._coerce_list(output.get("recommended_actions"), []),
                 )
             )
         return tags

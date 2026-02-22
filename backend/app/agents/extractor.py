@@ -20,19 +20,12 @@ from ..models import (
     ProblemBlock,
     TaskCreateRequest,
 )
-from .agent_flow import PromptTemplate
+from . import utils
 
 logger = logging.getLogger(__name__)
 
-_PROMPT_DIR = Path(__file__).parent / "prompts"
-_OCR_TEMPLATE: PromptTemplate | None = None
-
-
-def _load_ocr_template() -> PromptTemplate:
-    global _OCR_TEMPLATE
-    if _OCR_TEMPLATE is None:
-        _OCR_TEMPLATE = PromptTemplate.from_file(_PROMPT_DIR / "ocr.md")
-    return _OCR_TEMPLATE
+# OCR template cache (use utils._load_ocr_template instead)
+_OCR_TEMPLATE = None
 
 
 class OcrExtractor:
@@ -84,7 +77,7 @@ class LLMOcrExtractor:
             CropRegion(id=uuid4().hex, bbox=[0.05, 0.05, 0.9, 0.9], label="full")
         ]
 
-        ocr_template = _load_ocr_template()
+        ocr_template = utils._load_ocr_template()
 
         problems: list[ProblemBlock] = []
         for idx, region in enumerate(regions, start=1):
@@ -138,9 +131,9 @@ class LLMOcrExtractor:
             )
 
             # Business Layer Extraction (Plain Dict)
-            problem_text = _coerce_str(payload_dict.get("problem_text"), fallback="")
+            problem_text = utils._coerce_str(payload_dict.get("problem_text"), fallback="")
             # OCR should provide a normalized `question_type` when possible (e.g. 单选/多选/填空/解答)
-            question_type = _coerce_str(payload_dict.get("question_type"), None)
+            question_type = utils._coerce_str(payload_dict.get("question_type"), None)
 
             # Some models spam trailing whitespace/newlines when hitting max tokens.
             rstrip_enabled = (
@@ -231,26 +224,7 @@ class OcrRouter:
         return self.llm_extractor.run(payload, detection, asset, thinking=thinking)
 
 
-def _normalize_linebreaks(text: str) -> str:
-    return text.replace("\r\n", "\n").replace("\r", "\n")
-
-
-def _coerce_str(value: object, fallback: str | None) -> str | None:
-    if value is None:
-        return fallback
-    if isinstance(value, str):
-        return _normalize_linebreaks(value)
-    return str(value)
-
-
-def _coerce_str_list(value: object) -> list[str]:
-    if isinstance(value, list):
-        out = []
-        for item in value:
-            if item is None:
-                continue
-            out.append(str(item))
-        return out
-    if isinstance(value, str) and value.strip():
-        return [value]
-    return []
+# Note: Text processing helpers moved to utils.py
+# - _normalize_linebreaks
+# - _coerce_str
+# - _coerce_str_list

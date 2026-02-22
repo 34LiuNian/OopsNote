@@ -10,11 +10,11 @@ from typing import Any, Callable, Iterable, Mapping, Sequence
 from ..clients import AIClient
 from ..models import ProblemBlock, SolutionBlock, TaggingResult, TaskCreateRequest
 from ..tags import TagDimension, tag_store
+from . import utils
 
 logger = logging.getLogger(__name__)
 
-
-_PLACEHOLDER_RE = re.compile(r"\{([a-zA-Z_][a-zA-Z0-9_]*)\}")
+# Keep local regex for chemfig detection (domain-specific logic)
 _CHEMFIG_RE = re.compile(r"\\chemfig|chemfig", re.IGNORECASE)
 _CHEM_HINT_RE = re.compile(r"化学|有机|结构式|分子式|反应", re.IGNORECASE)
 
@@ -51,7 +51,7 @@ class PromptTemplate:
                 value = context.get(key, "")
                 return "" if value is None else str(value)
 
-            return _PLACEHOLDER_RE.sub(repl, text)
+            return utils._PLACEHOLDER_RE.sub(repl, text)
 
         return substitute(self.system_prompt), substitute(self.user_template)
 
@@ -229,7 +229,7 @@ class AgentOrchestrator:
             error_hypothesis=_coerce_list(
                 data.get("error_hypothesis"), default=["待复盘"]
             ),
-            recommended_actions=_coerce_list(
+            recommended_actions=utils._coerce_list(
                 data.get("recommended_actions"), default=["完成 2 道同类题"]
             ),
         )
@@ -260,17 +260,6 @@ def _needs_chemfig_skill(problem: ProblemBlock) -> bool:
     return False
 
 
-def _coerce_list(value: Any, default: list[str]) -> list[str]:
-    if isinstance(value, list) and value:
-        return [str(item) for item in value]
-    if isinstance(value, str) and value.strip():
-        return [value]
-    return default
-
-
-def _coerce_int(value: Any, default: int, lo: int, hi: int) -> int:
-    try:
-        number = int(value)
-    except Exception:
-        number = default
-    return max(lo, min(hi, number))
+# Note: Type coercion helpers moved to utils.py
+# - _coerce_list
+# - _coerce_int
