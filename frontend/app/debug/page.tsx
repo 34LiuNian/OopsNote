@@ -134,6 +134,71 @@ export default function DebugPage() {
     setIsRunning(false);
   };
 
+  // SSE 测试函数
+  const handleSseCreateTask = async () => {
+    try {
+      setSseStatus("创建任务中...");
+      const response = await fetch(`${API_BASE}/tasks`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          image_url: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==",
+          action: "single"
+        })
+      });
+      if (!response.ok) throw new Error("创建任务失败");
+      const data = await response.json();
+      setSseTaskId(data.task_id);
+      setSseStatus(`任务已创建：${data.task_id}`);
+    } catch (error) {
+      setSseStatus(`错误：${error instanceof Error ? error.message : String(error)}`);
+    }
+  };
+
+  const handleSseConnect = () => {
+    if (!sseTaskId) {
+      setSseStatus("请先创建或输入任务 ID");
+      return;
+    }
+    clearEvents();
+    connect(`http://localhost:8000/tasks/${sseTaskId}/events`);
+    setSseStatus("SSE 已连接");
+  };
+
+  const handleSseSimulate = async () => {
+    if (!sseTaskId) {
+      setSseStatus("请先创建或输入任务 ID");
+      return;
+    }
+    try {
+      setSseStatus("触发模拟处理...");
+      const response = await fetch(`${API_BASE}/tasks/${sseTaskId}/simulate`, {
+        method: "POST"
+      });
+      if (!response.ok) throw new Error("模拟处理失败");
+      setSseStatus("模拟处理已触发");
+    } catch (error) {
+      setSseStatus(`错误：${error instanceof Error ? error.message : String(error)}`);
+    }
+  };
+
+  const handleSseReset = () => {
+    disconnect();
+    setSseTaskId("");
+    setSseStatus("已重置");
+    clearEvents();
+  };
+
+  const handleSseOneClick = async () => {
+    await handleSseCreateTask();
+    setTimeout(() => {
+      handleSseConnect();
+      setTimeout(() => {
+        handleSseSimulate();
+      }, 500);
+    }, 500);
+  };
+
   const handleCheckChemfig = async () => {
     setChemfigLoading(true);
     setChemfigStatus("检测中...");

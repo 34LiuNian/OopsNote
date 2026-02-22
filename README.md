@@ -61,6 +61,16 @@ Agent 流程与提示词说明见 `AGENTS.md`；后端 API/存储说明见 `back
 
 ### 后端
 
+**使用 uv（推荐）**
+
+```bash
+cd OopsNote/backend
+uv sync --dev
+uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+```
+
+**或使用 pip**
+
 ```bash
 cd OopsNote/backend
 python -m pip install -e .[dev]

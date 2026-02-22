@@ -1,0 +1,20 @@
+{
+  "dimensions": {
+    "knowledge": {
+      "label": "知识体系",
+      "label_variant": "accent"
+    },
+    "error": {
+      "label": "错题归因",
+      "label_variant": "danger"
+    },
+    "meta": {
+      "label": "题目属性",
+      "label_variant": "success"
+    },
+    "custom": {
+      "label": "自定义",
+      "label_variant": "secondary"
+    }
+  }
+}

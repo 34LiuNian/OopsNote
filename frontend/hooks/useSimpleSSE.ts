@@ -2,10 +2,13 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
+// Debug flag - disabled in production
+const DEBUG = typeof process !== 'undefined' && process.env?.NODE_ENV === 'development';
+
 type UseSimpleSSEResult = {
   isConnected: boolean;
   events: Array<{ event: string; data: any; timestamp: number }>;
-  connect: (taskId: string) => Promise<void>;
+  connect: (taskId: string) => void;
   disconnect: () => void;
   clearEvents: () => void;
 };
@@ -22,7 +25,7 @@ export function useSimpleSSE(): UseSimpleSSEResult {
   const reconnectTimeoutRef = useRef<number | null>(null);
 
   const disconnect = useCallback(() => {
-    console.log('[useSimpleSSE] Disconnecting...');
+    if (DEBUG) console.log('[useSimpleSSE] Disconnecting...');
     
     if (eventSourceRef.current) {
       eventSourceRef.current.close();
@@ -48,11 +51,11 @@ export function useSimpleSSE(): UseSimpleSSEResult {
 
   const connect = useCallback((taskId: string) => {
     if (!taskId) {
-      console.error('[useSimpleSSE] No task ID provided');
+      if (DEBUG) console.error('[useSimpleSSE] No task ID provided');
       return;
     }
 
-    console.log('[useSimpleSSE] Connecting to SSE for task:', taskId);
+    if (DEBUG) console.log('[useSimpleSSE] Connecting to SSE for task:', taskId);
     
     // Disconnect any existing connection
     disconnect();
@@ -63,16 +66,16 @@ export function useSimpleSSE(): UseSimpleSSEResult {
       const isDev = process.env.NODE_ENV === 'development';
       const baseUrl = isDev ? 'http://localhost:8000' : '/api';
       const eventSource = new EventSource(`${baseUrl}/tasks/${taskId}/events`);
-      console.log('[useSimpleSSE] Using', isDev ? 'direct' : 'proxy', 'connection');
+      if (DEBUG) console.log('[useSimpleSSE] Using', isDev ? 'direct' : 'proxy', 'connection');
       eventSourceRef.current = eventSource;
 
       eventSource.onopen = () => {
-        console.log('[useSimpleSSE] ✅ Connection opened');
+        if (DEBUG) console.log('[useSimpleSSE] ✅ Connection opened');
         setIsConnected(true);
       };
 
       eventSource.onmessage = (event) => {
-        console.log('[useSimpleSSE] 📩 Received message:', event.data);
+        if (DEBUG) console.log('[useSimpleSSE] 📩 Received message:', event.data);
         try {
           const data = JSON.parse(event.data);
           setEvents(prev => [
@@ -82,14 +85,14 @@ export function useSimpleSSE(): UseSimpleSSEResult {
               data,
               timestamp: Date.now(),
             },
-          ]);
+          ]);  
         } catch (e) {
-          console.error('[useSimpleSSE] Failed to parse message:', e);
+          if (DEBUG) console.error('[useSimpleSSE] Failed to parse message:', e);
         }
       };
 
       eventSource.addEventListener('progress', (event) => {
-        console.log('[useSimpleSSE] 📩 Received progress event:', event.data);
+        if (DEBUG) console.log('[useSimpleSSE] 📩 Received progress event:', event.data);
         try {
           const data = JSON.parse(event.data);
           setEvents(prev => [
@@ -101,12 +104,12 @@ export function useSimpleSSE(): UseSimpleSSEResult {
             },
           ]);
         } catch (e) {
-          console.error('[useSimpleSSE] Failed to parse progress:', e);
+          if (DEBUG) console.error('[useSimpleSSE] Failed to parse progress:', e);
         }
       });
 
       eventSource.addEventListener('done', (event) => {
-        console.log('[useSimpleSSE] 🏁 Received done event:', event.data);
+        if (DEBUG) console.log('[useSimpleSSE] 🏁 Received done event:', event.data);
         try {
           const data = JSON.parse(event.data);
           setEvents(prev => [
@@ -118,19 +121,19 @@ export function useSimpleSSE(): UseSimpleSSEResult {
             },
           ]);
         } catch (e) {
-          console.error('[useSimpleSSE] Failed to parse done:', e);
+          if (DEBUG) console.error('[useSimpleSSE] Failed to parse done:', e);
         }
       });
 
       eventSource.onerror = (error) => {
-        console.error('[useSimpleSSE] ❌ SSE Error:', error);
+        if (DEBUG) console.error('[useSimpleSSE] ❌ SSE Error:', error);
         setIsConnected(false);
         eventSource.close();
         eventSourceRef.current = null;
       };
 
     } catch (error) {
-      console.error('[useSimpleSSE] ❌ Failed to create EventSource:', error);
+      if (DEBUG) console.error('[useSimpleSSE] ❌ Failed to create EventSource:', error);
       setIsConnected(false);
     }
   }, [disconnect]);

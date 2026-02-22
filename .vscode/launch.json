@@ -1,7 +1,5 @@
 {
     "configurations": [
-        
-        ,
         {
             "type": "debugpy",
             "request": "launch",

@@ -24,15 +24,34 @@ dist/
 *.egg-info/
 
 # Runtime storage (contains user data)
-backend/storage/
-backend/storage/**
+# Exclude logs and cache, but keep settings and tasks
+backend/storage/llm_errors.log
+backend/storage/llm_payloads.log
+backend/storage/llm_payloads.json
+backend/storage/traces/
+backend/storage/task_streams/
+backend/storage/tasks/
+backend/storage/assets/
+backend/storage/chemfig_cache/
+backend/storage/paper_assets/
+backend/storage/papers/
+
+# Keep settings and tags
+!backend/storage/settings/
+!backend/storage/tags.json
+!backend/storage/tag_dimensions.json
 
 # VSCode pulgins
 .VSCodeCounter/
 
 # Misc
 .DS_Store
+Thumbs.db
 
-
+# IDE
 .idea/
+
+# Temporary files
 _tmp/
+*.tmp
+*.bak

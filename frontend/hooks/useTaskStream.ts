@@ -3,6 +3,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { fetchJson } from "../lib/api";
 
+// Debug flag - disabled in production
+const DEBUG = typeof process !== 'undefined' && process.env?.NODE_ENV === 'development';
+
 type UseTaskStreamParams = {
   taskId: string;
   status?: string | null;
@@ -74,7 +77,7 @@ export function useTaskStream({ taskId, status, onStatusMessage, onDone }: UseTa
     abortControllerRef.current = abortController;
 
     const connectSSE = async () => {
-      console.log('[useTaskStream] connecting to SSE for task:', taskId);
+      if (DEBUG) console.log('[useTaskStream] connecting to SSE for task:', taskId);
       try {
         // SSE requests should be simple GET requests without custom headers
         // to avoid CORS preflight. The Accept header is optional for SSE.
@@ -83,7 +86,7 @@ export function useTaskStream({ taskId, status, onStatusMessage, onDone }: UseTa
           signal: abortController.signal,
         });
         
-        console.log('[useTaskStream] SSE response status:', response.status);
+        if (DEBUG) console.log('[useTaskStream] SSE response status:', response.status);
         
         if (!response.ok) {
           throw new Error(`SSE 连接失败：${response.status}`);
@@ -100,11 +103,11 @@ export function useTaskStream({ taskId, status, onStatusMessage, onDone }: UseTa
         
         const readStream = async () => {
           try {
-            console.log('[useTaskStream] start reading stream');
+            if (DEBUG) console.log('[useTaskStream] start reading stream');
             while (true) {
               const { done, value } = await reader.read();
               if (done) {
-                console.log('[useTaskStream] stream done');
+                if (DEBUG) console.log('[useTaskStream] stream done');
                 break;
               }
               
@@ -118,19 +121,19 @@ export function useTaskStream({ taskId, status, onStatusMessage, onDone }: UseTa
                 // 跳过空行
                 if (!trimmedLine) continue;
                 
-                console.log('[useTaskStream] raw line:', trimmedLine);
+                if (DEBUG) console.log('[useTaskStream] raw line:', trimmedLine);
                 
                 // 解析 event 行
                 if (trimmedLine.startsWith("event:")) {
                   currentEvent = trimmedLine.slice(6).trim();
-                  console.log('[useTaskStream] event:', currentEvent);
+                  if (DEBUG) console.log('[useTaskStream] event:', currentEvent);
                   continue;
                 }
                 
                 // 解析 data 行
                 if (trimmedLine.startsWith("data:")) {
                   const data = trimmedLine.slice(5).trim();
-                  console.log('[useTaskStream] data:', data);
+                  if (DEBUG) console.log('[useTaskStream] data:', data);
                   
                   if (currentEvent === "progress") {
                     try {
@@ -142,14 +145,14 @@ export function useTaskStream({ taskId, status, onStatusMessage, onDone }: UseTa
                         message?: string | null;
                       };
                       const message = payload.message || payload.stage || payload.status || "处理中";
-                      console.log('[useTaskStream] progress event:', payload, 'message:', message);
+                      if (DEBUG) console.log('[useTaskStream] progress event:', payload, 'message:', message);
                       onStatusMessage?.(message);
                       setProgressLines((prev) => {
                         if (prev.length > 0 && prev[prev.length - 1] === message) return prev;
                         return [...prev, message];
                       });
                     } catch (e) {
-                      console.error('[useTaskStream] failed to parse progress event:', data, e);
+                      if (DEBUG) console.error('[useTaskStream] failed to parse progress event:', data, e);
                       // ignore parse errors
                     }
                   } else if (currentEvent === "llm_delta") {
