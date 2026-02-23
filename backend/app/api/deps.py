@@ -29,15 +29,6 @@ def get_models_service(request: Request):
     return service
 
 
-def get_sse_service(request: Request):
-    """Return SSE service from backend state and fail fast when unavailable."""
-    state = get_backend_state(request)
-    service = getattr(state, "sse", None)
-    if service is None:
-        raise HTTPException(status_code=500, detail="SSE service unavailable")
-    return service
-
-
 def get_agent_settings_service(request: Request):
     """Return agent settings service from backend state and fail fast when unavailable."""
     state = get_backend_state(request)

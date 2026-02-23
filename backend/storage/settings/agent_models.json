@@ -1,7 +1,7 @@
 {
   "models": {
-    "SOLVER": "Qwen/Qwen3-235B-A22B-Thinking-2507",
-    "TAGGER": "Qwen/Qwen3-235B-A22B-Thinking-2507",
-    "OCR": "Qwen/Qwen3-VL-235B-A22B-Instruct"
+    "SOLVER": "qwen3.5-plus",
+    "TAGGER": "Qwen/Qwen3-235B-A22B-Instruct-2507",
+    "OCR": "qwen3.5-plus"
   }
 }

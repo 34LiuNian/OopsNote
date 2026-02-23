@@ -25,7 +25,6 @@ from ..models import (
     TasksResponse,
 )
 from ..tags import TagDimension
-from .event_bus import EventBus
 
 logger = logging.getLogger(__name__)
 
@@ -45,12 +44,11 @@ def _int_env(name: str, default: int) -> int:
 
 
 class TasksService:
-    def __init__(self, *, repository, pipeline, asset_store, tag_store, event_bus: Optional[EventBus] = None) -> None:
+    def __init__(self, *, repository, pipeline, asset_store, tag_store) -> None:
         self.repository = repository
         self.pipeline = pipeline
         self.asset_store = asset_store
         self.tag_store = tag_store
-        self.event_bus = event_bus
 
         self._task_cancel_lock = threading.Lock()
         self._task_cancelled: set[str] = set()
@@ -148,24 +146,6 @@ class TasksService:
         if auto_process:
             task = self.process_task_sync(task.id)
         return task
-
-    def get_task_stream(self, task_id: str, max_chars: int = 200000) -> str:
-        """Read historical stream from disk."""
-        if self.event_bus:
-            return self.event_bus.get_task_stream(task_id, max_chars)
-        else:
-            # Fallback to legacy implementation for backward compatibility
-            path = self.streams_dir / f"{task_id}.txt"
-            if not path.exists():
-                return ""
-            try:
-                content = path.read_text(encoding="utf-8")
-                if len(content) > max_chars:
-                    return content[-max_chars:]
-                return content
-            except Exception as e:
-                logger.warning("Failed to read task stream %s: %s", task_id, e)
-                return ""
 
     def list_tasks(
         self,
@@ -523,10 +503,6 @@ class TasksService:
         updated = self.repository.save_pipeline_result(task_id, result)
         self.repository.patch_task(task_id, stage="done", stage_message="完成")
         
-        # Publish done event for SSE clients
-        if self.event_bus:
-            self.event_bus.publish(task_id, "done", {"status": "completed"})
-        
         return updated
 
     def _finalize_cancelled(self, task_id: str):
@@ -535,10 +511,6 @@ class TasksService:
             task_id, stage="cancelled", stage_message="已作废"
         )
         
-        # Publish done event for SSE clients
-        if self.event_bus:
-            self.event_bus.publish(task_id, "done", {"status": "cancelled"})
-        
         return updated
 
     def _finalize_failed(self, task_id: str, exc: Exception):
@@ -546,10 +518,6 @@ class TasksService:
         updated = self.repository.patch_task(
             task_id, stage="failed", stage_message="处理失败"
         )
-        
-        # Publish done event for SSE clients
-        if self.event_bus:
-            self.event_bus.publish(task_id, "done", {"status": "failed", "error": str(exc)})
         
         return updated
 
@@ -614,12 +582,11 @@ class TasksService:
             self._processing_inflight.add(task_id)
 
         def progress_bridge(stage: str, message: str | None = None):
-            # Publish progress event via event bus
-            if self.event_bus:
-                self.event_bus.publish(task_id, "progress", {"stage": stage, "message": message})
-            else:
-                # Fallback to legacy broadcast for backward compatibility
-                self._legacy_broadcast(task_id, "progress", {"stage": stage, "message": message})
+            # Write progress to stream file for polling
+            self._write_stream_event(task_id, "progress", {"stage": stage, "message": message})
+            
+            # Also update task stage field for real-time status
+            self.repository.patch_task(task_id, stage=stage, stage_message=message)
             
             if on_progress:
                 try:
@@ -660,17 +627,19 @@ class TasksService:
                 self._finalize_failed(task_id, exc)
                 raise HTTPException(status_code=500, detail=str(exc)) from exc
         finally:
-            if self.event_bus:
-                self.event_bus.finish_broadcast(task_id)
+            # Write done event to stream file
+            if task_id in self._task_cancelled:
+                self._write_stream_event(task_id, "done", {"status": "cancelled"})
+            elif task.status == TaskStatus.FAILED:
+                self._write_stream_event(task_id, "done", {"status": "failed"})
             else:
-                self._legacy_finish_broadcast(task_id)
+                self._write_stream_event(task_id, "done", {"status": "completed"})
+            
             with self._processing_lock:
                 self._processing_inflight.discard(task_id)
 
-    # Legacy methods for backward compatibility
-    def _legacy_broadcast(self, task_id: str, event: str, payload: dict):
-        """Legacy broadcast method for backward compatibility."""
-        import queue
+    def _write_stream_event(self, task_id: str, event: str, payload: dict):
+        """Write an event to the task stream file for polling."""
         data = {"event": event, "payload": payload, "ts": datetime.now(timezone.utc).isoformat()}
         
         path = self.streams_dir / f"{task_id}.txt"
@@ -679,18 +648,3 @@ class TasksService:
                 f.write(json.dumps(data, ensure_ascii=False) + "\n")
         except Exception as e:
             logger.warning("Failed to write stream: %s", e)
-
-        # Note: Legacy SSE functionality is deprecated and will be removed in future versions
-
-    def _legacy_finish_broadcast(self, task_id: str):
-        """Legacy finish broadcast method for backward compatibility."""
-        # No-op for legacy mode, as we don't maintain SSE queues anymore
-        pass
-
-    async def subscribe_task_events(self, task_id: str):
-        """Subscribe to real-time events for a task (deprecated)."""
-        logger.warning("subscribe_task_events is deprecated. Use EventBus instead.")
-        # This method should not be called in the new architecture
-        # Keep it for backward compatibility but it will not work properly
-        return
-        yield  # Make it a generator

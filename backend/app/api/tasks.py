@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 from fastapi import APIRouter, Request
-from fastapi.responses import StreamingResponse
 
 from ..models import (
     OverrideProblemRequest,
@@ -13,7 +12,7 @@ from ..models import (
     TaskStatus,
     UploadRequest,
 )
-from .deps import get_tasks_service, get_sse_service
+from .deps import get_tasks_service
 
 router = APIRouter()
 
@@ -21,11 +20,6 @@ router = APIRouter()
 def _svc(request: Request):
     """Resolve task service from shared API dependencies."""
     return get_tasks_service(request)
-
-
-def _sse_svc(request: Request):
-    """Resolve SSE service from shared API dependencies."""
-    return get_sse_service(request)
 
 
 @router.post("/tasks", response_model=TaskResponse, status_code=201)
@@ -60,38 +54,6 @@ def upload_task(
 def get_task(request: Request, task_id: str) -> TaskResponse:
     task = _svc(request).get_task(task_id)
     return TaskResponse(task=task)
-
-
-@router.get("/tasks/{task_id}/events")
-async def task_events(request: Request, task_id: str):
-    """Subscribe to real-time task events (SSE)."""
-    # CORS headers for SSE - these complement the global CORSMiddleware
-    # We need to explicitly set them here because SSE responses need special handling
-    origin = request.headers.get("origin", "")
-    
-    return StreamingResponse(
-        _sse_svc(request).subscribe_task_events(task_id, request),
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "Connection": "keep-alive",
-            "X-Accel-Buffering": "no",
-            # Disable compression for SSE
-            "Content-Encoding": "identity",
-            # Explicit CORS headers for SSE
-            "Access-Control-Allow-Origin": origin if origin else "*",
-            "Access-Control-Allow-Credentials": "true",
-            "Access-Control-Allow-Headers": "Content-Type, Accept",
-            "Access-Control-Allow-Methods": "GET, OPTIONS",
-        },
-    )
-
-
-@router.get("/tasks/{task_id}/stream")
-def get_task_stream(request: Request, task_id: str, max_chars: int = 200000):
-    """Fetch historical stream content."""
-    text = _svc(request).get_task_stream(task_id, max_chars=max_chars)
-    return {"task_id": task_id, "text": text}
 
 
 @router.post("/tasks/{task_id}/process", response_model=TaskResponse)
@@ -136,22 +98,8 @@ def simulate_processing(
             
             for stage, message in stages:
                 time.sleep(8)  # Simulate work - 20 seconds per stage
-                # Use event bus if available, otherwise use legacy method
-                if hasattr(svc, 'event_bus') and svc.event_bus:
-                    logger.info("Publishing event via event bus: %s - %s", stage, message)
-                    svc.event_bus.publish(task_id, "progress", {"stage": stage, "message": message})
-                else:
-                    logger.warning("No event bus available, using legacy broadcast")
-                    # Fallback to legacy broadcast (should not happen in new architecture)
-                    svc._legacy_broadcast(task_id, "progress", {"stage": stage, "message": message})
-            
-            time.sleep(0.3)
-            if hasattr(svc, 'event_bus') and svc.event_bus:
-                logger.info("Finishing broadcast via event bus")
-                svc.event_bus.finish_broadcast(task_id)
-            else:
-                logger.warning("No event bus available, using legacy finish")
-                svc._legacy_finish_broadcast(task_id)
+                # Write progress to stream file
+                svc._write_stream_event(task_id, "progress", {"stage": stage, "message": message})
                 
             logger.info("Fake progress completed for task %s", task_id)
             

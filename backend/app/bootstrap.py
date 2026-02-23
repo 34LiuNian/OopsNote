@@ -29,8 +29,6 @@ from .builders import (
     build_pipeline,
     build_repository,
     build_tasks_service,
-    build_event_bus,
-    build_sse_service,
 )
 
 logger = logging.getLogger(__name__)
@@ -149,10 +147,6 @@ def _build_state() -> tuple[
         cache_setter=_models_cache_setter,
     )
 
-    # Build event bus and SSE service
-    event_bus = build_event_bus(repository=repository)
-    sse_service = build_sse_service(event_bus=event_bus)
-
     pipeline = build_pipeline(
         ai_client=ai_client,
         agent_config_bundle=agent_config_bundle,
@@ -164,7 +158,6 @@ def _build_state() -> tuple[
         repository=repository,
         pipeline=pipeline,
         asset_store=asset_store,
-        event_bus=event_bus,
     )
 
     ai_gateway_status: dict[str, object] = {"checked": False}
@@ -175,7 +168,6 @@ def _build_state() -> tuple[
         agent_settings=agent_settings_service,
         tasks=tasks_service,
         models=models_service,
-        sse=sse_service,  # Add SSE service to state
     )
 
     return state, models_service, tasks_service, ai_gateway_status, config

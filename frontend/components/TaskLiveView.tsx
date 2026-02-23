@@ -11,7 +11,6 @@ import {
 import { sileo } from "sileo";
 import { fetchJson } from "../lib/api";
 import type { TaskResponse } from "../types/api";
-import { LiveStreamRenderer } from "./LiveStreamRenderer";
 import { TaskActions } from "./task/TaskActions";
 import { TaskProblemList } from "./task/TaskProblemList";
 import { deleteTask } from "../features/tasks";
@@ -65,7 +64,7 @@ export function TaskLiveView({ taskId }: { taskId: string }) {
     }
   }, [taskId]);
 
-  const { streamText, progressLines: streamProgress, loadStreamOnce, resetStream } = useTaskStream({
+  const { progressLines: streamProgress, resetStream } = useTaskStream({
     taskId,
     status: data?.task?.status,
     onStatusMessage: setStatusMessage,
@@ -101,17 +100,16 @@ export function TaskLiveView({ taskId }: { taskId: string }) {
 
     try {
       await fetchJson<TaskResponse>(
-        `/tasks/${taskId}/retry?background=true&clear_stream=true`,
+        `/tasks/${taskId}/retry?background=true`,
         { method: "POST" }
       );
       await loadOnce();
-      await loadStreamOnce();
     } catch (err) {
       setError(err instanceof Error ? err.message : "重试失败");
     } finally {
       setIsRetrying(false);
     }
-  }, [data, loadOnce, loadStreamOnce, taskId]);
+  }, [data, loadOnce, taskId]);
 
 
   const removeTask = useCallback(async () => {
@@ -127,8 +125,7 @@ export function TaskLiveView({ taskId }: { taskId: string }) {
   useEffect(() => {
     resetStream();
     void loadOnce();
-    void loadStreamOnce();
-  }, [loadOnce, loadStreamOnce, resetStream]);
+  }, [loadOnce, resetStream]);
 
   // When navigating from the library, the route changes first and data arrives later.
   // Re-run math renderer after task data is rendered to avoid "sometimes not rendered".
@@ -258,7 +255,7 @@ export function TaskLiveView({ taskId }: { taskId: string }) {
         </Box>
       )}
 
-      {streamText && <LiveStreamRenderer text={streamText} />}
+      {/* LiveStreamRenderer removed - no more streaming text in polling mode */}
 
       {!error && !data && (
         <Box sx={{ textAlign: 'center', p: 4, color: 'fg.muted' }}>

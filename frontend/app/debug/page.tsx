@@ -1,12 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { Box, Button, Heading, Text, Textarea, TextInput } from "@primer/react";
+import { useState } from "react";
+import { Box, Button, Heading, Text, Textarea } from "@primer/react";
 import { MarkdownRenderer } from "../../components/MarkdownRenderer";
 import { TaskProgressBar } from "../../components/task/TaskProgressBar";
 import { useTaskProgress, ProgressStepKey } from "../../hooks/useTaskProgress";
-import { useSimpleSSE } from "../../hooks/useSimpleSSE";
-import { API_BASE } from "../../lib/api";
 
 const DEFAULT_TEXT = [
   "# Debug 页面",
@@ -72,34 +70,6 @@ export default function DebugPage() {
   const [isFailed, setIsFailed] = useState(false);
   const [isRunning, setIsRunning] = useState(true);
 
-  // SSE 测试相关状态
-  const [sseTaskId, setSseTaskId] = useState<string>("");
-  const [sseStatus, setSseStatus] = useState<string>("");
-  const [sseProgressLines, setSseProgressLines] = useState<string[]>([]);
-  const { isConnected, events, connect, disconnect, clearEvents } = useSimpleSSE();
-
-  const sseProgressState = useTaskProgress({
-    status: isConnected ? "processing" : "pending",
-    streamProgress: sseProgressLines,
-    statusMessage: sseStatus,
-  });
-
-  // 处理 SSE 事件
-  useEffect(() => {
-    if (events.length === 0) return;
-    const lastEvent = events[events.length - 1];
-    if (lastEvent.event === 'progress') {
-      const message = lastEvent.data.message || lastEvent.data.stage || '处理中';
-      setSseStatus(message);
-      setSseProgressLines((prev) => {
-        if (prev.length > 0 && prev[prev.length - 1] === message) return prev;
-        return [...prev, message];
-      });
-    } else if (lastEvent.event === 'done') {
-      setSseStatus('任务完成');
-    }
-  }, [events]);
-
   const progressState = useTaskProgress({
     status: isFailed ? "failed" : isRunning ? "processing" : "completed",
     streamProgress: progressIndex >= 0 ? [STEP_KEYS[progressIndex]] : [],
@@ -132,71 +102,6 @@ export default function DebugPage() {
     setLatestLine("任务完成");
     setIsFailed(false);
     setIsRunning(false);
-  };
-
-  // SSE 测试函数
-  const handleSseCreateTask = async () => {
-    try {
-      setSseStatus("创建任务中...");
-      const response = await fetch(`${API_BASE}/tasks`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          image_url: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==",
-          action: "single"
-        })
-      });
-      if (!response.ok) throw new Error("创建任务失败");
-      const data = await response.json();
-      setSseTaskId(data.task_id);
-      setSseStatus(`任务已创建：${data.task_id}`);
-    } catch (error) {
-      setSseStatus(`错误：${error instanceof Error ? error.message : String(error)}`);
-    }
-  };
-
-  const handleSseConnect = () => {
-    if (!sseTaskId) {
-      setSseStatus("请先创建或输入任务 ID");
-      return;
-    }
-    clearEvents();
-    connect(`http://localhost:8000/tasks/${sseTaskId}/events`);
-    setSseStatus("SSE 已连接");
-  };
-
-  const handleSseSimulate = async () => {
-    if (!sseTaskId) {
-      setSseStatus("请先创建或输入任务 ID");
-      return;
-    }
-    try {
-      setSseStatus("触发模拟处理...");
-      const response = await fetch(`${API_BASE}/tasks/${sseTaskId}/simulate`, {
-        method: "POST"
-      });
-      if (!response.ok) throw new Error("模拟处理失败");
-      setSseStatus("模拟处理已触发");
-    } catch (error) {
-      setSseStatus(`错误：${error instanceof Error ? error.message : String(error)}`);
-    }
-  };
-
-  const handleSseReset = () => {
-    disconnect();
-    setSseTaskId("");
-    setSseStatus("已重置");
-    clearEvents();
-  };
-
-  const handleSseOneClick = async () => {
-    await handleSseCreateTask();
-    setTimeout(() => {
-      handleSseConnect();
-      setTimeout(() => {
-        handleSseSimulate();
-      }, 500);
-    }, 500);
   };
 
   const handleCheckChemfig = async () => {
@@ -270,70 +175,6 @@ export default function DebugPage() {
 
       <Box sx={{ display: "flex", gap: 2 }}>
         <Button size="small" onClick={() => setText(DEFAULT_TEXT)}>恢复默认示例</Button>
-      </Box>
-
-      {/* SSE 测试区域 */}
-      <Box sx={{ p: 3, border: "1px solid", borderColor: "border.default", borderRadius: 2 }}>
-        <Heading as="h3" sx={{ fontSize: 2, mb: 2 }}>SSE 测试</Heading>
-        <Box sx={{ display: "flex", gap: 2, mb: 3, flexWrap: "wrap" }}>
-          <Button size="small" onClick={handleSseOneClick} disabled={isConnected || !!sseTaskId} variant="primary">
-            一键测试
-          </Button>
-          <Button size="small" onClick={handleSseCreateTask} disabled={isConnected || !!sseTaskId}>
-            创建任务
-          </Button>
-          <Button size="small" onClick={handleSseConnect} disabled={isConnected || !sseTaskId}>
-            连接 SSE
-          </Button>
-          <Button size="small" onClick={handleSseSimulate} disabled={!sseTaskId || isConnected}>
-            模拟处理
-          </Button>
-          <Button size="small" onClick={handleSseReset} disabled={isConnected || !sseTaskId} variant="danger">
-            重置
-          </Button>
-        </Box>
-
-        <Box sx={{ mb: 2 }}>
-          <Text sx={{ fontSize: 0, fontWeight: "bold" }}>任务 ID:</Text>
-          <TextInput
-            value={sseTaskId}
-            onChange={(e) => setSseTaskId(e.target.value)}
-            sx={{ fontSize: 0, fontFamily: "mono", ml: 2 }}
-            width={300}
-          />
-        </Box>
-
-        <Box sx={{ mb: 2 }}>
-          <Text sx={{ fontSize: 0, fontWeight: "bold" }}>连接:</Text>
-          <Text sx={{ fontSize: 0, ml: 2, color: isConnected ? "success.fg" : "danger.fg" }}>
-            {isConnected ? "已连接" : "未连接"}
-          </Text>
-        </Box>
-
-        <Box sx={{ mb: 2 }}>
-          <Text sx={{ fontSize: 0, fontWeight: "bold" }}>状态:</Text>
-          <Text sx={{ fontSize: 0, ml: 2 }}>{sseStatus || "无"}</Text>
-        </Box>
-
-        <Box sx={{ p: 2, border: "1px solid", borderColor: "border.default", borderRadius: 2, bg: "canvas.subtle" }}>
-          <Heading as="h4" sx={{ fontSize: 1, mb: 2 }}>事件日志 ({events.length})</Heading>
-          <Box sx={{ maxHeight: 200, overflowY: "auto", fontFamily: "mono", fontSize: 0 }}>
-            {events.length === 0 ? (
-              <Text sx={{ color: "fg.muted" }}>暂无事件</Text>
-            ) : (
-              events.map((event, i) => (
-                <Box key={i} sx={{ mb: 1, pb: 1, borderBottom: "1px solid", borderColor: "border.muted" }}>
-                  <Text sx={{ color: "accent.fg", fontWeight: "bold" }}>
-                    [{new Date(event.timestamp).toLocaleTimeString()}] {event.event}
-                  </Text>
-                  <Box sx={{ whiteSpace: "pre-wrap", ml: 2 }}>
-                    {JSON.stringify(event.data, null, 2)}
-                  </Box>
-                </Box>
-              ))
-            )}
-          </Box>
-        </Box>
       </Box>
 
       <Box

@@ -2,9 +2,13 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { fetchJson } from "../lib/api";
+import type { TaskResponse } from "../types/api";
 
 // Debug flag - disabled in production
 const DEBUG = typeof process !== 'undefined' && process.env?.NODE_ENV === 'development';
+
+// Polling interval in milliseconds
+const POLLING_INTERVAL = 1000; // 1 second
 
 type UseTaskStreamParams = {
   taskId: string;
@@ -14,238 +18,112 @@ type UseTaskStreamParams = {
 };
 
 type UseTaskStreamState = {
-  streamText: string;
   progressLines: string[];
-  loadStreamOnce: () => Promise<void>;
   resetStream: () => void;
 };
 
 export function useTaskStream({ taskId, status, onStatusMessage, onDone }: UseTaskStreamParams): UseTaskStreamState {
-  const [streamText, setStreamText] = useState("");
   const [progressLines, setProgressLines] = useState<string[]>([]);
-  const streamBufferRef = useRef<string>("");
-  const streamFlushTimerRef = useRef<number | null>(null);
-  const hasLoadedStreamRef = useRef<boolean>(false);
-  const abortControllerRef = useRef<AbortController | null>(null);
-
-  const flushStreamBuffer = useCallback(() => {
-    if (!streamBufferRef.current) return;
-    const chunk = streamBufferRef.current;
-    streamBufferRef.current = "";
-    setStreamText((prev) => {
-      const next = prev + chunk;
-      const MAX_CHARS = 200_000;
-      return next.length > MAX_CHARS ? next.slice(next.length - MAX_CHARS) : next;
-    });
-  }, []);
-
-  const loadStreamOnce = useCallback(async () => {
-    try {
-      const payload = await fetchJson<{ task_id: string; text?: string }>(
-        `/tasks/${taskId}/stream?max_chars=200000`
-      );
-      const text = payload.text || "";
-      streamBufferRef.current = "";
-      setStreamText(text);
-      hasLoadedStreamRef.current = true;
-    } catch {
-      // ignore: stream history is best-effort
-    }
-  }, [taskId]);
+  const pollingIntervalRef = useRef<number | null>(null);
+  const lastStatusRef = useRef<string | null>(null);
+  const hasCalledOnDoneRef = useRef<boolean>(false);
 
   const resetStream = useCallback(() => {
-    streamBufferRef.current = "";
-    setStreamText("");
     setProgressLines([]);
-    hasLoadedStreamRef.current = false;
+    lastStatusRef.current = null;
+    hasCalledOnDoneRef.current = false;
   }, []);
 
   useEffect(() => {
     if (!taskId) return;
-    // Only connect SSE if task is actively processing
-    // For completed/failed tasks, just load historical stream
-    const isActive = status === "pending" || status === "processing";
-    if (!isActive && hasLoadedStreamRef.current) return;
 
-    // 清理之前的连接
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
-      abortControllerRef.current = null;
+    // Only poll if task is actively processing
+    const isActive = status === "pending" || status === "processing";
+    if (!isActive) {
+      // Clear polling if not active
+      if (pollingIntervalRef.current) {
+        window.clearInterval(pollingIntervalRef.current);
+        pollingIntervalRef.current = null;
+      }
+      return;
     }
 
-    // Use direct backend connection in development, proxy in production
-    const isDev = process.env.NODE_ENV === 'development';
-    const baseUrl = isDev ? 'http://localhost:8000' : '/api';
-    const abortController = new AbortController();
-    abortControllerRef.current = abortController;
+    // Clear any existing polling
+    if (pollingIntervalRef.current) {
+      window.clearInterval(pollingIntervalRef.current);
+    }
 
-    const connectSSE = async () => {
-      if (DEBUG) console.log('[useTaskStream] connecting to SSE for task:', taskId, 'status:', status);
-      try {
-        // SSE requests should be simple GET requests without custom headers
-        // to avoid CORS preflight. The Accept header is optional for SSE.
-        // Add timeout to avoid hanging connections (OCR can take 60+ seconds)
-        const timeoutId = setTimeout(() => abortController.abort(), 120000); // 120s timeout
-        
-        const response = await fetch(`${baseUrl}/tasks/${taskId}/events`, {
-          method: "GET",
-          signal: abortController.signal,
-        });
-        
-        clearTimeout(timeoutId);
-        
-        if (DEBUG) console.log('[useTaskStream] SSE response status:', response.status);
-        
-        if (!response.ok) {
-          throw new Error(`SSE 连接失败：${response.status}`);
-        }
-        
-        const reader = response.body?.getReader();
-        if (!reader) {
-          throw new Error("ReadableStream 不可用");
-        }
-        
-        const decoder = new TextDecoder();
-        let buffer = "";
-        let currentEvent = "";
-        
-        const readStream = async () => {
-          try {
-            if (DEBUG) console.log('[useTaskStream] start reading stream');
-            while (true) {
-              const { done, value } = await reader.read();
-              if (done) {
-                if (DEBUG) console.log('[useTaskStream] stream done');
-                break;
+    // Start polling
+    const startPolling = () => {
+      if (DEBUG) console.log('[useTaskStream] starting polling for task:', taskId, 'status:', status);
+
+      const poll = async () => {
+        try {
+          const payload = await fetchJson<TaskResponse>(`/tasks/${taskId}`);
+          const task = payload.task;
+          const currentStatus = task.status;
+
+          if (DEBUG) console.log('[useTaskStream] polled task status:', currentStatus, 'last status:', lastStatusRef.current);
+
+          // Check if status changed
+          if (currentStatus !== lastStatusRef.current) {
+            const message = task.stage_message || task.stage || currentStatus || "处理中";
+            onStatusMessage?.(message);
+            setProgressLines((prev) => {
+              if (prev.length > 0 && prev[prev.length - 1] === message) return prev;
+              return [...prev, message];
+            });
+            lastStatusRef.current = currentStatus;
+
+            // Check if task is done
+            if (currentStatus === "completed" || currentStatus === "failed" || currentStatus === "cancelled") {
+              if (!hasCalledOnDoneRef.current) {
+                hasCalledOnDoneRef.current = true;
+                await onDone?.();
               }
-              
-              buffer += decoder.decode(value, { stream: true });
-              const lines = buffer.split("\n");
-              buffer = lines.pop() || "";
-              
-              for (const line of lines) {
-                const trimmedLine = line.trim();
-                
-                // 跳过空行
-                if (!trimmedLine) continue;
-                
-                if (DEBUG) console.log('[useTaskStream] raw line:', trimmedLine);
-                
-                // 解析 event 行
-                if (trimmedLine.startsWith("event:")) {
-                  currentEvent = trimmedLine.slice(6).trim();
-                  if (DEBUG) console.log('[useTaskStream] event:', currentEvent);
-                  continue;
-                }
-                
-                // 解析 data 行
-                if (trimmedLine.startsWith("data:")) {
-                  const data = trimmedLine.slice(5).trim();
-                  if (DEBUG) console.log('[useTaskStream] data:', data);
-                  
-                  if (currentEvent === "progress") {
-                    try {
-                      // 后端 SSE 发送的格式：data: {"stage": "...", "message": "..."}
-                      // 直接解析为 payload 对象
-                      const payload = JSON.parse(data) as {
-                        status?: string;
-                        stage?: string | null;
-                        message?: string | null;
-                      };
-                      const message = payload.message || payload.stage || payload.status || "处理中";
-                      if (DEBUG) console.log('[useTaskStream] progress event:', payload, 'message:', message);
-                      onStatusMessage?.(message);
-                      setProgressLines((prev) => {
-                        if (prev.length > 0 && prev[prev.length - 1] === message) return prev;
-                        return [...prev, message];
-                      });
-                    } catch (e) {
-                      if (DEBUG) console.error('[useTaskStream] failed to parse progress event:', data, e);
-                      // ignore parse errors
-                    }
-                  } else if (currentEvent === "llm_delta") {
-                    try {
-                      const payload = JSON.parse(data) as { delta?: string };
-                      if (!payload.delta) continue;
-                      streamBufferRef.current += payload.delta;
-                      if (!streamFlushTimerRef.current) {
-                        streamFlushTimerRef.current = window.setTimeout(() => {
-                          streamFlushTimerRef.current = null;
-                          flushStreamBuffer();
-                        }, 80);
-                      }
-                    } catch {
-                      // ignore parse errors
-                    }
-                  } else if (currentEvent === "llm_snapshot") {
-                    try {
-                      const payload = JSON.parse(data) as { text?: string };
-                      const text = payload.text || "";
-                      streamBufferRef.current = "";
-                      setStreamText(text);
-                      hasLoadedStreamRef.current = true;
-                    } catch {
-                      // ignore parse errors
-                    }
-                  } else if (currentEvent === "done") {
-                    await onDone?.();
-                  }
-                  
-                  // 重置 event
-                  currentEvent = "";
-                }
+              // Stop polling
+              if (pollingIntervalRef.current) {
+                window.clearInterval(pollingIntervalRef.current);
+                pollingIntervalRef.current = null;
               }
             }
-          } catch (error) {
-            if (error instanceof Error && error.name !== "AbortError") {
-              onStatusMessage?.('进度流断开，可点击"查看最新状态"刷新。');
-            }
-          } finally {
-            reader.releaseLock();
-            flushStreamBuffer();
           }
-        };
-        
-        readStream();
-      } catch (error) {
-        if (error instanceof Error && error.name !== "AbortError") {
-          onStatusMessage?.("无法连接到进度流：" + (error.message || "未知错误"));
+        } catch (error) {
+          if (DEBUG) console.error('[useTaskStream] polling error:', error);
+          onStatusMessage?.("轮询失败：" + (error instanceof Error ? error.message : "未知错误"));
         }
-      }
-    };
-    
-    connectSSE();
-    
-    // 清理函数
-    return () => {
-      if (abortControllerRef.current) {
-        abortControllerRef.current.abort();
-        abortControllerRef.current = null;
-      }
-      if (streamFlushTimerRef.current) {
-        window.clearTimeout(streamFlushTimerRef.current);
-        streamFlushTimerRef.current = null;
-      }
-    };
-  }, [taskId, status, flushStreamBuffer, onStatusMessage, onDone]);
+      };
 
+      // Poll immediately
+      poll();
+
+      // Then poll at regular intervals
+      pollingIntervalRef.current = window.setInterval(poll, POLLING_INTERVAL);
+    };
+
+    startPolling();
+
+    // Cleanup
+    return () => {
+      if (pollingIntervalRef.current) {
+        window.clearInterval(pollingIntervalRef.current);
+        pollingIntervalRef.current = null;
+      }
+    };
+  }, [taskId, status, onStatusMessage, onDone]);
+
+  // Cleanup on unmount
   useEffect(() => {
     return () => {
-      if (abortControllerRef.current) {
-        abortControllerRef.current.abort();
-        abortControllerRef.current = null;
-      }
-      if (streamFlushTimerRef.current) {
-        window.clearTimeout(streamFlushTimerRef.current);
-        streamFlushTimerRef.current = null;
+      if (pollingIntervalRef.current) {
+        window.clearInterval(pollingIntervalRef.current);
+        pollingIntervalRef.current = null;
       }
     };
   }, []);
 
   return {
-    streamText,
     progressLines,
-    loadStreamOnce,
     resetStream,
   };
 }

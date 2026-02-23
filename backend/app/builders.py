@@ -12,8 +12,6 @@ from .config import AppConfig
 from .repository import ArchiveStore, FileTaskRepository, InMemoryTaskRepository
 from .services.agent_settings import AgentSettingsService
 from .services.tasks_service import TasksService
-from .services.event_bus import EventBus
-from .services.sse_service import SseService
 from .storage import LocalAssetStore
 from .tags import tag_store
 
@@ -106,28 +104,10 @@ def build_pipeline(
     )
 
 
-def build_tasks_service(*, repository, pipeline: AgentPipeline, asset_store: LocalAssetStore, event_bus: EventBus = None) -> TasksService:
+def build_tasks_service(*, repository, pipeline: AgentPipeline, asset_store: LocalAssetStore) -> TasksService:
     return TasksService(
         repository=repository,
         pipeline=pipeline,
         asset_store=asset_store,
         tag_store=tag_store,
-        event_bus=event_bus,
     )
-
-
-def build_event_bus(*, repository) -> EventBus:
-    """Build event bus for task events."""
-    from pathlib import Path
-
-    streams_dir = (
-        Path(repository.base_dir).parent / "task_streams"
-        if hasattr(repository, "base_dir") and repository.base_dir
-        else Path("storage/task_streams")
-    )
-    return EventBus(streams_dir=streams_dir)
-
-
-def build_sse_service(*, event_bus: EventBus) -> SseService:
-    """Build SSE service for real-time event streaming."""
-    return SseService(event_bus=event_bus)

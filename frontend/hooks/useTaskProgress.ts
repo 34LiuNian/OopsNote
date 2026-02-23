@@ -14,10 +14,11 @@ export function inferStepFromText(text: string): ProgressStepKey | null {
   if (!raw) return null;
   const lower = raw.toLowerCase();
 
+  // queued/starting stage
   if (
+    lower === "starting" ||
     lower.includes("retry") ||
     lower.includes("queue") ||
-    lower.includes("starting") ||
     lower.includes("pending") ||
     raw.includes("入队") ||
     raw.includes("等待处理") ||
@@ -26,7 +27,10 @@ export function inferStepFromText(text: string): ProgressStepKey | null {
     return "queued";
   }
 
+  // OCR/extracting stage
   if (
+    lower === "extracting" ||
+    lower === "ocr" ||
     lower.includes("extract") ||
     lower.includes("ocr") ||
     raw.includes("识别") ||
@@ -35,14 +39,26 @@ export function inferStepFromText(text: string): ProgressStepKey | null {
     return "ocr";
   }
 
-  if (lower.includes("solv") || raw.includes("解题") || raw.includes("题解")) {
+  // Solving stage
+  if (
+    lower === "solving" ||
+    lower === "solve" ||
+    lower.includes("solv") ||
+    raw.includes("解题") ||
+    raw.includes("题解")
+  ) {
     return "solving";
   }
 
+  // Tagging/archiving stage
   if (
+    lower === "tagging" ||
+    lower === "tag" ||
+    lower === "archiving" ||
+    lower === "archive" ||
+    lower === "done" ||
     lower.includes("tag") ||
     lower.includes("archiv") ||
-    lower.includes("done") ||
     raw.includes("标注") ||
     raw.includes("打标") ||
     raw.includes("归档") ||
