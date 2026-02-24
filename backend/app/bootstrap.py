@@ -60,13 +60,20 @@ def configure_logging():
 
 
 class HealthCheckFilter(logging.Filter):
-    """Filter out health check logs to keep the terminal clean."""
+    """Filter out health check and polling logs to keep the terminal clean."""
 
     def filter(self, record: logging.LogRecord) -> bool:
-        return "/health" not in record.getMessage()
+        message = record.getMessage()
+        # Filter health checks
+        if "/health" in message:
+            return False
+        # Filter task polling requests (GET /tasks/{id} without body)
+        if 'GET /tasks/' in message and 'HTTP/1.1" 200' in message:
+            return False
+        return True
 
 
-# Silence noisy health check logs from uvicorn access log
+# Silence noisy health check and polling logs from uvicorn access log
 logging.getLogger("uvicorn.access").addFilter(HealthCheckFilter())
 
 

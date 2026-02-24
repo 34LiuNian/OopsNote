@@ -1,0 +1,35 @@
+% 章节标题模板
+% 使用方式：通过 Python 代码动态生成带参数的章节标题
+
+% 单选题章节标题（带参数：题目数量）
+% 使用示例：\sectionSingleChoice{8}
+\newcommand{\sectionSingleChoice}[1][8]{%
+\noindent \textbf{一、选择题：本题共 #1 小题，每小题 5 分，共 \the\numexpr#1*5\relax 分。在每小题给出的四个选项中，只有一项是符合题目要求的。}\hangindent=2em
+}
+
+% 多选题章节标题（带参数：题目数量）
+% 使用示例：\sectionMultipleChoice{3}
+\newcommand{\sectionMultipleChoice}[1][3]{%
+\vspace{10pt}
+\noindent \textbf{二、选择题：本题共 #1 小题，每小题 6 分，共 \the\numexpr#1*6\relax 分。在每小题给出的选项中，有多项符合题目要求。全部选对的得 6 分，部分选对的得部分分，有选错的得 0 分。}\hangindent=2em
+}
+
+% 填空题章节标题（带参数：题目数量）
+% 使用示例：\sectionFillIn{3}
+\newcommand{\sectionFillIn}[1][3]{%
+\vspace{10pt}
+\noindent \textbf{三、填空题：本题共 #1 小题，每小题 5 分，共 \the\numexpr#1*5\relax 分。}\hangindent=2em
+}
+
+% 解答题章节标题（带参数：题目数量和总分）
+% 使用示例：\sectionProblem{5}{77}
+\newcommand{\sectionProblem}[2][5]{%
+\noindent \textbf{四、解答题：本题共 #1 小题，共 #2 分。解答应写出文字说明、证明过程或演算步骤。}\hangindent=2em
+}
+
+% 其它题型章节标题（带参数：题目数量）
+% 使用示例：\sectionOther{2}
+\newcommand{\sectionOther}[1][1]{%
+\vspace{10pt}
+\noindent \textbf{五、其它题型：本题共 #1 小题}\hangindent=2em
+}

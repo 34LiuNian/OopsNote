@@ -51,12 +51,16 @@ class SolutionWriter:
         payload: TaskCreateRequest,
         problems: Iterable[ProblemBlock],
         on_progress: Callable[[int, int, ProblemBlock], None] | None = None,
+        is_cancelled: Callable[[], bool] | None = None,
     ) -> List[SolutionBlock]:
         problems_list = list(problems)
         solved: List[SolutionBlock] = []
         total = len(problems_list)
 
         for idx, problem in enumerate(problems_list, start=1):
+            if is_cancelled and is_cancelled():
+                from ..services.tasks_service import _TaskCancelled
+                raise _TaskCancelled("Task was cancelled by user")
             if on_progress: on_progress(idx, total, problem)
             
             ctx = {
@@ -93,6 +97,7 @@ class TaggingProfiler:
         problems: Iterable[ProblemBlock],
         solutions: Iterable[SolutionBlock],
         on_progress: Callable[[int, int, ProblemBlock], None] | None = None,
+        is_cancelled: Callable[[], bool] | None = None,
     ) -> List[TaggingResult]:
         problems_list = list(problems)
         solutions_map = {s.problem_id: s for s in solutions}
@@ -100,6 +105,9 @@ class TaggingProfiler:
         total = len(problems_list)
 
         for idx, problem in enumerate(problems_list, start=1):
+            if is_cancelled and is_cancelled():
+                from ..services.tasks_service import _TaskCancelled
+                raise _TaskCancelled("Task was cancelled by user")
             if on_progress: on_progress(idx, total, problem)
             
             solution = solutions_map.get(problem.problem_id)

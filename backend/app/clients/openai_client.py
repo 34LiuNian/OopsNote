@@ -139,11 +139,6 @@ class OpenAIClient(AIClient):
             "messages": final_messages,
         }
 
-        # SiliconFlow thinking mode (only if model name contains thinking or instructed)
-        if thinking:
-            # Use extra_body for SiliconFlow-style thinking
-            kwargs["extra_body"] = {"enable_thinking": True}
-
         # JSON Mode support - be conservative
         if "gpt-4" in self.model or "gpt-3.5" in self.model:
             kwargs["response_format"] = {"type": "json_object"}
@@ -211,25 +206,14 @@ class OpenAIClient(AIClient):
                     Path(__file__).resolve().parents[2] / "storage" / "llm_payloads.log"
                 )
 
-            # 简化消息体，避免过大的图片 base64 撑爆日志
-            include_image = (
-                os.getenv("AI_DEBUG_LLM_PAYLOAD_INCLUDE_IMAGE", "false").lower()
-                == "true"
-            )
+            # 简化消息体，移除图片 base64 数据避免撑爆日志
             logged_messages = []
             for m in messages:
                 item = {"role": m.get("role"), "content": m.get("content")}
-                if not include_image and isinstance(item["content"], list):
+                if isinstance(item["content"], list):
+                    # 过滤掉图片数据，仅保留文本内容
                     item["content"] = [
-                        (
-                            c
-                            if c.get("type") != "image_url"
-                            else {
-                                "type": "image_url",
-                                "image_url": {"url": f"base64_len={len(c['image_url']['url'])}"},
-                            }
-                        )
-                        for c in item["content"]
+                        c for c in item["content"] if c.get("type") != "image_url"
                     ]
                 logged_messages.append(item)
 

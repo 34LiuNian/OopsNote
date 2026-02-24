@@ -142,27 +142,16 @@ export default function LibraryPage() {
           </FormControl>
           <FormControl>
             <FormControl.Label>知识点包含</FormControl.Label>
-            <TextInput 
-              placeholder="例如：勾股定理" 
-              value={tag} 
-              onChange={(e) => setTag(e.target.value)} 
+            <TextInput
+              placeholder="例如：勾股定理"
+              value={tag}
+              onChange={(e) => setTag(e.target.value)}
               block
             />
           </FormControl>
         </Box>
 
-        <Text as="p" sx={{ fontSize: 1, color: 'fg.muted' }}>
-          这里汇总了所有已解析题目，支持按学科与知识点初步筛选。
-        </Text>
-      </Box>
-
-      {/* Results */}
-      <Box sx={{ p: 3, border: '1px solid', borderColor: 'border.default', borderRadius: 2 }}>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-          <Box>
-            <Text sx={{ fontSize: 0, color: 'fg.muted', textTransform: 'uppercase' }}>Results</Text>
-            <Heading as="h2" sx={{ fontSize: 3 }}>当前筛选结果</Heading>
-          </Box>
           <Label variant="secondary">共 {items.length} 道题</Label>
         </Box>
 
@@ -199,6 +188,9 @@ export default function LibraryPage() {
           </Box>
         )}
       </Box>
+
+      {/* Results */}
+
     </Box>
   );
 }

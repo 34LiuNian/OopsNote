@@ -1,0 +1,48 @@
+% 题目格式模板
+% 包含选择题、填空题、解答题的格式定义
+
+% 选择题环境（有选项）
+% 使用示例：
+% \begin{questionWithChoices}
+% 题干内容
+% \choiceItem{选项 A}
+% \choiceItem{选项 B}
+% \choiceItem{选项 C}
+% \choiceItem{选项 D}
+% \end{questionWithChoices}
+\newenvironment{questionWithChoices}{%
+	\begin{question}%
+}{%
+	\end{question}%
+}
+
+% 填空题环境（带填空线）
+% 使用示例：
+% \begin{questionFillIn}
+% 题干内容，则答案为\fillinBlank{答案}.
+% \end{questionFillIn}
+\newcommand{\fillinBlank}[1]{\fillin[width=5em][#1]}
+
+% 解答题环境（带分值）
+% 使用示例：
+% \begin{problemWithPoints}{17}
+% 题干内容
+% \end{problemWithPoints}
+\newenvironment{problemWithPoints}[1]{%
+	\begin{problem}[points=#1]%
+}{%
+	\end{problem}%
+	\vspace{80pt}%
+}
+
+% 解答题环境（大间距，用于最后几题）
+% 使用示例：
+% \begin{problemWithLargeSpace}{17}
+% 题干内容
+% \end{problemWithLargeSpace}
+\newenvironment{problemWithLargeSpace}[1]{%
+	\begin{problem}[points=#1]%
+}{%
+	\end{problem}%
+	\vspace{104pt}%
+}

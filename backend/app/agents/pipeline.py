@@ -54,6 +54,7 @@ class AgentPipeline:
         payload: TaskCreateRequest,
         asset: AssetMetadata | None = None,
         on_progress: Callable[[str, str | None], None] | None = None,
+        is_cancelled: Callable[[], bool] | None = None,
     ) -> PipelineResult:
         def emit(stage: str, message: str | None = None) -> None:
             if on_progress is not None:
@@ -77,6 +78,8 @@ class AgentPipeline:
         detection, problems = self._extract(payload, asset)
         if self.orchestrator:
             # Multi-agent orchestration runs as a batch.
+            # 动态设置取消检查回调
+            self.orchestrator.is_cancelled = is_cancelled
             solutions, tags = self.orchestrator.solve_and_tag(
                 payload, problems, on_progress=emit
             )
@@ -88,6 +91,7 @@ class AgentPipeline:
                 payload,
                 problems,
                 on_progress=lambda i, n, _p: emit("solving", f"解题 {i}/{n}"),
+                is_cancelled=is_cancelled,
             )
             if total > 0:
                 emit("tagging", f"标注 0/{total}")
@@ -96,6 +100,7 @@ class AgentPipeline:
                 problems,
                 solutions,
                 on_progress=lambda i, n, _p: emit("tagging", f"标注 {i}/{n}"),
+                is_cancelled=is_cancelled,
             )
 
         emit("archiving", "归档")

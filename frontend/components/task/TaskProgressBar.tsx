@@ -41,6 +41,8 @@ function getNodeStyle(idx: number, total: number): NodeStyle {
 }
 
 export function TaskProgressBar({ progressState, latestLine, error, statusMessage }: TaskProgressBarProps) {
+  const isCancelled = progressState.isCancelled;
+  
   return (
     <Box sx={{ p: 2, border: "1px solid", borderColor: "border.default", borderRadius: 2, mb: 3 }}>
       <Box sx={{ display: "flex", alignItems: "center", mb: 2 }}>
@@ -48,23 +50,25 @@ export function TaskProgressBar({ progressState, latestLine, error, statusMessag
           const isDone = progressState.highestIndex >= idx;
           const isActive = progressState.activeIndex === idx;
           const isError = progressState.isFailed && progressState.highestIndex === idx;
-          const isDisabled = progressState.isFailed && progressState.highestIndex < idx;
+          const isDisabled = (progressState.isFailed || isCancelled) && progressState.highestIndex < idx;
 
           const nodeStatus = isError
             ? "error"
-            : isActive
-              ? "processing"
-              : isDone
-                ? "success"
-                : "wait";
+            : isCancelled
+              ? "wait"
+              : isActive
+                ? "processing"
+                : isDone
+                  ? "success"
+                  : "wait";
 
           const nodeColor = STATUS_COLORS[nodeStatus];
           const lineToNext = idx < PROGRESS_STEPS.length - 1;
 
-          const isLineDone = progressState.highestIndex > idx;
-          const isLineDisabled = progressState.isFailed && progressState.highestIndex < idx;
+          const isLineDone = progressState.highestIndex > idx && !isCancelled;
+          const isLineDisabled = (progressState.isFailed || isCancelled) && progressState.highestIndex < idx;
           const isCurrentErrorLine = progressState.isFailed && progressState.highestIndex === idx + 1;
-          const isLastDoneLine = progressState.highestIndex === idx + 1;
+          const isLastDoneLine = progressState.highestIndex === idx + 1 && !isCancelled;
 
           return (
             <Fragment key={step.key}>
@@ -134,19 +138,21 @@ export function TaskProgressBar({ progressState, latestLine, error, statusMessag
           const isDone = progressState.highestIndex >= idx;
           const isActive = progressState.activeIndex === idx;
           const isError = progressState.isFailed && progressState.highestIndex === idx;
-          const isDisabled = progressState.isFailed && progressState.highestIndex < idx;
+          const isDisabled = (progressState.isFailed || isCancelled) && progressState.highestIndex < idx;
 
-          const nodeStatus = isError ? "error" : isActive ? "processing" : isDone ? "success" : "wait";
+          const nodeStatus = isError ? "error" : isCancelled ? "wait" : isActive ? "processing" : isDone ? "success" : "wait";
           const textColor = STATUS_COLORS[nodeStatus];
           const subtitle = isError
             ? (error || statusMessage || "处理失败")
-            : isActive
-              ? (latestLine || progressState.latestLine)
-              : isDone
-                ? "已完成"
-                : isDisabled
-                  ? "已阻断"
-                  : "等待中";
+            : isCancelled
+              ? "已作废"
+              : isActive
+                ? (latestLine || progressState.latestLine)
+                : isDone
+                  ? "已完成"
+                  : isDisabled
+                    ? "已阻断"
+                    : "等待中";
 
           const style = getNodeStyle(idx, PROGRESS_STEPS.length);
 

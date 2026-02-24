@@ -74,8 +74,7 @@
 补充说明：
 
 - OCR 目标是“结构化题面”，并区分 `question_type`、`problem_text` 与 `options`。
-- 题面直接采用 Markdown + LaTeX 格式。
-- 若 LLM JSON 格式错误，直接进入失败态。
+- 题面直接采用 Markdown + LaTeX 格式。- `question_type` 取值：`单选题`、`多选题`、`填空题`、`解答题`。- 若 LLM JSON 格式错误，直接进入失败态。
 
 ---
 

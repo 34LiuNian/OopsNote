@@ -64,12 +64,27 @@ export function TaskLiveView({ taskId }: { taskId: string }) {
     }
   }, [taskId]);
 
-  const { progressLines: streamProgress, resetStream } = useTaskStream({
+  const { progressLines: streamProgress, latestTask, resetStream } = useTaskStream({
     taskId,
     status: data?.task?.status,
     onStatusMessage: setStatusMessage,
     onDone: loadOnce,
   });
+
+  // Update data with latest task from polling
+  useEffect(() => {
+    if (!latestTask) return;
+    setData((prev) => {
+      if (!prev) return { task: latestTask };
+      // Only update if something changed
+      if (prev.task.status === latestTask.status &&
+          prev.task.stage === latestTask.stage &&
+          prev.task.stage_message === latestTask.stage_message) {
+        return prev;
+      }
+      return { task: latestTask };
+    });
+  }, [latestTask]);
 
   const cancelTask = useCallback(async () => {
     if (!data) return;
@@ -91,7 +106,7 @@ export function TaskLiveView({ taskId }: { taskId: string }) {
   const retryTask = useCallback(async () => {
     if (!data) return;
     const status = data.task.status;
-    if (status !== "failed" && status !== "completed") return;
+    if (status !== "failed" && status !== "completed" && status !== "cancelled") return;
 
     setIsRetrying(true);
     setError("");
@@ -183,6 +198,8 @@ export function TaskLiveView({ taskId }: { taskId: string }) {
       sileo.success({ title: "任务完成", position: "bottom-right" });
     } else if (status === "failed") {
       sileo.error({ title: statusMessage || "任务失败", position: "bottom-right" });
+    } else if (status === "cancelled") {
+      sileo.info({ title: "任务已作废", position: "bottom-right" });
     } else {
       sileo.info({ title: statusMessage, position: "bottom-right" });
     }

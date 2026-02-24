@@ -32,7 +32,7 @@ export function TaskActions({
           {isCancelling ? "作废中..." : "停止并作废"}
         </Button>
       )}
-      {(status === "failed" || status === "completed") && (
+      {(status === "failed" || status === "completed" || status === "cancelled") && (
         <Button onClick={onRetry} disabled={isRetrying || isLoading || isCancelling} leadingVisual={SyncIcon}>
           {isRetrying ? "重试中..." : "重试"}
         </Button>

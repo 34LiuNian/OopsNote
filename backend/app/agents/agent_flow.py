@@ -127,11 +127,13 @@ class AgentOrchestrator:
         tagger: LLMAgent,
         is_enabled: Callable[[str], bool] | None = None,
         thinking_resolver: Callable[[str], bool] | None = None,
+        is_cancelled: Callable[[], bool] | None = None,
     ) -> None:
         self.solver = solver
         self.tagger = tagger
         self.is_enabled = is_enabled
         self.thinking_resolver = thinking_resolver
+        self.is_cancelled = is_cancelled
 
     def solve_and_tag(
         self,
@@ -146,6 +148,12 @@ class AgentOrchestrator:
         total = len(problems_list)
         
         for i, problem in enumerate(problems_list, 1):
+            # 检查任务是否被取消
+            if self.is_cancelled and self.is_cancelled():
+                # 延迟导入避免循环依赖
+                from ..services.tasks_service import _TaskCancelled
+                raise _TaskCancelled("Task was cancelled by user")
+            
             context = self._build_context(payload, problem)
 
             def _set_thinking(agent_key: str) -> None:

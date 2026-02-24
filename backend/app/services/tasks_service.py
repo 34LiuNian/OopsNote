@@ -525,6 +525,23 @@ class TasksService:
         """Cancel an in-progress task."""
         with self._task_cancel_lock:
             self._task_cancelled.add(task_id)
+        
+        # 立即更新任务状态，让前端可以立即停止轮询
+        try:
+            task = self.repository.get(task_id)
+            if task.status in (TaskStatus.PENDING, TaskStatus.PROCESSING):
+                self.repository.patch_task(
+                    task_id,
+                    status=TaskStatus.CANCELLED,
+                    stage="cancelled",
+                    stage_message="用户取消任务",
+                )
+                # 写入流事件，通知前端
+                self._write_stream_event(task_id, "done", {"status": "cancelled"})
+        except Exception:
+            # 如果任务不存在或更新失败，至少保证取消标志已设置
+            pass
+        
         return self.get_task(task_id)
 
     def _is_task_cancelled(self, task_id: str) -> bool:
@@ -607,6 +624,7 @@ class TasksService:
                     task.payload,
                     task.asset,
                     on_progress=progress_bridge,
+                    is_cancelled=lambda: self._is_task_cancelled(task_id),
                 )
                 result, manual_knowledge, manual_error, manual_source = (
                     self._apply_manual_payload_to_result(task, result)

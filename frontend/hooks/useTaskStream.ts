@@ -19,17 +19,20 @@ type UseTaskStreamParams = {
 
 type UseTaskStreamState = {
   progressLines: string[];
+  latestTask: TaskResponse["task"] | null;
   resetStream: () => void;
 };
 
 export function useTaskStream({ taskId, status, onStatusMessage, onDone }: UseTaskStreamParams): UseTaskStreamState {
   const [progressLines, setProgressLines] = useState<string[]>([]);
+  const [latestTask, setLatestTask] = useState<TaskResponse["task"] | null>(null);
   const pollingIntervalRef = useRef<number | null>(null);
   const lastStatusRef = useRef<string | null>(null);
   const hasCalledOnDoneRef = useRef<boolean>(false);
 
   const resetStream = useCallback(() => {
     setProgressLines([]);
+    setLatestTask(null);
     lastStatusRef.current = null;
     hasCalledOnDoneRef.current = false;
   }, []);
@@ -64,6 +67,9 @@ export function useTaskStream({ taskId, status, onStatusMessage, onDone }: UseTa
           const currentStatus = task.status;
 
           if (DEBUG) console.log('[useTaskStream] polled task status:', currentStatus, 'last status:', lastStatusRef.current);
+
+          // Always update latest task
+          setLatestTask(task);
 
           // Check if status changed
           if (currentStatus !== lastStatusRef.current) {
@@ -124,6 +130,7 @@ export function useTaskStream({ taskId, status, onStatusMessage, onDone }: UseTa
 
   return {
     progressLines,
+    latestTask,
     resetStream,
   };
 }

@@ -99,6 +99,7 @@ export function useTaskProgress({
     const isRunning = taskStatus === "pending" || taskStatus === "processing";
     const isCompleted = taskStatus === "completed";
     const isFailed = taskStatus === "failed";
+    const isCancelled = taskStatus === "cancelled";
 
     const observed: ProgressStepKey[] = [];
     const pushStep = (candidate: string | null | undefined) => {
@@ -119,7 +120,7 @@ export function useTaskProgress({
     }
 
     let activeIndex = highestIndex;
-    if (isCompleted) {
+    if (isCompleted || isCancelled) {
       highestIndex = PROGRESS_STEPS.length - 1;
       activeIndex = -1;
     } else if (!isRunning) {
@@ -139,6 +140,7 @@ export function useTaskProgress({
       isRunning,
       isCompleted,
       isFailed,
+      isCancelled,
       highestIndex,
       activeIndex,
       latestLine,

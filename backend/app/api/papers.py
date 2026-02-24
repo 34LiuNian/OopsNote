@@ -30,33 +30,62 @@ def _paper_assets_dir() -> Path:
     return Path(__file__).resolve().parents[2] / "storage" / "paper_assets"
 
 
-def _paper_template_path() -> Path:
-    return Path(__file__).resolve().parents[1] / "templates" / "paper.tex"
+# Template file paths
+_TEMPLATE_DIR = Path(__file__).resolve().parents[1] / "templates"
+_PAPER_TEMPLATE_PATH = _TEMPLATE_DIR / "paper.tex"
+_SECTION_HEADERS_TEMPLATE_PATH = _TEMPLATE_DIR / "section_headers.tex"
+_QUESTION_FORMATS_TEMPLATE_PATH = _TEMPLATE_DIR / "question_formats.tex"
+
+
+def _load_template(path: Path) -> str:
+    if not path.exists():
+        raise HTTPException(
+            status_code=500,
+            detail={"message": f"模板文件不存在：{path.name}", "log": ""},
+        )
+    return path.read_text(encoding="utf-8")
 
 
 def _load_paper_template() -> str:
-    template_path = _paper_template_path()
-    if not template_path.exists():
-        raise HTTPException(
-            status_code=500,
-            detail={"message": "试卷模板文件不存在。", "log": ""},
-        )
-    return template_path.read_text(encoding="utf-8")
+    """Load main paper template with section_headers and question_formats inlined."""
+    template = _load_template(_PAPER_TEMPLATE_PATH)
+    
+    # Read and inline section_headers.tex
+    section_headers_content = _load_template(_SECTION_HEADERS_TEMPLATE_PATH)
+    
+    # Read and inline question_formats.tex
+    question_formats_content = _load_template(_QUESTION_FORMATS_TEMPLATE_PATH)
+    
+    # Replace \input commands with actual content
+    template = template.replace(
+        "\\input{section_headers.tex}",
+        "% ========== section_headers.tex (inlined) ==========\n"
+        + section_headers_content
+        + "% ========== end section_headers.tex ==========\n"
+    )
+    template = template.replace(
+        "\\input{question_formats.tex}",
+        "% ========== question_formats.tex (inlined) ==========\n"
+        + question_formats_content
+        + "% ========== end question_formats.tex ==========\n"
+    )
+    
+    return template
 
 
 def _norm_question_type(raw: Optional[str], has_choices: bool) -> str:
     if raw:
         label = str(raw).strip()
     else:
-        label = "选择题" if has_choices else "解答题"
+        label = "单选题" if has_choices else "解答题"
 
     if "多选" in label:
         return "多选题"
-    if "选择" in label:
-        return "选择题"
+    if "单选" in label or ("选择" in label and "多" not in label):
+        return "单选题"
     if "填空" in label:
         return "填空题"
-    if "解答" in label or "证明" in label:
+    if "解答" in label or "证明" in label or "计算" in label:
         return "解答题"
     return "其它"
 
@@ -162,34 +191,66 @@ def _convert_chemfig_markdown(text: str) -> str:
 
 
 def _build_question_block(text: str, options: Iterable[object] | None) -> str:
+    """Build question LaTeX block using template format."""
     body = _normalize_text(text).strip() if text else ""
     if options:
         rendered_options = []
         for opt in options:
             opt_text = getattr(opt, "text", "")
-            rendered_options.append(f"\\item {_normalize_text(str(opt_text))}")
+            rendered_options.append(f"\t\\item {_normalize_text(str(opt_text))}")
         choices_block = "\n".join(rendered_options)
         return (
             "\\begin{question}\n"
-            + body
-            + "\n\\begin{choices}\n"
+            + "\t" + body
+            + "\n\t\\begin{choices}\n"
             + choices_block
-            + "\n\\end{choices}\n"
+            + "\n\t\\end{choices}\n"
             + "\\end{question}\n"
         )
-    return "\\begin{question}\n" + body + "\n\\end{question}\n"
+    # Fill-in question: add \fillinBlank placeholder
+    return "\\begin{question}\n\t" + body + "\\fillinBlank{答案}.\n\\end{question}\n"
 
 
-def _build_problem_block(text: str) -> str:
+def _build_problem_block(text: str, points: int = 15, is_last: bool = False) -> str:
+    """Build problem (long answer) LaTeX block with points and spacing."""
     body = _normalize_text(text).strip() if text else ""
-    return "\\begin{problem}\n" + body + "\n\\end{problem}\n"
+    env = "problemWithLargeSpace" if is_last else "problemWithPoints"
+    return f"\\begin{{{env}}}{{{points}}}\n{body}\n\\end{{{env}}}\n"
 
 
-def _render_section(title: str, blocks: list[str]) -> str:
+def _get_section_header(question_type: str, count: int, total_points: int = 0) -> str:
+    """Get section header command with dynamic parameters.
+    
+    Args:
+        question_type: Type of questions in this section
+        count: Number of questions
+        total_points: Total points for this section (used for 解答题)
+    """
+    if question_type == "单选题":
+        return f"\\sectionSingleChoice[{count}]"
+    elif question_type == "多选题":
+        return f"\\sectionMultipleChoice[{count}]"
+    elif question_type == "填空题":
+        return f"\\sectionFillIn[{count}]"
+    elif question_type == "解答题":
+        return f"\\sectionProblem[{count}]{{{total_points}}}"
+    else:
+        return f"\\sectionOther[{count}]"
+
+
+def _render_section(question_type: str, blocks: list[str], count: int, total_points: int = 0) -> str:
+    """Render a section with header and question blocks.
+    
+    Args:
+        question_type: Type of questions in this section
+        blocks: List of LaTeX question blocks
+        count: Number of questions
+        total_points: Total points for this section (used for 解答题)
+    """
     if not blocks:
         return ""
-    header = f"\\section*{{{title}}}\\hangindent=2em\n"
-    return header + "\n".join(blocks) + "\n"
+    header_cmd = _get_section_header(question_type, count, total_points)
+    return f"{header_cmd}\n" + "\n".join(blocks) + "\n"
 
 
 def _paper_template(
@@ -199,10 +260,28 @@ def _paper_template(
     show_answers: bool,
     sections: list[tuple[str, list[str]]],
 ) -> str:
+    """Build final LaTeX document using template system."""
     template = _load_paper_template()
-    sections_text = "\n".join(
-        _render_section(sec_title, blocks) for sec_title, blocks in sections if blocks
-    )
+    
+    # Build sections content (with headers included)
+    sections_content = []
+    
+    for sec_title, blocks in sections:
+        if blocks:
+            # Get count of questions in this section
+            count = len(blocks)
+            # Calculate total points for 解答题 (default: 15 points per problem)
+            total_points = 0
+            if sec_title == "解答题":
+                # Default 15 points per problem, can be customized
+                total_points = count * 15
+            
+            # Add section content (header is included in _render_section)
+            sections_content.append(_render_section(sec_title, blocks, count, total_points))
+    
+    # Join sections with proper spacing
+    sections_text = "\n\n".join(sections_content)
+    
     return (
         template.replace("{{TITLE}}", title)
         .replace("{{SUBTITLE}}", subtitle or "")
@@ -220,24 +299,36 @@ def compile_paper(request: Request, payload: PaperCompileRequest) -> Response:
             status_code=400, detail={"message": "请选择至少一道题目。", "log": ""}
         )
 
+    # 调试日志：打印请求信息
+    print(f"[PAPER] 收到组卷请求：{len(payload.items)} 道题目")
+    for idx, item in enumerate(payload.items):
+        print(f"  [{idx+1}] task_id={item.task_id}, problem_id={item.problem_id}")
+
     tasks_by_id = {t.id: t for t in svc.iter_tasks()}
-    sections_map: dict[str, list[str]] = {
-        "选择题": [],
+    print(f"[PAPER] 当前任务数：{len(tasks_by_id)}")
+    
+    # First pass: collect all problems by type with their metadata
+    problems_by_type: dict[str, list[dict]] = {
+        "单选题": [],
         "多选题": [],
         "填空题": [],
         "解答题": [],
         "其它": [],
     }
 
+    processed_count = 0
     for item in payload.items:
         task = tasks_by_id.get(item.task_id)
         if not task:
+            print(f"[PAPER] 警告：未找到任务 {item.task_id}")
             continue
         problem = next(
             (p for p in task.problems if p.problem_id == item.problem_id), None
         )
         if not problem:
+            print(f"[PAPER] 警告：任务 {item.task_id} 中未找到题目 {item.problem_id}")
             continue
+        processed_count += 1
         tag_result = next(
             (t for t in task.tags if t.problem_id == item.problem_id), None
         )
@@ -245,21 +336,44 @@ def compile_paper(request: Request, payload: PaperCompileRequest) -> Response:
             tag_result, "question_type", None
         )
         question_type = _norm_question_type(raw_type, bool(problem.options))
-        if question_type in ("选择题", "多选题", "填空题"):
-            block = _build_question_block(problem.problem_text or "", problem.options)
-        elif question_type == "解答题":
-            block = _build_problem_block(problem.problem_text or "")
-        else:
-            block = _build_problem_block(problem.problem_text or "")
-        sections_map.setdefault(question_type, []).append(block)
+        print(f"[PAPER] 处理题目 {item.problem_id}: 类型={question_type}")
+        
+        # Store problem data for second pass
+        problems_by_type.setdefault(question_type, []).append({
+            "problem_text": problem.problem_text or "",
+            "options": problem.options,
+            "problem_id": item.problem_id,
+        })
+    
+    # Second pass: build LaTeX blocks with proper spacing
+    sections_map: dict[str, list[str]] = {}
+    for qtype, problems in problems_by_type.items():
+        if not problems:
+            continue
+        blocks = []
+        total_problems = len(problems)
+        for idx, prob in enumerate(problems):
+            is_last = (idx == total_problems - 1)
+            if qtype in ("单选题", "多选题", "填空题"):
+                block = _build_question_block(prob["problem_text"], prob["options"])
+            elif qtype == "解答题":
+                # Default 15 points, last problem gets larger spacing
+                block = _build_problem_block(prob["problem_text"], points=15, is_last=is_last)
+            else:
+                block = _build_problem_block(prob["problem_text"], points=15, is_last=is_last)
+            blocks.append(block)
+        sections_map[qtype] = blocks
 
     sections: list[tuple[str, list[str]]] = []
-    order = ["选择题", "多选题", "填空题", "解答题", "其它"]
+    order = ["单选题", "多选题", "填空题", "解答题", "其它"]
     for label in order:
         blocks = sections_map.get(label, [])
         if blocks:
             title = label
+            print(f"[PAPER] 章节 {title}: {len(blocks)} 道题")
             sections.append((title, blocks))
+
+    print(f"[PAPER] 总共处理 {processed_count} 道题，生成 {len(sections)} 个章节")
 
     tex_content = _paper_template(
         title=payload.title or "试卷",

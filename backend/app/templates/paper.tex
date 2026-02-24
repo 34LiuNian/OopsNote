@@ -1,6 +1,6 @@
-\documentclass[a4paper,11pt]{article}
+\documentclass[a4paper, 11pt]{article}
 \usepackage{ctex}
-\usepackage{amsmath,amssymb}
+\usepackage{amsmath, amssymb}
 \usepackage{geometry}
 \usepackage{xeCJK}
 \usepackage{xeCJKfntef}
@@ -18,26 +18,41 @@
 \usepackage{tabularray}
 \usepackage{multirow}
 \usepackage{setspace}
-\pagestyle{fancy}
+
+% 页码样式
+\pagestyle{fancy} 
 \fancyhead{}
-\fancyfoot{}
-\fancyfoot[C]{\normalsize 数学试题第\thepage 页（共 \pageref{LastPage} 页）}
-\renewcommand{\headrulewidth}{0mm}
+\fancyfoot{} 
+\fancyfoot[C]{\normalsize {{SUBTITLE}} 第\thepage 页（共 \pageref{LastPage} 页）} 
+\renewcommand{\headrulewidth}{0mm} % 祛除页眉线
+
+% 定义一些符号
 \DeclareMathOperator{\arccot}{arccot}
 \newcommand{\dlim}{\displaystyle\lim}
 \newcommand{\dint}{\displaystyle\int}
 \newcommand{\e}{\mathrm{e}}
 \renewcommand{\i}{\mathrm{i}}
-\questionsetup{show-answer={{SHOW_ANSWERS}}}
-\fillinsetup{no-answer-type=none, show-answer=false}
-\geometry{left=31.7mm, right=31.7mm, top=30.4mm, bottom=30.4mm}
+
+% 答案相关设置
+% \questionsetup{show-answer={{SHOW_ANSWERS}}}
+% \fillinsetup{no-answer-type=none, show-answer=false}
+
+% 引入章节标题和题目格式模板（编译时会被内联）
+\input{section_headers.tex}
+\input{question_formats.tex}
+
+% 页边距
+\geometry{
+	left=31.7mm, right=31.7mm, top=30.4mm, bottom=30.4mm
+}
+
 \begin{document}
+
 \setstretch{1.5}
-\everymath{\displaystyle}
 \begin{center}
-{\fontsize{17pt}{\baselineskip} \selectfont {{TITLE}}\\[9pt]}
-\textbf{\fontsize{22pt}{\baselineskip}\selectfont {{SUBTITLE}}}
+	{\fontsize{17pt}{\baselineskip} \selectfont {{TITLE}}\\[9pt]}
 \end{center}
 
 {{SECTIONS}}
+
 \end{document}
