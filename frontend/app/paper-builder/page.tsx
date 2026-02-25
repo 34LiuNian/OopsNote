@@ -14,6 +14,8 @@ import {
 } from "@primer/react";
 import { compilePaper, useProblemList } from "../../features/tasks";
 import { ProblemListItem } from "../../components/ProblemListItem";
+import { TagPicker } from "../../components/TagPicker";
+import { useTagDimensions } from "../../features/tags";
 
 const SUBJECT_OPTIONS = [
   { value: "math", label: "数学" },
@@ -22,18 +24,44 @@ const SUBJECT_OPTIONS = [
   { value: "", label: "全部学科" },
 ];
 
+// 生成默认试卷标题：{月} 月{日} 日{学科} 作业
+function generateDefaultTitle(subjectLabel: string): string {
+  const now = new Date();
+  const month = now.getMonth() + 1;
+  const day = now.getDate();
+  return `${month}月${day}日${subjectLabel}作业`;
+}
+
 export default function PaperBuilderPage() {
   const [subject, setSubject] = useState<string>("math");
-  const [tag, setTag] = useState<string>("");
+  const [knowledgeFilter, setKnowledgeFilter] = useState<string[]>([]);
+  const { effectiveDimensions: tagStyles } = useTagDimensions();
+  
   const {
     items,
     isLoading,
     error,
-  } = useProblemList({ subject: subject || undefined, tag: tag || undefined });
+  } = useProblemList({ 
+    subject: subject || undefined, 
+    tag: knowledgeFilter.length > 0 ? knowledgeFilter[0] : undefined 
+  });
 
   const [selected, setSelected] = useState<Record<string, boolean>>({});
-  const [paperTitle, setPaperTitle] = useState("作业");
-  const [paperSubtitle, setPaperSubtitle] = useState("数学");
+  
+  // 根据学科获取学科标签
+  const subjectLabel = useMemo(() => {
+    const subj = SUBJECT_OPTIONS.find((opt) => opt.value === subject);
+    return subj?.label || "综合";
+  }, [subject]);
+  
+  // 试卷标题 - 直接使用计算后的初始值
+  const [paperTitle, setPaperTitle] = useState<string>(() => generateDefaultTitle(subjectLabel));
+  
+  // 当学科改变时更新标题
+  useEffect(() => {
+    setPaperTitle(generateDefaultTitle(subjectLabel));
+  }, [subjectLabel]);
+
   const [paperPdfUrl, setPaperPdfUrl] = useState<string | null>(null);
   const [paperError, setPaperError] = useState<{ message: string; log?: string } | null>(null);
   const [paperLoading, setPaperLoading] = useState(false);
@@ -63,12 +91,11 @@ export default function PaperBuilderPage() {
           problem_id: item.problem_id,
         })),
         title: paperTitle.trim() || "试卷",
-        subtitle: paperSubtitle.trim() || "",
       });
 
       if (!response.ok) {
         const contentType = response.headers.get("Content-Type") || "";
-        let message = `生成失败: ${response.status}`;
+        let message = `生成失败：${response.status}`;
         let log = "";
 
         if (contentType.includes("application/json")) {
@@ -126,10 +153,6 @@ export default function PaperBuilderPage() {
               <FormControl.Label>试卷标题</FormControl.Label>
               <TextInput value={paperTitle} onChange={(e) => setPaperTitle(e.target.value)} block />
             </FormControl>
-            <FormControl>
-              <FormControl.Label>副标题</FormControl.Label>
-              <TextInput value={paperSubtitle} onChange={(e) => setPaperSubtitle(e.target.value)} block />
-            </FormControl>
             <Box sx={{ display: "flex", gap: 2, alignItems: "center" }}>
               <Label variant="secondary">已选 {selectedCount} 道</Label>
               <Button size="small" variant="primary" onClick={generatePaper} disabled={selectedCount === 0 || paperLoading}>
@@ -154,10 +177,17 @@ export default function PaperBuilderPage() {
                   ))}
                 </Select>
               </FormControl>
-              <FormControl>
-                <FormControl.Label>知识点包含</FormControl.Label>
-                <TextInput value={tag} onChange={(e) => setTag(e.target.value)} block />
-              </FormControl>
+              <Box>
+                <Text sx={{ fontWeight: "bold", mb: 2, display: "block" }}>知识点筛选</Text>
+                <TagPicker
+                  title=""
+                  dimension="knowledge"
+                  value={knowledgeFilter}
+                  onChange={setKnowledgeFilter}
+                  styles={tagStyles}
+                  placeholder="输入知识点关键词进行筛选"
+                />
+              </Box>
             </Box>
 
             {items.length === 0 ? (

@@ -58,7 +58,6 @@ class PaperCompileRequest(BaseModel):
     """Request to compile a paper from multiple problems."""
     items: List[PaperItemRequest]
     title: Optional[str] = Field(default="试卷", description="Paper title")
-    subtitle: Optional[str] = Field(default=None, description="Paper subtitle")
     show_answers: bool = Field(
         default=False, description="Whether to show answers in paper"
     )

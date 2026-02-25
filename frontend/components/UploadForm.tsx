@@ -409,9 +409,22 @@ export function UploadForm() {
             </FormControl>
             <FormControl>
               <FormControl.Label>难度</FormControl.Label>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <Box
+                sx={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  border: '1px solid',
+                  borderColor: 'border.default',
+                  borderRadius: 2,
+                  overflow: 'hidden',
+                  ':focus-within': {
+                    borderColor: 'accent.fg',
+                    boxShadow: '0 0 0 3px color-mix(in srgb, accent.fg 20%, transparent)',
+                  },
+                }}
+              >
                 <TextInput
-                  placeholder="a"
+                  placeholder="题号"
                   value={difficultyLeft}
                   onChange={(e) => {
                     const next = e.target.value;
@@ -430,25 +443,48 @@ export function UploadForm() {
                       difficultyRightRef.current?.focus();
                     }
                   }}
-                  sx={{ flex: 1 }}
-                />
-                <Text
                   sx={{
+                    flex: 1,
+                    border: 'none',
+                    borderRadius: 0,
+                    input: {
+                      textAlign: 'center',
+                    },
+                    ':focus': {
+                      boxShadow: 'none',
+                    },
+                  }}
+                />
+                <Box
+                  sx={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    px: 2,
                     color: 'fg.muted',
-                    px: 1,
-                    cursor: 'pointer',
                     userSelect: 'none',
                   }}
-                  onClick={() => difficultyRightRef.current?.focus()}
                 >
                   /
-                </Text>
+                </Box>
                 <TextInput
-                  placeholder="b"
+                  placeholder="总题数"
                   value={difficultyRight}
                   onChange={(e) => setDifficultyRight(e.target.value)}
                   ref={difficultyRightRef}
-                  sx={{ flex: 1 }}
+                  sx={{
+                    flex: 1,
+                    border: '0px solid',
+                    borderRadius: 0,
+                    input: {
+                      textAlign: 'center',
+                      
+                    outline: 'none',
+                    },
+                    ':focus': {
+                      boxShadow: 'none',
+                    },
+                  }}
                 />
               </Box>
             </FormControl>

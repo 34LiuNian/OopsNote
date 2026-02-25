@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Box, Button, Label, Spinner, Text, TextInput } from "@primer/react";
+import { XIcon } from "@primer/octicons-react";
 import type { TagDimension, TagDimensionStyle, TagItem } from "../types/api";
 import { createTag, searchTags } from "../features/tags/api";
 
@@ -178,10 +179,10 @@ export function TagPicker({
   }, [dimension, enableRemoteSearch, input, maxSuggestions]);
 
   return (
-    <Box sx={{ display: "flex", flexDirection: "row", alignItems: "flex-start", gap: 2 }}>
-      <Text sx={{ fontWeight: "bold" }}>{title}</Text>
+    <Box sx={{ display: "flex", flexDirection: "row", alignItems: "center", gap: 2 }}>
+      <Text sx={{ fontWeight: "bold", lineHeight: "28px" }}>{title}</Text>
 
-      <Box sx={{ display: "flex", flexWrap: "wrap", gap: 2, flex: 1, minWidth: 0 }}>
+      <Box sx={{ display: "flex", flexWrap: "wrap", gap: 2, flex: 1, minWidth: 0, alignItems: "center" }}>
         {value.length === 0 ? (
           <Text sx={{ color: "fg.muted", fontSize: 1 }}>未选择</Text>
         ) : (
@@ -203,9 +204,9 @@ export function TagPicker({
                 "&:hover .delete-icon": { opacity: 1 },
               }}
             >
-              <Label variant={variant as any} className="tag-label" sx={{ transition: "opacity 0.15s" }}>{t}</Label>
+              <Label variant={variant as any} className="tag-label" sx={{ transition: "opacity 0.15s", verticalAlign: "middle" }}>{t}</Label>
               <Box className="delete-icon" sx={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", color: "danger.fg", opacity: 0, transition: "opacity 0.15s" }}>
-                <Text sx={{ fontSize: 14 }}>✕</Text>
+                <XIcon size={12} />
               </Box>
             </Box>
           ))

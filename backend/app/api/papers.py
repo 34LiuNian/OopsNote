@@ -256,7 +256,6 @@ def _render_section(question_type: str, blocks: list[str], count: int, total_poi
 def _paper_template(
     *,
     title: str,
-    subtitle: Optional[str],
     show_answers: bool,
     sections: list[tuple[str, list[str]]],
 ) -> str:
@@ -284,7 +283,6 @@ def _paper_template(
     
     return (
         template.replace("{{TITLE}}", title)
-        .replace("{{SUBTITLE}}", subtitle or "")
         .replace("{{SHOW_ANSWERS}}", "true" if show_answers else "false")
         .replace("{{SECTIONS}}", sections_text)
     )
@@ -377,7 +375,6 @@ def compile_paper(request: Request, payload: PaperCompileRequest) -> Response:
 
     tex_content = _paper_template(
         title=payload.title or "试卷",
-        subtitle=payload.subtitle or "",
         show_answers=payload.show_answers,
         sections=sections,
     )
@@ -399,7 +396,6 @@ def compile_paper(request: Request, payload: PaperCompileRequest) -> Response:
         "paper_id": paper_id,
         "created_at": datetime.now(timezone.utc).isoformat(),
         "title": payload.title,
-        "subtitle": payload.subtitle,
         "items": [i.model_dump() for i in payload.items],
     }
     paper_dir = _paper_dir()

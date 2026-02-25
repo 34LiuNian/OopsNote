@@ -45,3 +45,19 @@ export async function createTag(payload: {
     }),
   });
 }
+
+export async function deleteTag(tagId: string): Promise<{ ok: boolean; tag_id: string }> {
+  return fetchJson<{ ok: boolean; tag_id: string }>(`/tags/${tagId}`, {
+    method: "DELETE",
+  });
+}
+
+export async function updateTag(
+  tagId: string,
+  payload: { value: string }
+): Promise<TagsResponse> {
+  return fetchJson<TagsResponse>(`/tags/${tagId}`, {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  });
+}

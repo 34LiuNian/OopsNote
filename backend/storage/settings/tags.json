@@ -43,13 +43,6 @@
       "created_at": "2025-12-31T15:38:30.993777Z"
     },
     {
-      "id": "2fd7e5e20e474bcf93d9bb3f51d3da18",
-      "dimension": "knowledge",
-      "value": "圆锥曲线/椭圆",
-      "aliases": [],
-      "created_at": "2025-12-31T15:38:30.997143Z"
-    },
-    {
       "id": "87833ace84c24659813b3e3e3d9d2264",
       "dimension": "error",
       "value": "对称性分析错误",
@@ -113,46 +106,11 @@
       "created_at": "2026-02-09T10:13:57.484973Z"
     },
     {
-      "id": "0a9e8ab560904756895564b6a4a8d37f",
-      "dimension": "knowledge",
-      "value": "未标注",
-      "aliases": [],
-      "created_at": "2026-02-15T08:38:37.460121Z"
-    },
-    {
-      "id": "ea4a7b5004284456ac63f18f15324ab0",
-      "dimension": "knowledge",
-      "value": "知识点1",
-      "aliases": [],
-      "created_at": "2026-02-15T09:28:56.787695Z"
-    },
-    {
-      "id": "17828f98254349d295b57312fabcf640",
-      "dimension": "knowledge",
-      "value": "知识点2",
-      "aliases": [],
-      "created_at": "2026-02-15T09:28:56.818395Z"
-    },
-    {
-      "id": "6a09bf73927c448f94ebd6c9c5e0e9b0",
-      "dimension": "knowledge",
-      "value": "化学/离子化合物",
-      "aliases": [],
-      "created_at": "2026-02-17T12:27:14.649333Z"
-    },
-    {
       "id": "2120c231fef44f93866c8b30a930553b",
       "dimension": "knowledge",
       "value": "化学/有机",
       "aliases": [],
       "created_at": "2026-02-19T09:47:22.546636Z"
-    },
-    {
-      "id": "72029417068046b38d30b603ecf3bc82",
-      "dimension": "knowledge",
-      "value": "化学/空气污染物",
-      "aliases": [],
-      "created_at": "2026-02-19T09:47:22.554430Z"
     },
     {
       "id": "9f21b0f67df440208d5bd009ef9971e9",
@@ -167,13 +125,6 @@
       "value": "向量/平行条件",
       "aliases": [],
       "created_at": "2026-02-20T14:24:21.299770Z"
-    },
-    {
-      "id": "8ca496f0d5454be29d03375605a359ba",
-      "dimension": "knowledge",
-      "value": "化学/滴定",
-      "aliases": [],
-      "created_at": "2026-02-21T07:42:33.009184Z"
     },
     {
       "id": "32d757e90d834ba28a26bebdbc477d90",
@@ -197,11 +148,11 @@
       "created_at": "2026-02-22T13:14:35.509517Z"
     },
     {
-      "id": "5697b832e35d40b581679d332b054494",
+      "id": "02d0c67aa60a4c26a7311257ace705a5",
       "dimension": "knowledge",
-      "value": "数学/圆锥曲线/椭圆",
+      "value": "函数",
       "aliases": [],
-      "created_at": "2026-02-23T09:51:01.609188Z"
+      "created_at": "2026-02-25T07:41:11.248812Z"
     }
   ]
 }

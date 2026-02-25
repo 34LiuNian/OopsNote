@@ -3,7 +3,8 @@
 import { Box, Button, Flash, FormControl, Heading, Label, Select, Spinner, Text, TextInput } from "@primer/react";
 import { useCallback, useEffect, useState } from "react";
 import { sileo } from "sileo";
-import { createTag, searchTags } from "../../features/tags/api";
+import { TrashIcon } from "@primer/octicons-react";
+import { createTag, deleteTag, searchTags, updateTag } from "../../features/tags/api";
 import { TAG_DIMENSIONS, useTagDimensions } from "../../features/tags";
 import type {
   TagDimension,
@@ -37,6 +38,9 @@ export default function TagsPage() {
   const [newDim, setNewDim] = useState<TagDimension>("knowledge");
   const [newValue, setNewValue] = useState("");
   const [newAliases, setNewAliases] = useState("");
+
+  const [editingTag, setEditingTag] = useState<TagItem | null>(null);
+  const [editValue, setEditValue] = useState("");
 
   const loadTags = useCallback(async () => {
     setLoading(true);
@@ -83,6 +87,61 @@ export default function TagsPage() {
       });
     }
   };
+
+  const onDelete = useCallback(async (tag: TagItem) => {
+    try {
+      await deleteTag(tag.id);
+      sileo.success({ title: "已删除" });
+      await loadTags();
+    } catch (e) {
+      sileo.error({
+        title: "删除失败",
+        description: e instanceof Error ? e.message : "请稍后重试",
+      });
+    }
+  }, [loadTags]);
+
+  const onRename = useCallback((tag: TagItem) => {
+    setEditingTag(tag);
+    setEditValue(tag.value);
+  }, []);
+
+  const onSaveRename = useCallback(async () => {
+    if (!editingTag) return;
+    const trimmed = editValue.trim();
+    if (!trimmed) {
+      sileo.error({ title: "标签内容不能为空" });
+      return;
+    }
+    if (trimmed === editingTag.value) {
+      setEditingTag(null);
+      return;
+    }
+    try {
+      await updateTag(editingTag.id, { value: trimmed });
+      sileo.success({ title: "已更新" });
+      setEditingTag(null);
+      await loadTags();
+    } catch (e) {
+      sileo.error({
+        title: "更新失败",
+        description: e instanceof Error ? e.message : "请稍后重试",
+      });
+    }
+  }, [editingTag, editValue, loadTags]);
+
+  const onCancelRename = useCallback(() => {
+    setEditingTag(null);
+    setEditValue("");
+  }, []);
+
+  const onContextMenu = useCallback((e: React.MouseEvent, tag: TagItem) => {
+    e.preventDefault();
+    e.stopPropagation();
+    // 右键直接打开重命名对话框
+    setEditingTag(tag);
+    setEditValue(tag.value);
+  }, []);
 
   const onSaveDims = async () => {
     try {
@@ -272,9 +331,44 @@ export default function TagsPage() {
                 </Heading>
                 <Box sx={{ display: "flex", flexWrap: "wrap", gap: 2 }}>
                   {items.map((t) => (
-                    <Label key={t.id} variant={(effectiveDims[t.dimension]?.label_variant || "secondary") as any}>
-                      {t.value}
-                    </Label>
+                    <Box
+                      key={t.id}
+                      sx={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        position: "relative",
+                        cursor: "pointer",
+                        "&:hover .tag-label": { opacity: 0 },
+                        "&:hover .delete-icon": { opacity: 1 },
+                      }}
+                      onClick={() => onDelete(t)}
+                      onContextMenu={(e) => onContextMenu(e, t)}
+                    >
+                      <Label
+                        variant={(effectiveDims[t.dimension]?.label_variant || "secondary") as any}
+                        className="tag-label"
+                        sx={{ transition: "opacity 0.15s" }}
+                      >
+                        {t.value}
+                      </Label>
+                      <Box
+                        className="delete-icon"
+                        sx={{
+                          position: "absolute",
+                          inset: 0,
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          color: "danger.fg",
+                          opacity: 0,
+                          transition: "opacity 0.15s",
+                          bg: "canvas.default",
+                          borderRadius: 2,
+                        }}
+                      >
+                        <TrashIcon size={16} />
+                      </Box>
+                    </Box>
                   ))}
                 </Box>
               </Box>
@@ -285,6 +379,62 @@ export default function TagsPage() {
           )}
         </Box>
       </Box>
+
+      {/* Rename Dialog */}
+      {editingTag && (
+        <Box
+          sx={{
+            position: "fixed",
+            inset: 0,
+            bg: "overlay.backdrop",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 1000,
+          }}
+          onClick={onCancelRename}
+        >
+          <Box
+            sx={{
+              bg: "canvas.default",
+              border: "1px solid",
+              borderColor: "border.default",
+              borderRadius: 2,
+              p: 4,
+              width: "100%",
+              maxWidth: 400,
+              boxShadow: "shadow.large",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <Heading as="h3" sx={{ fontSize: 3, mb: 3 }}>
+              重命名标签
+            </Heading>
+            <FormControl>
+              <FormControl.Label>标签内容</FormControl.Label>
+              <TextInput
+                value={editValue}
+                onChange={(e) => setEditValue(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    onSaveRename();
+                  } else if (e.key === "Escape") {
+                    onCancelRename();
+                  }
+                }}
+                autoFocus
+                block
+              />
+            </FormControl>
+            <Box sx={{ mt: 4, display: "flex", gap: 2, justifyContent: "flex-end" }}>
+              <Button onClick={onCancelRename}>取消</Button>
+              <Button variant="primary" onClick={onSaveRename}>
+                保存
+              </Button>
+            </Box>
+          </Box>
+        </Box>
+      )}
     </Box>
   );
 }

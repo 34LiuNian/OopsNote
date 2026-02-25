@@ -23,16 +23,34 @@
 % \end{questionFillIn}
 \newcommand{\fillinBlank}[1]{\fillin[width=5em][#1]}
 
-% 解答题环境（带分值）
+% 解答题环境（带分值，自适应间距）
 % 使用示例：
 % \begin{problemWithPoints}{17}
 % 题干内容
 % \end{problemWithPoints}
+% 
+% 说明：默认使用自适应间距，一页约容纳 2 道大题
+% 如需手动指定间距，可使用：
+%   \begin{problemWithPoints*}{17}[120]  % 指定 120pt 间距
 \newenvironment{problemWithPoints}[1]{%
 	\begin{problem}[points=#1]%
 }{%
 	\end{problem}%
-	\vspace{80pt}%
+	\vspace{120pt plus 10pt minus 10pt}%
+}
+
+% 解答题环境（带分值，支持自定义间距）
+% 使用示例：
+% \begin{problemWithPointsCustom}{17}      % 使用默认 120pt 间距
+% \begin{problemWithPointsCustom*}{17}{150} % 使用 150pt 间距
+% 题干内容
+% \end{problemWithPointsCustom}
+\newenvironment{problemWithPointsCustom}[2][120]{%
+	\begin{problem}[points=#2]%
+	\gdef\currentProblemVspace{#1}%
+}{%
+	\end{problem}%
+	\vspace{\currentProblemVspace pt}%
 }
 
 % 解答题环境（大间距，用于最后几题）

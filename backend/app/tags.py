@@ -240,6 +240,42 @@ class TagStore:
             self._write_state_unlocked(state)
             return created, True
 
+    def delete(self, tag_id: str) -> bool:
+        """Delete a tag by ID. Returns True if deleted, False if not found."""
+        with self._lock:
+            state = self._load_state_unlocked()
+            original_count = len(state.items)
+            state.items = [t for t in state.items if t.id != tag_id]
+            if len(state.items) < original_count:
+                self._write_state_unlocked(state)
+                return True
+            return False
+
+    def update_value(self, tag_id: str, new_value: str) -> TagItem | None:
+        """Update a tag's value by ID. Returns the updated tag or None if not found."""
+        new_value = (new_value or "").strip()
+        if not new_value:
+            return None
+        
+        with self._lock:
+            state = self._load_state_unlocked()
+            for item in state.items:
+                if item.id == tag_id:
+                    # Check if the new value already exists for this dimension
+                    key = self._key(item.dimension, new_value)
+                    for existing in state.items:
+                        if self._key(existing.dimension, existing.value) == key and existing.id != tag_id:
+                            raise ValueError(f"标签 '{new_value}' 已存在于该维度")
+                    
+                    # Update the value
+                    updated = item.model_copy(update={"value": new_value})
+                    state.items = [
+                        updated if t.id == tag_id else t for t in state.items
+                    ]
+                    self._write_state_unlocked(state)
+                    return updated
+            return None
+
     @staticmethod
     def _key(dimension: TagDimension, value: str) -> str:
         return f"{dimension.value}::{value.casefold().strip()}"

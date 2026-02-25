@@ -133,6 +133,35 @@ def create_tag(payload: TagCreateRequest) -> TagsResponse:
     )
 
 
+@router.delete("/tags/{tag_id}")
+def delete_tag(tag_id: str) -> dict:
+    """Delete a tag by ID."""
+    success = tag_store.delete(tag_id)
+    if not success:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail="标签不存在或已被删除")
+    return {"ok": True, "tag_id": tag_id}
+
+
+@router.put("/tags/{tag_id}", response_model=TagsResponse)
+def update_tag(tag_id: str, payload: dict) -> TagsResponse:
+    """Update a tag's value by ID."""
+    from fastapi import HTTPException
+    
+    value = payload.get("value", "").strip()
+    if not value:
+        raise HTTPException(status_code=400, detail="标签内容不能为空")
+    
+    item = tag_store.update_value(tag_id, value)
+    if item is None:
+        raise HTTPException(status_code=404, detail="标签不存在")
+    
+    from ..tags import TagItemView
+    return TagsResponse(
+        items=[TagItemView(**item.model_dump(mode="json"), ref_count=0)]
+    )
+
+
 @router.get("/settings/tag-dimensions", response_model=TagDimensionsResponse)
 def get_tag_dimensions() -> TagDimensionsResponse:
     return TagDimensionsResponse(dimensions=tag_store.load_dimensions())

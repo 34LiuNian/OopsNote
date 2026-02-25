@@ -61,6 +61,16 @@ export function Mermaid({ code }: { code: string }) {
   }
 
   return (
-    <Box sx={{ bg: "canvas.default", overflowX: "auto" }} dangerouslySetInnerHTML={{ __html: svg }} />
+    <Box sx={{ bg: "canvas.default", overflowX: "auto", maxWidth: "100%" }}>
+      <Box
+        sx={{
+          "& svg": {
+            maxWidth: "100%",
+            height: "auto",
+          },
+        }}
+        dangerouslySetInnerHTML={{ __html: svg }}
+      />
+    </Box>
   );
 }

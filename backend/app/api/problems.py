@@ -15,7 +15,20 @@ def _service(request: Request):
 
 @router.get("/problems", response_model=ProblemsResponse)
 def list_problems(
-    request: Request, subject: str | None = None, tag: str | None = None
+    request: Request,
+    subject: str | None = None,
+    tag: str | None = None,
+    source: str | None = None,
+    knowledge_tag: str | None = None,
+    error_tag: str | None = None,
+    user_tag: str | None = None,
 ) -> ProblemsResponse:
     svc = _service(request)
-    return svc.list_problems(subject=subject, tag=tag)
+    return svc.list_problems(
+        subject=subject,
+        tag=tag,
+        source=source,
+        knowledge_tag=knowledge_tag,
+        error_tag=error_tag,
+        user_tag=user_tag,
+    )
