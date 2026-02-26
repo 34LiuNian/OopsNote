@@ -197,10 +197,10 @@ export default function TagsPage() {
         <Box sx={{ flex: 1 }}>
           <Box sx={{ p: 3, border: "1px solid", borderColor: "border.default", borderRadius: 2 }}>
             <Heading as="h3" sx={{ fontSize: 2, mb: 2 }}>
-              维度样式（颜色）
+              维度颜色
             </Heading>
             <Text sx={{ color: "fg.muted", fontSize: 1, mb: 3, display: "block" }}>
-              这里配置每个维度使用的 Label 颜色（Primer variant）。
+              这里配置每个维度使用的 Label 颜色。
             </Text>
 
             <Box
@@ -301,22 +301,26 @@ export default function TagsPage() {
         <Box sx={{ mt: 3, display: "grid", gridTemplateColumns: ["1fr", "1fr 1fr"], gap: 3 }}>
           <FormControl>
             <FormControl.Label>搜索</FormControl.Label>
-            <TextInput value={query} onChange={(e) => setQuery(e.target.value)} placeholder="输入关键词模糊搜索" block />
+            <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
+              <TextInput value={query} onChange={(e) => setQuery(e.target.value)} placeholder="输入关键词模糊搜索" sx={{ minWidth: 240 }} />
+              <Button onClick={() => loadTags()} disabled={loading}>
+                {loading ? (
+                  <>
+                    <Spinner size="small" sx={{ mr: 1 }} />
+                    加载中…
+                  </>
+                ) : (
+                  "刷新"
+                )}
+              </Button>
+              <Text sx={{ color: "fg.muted", fontSize: 1 }}>共 {allItems.length} 条</Text>
+            </Box>
           </FormControl>
+          
         </Box>
 
         <Box sx={{ mt: 3, display: "flex", alignItems: "center", gap: 2 }}>
-          <Button onClick={() => loadTags()} disabled={loading}>
-            {loading ? (
-              <>
-                <Spinner size="small" sx={{ mr: 1 }} />
-                加载中…
-              </>
-            ) : (
-              "刷新"
-            )}
-          </Button>
-          <Text sx={{ color: "fg.muted", fontSize: 1 }}>共 {allItems.length} 条</Text>
+
         </Box>
 
         <Box sx={{ mt: 4, display: "flex", flexDirection: "column", gap: 4 }}>

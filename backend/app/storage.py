@@ -39,11 +39,13 @@ class LocalAssetStore:
         path = self.base_dir / safe_name
         binary = base64.b64decode(payload)
         path.write_bytes(binary)
+        # Return relative path for API exposure
+        relative_path = f"/assets/{safe_name}"
         return AssetMetadata(
             asset_id=asset_id,
             source=AssetSource.UPLOAD,
             original_reference="upload",
-            path=str(path),
+            path=relative_path,
             mime_type=resolved_mime,
             size_bytes=len(binary),
             created_at=datetime.now(timezone.utc),

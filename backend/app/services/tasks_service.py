@@ -202,6 +202,11 @@ class TasksService:
                 updated_at=t.updated_at,
                 subject=t.payload.subject,
                 question_no=getattr(t.payload, "question_no", None),
+                asset={
+                    "asset_id": t.asset.asset_id,
+                    "path": f"/assets/{Path(t.asset.path).name}" if t.asset and t.asset.path else None,
+                    "mime_type": t.asset.mime_type,
+                } if t.asset else None,
             )
             for t in tasks
         ]
@@ -428,6 +433,10 @@ class TasksService:
         *,
         subject: str | None = None,
         tag: str | None = None,
+        source: str | None = None,
+        knowledge_tag: str | None = None,
+        error_tag: str | None = None,
+        user_tag: str | None = None,
     ) -> ProblemsResponse:  # pylint: disable=too-many-locals
         """Return a flattened library view of problems."""
         tasks = self.repository.list_all().values()
@@ -468,9 +477,17 @@ class TasksService:
 
                 combined_knowledge = _merge_unique([*manual_knowledge, *ai_knowledge])
 
-                if tag is not None:
-                    if tag not in combined_knowledge:
-                        continue
+                # Apply filters
+                if tag is not None and tag not in combined_knowledge:
+                    continue
+                if source is not None and problem.source != source:
+                    continue
+                if knowledge_tag is not None and knowledge_tag not in manual_knowledge:
+                    continue
+                if error_tag is not None and error_tag not in manual_error:
+                    continue
+                if user_tag is not None and user_tag not in manual_custom:
+                    continue
 
                 items.append(
                     ProblemSummary(

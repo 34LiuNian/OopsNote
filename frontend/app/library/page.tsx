@@ -16,6 +16,9 @@ import { sileo } from "sileo";
 import { useEffect } from "react";
 import { useActiveTaskList, useProblemList } from "../../features/tasks";
 import { ProblemListItem } from "../../components/ProblemListItem";
+import { TaskThumbnail } from "../../components/TaskThumbnail";
+import { TagSelectorRow } from "../../components/TagSelectorRow";
+import { useTagDimensions } from "../../features/tags";
 
 const SUBJECT_OPTIONS = [
   { value: "", label: "全部学科" },
@@ -26,12 +29,22 @@ const SUBJECT_OPTIONS = [
 
 export default function LibraryPage() {
   const [subject, setSubject] = useState<string>("");
-  const [tag, setTag] = useState<string>("");
+  const [sourceFilter, setSourceFilter] = useState<string>("");
+  const [knowledgeFilter, setKnowledgeFilter] = useState<string[]>([]);
+  const [errorFilter, setErrorFilter] = useState<string[]>([]);
+  const [customFilter, setCustomFilter] = useState<string[]>([]);
+  const { effectiveDimensions: tagStyles } = useTagDimensions();
   const {
     items,
     isLoading,
     error,
-  } = useProblemList({ subject: subject || undefined, tag: tag || undefined });
+  } = useProblemList({ 
+    subject: subject || undefined, 
+    source: sourceFilter || undefined,
+    knowledge_tag: knowledgeFilter.length > 0 ? knowledgeFilter[0] : undefined,
+    error_tag: errorFilter.length > 0 ? errorFilter[0] : undefined,
+    user_tag: customFilter.length > 0 ? customFilter[0] : undefined,
+  });
   const {
     items: activeTasks,
     activeItems: activeTaskItems,
@@ -54,7 +67,7 @@ export default function LibraryPage() {
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
       {/* Active Tasks */}
-      <Box sx={{ p: 3, border: '1px solid', borderColor: 'border.default', borderRadius: 2 }}>
+      <Box sx={{ p: 3, border: '1px solid', borderColor: 'border.default', borderRadius: 2, minHeight: 200 }}>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
           <Box>
             <Text sx={{ fontSize: 0, color: 'fg.muted', textTransform: 'uppercase' }}>Tasks</Text>
@@ -70,46 +83,34 @@ export default function LibraryPage() {
         </Box>
 
         {activeTaskItems.length === 0 ? (
-          <Box sx={{ textAlign: 'center', p: 4, color: 'fg.muted' }}>
+          <Box sx={{ textAlign: 'center', color: 'fg.muted' }}>
             <Text as="p" sx={{ fontWeight: 'bold' }}>当前没有进行中的任务。</Text>
             <Text as="p" sx={{ fontSize: 1 }}>上传后任务会出现在这里，可点击进入查看进度。</Text>
           </Box>
         ) : (
           <Box>
-            <Box sx={{ display: ['none', 'grid'], gridTemplateColumns: '2fr 1fr 2fr', gap: 2, px: 2, py: 1, bg: 'canvas.subtle', fontWeight: 'bold', fontSize: 1, color: 'fg.muted' }}>
-              <Text>任务</Text>
-              <Text>学科 / 状态</Text>
-              <Text>进度</Text>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+              <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
+                {isLoadingActive ? (
+                  <Label variant="secondary">刷新中...</Label>
+                ) : (
+                  <Label variant="secondary">进行中 {activeTaskItems.length} 条</Label>
+                )}
+              </Box>
             </Box>
-            <Box as="ul" sx={{ listStyle: 'none', p: 0, m: 0 }}>
+            <Box as="ul" sx={{ listStyle: 'none', p: 0, m: 0, display: 'flex', gap: 2, flexWrap: 'wrap' }}>
               {activeTaskItems.map((t) => (
-                <Box as="li" key={t.id} sx={{ borderBottom: '1px solid', borderColor: 'border.muted' }}>
+                <Box as="li" key={t.id}>
                   <Link href={`/tasks/${t.id}`} style={{ textDecoration: 'none', color: 'inherit' }}>
                     <Box
                       sx={{
-                        display: ['flex', 'grid'],
-                        flexDirection: 'column',
-                        gridTemplateColumns: '2fr 1fr 2fr',
-                        gap: 2,
-                        px: 2,
-                        py: 2,
-                        alignItems: ['flex-start', 'center'],
                         cursor: 'pointer',
                         borderRadius: 2,
+                        overflow: 'hidden',
                         '&:hover': { bg: 'canvas.subtle' },
                       }}
                     >
-                      <Box sx={{ width: '100%' }}>
-                        <Text sx={{ fontWeight: 'bold', display: 'block' }}>{t.question_no ? `题号 ${t.question_no}` : "任务"}</Text>
-                        <Text sx={{ fontSize: 0, color: 'fg.muted' }}>{t.id.slice(0, 6)}</Text>
-                      </Box>
-                      <Box sx={{ width: '100%', display: 'flex', alignItems: 'center', gap: 2 }}>
-                        <Text sx={{ display: 'block' }}>{t.subject}</Text>
-                        <Label variant="secondary">{t.status}</Label>
-                      </Box>
-                      <Box sx={{ width: '100%' }}>
-                        <Text sx={{ fontSize: 1, color: 'fg.muted' }}>{t.stage_message || t.stage || "—"}</Text>
-                      </Box>
+                      <TaskThumbnail asset={t.asset} size="medium" />
                     </Box>
                   </Link>
                 </Box>
@@ -120,7 +121,7 @@ export default function LibraryPage() {
       </Box>
 
       {/* Library Filter */}
-      <Box sx={{ p: 3, border: '1px solid', borderColor: 'border.default', borderRadius: 2 }}>
+      <Box sx={{ p: 3, border: '1px solid', borderColor: 'border.default', borderRadius: 2}}>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
           <Box>
             <Text sx={{ fontSize: 0, color: 'fg.muted', textTransform: 'uppercase' }}>Library</Text>
@@ -131,7 +132,7 @@ export default function LibraryPage() {
 
         <Box sx={{ display: 'grid', gridTemplateColumns: ['1fr', '1fr 1fr'], gap: 3, mb: 3 }}>
           <FormControl>
-            <FormControl.Label>学科筛选</FormControl.Label>
+            <FormControl.Label>学科</FormControl.Label>
             <Select value={subject} onChange={(e) => setSubject(e.target.value)} block>
               {SUBJECT_OPTIONS.map((option) => (
                 <Select.Option key={option.value || "all"} value={option.value}>
@@ -140,16 +141,24 @@ export default function LibraryPage() {
               ))}
             </Select>
           </FormControl>
-          <FormControl>
-            <FormControl.Label>知识点包含</FormControl.Label>
-            <TextInput
-              placeholder="例如：勾股定理"
-              value={tag}
-              onChange={(e) => setTag(e.target.value)}
-              block
-            />
-          </FormControl>
         </Box>
+
+        <TagSelectorRow
+          sourceValue={sourceFilter ? [sourceFilter] : []}
+          onSourceChange={(vals) => setSourceFilter(vals[0] || "")}
+          knowledgeValue={knowledgeFilter}
+          onKnowledgeChange={setKnowledgeFilter}
+          errorValue={errorFilter}
+          onErrorChange={setErrorFilter}
+          customValue={customFilter}
+          onCustomChange={setCustomFilter}
+          styles={tagStyles}
+          // placeholders={{
+          //   knowledge: "输入知识点关键词进行筛选",
+          //   error: "输入错因关键词进行筛选",
+          //   custom: "输入自定义标签进行筛选",
+          // }}
+        />
 
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
           <Label variant="secondary">共 {items.length} 道题</Label>

@@ -6,6 +6,8 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from pathlib import Path
 
 from .clients import load_agent_config_bundle
 from .config import AppConfig, load_app_config
@@ -90,6 +92,11 @@ def create_app() -> FastAPI:
         yield
 
     app = FastAPI(title="AI Mistake Organizer Backend", lifespan=lifespan)
+
+    # Mount static files for asset access
+    assets_dir = Path(__file__).resolve().parent.parent / "storage" / "assets"
+    assets_dir.mkdir(parents=True, exist_ok=True)
+    app.mount("/assets", StaticFiles(directory=str(assets_dir)), name="assets")
 
     app.add_middleware(
         CORSMiddleware,

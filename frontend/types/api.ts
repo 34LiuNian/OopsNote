@@ -47,6 +47,11 @@ export interface TaskSummary {
   updated_at: string;
   subject: string;
   question_no?: string | null;
+  asset?: {
+    asset_id: string;
+    path: string;
+    mime_type?: string | null;
+  } | null;
 }
 
 export interface TasksResponse {

@@ -67,6 +67,10 @@ export async function deleteTask(taskId: string): Promise<TaskResponse> {
 export type ListProblemsParams = {
   subject?: string;
   tag?: string;
+  source?: string;
+  knowledge_tag?: string;
+  error_tag?: string;
+  user_tag?: string;
 };
 
 export async function listProblems(params?: ListProblemsParams): Promise<ProblemsResponse> {

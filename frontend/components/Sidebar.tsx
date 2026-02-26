@@ -34,7 +34,8 @@ export function Sidebar() {
       sx={{
         width: collapsed ? ["100%", 64] : ["100%", 200],
         bg: "canvas.default",
-        borderRight: ["none", "1px solid rgb(48, 54, 61)"],
+        borderRight: ["none", "1px solid"],
+        borderRightColor: ["border.muted", "border.muted"],
         borderBottom: ["1px solid", "none"],
         display: "flex",
         flexDirection: "column",

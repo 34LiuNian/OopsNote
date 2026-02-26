@@ -14,7 +14,7 @@ import {
 } from "@primer/react";
 import { compilePaper, useProblemList } from "../../features/tasks";
 import { ProblemListItem } from "../../components/ProblemListItem";
-import { TagPicker } from "../../components/TagPicker";
+import { TagSelectorRow } from "../../components/TagSelectorRow";
 import { useTagDimensions } from "../../features/tags";
 
 const SUBJECT_OPTIONS = [
@@ -34,29 +34,35 @@ function generateDefaultTitle(subjectLabel: string): string {
 
 export default function PaperBuilderPage() {
   const [subject, setSubject] = useState<string>("math");
+  const [sourceFilter, setSourceFilter] = useState<string>("");
   const [knowledgeFilter, setKnowledgeFilter] = useState<string[]>([]);
+  const [errorFilter, setErrorFilter] = useState<string[]>([]);
+  const [customFilter, setCustomFilter] = useState<string[]>([]);
   const { effectiveDimensions: tagStyles } = useTagDimensions();
-  
+
   const {
     items,
     isLoading,
     error,
-  } = useProblemList({ 
-    subject: subject || undefined, 
-    tag: knowledgeFilter.length > 0 ? knowledgeFilter[0] : undefined 
+  } = useProblemList({
+    subject: subject || undefined,
+    source: sourceFilter || undefined,
+    knowledge_tag: knowledgeFilter.length > 0 ? knowledgeFilter[0] : undefined,
+    error_tag: errorFilter.length > 0 ? errorFilter[0] : undefined,
+    user_tag: customFilter.length > 0 ? customFilter[0] : undefined,
   });
 
   const [selected, setSelected] = useState<Record<string, boolean>>({});
-  
+
   // 根据学科获取学科标签
   const subjectLabel = useMemo(() => {
     const subj = SUBJECT_OPTIONS.find((opt) => opt.value === subject);
     return subj?.label || "综合";
   }, [subject]);
-  
+
   // 试卷标题 - 直接使用计算后的初始值
   const [paperTitle, setPaperTitle] = useState<string>(() => generateDefaultTitle(subjectLabel));
-  
+
   // 当学科改变时更新标题
   useEffect(() => {
     setPaperTitle(generateDefaultTitle(subjectLabel));
@@ -136,88 +142,89 @@ export default function PaperBuilderPage() {
   }, [paperPdfUrl]);
 
   return (
-    <Box sx={{ display: "flex", flexDirection: "column", gap: 4 }}>
-      <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 2 }}>
-        <Box>
-          <Text sx={{ fontSize: 0, color: "fg.muted", textTransform: "uppercase" }}>Paper Builder</Text>
-          <Heading as="h2" sx={{ fontSize: 3 }}>
-            试题组卷
-          </Heading>
-        </Box>
-      </Box>
-
+    <Box sx={{ display: "flex", flexDirection: "column", gap: 3 }}>
       <Box sx={{ display: "grid", gridTemplateColumns: ["1fr", "1fr 1fr"], gap: 3 }}>
-        <Box>
-          <Box sx={{ display: "flex", flexDirection: "column", gap: 3 }}>
-            <FormControl>
-              <FormControl.Label>试卷标题</FormControl.Label>
-              <TextInput value={paperTitle} onChange={(e) => setPaperTitle(e.target.value)} block />
-            </FormControl>
+        {/* <Box> */}
+
+        <Box sx={{ borderColor: "border.default", borderRadius: 2 }}>
+          <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 2, mb: 3 }}>
+            <Box>
+              <Text sx={{ fontSize: 0, color: "fg.muted", textTransform: "uppercase" }}>Paper Builder</Text>
+              <Heading as="h2" sx={{ fontSize: 3 }}>
+                试题组卷
+              </Heading>
+            </Box>
             <Box sx={{ display: "flex", gap: 2, alignItems: "center" }}>
-              <Label variant="secondary">已选 {selectedCount} 道</Label>
+              {isLoading && <Spinner size="small" />}
+              {error && <Label variant="danger">{error}</Label>}
+              <Text sx={{ color: "fg.muted" }}>已选 {selectedCount} 道</Text>
               <Button size="small" variant="primary" onClick={generatePaper} disabled={selectedCount === 0 || paperLoading}>
                 {paperLoading ? "生成中..." : "生成试卷"}
               </Button>
             </Box>
           </Box>
-          <Box sx={{ borderColor: "border.default", borderRadius: 2 }}>
-            <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 3 }}>
-              {isLoading && <Spinner size="small" />}
-              {error && <Label variant="danger">{error}</Label>}
-            </Box>
-
-            <Box sx={{ display: "grid", gridTemplateColumns: ["1fr", "1fr 1fr"], gap: 3, mb: 3 }}>
-              <FormControl>
-                <FormControl.Label>学科</FormControl.Label>
-                <Select value={subject} onChange={(e) => setSubject(e.target.value)} block>
-                  {SUBJECT_OPTIONS.map((option) => (
-                    <Select.Option key={option.value || "all"} value={option.value}>
-                      {option.label}
-                    </Select.Option>
-                  ))}
-                </Select>
-              </FormControl>
-              <Box>
-                <Text sx={{ fontWeight: "bold", mb: 2, display: "block" }}>知识点筛选</Text>
-                <TagPicker
-                  title=""
-                  dimension="knowledge"
-                  value={knowledgeFilter}
-                  onChange={setKnowledgeFilter}
-                  styles={tagStyles}
-                  placeholder="输入知识点关键词进行筛选"
-                />
-              </Box>
-            </Box>
-
-            {items.length === 0 ? (
-              <Box sx={{ textAlign: "center", p: 4, color: "fg.muted" }}>
-                <Text as="p" sx={{ fontWeight: "bold" }}>
-                  暂无题目。
-                </Text>
-              </Box>
-            ) : (
-              <Box>
-                <Box as="ul" sx={{ listStyle: "none", p: 0, m: 0 }}>
-                  {items.map((item) => (
-                    <Box
-                      as="li"
-                      key={`${item.task_id}-${item.problem_id}`}
-                      sx={{ px: 2, py: 2, borderBottom: "1px solid", borderColor: "border.muted" }}
-                    >
-                      <ProblemListItem
-                        item={item}
-                        selected={!!selected[`${item.task_id}:${item.problem_id}`]}
-                        toggleKey={`${item.task_id}:${item.problem_id}`}
-                        onToggleSelection={toggleSelected}
-                      />
-                    </Box>
-                  ))}
-                </Box>
-              </Box>
-            )}
+          <Box sx={{ display: "grid", gridTemplateColumns: ["1fr", "1fr 1fr"], gap: 3, mb: 3 }}>
+            <FormControl>
+              <FormControl.Label>试卷标题</FormControl.Label>
+              <TextInput value={paperTitle} onChange={(e) => setPaperTitle(e.target.value)} block />
+            </FormControl>
+            <FormControl>
+              <FormControl.Label>学科</FormControl.Label>
+              <Select value={subject} onChange={(e) => setSubject(e.target.value)} block>
+                {SUBJECT_OPTIONS.map((option) => (
+                  <Select.Option key={option.value || "all"} value={option.value}>
+                    {option.label}
+                  </Select.Option>
+                ))}
+              </Select>
+            </FormControl>
           </Box>
+
+          <TagSelectorRow
+            sourceValue={sourceFilter ? [sourceFilter] : []}
+            onSourceChange={(vals) => setSourceFilter(vals[0] || "")}
+            knowledgeValue={knowledgeFilter}
+            onKnowledgeChange={setKnowledgeFilter}
+            errorValue={errorFilter}
+            onErrorChange={setErrorFilter}
+            customValue={customFilter}
+            onCustomChange={setCustomFilter}
+            styles={tagStyles}
+            // placeholders={{
+            //   knowledge: "输入知识点关键词进行筛选",
+            //   error: "输入错因关键词进行筛选",
+            //   custom: "输入自定义标签进行筛选",
+            // }}
+          />
+
+          {items.length === 0 ? (
+            <Box sx={{ textAlign: "center", p: 4, color: "fg.muted" }}>
+              <Text as="p" sx={{ fontWeight: "bold" }}>
+                暂无题目。
+              </Text>
+            </Box>
+          ) : (
+            <Box>
+              <Box as="ul" sx={{ listStyle: "none", p: 0, m: 0 }}>
+                {items.map((item) => (
+                  <Box
+                    as="li"
+                    key={`${item.task_id}-${item.problem_id}`}
+                    sx={{ px: 2, py: 2, borderBottom: "1px solid", borderColor: "border.muted" }}
+                  >
+                    <ProblemListItem
+                      item={item}
+                      selected={!!selected[`${item.task_id}:${item.problem_id}`]}
+                      toggleKey={`${item.task_id}:${item.problem_id}`}
+                      onToggleSelection={toggleSelected}
+                    />
+                  </Box>
+                ))}
+              </Box>
+            </Box>
+          )}
         </Box>
+        {/* </Box> */}
         <Box sx={{ minHeight: 320, border: "1px solid", borderColor: "border.default", borderRadius: 2, overflow: "hidden" }}>
           {paperError ? (
             <Box sx={{ p: 3, height: "100%", overflow: "auto" }}>
@@ -247,8 +254,6 @@ export default function PaperBuilderPage() {
           )}
         </Box>
       </Box>
-
-
     </Box>
   );
 }

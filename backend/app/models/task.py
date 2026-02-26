@@ -105,6 +105,10 @@ class TaskSummary(BaseModel):
     updated_at: datetime
     subject: str
     question_no: Optional[str] = None
+    asset: Optional[dict] = Field(
+        default=None,
+        description="Simplified asset info for thumbnail display (asset_id, path, mime_type)"
+    )
 
 
 class TasksResponse(BaseModel):

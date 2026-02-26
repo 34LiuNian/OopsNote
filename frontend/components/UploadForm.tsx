@@ -16,6 +16,7 @@ import { sileo } from "sileo";
 import { fetchJson } from "../lib/api";
 import type { TaskResponse } from "../types/api";
 import { TagPicker } from "./TagPicker";
+import { TagSelectorRow } from "./TagSelectorRow";
 import { useTagDimensions } from "../features/tags";
 
 const DEFAULT_SUBJECT = "math";
@@ -398,15 +399,7 @@ export function UploadForm() {
         </Box>
 
         <Box sx={{ p: 3, border: '1px solid', borderColor: 'border.default', borderRadius: 2, display: 'flex', flexDirection: 'column', gap: 3 }}>
-          <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 3 }}>
-            <FormControl>
-              <FormControl.Label>学科</FormControl.Label>
-              <Select value={subject} onChange={(e) => setSubject(e.target.value)} block>
-                <Select.Option value="math">数学</Select.Option>
-                <Select.Option value="physics">物理</Select.Option>
-                <Select.Option value="chemistry">化学</Select.Option>
-              </Select>
-            </FormControl>
+          <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 3, mt: 3 }}>
             <FormControl>
               <FormControl.Label>难度</FormControl.Label>
               <Box
@@ -478,8 +471,8 @@ export function UploadForm() {
                     borderRadius: 0,
                     input: {
                       textAlign: 'center',
-                      
-                    outline: 'none',
+
+                      outline: 'none',
                     },
                     ':focus': {
                       boxShadow: 'none',
@@ -488,42 +481,28 @@ export function UploadForm() {
                 />
               </Box>
             </FormControl>
+            <FormControl>
+              <FormControl.Label>备注</FormControl.Label>
+              <TextInput
+                // placeholder="比如：易错点、你自己的想法..."
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                block
+              />
+            </FormControl>
+            {/* <Box /> */}
           </Box>
-          
-          <TagPicker
-            title="来源"
-            dimension="meta"
-            value={sourceTags}
-            onChange={setSourceTags}
-            // placeholder="输入后回车添加，例如：2025-一模"
-            styles={tagStyles}
-          />
-          <TagPicker
-            title="知识体系"
-            dimension="knowledge"
-            value={knowledgeTags}
-            onChange={setKnowledgeTags}
-            // placeholder="输入几个字搜索，例如：函数/单调"
-            styles={tagStyles}
-          />
 
-          <TagPicker
-            title="错题归因"
-            dimension="error"
-            value={errorTags}
-            onChange={setErrorTags}
-            // placeholder="输入几个字搜索，例如：计算/概念/思路"
+          <TagSelectorRow
+            sourceValue={sourceTags}
+            onSourceChange={setSourceTags}
+            knowledgeValue={knowledgeTags}
+            onKnowledgeChange={setKnowledgeTags}
+            errorValue={errorTags}
+            onErrorChange={setErrorTags}
+            customValue={customTags}
+            onCustomChange={setCustomTags}
             styles={tagStyles}
-          />
-
-          <TagPicker
-            title="自定义标签"
-            dimension="custom"
-            value={customTags}
-            onChange={setCustomTags}
-            placeholder=""
-            styles={tagStyles}
-            enableRemoteSearch={false}
           />
 
           <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end' }}>
@@ -549,15 +528,15 @@ export function UploadForm() {
                   />
                 </FormControl>
                 <FormControl>
-                  <FormControl.Label>备注</FormControl.Label>
-                  <TextInput
-                    // placeholder="比如：易错点、你自己的想法..."
-                    value={notes}
-                    onChange={(e) => setNotes(e.target.value)}
-                    block
-                  />
+                  <FormControl.Label>学科</FormControl.Label>
+                  <Select value={subject} onChange={(e) => setSubject(e.target.value)} block>
+                    <Select.Option value="math">数学</Select.Option>
+                    <Select.Option value="physics">物理</Select.Option>
+                    <Select.Option value="chemistry">化学</Select.Option>
+                  </Select>
                 </FormControl>
               </Box>
+
               <FormControl>
                 <FormControl.Label>题型</FormControl.Label>
                 <Select value={questionType} onChange={(e) => setQuestionType(e.target.value)} block>
@@ -593,7 +572,7 @@ export function UploadForm() {
           flex: 1,
           minWidth: 0,
           borderLeft: ["none", "none", "1px solid"],
-          borderColor: "border.default",
+          borderLeftColor: ["border.muted", "border.muted", "border.muted"],
           pl: [0, 0, 4],
           pt: [4, 4, 0],
           display: 'flex',

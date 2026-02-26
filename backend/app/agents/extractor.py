@@ -56,7 +56,12 @@ class LLMOcrExtractor:
         if not asset or not asset.path:
             raise RuntimeError("OCR failed: Asset path is missing.")
 
+        # Convert relative path (/assets/xxx.jpg) to absolute path
         image_path = Path(asset.path)
+        if not image_path.is_absolute():
+            # Relative path from storage module
+            image_path = Path(__file__).resolve().parent.parent.parent / "storage" / "assets" / image_path.name
+        
         if not image_path.exists():
             raise RuntimeError(f"OCR failed: Image file not found at {image_path}")
 

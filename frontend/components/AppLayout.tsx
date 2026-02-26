@@ -15,7 +15,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
              py: 3, 
              px: 4, 
              borderBottom: '1px solid', 
-             borderColor: 'border.default',
+             borderColor: 'border.muted',
              display: 'flex',
              justifyContent: 'flex-end',
              alignItems: 'center',
