@@ -29,7 +29,7 @@ const SUBJECT_OPTIONS = [
 
 export default function LibraryPage() {
   const [subject, setSubject] = useState<string>("");
-  const [sourceFilter, setSourceFilter] = useState<string>("");
+  const [sourceFilter, setSourceFilter] = useState<string[]>([]);
   const [knowledgeFilter, setKnowledgeFilter] = useState<string[]>([]);
   const [errorFilter, setErrorFilter] = useState<string[]>([]);
   const [customFilter, setCustomFilter] = useState<string[]>([]);
@@ -40,10 +40,10 @@ export default function LibraryPage() {
     error,
   } = useProblemList({ 
     subject: subject || undefined, 
-    source: sourceFilter || undefined,
-    knowledge_tag: knowledgeFilter.length > 0 ? knowledgeFilter[0] : undefined,
-    error_tag: errorFilter.length > 0 ? errorFilter[0] : undefined,
-    user_tag: customFilter.length > 0 ? customFilter[0] : undefined,
+    source: sourceFilter.length > 0 ? sourceFilter : undefined,
+    knowledge_tag: knowledgeFilter.length > 0 ? knowledgeFilter : undefined,
+    error_tag: errorFilter.length > 0 ? errorFilter : undefined,
+    user_tag: customFilter.length > 0 ? customFilter : undefined,
   });
   const {
     items: activeTasks,
@@ -144,8 +144,8 @@ export default function LibraryPage() {
         </Box>
 
         <TagSelectorRow
-          sourceValue={sourceFilter ? [sourceFilter] : []}
-          onSourceChange={(vals) => setSourceFilter(vals[0] || "")}
+          sourceValue={sourceFilter}
+          onSourceChange={setSourceFilter}
           knowledgeValue={knowledgeFilter}
           onKnowledgeChange={setKnowledgeFilter}
           errorValue={errorFilter}

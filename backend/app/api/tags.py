@@ -10,18 +10,8 @@ from ..tags import (
     TagsResponse,
     tag_store,
 )
-from .deps import get_backend_state
 
 router = APIRouter()
-
-
-def _tasks_service(request: Request):
-    """Resolve task service from app state for read-only tag reference counting."""
-    try:
-        state = get_backend_state(request)
-    except Exception:
-        return None
-    return getattr(state, "tasks", None)
 
 
 @router.get("/tags", response_model=TagsResponse)
@@ -31,58 +21,16 @@ def list_tags(
     query: str | None = None,
     limit: int = 50,
 ) -> TagsResponse:
+    from ..tags import TagItemView
+
     q = (query or "").strip()
     lim = max(1, int(limit))
 
-    def _inc(counter: dict[str, int], value: str | None) -> None:
-        if not value:
-            return
-        s = str(value).strip()
-        if not s:
-            return
-        key = s.casefold()
-        counter[key] = counter.get(key, 0) + 1
-
-    def _inc_many(counter: dict[str, int], values) -> None:
-        if not values:
-            return
-        for v in values:
-            _inc(counter, v)
-
-    ref_counts: dict[str, int] = {}
-    try:
-        tasks_service = _tasks_service(request)
-        tasks = tasks_service.iter_tasks() if tasks_service is not None else []
-
-        for task in tasks:
-            payload = getattr(task, "payload", None)
-            if payload is not None:
-                if dimension in (None, TagDimension.KNOWLEDGE):
-                    _inc_many(ref_counts, getattr(payload, "knowledge_tags", None))
-                if dimension in (None, TagDimension.ERROR):
-                    _inc_many(ref_counts, getattr(payload, "error_tags", None))
-                if dimension in (None, TagDimension.CUSTOM):
-                    _inc_many(ref_counts, getattr(payload, "user_tags", None))
-                if dimension in (None, TagDimension.META):
-                    _inc(ref_counts, getattr(payload, "source", None))
-
-            for p in getattr(task, "problems", []) or []:
-                if dimension in (None, TagDimension.KNOWLEDGE):
-                    _inc_many(ref_counts, getattr(p, "knowledge_tags", None))
-                if dimension in (None, TagDimension.ERROR):
-                    _inc_many(ref_counts, getattr(p, "error_tags", None))
-                if dimension in (None, TagDimension.CUSTOM):
-                    _inc_many(ref_counts, getattr(p, "user_tags", None))
-                if dimension in (None, TagDimension.META):
-                    _inc(ref_counts, getattr(p, "source", None))
-    except Exception:
-        ref_counts = {}
-
+    # Tags now have persistent ref_count stored in TagItem
+    # No need to recalculate on every request
     if not q:
         base = tag_store.list(dimension=dimension, limit=5000)
-        base.sort(
-            key=lambda t: (-ref_counts.get(t.value.casefold().strip(), 0), t.value)
-        )
+        base.sort(key=lambda t: (-t.ref_count, t.value))
         items = base[:lim]
     else:
         candidates = tag_store.search(dimension=dimension, query=q, limit=5000)
@@ -102,22 +50,14 @@ def list_tags(
         candidates.sort(
             key=lambda t: (
                 _tier(t),
-                -ref_counts.get(str(getattr(t, "value", "")).casefold().strip(), 0),
+                -t.ref_count,
                 str(getattr(t, "value", "")),
             )
         )
         items = candidates[:lim]
 
-    from ..tags import TagItemView
-
     return TagsResponse(
-        items=[
-            TagItemView(
-                **t.model_dump(mode="json"),
-                ref_count=ref_counts.get(t.value.casefold().strip(), 0),
-            )
-            for t in items
-        ]
+        items=[TagItemView(**t.model_dump(mode="json")) for t in items]
     )
 
 

@@ -34,6 +34,9 @@ export function Mermaid({ code }: { code: string }) {
       } catch (e) {
         if (cancelled) return;
         setError(e instanceof Error ? e.message : "Mermaid 渲染失败");
+        // Clean up any error images that mermaid may have inserted into the DOM
+        const errorElements = document.querySelectorAll(`[id^="mmd-"]`);
+        errorElements.forEach((el) => el.remove());
       }
     }
 
@@ -41,6 +44,9 @@ export function Mermaid({ code }: { code: string }) {
 
     return () => {
       cancelled = true;
+      // Cleanup on unmount
+      const errorElements = document.querySelectorAll(`[id^="mmd-"]`);
+      errorElements.forEach((el) => el.remove());
     };
   }, [code, id]);
 

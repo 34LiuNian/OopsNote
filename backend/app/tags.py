@@ -43,6 +43,10 @@ class TagItem(BaseModel):
     value: str
     aliases: List[str] = Field(default_factory=list)
     created_at: datetime
+    ref_count: int = Field(
+        default=0,
+        description="How many times this tag is referenced in tasks/problems",
+    )
 
 
 class TagItemView(TagItem):
@@ -275,6 +279,142 @@ class TagStore:
                     self._write_state_unlocked(state)
                     return updated
             return None
+
+    def update_ref_count(self, tag_id: str, delta: int) -> bool:
+        """Update a tag's reference count by delta. Returns True if updated, False if not found."""
+        with self._lock:
+            state = self._load_state_unlocked()
+            for item in state.items:
+                if item.id == tag_id:
+                    new_count = item.ref_count + delta
+                    if new_count < 0:
+                        # Prevent negative counts, but log a warning
+                        logger = __import__("logging").getLogger(__name__)
+                        logger.warning(
+                            f"Tag {tag_id} would have negative ref_count: {item.ref_count} + {delta}"
+                        )
+                        new_count = 0
+                    updated = item.model_copy(update={"ref_count": new_count})
+                    state.items = [
+                        updated if t.id == tag_id else t for t in state.items
+                    ]
+                    self._write_state_unlocked(state)
+                    return True
+            return False
+
+    def update_ref_count_by_value(
+        self,
+        dimension: TagDimension,
+        value: str,
+        delta: int,
+    ) -> bool:
+        """Update a tag's reference count by dimension and value. Returns True if updated."""
+        value = (value or "").strip()
+        if not value:
+            return False
+        key = self._key(dimension, value)
+        with self._lock:
+            state = self._load_state_unlocked()
+            for item in state.items:
+                if self._key(item.dimension, item.value) == key:
+                    new_count = item.ref_count + delta
+                    if new_count < 0:
+                        logger = __import__("logging").getLogger(__name__)
+                        logger.warning(
+                            f"Tag {dimension.value}::{value} would have negative ref_count: {item.ref_count} + {delta}"
+                        )
+                        new_count = 0
+                    updated = item.model_copy(update={"ref_count": new_count})
+                    state.items = [
+                        updated if t.id == item.id else t for t in state.items
+                    ]
+                    self._write_state_unlocked(state)
+                    return True
+            return False
+
+    def recalculate_all_counts(self) -> dict[str, int]:
+        """Recalculate all tag reference counts from tasks. Returns stats."""
+        from pathlib import Path
+        from app.repository import FileTaskRepository
+
+        # Load all tasks from storage
+        base_dir = Path(__file__).resolve().parents[1] / "storage" / "tasks"
+        if not base_dir.exists():
+            return {"total_tags": 0, "non_zero_counts": 0}
+        
+        repo = FileTaskRepository(base_dir=base_dir)
+        all_tasks = list(repo.list_all().values())
+        logger = __import__("logging").getLogger(__name__)
+
+        # Build a map of tag key -> set of problem_ids (to avoid double-counting)
+        from app.tags import TagDimension
+        
+        tag_to_problems: dict[str, set[str]] = {}
+        
+        def _add_tag(dimension: TagDimension, value: str, problem_id: str) -> None:
+            value = (value or "").strip()
+            if not value or not problem_id:
+                return
+            key = self._key(dimension, value)
+            if key not in tag_to_problems:
+                tag_to_problems[key] = set()
+            tag_to_problems[key].add(problem_id)
+
+        for task in all_tasks:
+            task_id = task.id
+            
+            # Count tags from task.payload (manual tags) - these apply to ALL problems in the task
+            payload = getattr(task, "payload", None)
+            all_problem_ids = [p.problem_id for p in getattr(task, "problems", []) or []]
+            
+            if payload and all_problem_ids:
+                for val in getattr(payload, "knowledge_tags", []) or []:
+                    for pid in all_problem_ids:
+                        _add_tag(TagDimension.KNOWLEDGE, val, pid)
+                for val in getattr(payload, "error_tags", []) or []:
+                    for pid in all_problem_ids:
+                        _add_tag(TagDimension.ERROR, val, pid)
+                for val in getattr(payload, "user_tags", []) or []:
+                    for pid in all_problem_ids:
+                        _add_tag(TagDimension.CUSTOM, val, pid)
+                source_val = getattr(payload, "source", None)
+                if source_val:
+                    for pid in all_problem_ids:
+                        _add_tag(TagDimension.META, source_val, pid)
+            
+            # Count tags from problems (manual tags on individual problems)
+            for problem in getattr(task, "problems", []) or []:
+                for val in getattr(problem, "knowledge_tags", []) or []:
+                    _add_tag(TagDimension.KNOWLEDGE, val, problem.problem_id)
+                for val in getattr(problem, "error_tags", []) or []:
+                    _add_tag(TagDimension.ERROR, val, problem.problem_id)
+                for val in getattr(problem, "user_tags", []) or []:
+                    _add_tag(TagDimension.CUSTOM, val, problem.problem_id)
+                source_val = getattr(problem, "source", None)
+                if source_val:
+                    _add_tag(TagDimension.META, source_val, problem.problem_id)
+            
+            # Count tags from tagging results (AI-generated tags) - one per problem
+            for tag_result in getattr(task, "tags", []) or []:
+                problem_id = getattr(tag_result, "problem_id", None)
+                if not problem_id:
+                    continue
+                for val in getattr(tag_result, "knowledge_points", []) or []:
+                    _add_tag(TagDimension.KNOWLEDGE, val, problem_id)
+        
+        # Update all tags with new counts (count = number of unique problems)
+        with self._lock:
+            state = self._load_state_unlocked()
+            for item in state.items:
+                key = self._key(item.dimension, item.value)
+                item.ref_count = len(tag_to_problems.get(key, set()))
+            self._write_state_unlocked(state)
+            
+            stats = {"total_tags": len(state.items), "non_zero_counts": 0}
+            for item in state.items:
+                if item.ref_count > 0:
+                    stats["non_zero_counts"] += 1
+            return stats
 
     @staticmethod
     def _key(dimension: TagDimension, value: str) -> str:

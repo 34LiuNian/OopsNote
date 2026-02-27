@@ -55,6 +55,7 @@ class AgentPipeline:
         asset: AssetMetadata | None = None,
         on_progress: Callable[[str, str | None], None] | None = None,
         is_cancelled: Callable[[], bool] | None = None,
+        existing_problems: list[ProblemBlock] | None = None,
     ) -> PipelineResult:
         def emit(stage: str, message: str | None = None) -> None:
             if on_progress is not None:
@@ -65,17 +66,18 @@ class AgentPipeline:
                     pass
 
         logger.info(
-            "Pipeline start task_id=%s subject=%s has_asset=%s orchestrator=%s enable_ocr=%s",
+            "Pipeline start task_id=%s subject=%s has_asset=%s orchestrator=%s enable_ocr=%s has_existing_problems=%s",
             task_id,
             payload.subject,
             bool(asset),
             bool(self.orchestrator),
             self.deps.ocr_extractor is not None,
+            bool(existing_problems),
         )
         emit("starting", "开始处理")
         # Extract logical problems from the original sheet (handwritten or scanned).
         emit("extracting", "识别题目")
-        detection, problems = self._extract(payload, asset)
+        detection, problems = self._extract(payload, asset, existing_problems)
         if self.orchestrator:
             # Multi-agent orchestration runs as a batch.
             # 动态设置取消检查回调
@@ -126,16 +128,29 @@ class AgentPipeline:
         self,
         payload: TaskCreateRequest,
         asset: AssetMetadata | None,
+        existing_problems: list[ProblemBlock] | None = None,
     ):
         if asset and self.deps.ocr_extractor:
-            detection = DetectionOutput(
-                action="single",
-                regions=[
-                    CropRegion(
-                        id=uuid4().hex, bbox=[0.05, 0.05, 0.9, 0.9], label="full"
-                    )
-                ],
-            )
+            # If retrying with existing problems, reuse their region_id
+            if existing_problems:
+                region_id = existing_problems[0].region_id if existing_problems else uuid4().hex
+                detection = DetectionOutput(
+                    action="single",
+                    regions=[
+                        CropRegion(
+                            id=region_id, bbox=[0.05, 0.05, 0.9, 0.9], label="full"
+                        )
+                    ],
+                )
+            else:
+                detection = DetectionOutput(
+                    action="single",
+                    regions=[
+                        CropRegion(
+                            id=uuid4().hex, bbox=[0.05, 0.05, 0.9, 0.9], label="full"
+                        )
+                    ],
+                )
 
             logger.info(
                 "Recognize OCR start regions=%s",
@@ -146,6 +161,14 @@ class AgentPipeline:
                 detection,
                 asset,
             )
+            
+            # Preserve original problem_id and region_id if retrying
+            if existing_problems and problems:
+                for idx, problem in enumerate(problems):
+                    if idx < len(existing_problems):
+                        problem.problem_id = existing_problems[idx].problem_id
+                        problem.region_id = existing_problems[idx].region_id
+            
             logger.info("Recognize OCR done problems=%s", len(problems))
             return detection, problems
         detection, problems = self.deps.extractor.run(payload)

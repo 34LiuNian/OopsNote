@@ -18,9 +18,16 @@ export function MarkdownRenderer({ text, fontSize }: { text: string; fontSize?: 
     if (!text) return "";
     // Handle potential HTML escaping from backend
     let unescaped = text
-      .replace(/\\\$/g, "$") // Unescape escaped dollar signs
-      .replace(/\\\[\\/g, "\\[") // Unescape escaped brackets
-      .replace(/\\\]\\/g, "\\]"); // Unescape escaped brackets
+      .replace(/\\\$/g, "$"); // Unescape escaped dollar signs: \$ → $
+    
+    // Remove trailing backslashes at end of lines (common OCR artifact)
+    // Match \ at end of line (before \n or end of string), but not part of LaTeX commands
+    unescaped = unescaped.replace(/\\(\s*)(?=\n|$)/g, '');
+    
+    // Normalize line breaks: ensure \n\n is treated as paragraph separator
+    // Replace literal \n\n strings with actual double newlines for Markdown parsing
+    unescaped = unescaped.replace(/\\n\\n/g, '\n\n');
+    unescaped = unescaped.replace(/\\n/g, '\n');
     
     // Convert LaTeX enumerate environments to simple line breaks
     // Remove \begin{enumerate} and \end{enumerate}, keep \item content
@@ -30,9 +37,48 @@ export function MarkdownRenderer({ text, fontSize }: { text: string; fontSize?: 
       .replace(/\\item\[(.*?)\]/g, "\n\n$1") // \item[(1)] → \n\n(1)
       .replace(/\\item/g, "\n\n"); // \item → \n\n
     
+    // Convert tabular to array (KaTeX doesn't support tabular) and wrap in math mode
+    // KaTeX requires array environment to be in math mode
+    unescaped = unescaped
+      // First convert tabular to array
+      .replace(/\\begin\{tabular\}/g, "\\begin{array}")
+      .replace(/\\end\{tabular\}/g, "\\end{array}")
+      // Then wrap standalone array environments in display math delimiters ($$...$$)
+      .replace(
+        /(\\begin\{array\}[\s\S]*?\\end\{array\})/g,
+        (match) => {
+          const trimmed = match.trim();
+          if (trimmed.startsWith("$$") || trimmed.startsWith("\\[") || trimmed.startsWith("\\(")) {
+            return match;
+          }
+          return `$$${match}$$`;
+        }
+      )
+      // Wrap standalone \underline{\hspace{...}} in inline math ($...$)
+      .replace(
+        /(\\underline\{\\hspace\{[^}]+\}\})/g,
+        (match) => {
+          // Check if already in math mode (preceded by $ or \()
+          return `$${match}$`;
+        }
+      );
+    
+    // Protect display math ($$...$$ and \[...\]) from inline math processing
+    // Replace with placeholders, process inline math, then restore
+    const displayMathBlocks: string[] = [];
+    unescaped = unescaped
+      .replace(/\$\$([\s\S]*?)\$\$/g, (match, p1) => {
+        displayMathBlocks.push(match);
+        return `__DISPLAY_MATH_${displayMathBlocks.length - 1}__`;
+      })
+      .replace(/\\\[([\s\S]*?)\\\]/g, (match, p1) => {
+        displayMathBlocks.push(match);
+        return `__DISPLAY_MATH_${displayMathBlocks.length - 1}__`;
+      });
+    
     // Force displaystyle for inline math markers to match LaTeX output and avoid compression.
     // Handles $...$ and \(...\) while avoiding $$...$$ and \[...\]
-    return unescaped
+    unescaped = unescaped
       .replace(/\$(?!\$)([\s\S]*?)\$/g, (match, p1) => {
         if (p1.trim().startsWith("\\displaystyle")) return match;
         return `$\\displaystyle ${p1}$`;
@@ -41,6 +87,13 @@ export function MarkdownRenderer({ text, fontSize }: { text: string; fontSize?: 
         if (p1.trim().startsWith("\\displaystyle")) return match;
         return `\\(\\displaystyle ${p1}\\)`;
       });
+    
+    // Restore display math blocks
+    displayMathBlocks.forEach((block, index) => {
+      unescaped = unescaped.replace(`__DISPLAY_MATH_${index}__`, block);
+    });
+    
+    return unescaped;
   }, [text]);
 
   useEffect(() => {

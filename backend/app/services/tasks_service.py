@@ -24,7 +24,7 @@ from ..models import (
     TaskSummary,
     TasksResponse,
 )
-from ..tags import TagDimension
+from ..tags import TagDimension, tag_store
 
 logger = logging.getLogger(__name__)
 
@@ -81,7 +81,7 @@ class TasksService:
 
     # -------------------- workers --------------------
 
-    def start_processing_in_background(self, task_id: str) -> None:
+    def start_processing_in_background(self, task_id: str, existing_problems=None) -> None:
         """Process a task in a background thread without a complex queue."""
         try:
             self.repository.get(task_id)
@@ -91,7 +91,8 @@ class TasksService:
         # Fire and forget thread for simplified background processing
         thread = threading.Thread(
             target=self.process_task_sync,
-            args=(task_id,),
+            args=(task_id, existing_problems),
+            kwargs={},
             name=f"task-bg-{task_id}",
             daemon=True,
         )
@@ -219,20 +220,20 @@ class TasksService:
         except KeyError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
 
-    def process_task(self, task_id: str, *, background: bool = False):
+    def process_task(self, task_id: str, *, background: bool = False, existing_problems=None):
         """Process a task in foreground or background."""
         if background:
-            self.start_processing_in_background(task_id)
+            self.start_processing_in_background(task_id, existing_problems=existing_problems)
             return self.repository.get(task_id)
-        return self.process_task_sync(task_id)
+        return self.process_task_sync(task_id, existing_problems=existing_problems)
 
     def retry_task(
         self, task_id: str, *, background: bool = True
     ):
         """Retry a task (failed or completed).
 
-        This is a convenience wrapper around processing that also clears cancellation
-        flags.
+        This re-runs the full pipeline (OCR, solve, tag) but preserves the original
+        problem_id and region_id to overwrite existing problems instead of creating new ones.
         """
 
         try:
@@ -246,6 +247,9 @@ class TasksService:
         with self._task_cancel_lock:
             self._task_cancelled.discard(task_id)
 
+        # Store existing problems to preserve their IDs during retry
+        existing_problems = task.problems.copy() if task.problems else None
+
         try:
             self.repository.patch_task(
                 task_id, stage="retrying", stage_message="准备重试"
@@ -253,7 +257,7 @@ class TasksService:
         except Exception:  # pylint: disable=broad-exception-caught
             pass
 
-        return self.process_task(task_id, background=background)
+        return self.process_task(task_id, background=background, existing_problems=existing_problems)
 
     # -------------------- per-problem operations --------------------
 
@@ -276,11 +280,35 @@ class TasksService:
             return
         solutions = {s.problem_id: s for s in task.solutions}
         solution = solutions.get(problem.problem_id)
+        
+        # Decrease counts for old tags before replacement
+        old_tags = [t for t in (task.tags or []) if t.problem_id == problem.problem_id]
+        for tag in old_tags:
+            dim_key = getattr(tag, "dimension", None)
+            value = getattr(tag, "value", None)
+            if dim_key and value:
+                try:
+                    dim = TagDimension(dim_key) if isinstance(dim_key, str) else dim_key
+                    tag_store.update_ref_count_by_value(dim, value, delta=-1)
+                except (ValueError, KeyError):
+                    continue
+        
         tag = self.pipeline.retag_problem(
             payload=task.payload,
             problem=problem,
             solution=solution,
         )
+        
+        # Increase count for new tag
+        dim_key = getattr(tag, "dimension", None)
+        value = getattr(tag, "value", None)
+        if dim_key and value:
+            try:
+                dim = TagDimension(dim_key) if isinstance(dim_key, str) else dim_key
+                tag_store.update_ref_count_by_value(dim, value, delta=1)
+            except (ValueError, KeyError):
+                pass
+        
         task.tags = [t for t in task.tags if t.problem_id != problem.problem_id] + [tag]
 
     def rerun_ocr(self, task_id: str, problem_id: str):
@@ -363,10 +391,32 @@ class TasksService:
                 override.recommended_actions,
             ]
         ):
+            # Decrease counts for old tags
+            old_tags = [t for t in (task.tags or []) if t.problem_id == problem_id]
+            for tag in old_tags:
+                dim_key = getattr(tag, "dimension", None)
+                value = getattr(tag, "value", None)
+                if dim_key and value:
+                    try:
+                        dim = TagDimension(dim_key) if isinstance(dim_key, str) else dim_key
+                        tag_store.update_ref_count_by_value(dim, value, delta=-1)
+                    except (ValueError, KeyError):
+                        continue
+            
             task.tags = [t for t in task.tags if t.problem_id != problem_id]
-            task.tags.append(
-                self.pipeline.classify_problem(payload=task.payload, problem=updates)
-            )
+            new_tag = self.pipeline.classify_problem(payload=task.payload, problem=updates)
+            
+            # Increase count for new tag
+            dim_key = getattr(new_tag, "dimension", None)
+            value = getattr(new_tag, "value", None)
+            if dim_key and value:
+                try:
+                    dim = TagDimension(dim_key) if isinstance(dim_key, str) else dim_key
+                    tag_store.update_ref_count_by_value(dim, value, delta=1)
+                except (ValueError, KeyError):
+                    pass
+            
+            task.tags.append(new_tag)
         elif override.retag:
             self._retag_single(task, updates, force=True)
 
@@ -388,6 +438,9 @@ class TasksService:
                 detail="Task is in progress; cancel/finish before delete",
             )
 
+        # Decrease tag reference counts before deletion
+        self._sync_tag_counts_after_task_deletion(task)
+
         try:
             self.repository.delete(task_id)
         except Exception as exc:  # pylint: disable=broad-exception-caught
@@ -399,6 +452,9 @@ class TasksService:
         """Delete a single problem and its associated outputs."""
         task = self.repository.get(task_id)
         _ = self._get_problem(task, problem_id)
+
+        # Decrease tag reference counts before deletion
+        self._sync_tag_counts_after_problem_deletion(task, problem_id)
 
         task.problems = [p for p in task.problems if p.problem_id != problem_id]
         task.solutions = [s for s in task.solutions if s.problem_id != problem_id]
@@ -426,6 +482,31 @@ class TasksService:
         )
         return updated
 
+    def _sync_tag_counts_after_problem_deletion(self, task, problem_id: str):
+        """Decrease tag reference counts after deleting a problem."""
+        problem_tags = [t for t in (task.tags or []) if t.problem_id == problem_id]
+        for tag in problem_tags:
+            dim_key = getattr(tag, "dimension", None)
+            value = getattr(tag, "value", None)
+            if dim_key and value:
+                try:
+                    dim = TagDimension(dim_key) if isinstance(dim_key, str) else dim_key
+                    tag_store.update_ref_count_by_value(dim, value, delta=-1)
+                except (ValueError, KeyError):
+                    continue
+
+    def _sync_tag_counts_after_task_deletion(self, task):
+        """Decrease tag reference counts after deleting a task."""
+        for tag in (task.tags or []):
+            dim_key = getattr(tag, "dimension", None)
+            value = getattr(tag, "value", None)
+            if dim_key and value:
+                try:
+                    dim = TagDimension(dim_key) if isinstance(dim_key, str) else dim_key
+                    tag_store.update_ref_count_by_value(dim, value, delta=-1)
+                except (ValueError, KeyError):
+                    continue
+
     # -------------------- library view --------------------
 
     def list_problems(
@@ -433,14 +514,31 @@ class TasksService:
         *,
         subject: str | None = None,
         tag: str | None = None,
-        source: str | None = None,
-        knowledge_tag: str | None = None,
-        error_tag: str | None = None,
-        user_tag: str | None = None,
+        source: str | list[str] | None = None,
+        knowledge_tag: str | list[str] | None = None,
+        error_tag: str | list[str] | None = None,
+        user_tag: str | list[str] | None = None,
     ) -> ProblemsResponse:  # pylint: disable=too-many-locals
         """Return a flattened library view of problems."""
         tasks = self.repository.list_all().values()
         items: list[ProblemSummary] = []
+
+        # Normalize filters to lists for consistent filtering
+        source_list = None
+        if source is not None:
+            source_list = [source] if isinstance(source, str) else source
+        
+        knowledge_tag_list = None
+        if knowledge_tag is not None:
+            knowledge_tag_list = [knowledge_tag] if isinstance(knowledge_tag, str) else knowledge_tag
+        
+        error_tag_list = None
+        if error_tag is not None:
+            error_tag_list = [error_tag] if isinstance(error_tag, str) else error_tag
+        
+        user_tag_list = None
+        if user_tag is not None:
+            user_tag_list = [user_tag] if isinstance(user_tag, str) else user_tag
 
         for task in tasks:
             task_subject = task.payload.subject
@@ -480,14 +578,22 @@ class TasksService:
                 # Apply filters
                 if tag is not None and tag not in combined_knowledge:
                     continue
-                if source is not None and problem.source != source:
-                    continue
-                if knowledge_tag is not None and knowledge_tag not in manual_knowledge:
-                    continue
-                if error_tag is not None and error_tag not in manual_error:
-                    continue
-                if user_tag is not None and user_tag not in manual_custom:
-                    continue
+                if source_list is not None:
+                    # Filter by multiple sources (OR logic)
+                    if problem.source not in source_list:
+                        continue
+                if knowledge_tag_list is not None:
+                    # Filter by multiple knowledge tags (OR logic)
+                    if not any(kt in manual_knowledge for kt in knowledge_tag_list):
+                        continue
+                if error_tag_list is not None:
+                    # Filter by multiple error tags (OR logic)
+                    if not any(et in manual_error for et in error_tag_list):
+                        continue
+                if user_tag_list is not None:
+                    # Filter by multiple custom tags (OR logic)
+                    if not any(ut in manual_custom for ut in user_tag_list):
+                        continue
 
                 items.append(
                     ProblemSummary(
@@ -592,21 +698,26 @@ class TasksService:
         manual_source: str,
         tags: list[TaggingResult],
     ) -> None:
-        """Update the global tag store with tags from the pipeline run."""
+        """Update the global tag store with tags from the pipeline run and update ref_counts."""
         for val in manual_knowledge:
             self.tag_store.upsert(TagDimension.KNOWLEDGE, val)
+            self.tag_store.update_ref_count_by_value(TagDimension.KNOWLEDGE, val, delta=1)
         for val in manual_error:
             self.tag_store.upsert(TagDimension.ERROR, val)
+            self.tag_store.update_ref_count_by_value(TagDimension.ERROR, val, delta=1)
         if manual_source:
             self.tag_store.upsert(TagDimension.META, manual_source)
+            self.tag_store.update_ref_count_by_value(TagDimension.META, manual_source, delta=1)
 
         for tag_res in tags:
             for val in tag_res.knowledge_points:
                 self.tag_store.upsert(TagDimension.KNOWLEDGE, val)
+                self.tag_store.update_ref_count_by_value(TagDimension.KNOWLEDGE, val, delta=1)
 
     def process_task_sync(
         self,
         task_id: str,
+        existing_problems=None,
         on_progress=None,
     ):
         """Run the full pipeline synchronously for a task."""
@@ -642,6 +753,7 @@ class TasksService:
                     task.asset,
                     on_progress=progress_bridge,
                     is_cancelled=lambda: self._is_task_cancelled(task_id),
+                    existing_problems=existing_problems,
                 )
                 result, manual_knowledge, manual_error, manual_source = (
                     self._apply_manual_payload_to_result(task, result)

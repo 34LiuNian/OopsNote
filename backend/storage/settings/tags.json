@@ -5,175 +5,200 @@
       "dimension": "knowledge",
       "value": "勾股定理",
       "aliases": [],
-      "created_at": "2025-12-31T13:15:50.963070Z"
+      "created_at": "2025-12-31T13:15:50.963070Z",
+      "ref_count": 0
     },
     {
       "id": "922bcb86eb344575abb861a3f46c2de5",
       "dimension": "error",
       "value": "审题不清",
       "aliases": [],
-      "created_at": "2025-12-31T13:15:50.969825Z"
+      "created_at": "2025-12-31T13:15:50.969825Z",
+      "ref_count": 0
     },
     {
       "id": "60b06bff53b543d68f7f2372b5281b32",
       "dimension": "knowledge",
       "value": "圆锥曲线",
       "aliases": [],
-      "created_at": "2025-12-31T15:12:51.222912Z"
+      "created_at": "2025-12-31T15:12:51.222912Z",
+      "ref_count": 5
     },
     {
       "id": "24e0dd7699414d39841bf9b6e0b8752f",
       "dimension": "knowledge",
       "value": "椭圆",
       "aliases": [],
-      "created_at": "2025-12-31T15:12:56.801082Z"
+      "created_at": "2025-12-31T15:12:56.801082Z",
+      "ref_count": 2
     },
     {
       "id": "e199da574f4f4afab1b93f49d6e79c59",
       "dimension": "error",
       "value": "难",
       "aliases": [],
-      "created_at": "2025-12-31T15:13:00.508468Z"
+      "created_at": "2025-12-31T15:13:00.508468Z",
+      "ref_count": 0
     },
     {
       "id": "98729c0dadd7464f9583a1518101b1f1",
       "dimension": "meta",
       "value": "练透",
       "aliases": [],
-      "created_at": "2025-12-31T15:38:30.993777Z"
+      "created_at": "2025-12-31T15:38:30.993777Z",
+      "ref_count": 1
     },
     {
       "id": "87833ace84c24659813b3e3e3d9d2264",
       "dimension": "error",
       "value": "对称性分析错误",
       "aliases": [],
-      "created_at": "2025-12-31T15:38:30.998557Z"
+      "created_at": "2025-12-31T15:38:30.998557Z",
+      "ref_count": 0
     },
     {
       "id": "3824b0c82fd84b47a7c72378ef5967e4",
       "dimension": "error",
       "value": "参数消元错误",
       "aliases": [],
-      "created_at": "2025-12-31T15:38:31.000565Z"
+      "created_at": "2025-12-31T15:38:31.000565Z",
+      "ref_count": 0
     },
     {
       "id": "228ed70411de48df99d0b75eef0152a6",
       "dimension": "knowledge",
       "value": "对称性",
       "aliases": [],
-      "created_at": "2025-12-31T15:46:47.090591Z"
+      "created_at": "2025-12-31T15:46:47.090591Z",
+      "ref_count": 0
     },
     {
       "id": "695e45a0a3064211a691458a5b95ea04",
       "dimension": "knowledge",
       "value": "反应热",
       "aliases": [],
-      "created_at": "2026-02-08T14:11:01.173078Z"
+      "created_at": "2026-02-08T14:11:01.173078Z",
+      "ref_count": 0
     },
     {
       "id": "97d74f41ac3347568b595536915a3d0c",
       "dimension": "error",
       "value": "难题",
       "aliases": [],
-      "created_at": "2026-02-08T14:11:07.524487Z"
+      "created_at": "2026-02-08T14:11:07.524487Z",
+      "ref_count": 4
     },
     {
       "id": "292a46a1a4674c7d9301171f2a1ba4d7",
       "dimension": "error",
       "value": "计算失误",
       "aliases": [],
-      "created_at": "2026-02-08T14:13:54.505994Z"
+      "created_at": "2026-02-08T14:13:54.505994Z",
+      "ref_count": 0
     },
     {
       "id": "b0ae76af8b154723bfae47c80a0b5e34",
       "dimension": "error",
       "value": "概念混淆",
       "aliases": [],
-      "created_at": "2026-02-09T08:36:22.609154Z"
+      "created_at": "2026-02-09T08:36:22.609154Z",
+      "ref_count": 0
     },
     {
       "id": "09c0087637f145ceaf1ce5f77c6fb88f",
       "dimension": "error",
       "value": "测试",
       "aliases": [],
-      "created_at": "2026-02-09T10:02:44.342229Z"
+      "created_at": "2026-02-09T10:02:44.342229Z",
+      "ref_count": 3
     },
     {
       "id": "fd77f079dad046d9b2cfbf3eee65ca25",
       "dimension": "knowledge",
       "value": "有机",
       "aliases": [],
-      "created_at": "2026-02-09T10:13:57.484973Z"
+      "created_at": "2026-02-09T10:13:57.484973Z",
+      "ref_count": 0
     },
     {
       "id": "2120c231fef44f93866c8b30a930553b",
       "dimension": "knowledge",
       "value": "化学/有机",
       "aliases": [],
-      "created_at": "2026-02-19T09:47:22.546636Z"
+      "created_at": "2026-02-19T09:47:22.546636Z",
+      "ref_count": 1
     },
     {
       "id": "9f21b0f67df440208d5bd009ef9971e9",
       "dimension": "meta",
       "value": "必刷题",
       "aliases": [],
-      "created_at": "2026-02-20T14:17:41.945820Z"
+      "created_at": "2026-02-20T14:17:41.945820Z",
+      "ref_count": 1
     },
     {
       "id": "ff6a4ec1ec504fa4aa3cbc2d817f7a68",
       "dimension": "knowledge",
       "value": "向量/平行条件",
       "aliases": [],
-      "created_at": "2026-02-20T14:24:21.299770Z"
+      "created_at": "2026-02-20T14:24:21.299770Z",
+      "ref_count": 1
     },
     {
       "id": "32d757e90d834ba28a26bebdbc477d90",
       "dimension": "meta",
       "value": "最高考",
       "aliases": [],
-      "created_at": "2026-02-22T12:45:02.437064Z"
+      "created_at": "2026-02-22T12:45:02.437064Z",
+      "ref_count": 4
     },
     {
       "id": "dd83dae153dc46c7b4a31dafd33a829a",
       "dimension": "knowledge",
       "value": "离心率",
       "aliases": [],
-      "created_at": "2026-02-22T12:45:16.180382Z"
+      "created_at": "2026-02-22T12:45:16.180382Z",
+      "ref_count": 2
     },
     {
       "id": "1223aabfff204908abec423fe1f91cdf",
       "dimension": "knowledge",
       "value": "圆",
       "aliases": [],
-      "created_at": "2026-02-22T13:14:35.509517Z"
+      "created_at": "2026-02-22T13:14:35.509517Z",
+      "ref_count": 1
     },
     {
       "id": "02d0c67aa60a4c26a7311257ace705a5",
       "dimension": "knowledge",
       "value": "函数",
       "aliases": [],
-      "created_at": "2026-02-25T07:41:11.248812Z"
+      "created_at": "2026-02-25T07:41:11.248812Z",
+      "ref_count": 0
     },
     {
       "id": "0dbd287ee41543e99c07a199d295ecf7",
       "dimension": "knowledge",
       "value": "化学/氧化还原反应",
       "aliases": [],
-      "created_at": "2026-02-26T07:22:10.251937Z"
+      "created_at": "2026-02-26T07:22:10.251937Z",
+      "ref_count": 3
     },
     {
       "id": "a60f3900bacd432a88a1f6108831bc07",
       "dimension": "knowledge",
       "value": "化学/滴定分析",
       "aliases": [],
-      "created_at": "2026-02-26T07:22:10.258917Z"
+      "created_at": "2026-02-26T07:22:10.258917Z",
+      "ref_count": 3
     },
     {
       "id": "c2fd392806714587a5cb8082c17d050e",
       "dimension": "knowledge",
       "value": "化学/物质的量浓度计算",
       "aliases": [],
-      "created_at": "2026-02-26T07:22:10.260915Z"
+      "created_at": "2026-02-26T07:22:10.260915Z",
+      "ref_count": 3
     }
   ]
 }

@@ -17,8 +17,16 @@ function toSearchParams(params?: Record<string, unknown>) {
   const sp = new URLSearchParams();
   if (!params) return sp;
   for (const [k, v] of Object.entries(params)) {
-    if (v === undefined || v === null || v === "") continue;
-    sp.set(k, String(v));
+    if (v === undefined || v === null) continue;
+    if (Array.isArray(v)) {
+      // Handle arrays by adding each value with the same key
+      for (const item of v) {
+        if (item === undefined || item === null || item === "") continue;
+        sp.append(k, String(item));
+      }
+    } else if (v !== "") {
+      sp.set(k, String(v));
+    }
   }
   return sp;
 }
@@ -67,10 +75,10 @@ export async function deleteTask(taskId: string): Promise<TaskResponse> {
 export type ListProblemsParams = {
   subject?: string;
   tag?: string;
-  source?: string;
-  knowledge_tag?: string;
-  error_tag?: string;
-  user_tag?: string;
+  source?: string | string[];
+  knowledge_tag?: string | string[];
+  error_tag?: string | string[];
+  user_tag?: string | string[];
 };
 
 export async function listProblems(params?: ListProblemsParams): Promise<ProblemsResponse> {

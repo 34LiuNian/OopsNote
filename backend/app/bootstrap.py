@@ -85,6 +85,15 @@ def create_app() -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
+        # Recalculate tag reference counts on startup
+        try:
+            from app.tags import tag_store
+            stats = tag_store.recalculate_all_counts()
+            logger.info(f"Tag counts recalculated on startup: {stats}")
+        except Exception as exc:
+            logger.warning(f"Failed to recalculate tag counts on startup: {exc}")
+
+        # Prefetch models
         try:
             models_service.prefetch_cache()
         except Exception:

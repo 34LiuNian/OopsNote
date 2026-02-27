@@ -74,21 +74,22 @@ export function Sidebar() {
         {NAV_ITEMS.map((item) => {
           const active = pathname === item.href;
           return (
-            <NavList.Item
-              key={item.href}
-              href={item.href}
-              aria-current={active ? "page" : undefined}
-              as={Link}
-              title={collapsed ? item.label : undefined}
-              sx={{
-                whiteSpace: 'nowrap',
-              }}
-            >
-              <NavList.LeadingVisual>
-                <item.icon />
-              </NavList.LeadingVisual>
-              {!collapsed && item.label}
-            </NavList.Item>
+            <Box key={item.href} sx={{ my: "2px" }}>
+              <NavList.Item
+                href={item.href}
+                aria-current={active ? "page" : undefined}
+                as={Link}
+                title={collapsed ? item.label : undefined}
+                sx={{
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                <NavList.LeadingVisual>
+                  <item.icon />
+                </NavList.LeadingVisual>
+                {!collapsed && item.label}
+              </NavList.Item>
+            </Box>
           );
         })}
       </NavList>
