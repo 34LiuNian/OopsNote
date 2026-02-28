@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState, useRef } from "react";
+import { useCallback, useState, useRef, useEffect } from "react";
 import { Box, Heading, Label, Text } from "@primer/react";
 import { Button, FormControl, Select, Spinner, TextInput } from "@primer/react";
 import { sileo } from "sileo";
@@ -43,6 +43,20 @@ export function UploadForm() {
 
   const currentFile = files[index] ?? null;
   const remaining = files.length - index;
+
+  // 当切换到新图片时，自动聚焦到难度输入框
+  useEffect(() => {
+    console.log('[UploadForm] index 变化:', { index, filesLength: files.length, hasRef: !!difficultyLeftRef.current });
+    if (files.length > 0 && index < files.length) {
+      // 等待 DOM 更新后聚焦
+      const timer = setTimeout(() => {
+        console.log('[UploadForm] 尝试聚焦难度输入框，ref 存在:', !!difficultyLeftRef.current);
+        difficultyLeftRef.current?.focus();
+        console.log('[UploadForm] 聚焦完成，当前 activeElement:', document.activeElement?.tagName);
+      }, 50);
+      return () => clearTimeout(timer);
+    }
+  }, [index, files.length]);
 
   const setPickedFiles = useCallback((picked: File[]) => {
     const images = picked.filter((f) => (f.type || '').startsWith('image/'));

@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef } from "react";
+import { useRef, useEffect } from "react";
 import {
     Box,
     Button,
@@ -78,6 +78,14 @@ export function AnnotationForm({
     onSubmit,
     onSkip,
 }: AnnotationFormProps) {
+    // 调试：监控 ref attach 状态
+    useEffect(() => {
+        console.log('[AnnotationForm] difficultyLeftRef 已 attach:', !!difficultyLeftRef?.current);
+        if (difficultyLeftRef?.current) {
+            console.log('[AnnotationForm] input 元素:', difficultyLeftRef.current);
+        }
+    }, [difficultyLeftRef]);
+
     return (
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
             <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 3 }}>
@@ -103,6 +111,14 @@ export function AnnotationForm({
                         <TextInput
                             placeholder="题号"
                             value={difficultyLeft}
+                            ref={(el) => {
+                                if (el && difficultyLeftRef) {
+                                    const input = el.querySelector('input')
+                                    if (input) {
+                                        (difficultyLeftRef as any).current = input
+                                    }
+                                }
+                            }}
                             onChange={(e) => {
                                 const next = e.target.value;
                                 if (next.includes("/")) {
@@ -149,7 +165,14 @@ export function AnnotationForm({
                             placeholder="总题数"
                             value={difficultyRight}
                             onChange={(e) => onDifficultyRightChange(e.target.value)}
-                            ref={difficultyRightRef}
+                            ref={(el) => {
+                                if (el && difficultyRightRef) {
+                                    const input = el.querySelector('input')
+                                    if (input) {
+                                        (difficultyRightRef as any).current = input
+                                    }
+                                }
+                            }}
                             sx={{
                                 flex: 1,
                                 border: '0px solid',
@@ -236,27 +259,12 @@ export function AnnotationForm({
             <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
                 <Button
                     variant="primary"
-                    onClick={() => {
-                        onSubmit();
-                        // 提交后自动聚焦到难度输入框
-                        setTimeout(() => {
-                            difficultyLeftRef?.current?.focus();
-                        }, 100);
-                    }}
+                    onClick={onSubmit}
                     disabled={isLoading}
                 >
                     {isLoading ? <><Spinner size="small" sx={{ mr: 1 }} />入队中...</> : "提交并入队"}
                 </Button>
-                <Button 
-                    onClick={() => {
-                        onSkip();
-                        // 提交后自动聚焦到难度输入框
-                        setTimeout(() => {
-                            difficultyLeftRef?.current?.focus();
-                        }, 100);
-                    }} 
-                    disabled={isLoading}
-                >
+                <Button onClick={onSkip} disabled={isLoading}>
                     跳过
                 </Button>
             </Box>
