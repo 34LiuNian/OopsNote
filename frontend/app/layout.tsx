@@ -12,7 +12,10 @@ import { KatexAutoRender } from '@/components/KatexAutoRender';
 
 export const metadata: Metadata = {
   title: "AI Mistake Organizer",
-  description: "Organize your mistakes with AI",
+  description: "Organize your mistakes problems with AI",
+  icons: {
+    icon: '/favicon.svg',
+  },
 };
 
 async function readInitialThemePreference(): Promise<"light" | "dark" | "system"> {

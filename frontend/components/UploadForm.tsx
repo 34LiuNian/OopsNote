@@ -183,16 +183,18 @@ export function UploadForm() {
       {/* Left: Form */}
       <Box
         sx={{
-          width: '100%',
-          maxWidth: '480px',
-          flexShrink: 0,
+          flex: 1,
+          minWidth: '480px',
+          // flexShrink: 0,
           pr: [0, 0, 4],
           pb: [4, 4, 0],
+          gap: 3,
+          display: 'flex',
+          flexDirection: 'column',
         }}
       >
-        <Box sx={{ mb: 3 }}>
-          <Heading as="h1" sx={{ fontSize: 4, mb: 1 }}>新建题目</Heading>
-        </Box>
+
+        <Heading as="h1" sx={{ fontSize: 4, mb: 1 }}>新建题目</Heading>
 
         <UploadQueue
           files={files}
@@ -244,7 +246,7 @@ export function UploadForm() {
       <Box
         sx={{
           flex: 1,
-          minWidth: 0,
+          minWidth: '320px',
           borderLeft: ["none", "none", "1px solid"],
           borderLeftColor: ["border.muted", "border.muted", "border.muted"],
           pl: [0, 0, 4],

@@ -18,6 +18,7 @@ import { useActiveTaskList, useProblemList } from "../../features/tasks";
 import { ProblemListItem } from "../../components/ProblemListItem";
 import { TaskThumbnail } from "../../components/TaskThumbnail";
 import { TagSelectorRow } from "../../components/TagSelectorRow";
+import { ListSkeleton } from "../../components/LoadingStates";
 import { useTagDimensions } from "../../features/tags";
 
 const SUBJECT_OPTIONS = [
@@ -83,10 +84,14 @@ export default function LibraryPage() {
         </Box>
 
         {activeTaskItems.length === 0 ? (
-          <Box sx={{ textAlign: 'center', color: 'fg.muted' }}>
-            <Text as="p" sx={{ fontWeight: 'bold' }}>当前没有进行中的任务。</Text>
-            <Text as="p" sx={{ fontSize: 1 }}>上传后任务会出现在这里，可点击进入查看进度。</Text>
-          </Box>
+          isLoadingActive ? (
+            <ListSkeleton count={1} showAvatar={false} />
+          ) : (
+            <Box sx={{ textAlign: 'center', color: 'fg.muted' }}>
+              <Text as="p" sx={{ fontWeight: 'bold' }}>当前没有进行中的任务。</Text>
+              <Text as="p" sx={{ fontSize: 1 }}>上传后任务会出现在这里，可点击进入查看进度。</Text>
+            </Box>
+          )
         ) : (
           <Box>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
@@ -165,10 +170,14 @@ export default function LibraryPage() {
         </Box>
 
         {items.length === 0 ? (
-          <Box sx={{ textAlign: 'center', p: 4, color: 'fg.muted' }}>
-            <Text as="p" sx={{ fontWeight: 'bold' }}>暂无题目。</Text>
-            <Text as="p" sx={{ fontSize: 1 }}>可以先在首页上传一张手稿图片，生成几道题后再回到这里查看。</Text>
-          </Box>
+          isLoading ? (
+            <ListSkeleton count={5} showAvatar={false} />
+          ) : (
+            <Box sx={{ textAlign: 'center', p: 4, color: 'fg.muted' }}>
+              <Text as="p" sx={{ fontWeight: 'bold' }}>暂无题目。</Text>
+              <Text as="p" sx={{ fontSize: 1 }}>可以先在首页上传一张手稿图片，生成几道题后再回到这里查看。</Text>
+            </Box>
+          )
         ) : (
           <Box>
             <Box as="ul" sx={{ listStyle: 'none', p: 0, m: 0 }}>

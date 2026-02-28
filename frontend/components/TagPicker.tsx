@@ -1,11 +1,10 @@
 "use client";
 
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Box, Text } from "@primer/react";
+import { Box, Button, Label, Spinner, Text, TextInput } from "@primer/react";
+import { XIcon } from "@primer/octicons-react";
 import type { TagDimension, TagDimensionStyle, TagItem } from "../types/api";
 import { createTag, searchTags } from "../features/tags/api";
-import { TagChip } from "./tags/TagChip";
-import { TagSearchInput } from "./tags/TagSearchInput";
 
 export type { TagDimension, TagDimensionStyle };
 
@@ -53,8 +52,10 @@ export const TagPicker = memo(function TagPicker({
   const [input, setInput] = useState("");
   const [suggestions, setSuggestions] = useState<TagItem[]>([]);
   const [loading, setLoading] = useState(false);
+  const [open, setOpen] = useState(false);
   const [highlightIndex, setHighlightIndex] = useState<number>(0);
   const lastReq = useRef(0);
+  const listRef = useRef<HTMLDivElement | null>(null);
 
   const variant = styles?.[dimension]?.label_variant || "secondary";
 
@@ -64,6 +65,7 @@ export const TagPicker = memo(function TagPicker({
       if (!s) return;
       onChange(dedupeTags([...value, s]));
       setInput("");
+      setOpen(false);
     },
     [onChange, value]
   );
@@ -117,8 +119,33 @@ export const TagPicker = memo(function TagPicker({
   }, [dimension, enableRemoteSearch, input, maxSuggestions, suggestions, value]);
 
   useEffect(() => {
+    if (!open) return;
     setHighlightIndex(0);
-  }, [input, dimension]);
+  }, [open, input, dimension]);
+
+  useEffect(() => {
+    if (!open) return;
+    if (filteredSuggestions.length === 0) {
+      setHighlightIndex(0);
+      return;
+    }
+    setHighlightIndex((prev) => Math.max(0, Math.min(prev, filteredSuggestions.length - 1)));
+  }, [filteredSuggestions.length, open]);
+
+  useEffect(() => {
+    if (!open) return;
+    const container = listRef.current;
+    if (!container) return;
+    const el = container.querySelector(
+      `[data-suggestion-index="${highlightIndex}"]`
+    ) as HTMLElement | null;
+    if (!el) return;
+    try {
+      el.scrollIntoView({ block: "nearest" });
+    } catch {
+      // ignore
+    }
+  }, [highlightIndex, open]);
 
   useEffect(() => {
     const q = input.trim();
@@ -160,45 +187,184 @@ export const TagPicker = memo(function TagPicker({
           <Text sx={{ color: "fg.muted", fontSize: 1 }}>未选择</Text>
         ) : (
           value.map((t) => (
-            <TagChip
+            <Box
               key={`${dimension}:${t}`}
-              label={t}
-              dimension={dimension}
-              variant={variant}
-              onRemove={() => removeTag(t)}
-            />
+              as="button"
+              type="button"
+              onClick={() => removeTag(t)}
+              sx={{
+                display: "inline-flex",
+                alignItems: "center",
+                bg: "transparent",
+                border: "none",
+                cursor: "pointer",
+                p: 0,
+                position: "relative",
+                "&:hover .tag-label": { opacity: 0 },
+                "&:hover .delete-icon": { opacity: 1 },
+              }}
+            >
+              <Label variant={variant as any} className="tag-label" sx={{ transition: "opacity 0.15s", verticalAlign: "middle" }}>{t}</Label>
+              <Box className="delete-icon" sx={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", color: "danger.fg", opacity: 0, transition: "opacity 0.15s" }}>
+                <XIcon size={12} />
+              </Box>
+            </Box>
           ))
         )}
       </Box>
 
-      <Box sx={{ maxWidth: 560, flexShrink: 0 }}>
-        <TagSearchInput
+      <Box sx={{ position: "relative", maxWidth: 560 }}>
+        <TextInput
           value={input}
-          onChange={setInput}
-          onSelect={(selected) => {
-            const picked = filteredSuggestions.find(s => s.value === selected);
-            if (picked?.type === "create") {
-              void createAndAdd(picked.value);
-            } else {
-              addTag(selected);
-            }
-          }}
-          suggestions={filteredSuggestions}
-          loading={loading}
-          highlightIndex={highlightIndex}
-          onHighlightIndexChange={setHighlightIndex}
           placeholder={placeholder || "输入后回车添加"}
-          variant={variant}
+          onChange={(e) => {
+            setInput(e.target.value);
+            setOpen(true);
+          }}
+          onFocus={() => setOpen(true)}
+          onBlur={() => {
+            // delay so click suggestion still works
+            setTimeout(() => setOpen(false), 120);
+          }}
           onKeyDown={(e) => {
+            if (e.key === "Escape") {
+              setOpen(false);
+              return;
+            }
+
+            if (e.key === "ArrowDown") {
+              if (!enableRemoteSearch) return;
+              e.preventDefault();
+              setOpen(true);
+              if (filteredSuggestions.length === 0) return;
+              setHighlightIndex((prev) => Math.min(prev + 1, filteredSuggestions.length - 1));
+              return;
+            }
+
+            if (e.key === "ArrowUp") {
+              if (!enableRemoteSearch) return;
+              e.preventDefault();
+              setOpen(true);
+              if (filteredSuggestions.length === 0) return;
+              setHighlightIndex((prev) => Math.max(prev - 1, 0));
+              return;
+            }
+
             if (e.key === "Backspace") {
               if (input === "" && value.length > 0) {
                 e.preventDefault();
                 removeTag(value[value.length - 1]);
               }
+              return;
+            }
+
+            if (e.key === "Tab") {
+              if (open && filteredSuggestions.length > 0) {
+                e.preventDefault();
+                const picked = filteredSuggestions[
+                  Math.max(0, Math.min(highlightIndex, filteredSuggestions.length - 1))
+                ];
+                if (picked.type === "existing") {
+                  setInput(picked.value);
+                }
+              }
+              return;
+            }
+            if (e.key === "Enter") {
+              e.preventDefault();
+              const picked = filteredSuggestions[Math.max(0, Math.min(highlightIndex, filteredSuggestions.length - 1))];
+
+              // Remote search mode: Enter always prefers the first suggestion.
+              if (enableRemoteSearch && picked) {
+                if (picked.type === "create") {
+                  void createAndAdd(picked.value);
+                  return;
+                }
+                addTag(picked.value);
+                return;
+              }
+
+              // Fallback: add raw input.
+              addTag(input);
             }
           }}
+          block
         />
+
+        {enableRemoteSearch && open && (loading || filteredSuggestions.length > 0) ? (
+          <Box
+            ref={listRef}
+            sx={{
+              position: "absolute",
+              left: 0,
+              right: 0,
+              mt: 1,
+              border: "1px solid",
+              borderColor: "border.default",
+              borderRadius: 2,
+              bg: "canvas.default",
+              maxHeight: 220,
+              overflowY: "auto",
+              zIndex: 50,
+            }}
+          >
+            {loading ? (
+              <Box sx={{ p: 2, display: "flex", alignItems: "center", gap: 2 }}>
+                <Spinner size="small" />
+                <Text sx={{ fontSize: 1, color: "fg.muted" }}>搜索中…</Text>
+              </Box>
+            ) : (
+              filteredSuggestions.map((s, idx) => (
+                <Box
+                  key={s.id}
+                  as="button"
+                  type="button"
+                  data-suggestion-index={idx}
+                  onMouseDown={(e) => e.preventDefault()}
+                  onMouseEnter={() => setHighlightIndex(idx)}
+                  onClick={() => {
+                    if (s.type === "create") {
+                      void createAndAdd(s.value);
+                      return;
+                    }
+                    addTag(s.value);
+                  }}
+                  style={{
+                    width: "100%",
+                    textAlign: "left",
+                    background: "transparent",
+                    border: "none",
+                    padding: 0,
+                  }}
+                >
+                  <Box
+                    sx={{
+                      px: 2,
+                      py: 2,
+                      borderBottom: "1px solid",
+                      borderColor: "border.default",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      gap: 2,
+                      bg: idx === highlightIndex ? "canvas.subtle" : "canvas.default",
+                    }}
+                  >
+                      <Text sx={{ fontSize: 1 }}>{s.type === "create" ? s.label : s.value}</Text>
+                      <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
+                        {s.type === "existing" && typeof s.ref_count === "number" ? (
+                          <Text sx={{ fontSize: 0, color: "fg.muted" }}>{`×${s.ref_count}`}</Text>
+                        ) : null}
+                        <Label variant={variant as any}>{styles?.[dimension]?.label || dimension}</Label>
+                      </Box>
+                  </Box>
+                </Box>
+              ))
+            )}
+          </Box>
+        ) : null}
       </Box>
+
     </Box>
   );
 });
