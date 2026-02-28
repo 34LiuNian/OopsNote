@@ -5,6 +5,7 @@ import "./globals.css";
 import "katex/dist/katex.min.css";
 import AppLayout from '@/components/AppLayout';
 import { ThemeProvider } from '@/components/ThemeProvider';
+import { ReactQueryProvider } from '@/components/ReactQueryProvider';
 import StyledComponentsRegistry from '@/lib/registry';
 import { SileoToaster } from '@/components/SileoToaster';
 import { KatexAutoRender } from '@/components/KatexAutoRender';
@@ -45,13 +46,15 @@ export default async function RootLayout({ children }: { children: React.ReactNo
       </head>
       <body style={{ backgroundColor: "Canvas", color: "CanvasText" }}>
         <StyledComponentsRegistry>
-          <ThemeProvider initialPreference={initialPreference}>
-            <KatexAutoRender />
-            <SileoToaster />
-            <AppLayout>
-              {children}
-            </AppLayout>
-          </ThemeProvider>
+          <ReactQueryProvider>
+            <ThemeProvider initialPreference={initialPreference}>
+              <KatexAutoRender />
+              <SileoToaster />
+              <AppLayout>
+                {children}
+              </AppLayout>
+            </ThemeProvider>
+          </ReactQueryProvider>
         </StyledComponentsRegistry>
       </body>
     </html>

@@ -36,15 +36,14 @@ export function TagSelectorRow({
     custom?: string;
   };
 }) {
-  // 逻辑说明：
-// - 容器宽度 < ? 时，单列显示（每项占满一行）
-// - 容器宽度 >= ? 时，多列显示（每列最小宽度 500px，自动填充）
+// - 容器宽度 < 1000px 时，单列显示（每项占满一行）
+// - 容器宽度1000px+ 时，多列显示（每列最小宽度 500px，自动填充）
 return (
     <Box sx={{ 
       display: "grid", 
       gridTemplateColumns: [
         "1fr",
-        "repeat(auto-fill, minmax(500px, 1fr))",
+        "repeat(auto-fit, minmax(min(500px, 100%), 1fr))",
       ],
       gap: 3 
     }}>

@@ -1,5 +1,6 @@
 "use client";
 
+import { memo } from "react";
 import { Box, Text } from "@primer/react";
 import { ProblemContent } from "./ProblemContent";
 
@@ -28,7 +29,7 @@ function buildMeta(questionType?: string | null, source?: string | null): string
   return parts;
 }
 
-export function ProblemCard({
+export const ProblemCard = memo(function ProblemCard({
   title,
   questionNo,
   questionType,
@@ -65,4 +66,4 @@ export function ProblemCard({
       />
     </Box>
   );
-}
+});

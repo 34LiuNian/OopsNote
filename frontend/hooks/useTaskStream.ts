@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { fetchJson } from "../lib/api";
 import type { TaskResponse } from "../types/api";
+import { useInterval } from "./useInterval";
 
 // Debug flag - disabled in production
 const DEBUG = typeof process !== 'undefined' && process.env?.NODE_ENV === 'development';
@@ -26,9 +27,9 @@ type UseTaskStreamState = {
 export function useTaskStream({ taskId, status, onStatusMessage, onDone }: UseTaskStreamParams): UseTaskStreamState {
   const [progressLines, setProgressLines] = useState<string[]>([]);
   const [latestTask, setLatestTask] = useState<TaskResponse["task"] | null>(null);
-  const pollingIntervalRef = useRef<number | null>(null);
   const lastStatusRef = useRef<string | null>(null);
   const hasCalledOnDoneRef = useRef<boolean>(false);
+  const { start: startPolling, stop: stopPolling } = useInterval();
 
   const resetStream = useCallback(() => {
     setProgressLines([]);
@@ -37,96 +38,62 @@ export function useTaskStream({ taskId, status, onStatusMessage, onDone }: UseTa
     hasCalledOnDoneRef.current = false;
   }, []);
 
+  const poll = useCallback(async () => {
+    try {
+      const payload = await fetchJson<TaskResponse>(`/tasks/${taskId}`);
+      const task = payload.task;
+      const currentStatus = task.status;
+
+      if (DEBUG) console.log('[useTaskStream] polled task status:', currentStatus, 'last status:', lastStatusRef.current);
+
+      // Always update latest task
+      setLatestTask(task);
+
+      // Check if status changed
+      if (currentStatus !== lastStatusRef.current) {
+        const message = task.stage_message || task.stage || currentStatus || "处理中";
+        onStatusMessage?.(message);
+        setProgressLines((prev) => {
+          if (prev.length > 0 && prev[prev.length - 1] === message) return prev;
+          return [...prev, message];
+        });
+        lastStatusRef.current = currentStatus;
+
+        // Check if task is done
+        if (currentStatus === "completed" || currentStatus === "failed" || currentStatus === "cancelled") {
+          if (!hasCalledOnDoneRef.current) {
+            hasCalledOnDoneRef.current = true;
+            await onDone?.();
+          }
+          // Stop polling
+          stopPolling();
+        }
+      }
+    } catch (error) {
+      if (DEBUG) console.error('[useTaskStream] polling error:', error);
+      onStatusMessage?.("轮询失败：" + (error instanceof Error ? error.message : "未知错误"));
+    }
+  }, [taskId, onStatusMessage, onDone, stopPolling]);
   useEffect(() => {
     if (!taskId) return;
 
     // Only poll if task is actively processing
     const isActive = status === "pending" || status === "processing";
     if (!isActive) {
-      // Clear polling if not active
-      if (pollingIntervalRef.current) {
-        window.clearInterval(pollingIntervalRef.current);
-        pollingIntervalRef.current = null;
-      }
+      stopPolling();
       return;
     }
 
-    // Clear any existing polling
-    if (pollingIntervalRef.current) {
-      window.clearInterval(pollingIntervalRef.current);
-    }
+    if (DEBUG) console.log('[useTaskStream] starting polling for task:', taskId, 'status:', status);
 
-    // Start polling
-    const startPolling = () => {
-      if (DEBUG) console.log('[useTaskStream] starting polling for task:', taskId, 'status:', status);
+    // Start polling with immediate first call
+    startPolling(poll, POLLING_INTERVAL);
 
-      const poll = async () => {
-        try {
-          const payload = await fetchJson<TaskResponse>(`/tasks/${taskId}`);
-          const task = payload.task;
-          const currentStatus = task.status;
-
-          if (DEBUG) console.log('[useTaskStream] polled task status:', currentStatus, 'last status:', lastStatusRef.current);
-
-          // Always update latest task
-          setLatestTask(task);
-
-          // Check if status changed
-          if (currentStatus !== lastStatusRef.current) {
-            const message = task.stage_message || task.stage || currentStatus || "处理中";
-            onStatusMessage?.(message);
-            setProgressLines((prev) => {
-              if (prev.length > 0 && prev[prev.length - 1] === message) return prev;
-              return [...prev, message];
-            });
-            lastStatusRef.current = currentStatus;
-
-            // Check if task is done
-            if (currentStatus === "completed" || currentStatus === "failed" || currentStatus === "cancelled") {
-              if (!hasCalledOnDoneRef.current) {
-                hasCalledOnDoneRef.current = true;
-                await onDone?.();
-              }
-              // Stop polling
-              if (pollingIntervalRef.current) {
-                window.clearInterval(pollingIntervalRef.current);
-                pollingIntervalRef.current = null;
-              }
-            }
-          }
-        } catch (error) {
-          if (DEBUG) console.error('[useTaskStream] polling error:', error);
-          onStatusMessage?.("轮询失败：" + (error instanceof Error ? error.message : "未知错误"));
-        }
-      };
-
-      // Poll immediately
-      poll();
-
-      // Then poll at regular intervals
-      pollingIntervalRef.current = window.setInterval(poll, POLLING_INTERVAL);
-    };
-
-    startPolling();
-
-    // Cleanup
+    // Cleanup on unmount or taskId change
     return () => {
-      if (pollingIntervalRef.current) {
-        window.clearInterval(pollingIntervalRef.current);
-        pollingIntervalRef.current = null;
-      }
+      stopPolling();
     };
-  }, [taskId, status, onStatusMessage, onDone]);
-
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      if (pollingIntervalRef.current) {
-        window.clearInterval(pollingIntervalRef.current);
-        pollingIntervalRef.current = null;
-      }
-    };
-  }, []);
+  }, [taskId, status, poll, startPolling, stopPolling]);
 
   return {
     progressLines,

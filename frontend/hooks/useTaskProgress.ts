@@ -82,6 +82,7 @@ export interface UseTaskProgressResult {
   isRunning: boolean;
   isCompleted: boolean;
   isFailed: boolean;
+  isCancelled: boolean;
   highestIndex: number;
   activeIndex: number;
   latestLine: string;

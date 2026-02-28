@@ -5,6 +5,7 @@ import { Box, Button, Heading, Text, Textarea } from "@primer/react";
 import { MarkdownRenderer } from "../../components/MarkdownRenderer";
 import { TaskProgressBar } from "../../components/task/TaskProgressBar";
 import { useTaskProgress, ProgressStepKey } from "../../hooks/useTaskProgress";
+import { API_BASE } from "../../lib/api";
 
 const DEFAULT_TEXT = [
   "# Debug 页面",

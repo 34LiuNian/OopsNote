@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import {
   Box,
@@ -8,7 +8,6 @@ import {
   Text,
   Spinner,
 } from "@primer/react";
-import { sileo } from "sileo";
 import { fetchJson } from "../lib/api";
 import type { TaskResponse } from "../types/api";
 import { TaskActions } from "./task/TaskActions";
@@ -19,22 +18,9 @@ import { useTaskStream } from "../hooks/useTaskStream";
 import { useTaskProgress } from "../hooks/useTaskProgress";
 import { TaskProgressBar } from "./task/TaskProgressBar";
 import { ErrorBanner } from "./ErrorBanner";
-
-type RenderMathInElement = (
-  element: HTMLElement,
-  options?: {
-    delimiters?: Array<{ left: string; right: string; display: boolean }>;
-    ignoredTags?: string[];
-    ignoredClasses?: string[];
-    errorCallback?: (msg: string, err: unknown) => void;
-    macros?: Record<string, string>;
-    throwOnError?: boolean;
-    strict?: boolean | "warn" | "ignore";
-    trust?: boolean | ((context: unknown) => boolean);
-    output?: "html" | "mathml" | "htmlAndMathml";
-    preProcess?: (math: string) => string;
-  },
-) => void;
+import { TaskLiveStream } from "./task/TaskLiveStream";
+import { TaskMathRenderer } from "./task/TaskMathRenderer";
+import { TaskStatusToaster } from "./task/TaskStatusToaster";
 
 export function TaskLiveView({ taskId }: { taskId: string }) {
   const [data, setData] = useState<TaskResponse | null>(null);
@@ -45,9 +31,6 @@ export function TaskLiveView({ taskId }: { taskId: string }) {
   const [isRetrying, setIsRetrying] = useState(false);
   const { effectiveDimensions: tagStyles } = useTagDimensions();
   const [editingKey, setEditingKey] = useState<string>("");
-
-  const mathContainerRef = useRef<HTMLDivElement | null>(null);
-  const lastToastMessageRef = useRef<string>("");
 
   const loadOnce = useCallback(async () => {
     setIsLoading(true);
@@ -142,71 +125,6 @@ export function TaskLiveView({ taskId }: { taskId: string }) {
     void loadOnce();
   }, [loadOnce, resetStream]);
 
-  // When navigating from the library, the route changes first and data arrives later.
-  // Re-run math renderer after task data is rendered to avoid "sometimes not rendered".
-  useEffect(() => {
-    if (!data) return;
-    if (!mathContainerRef.current) return;
-
-    let cancelled = false;
-    const handle = window.setTimeout(async () => {
-      try {
-        const mod = (await import("katex/contrib/auto-render")) as unknown as {
-          default: RenderMathInElement;
-        };
-        if (cancelled) return;
-        mod.default(mathContainerRef.current as HTMLElement, {
-          delimiters: [
-            { left: "$$", right: "$$", display: true },
-            { left: "\\[", right: "\\]", display: true },
-            { left: "\\(", right: "\\)", display: false },
-            { left: "$", right: "$", display: false },
-          ],
-          ignoredTags: [
-            "script",
-            "noscript",
-            "style",
-            "textarea",
-            "pre",
-            "code",
-            "option",
-          ],
-          ignoredClasses: ["no-katex", "katex", "katex-display"],
-          macros: {
-            "\\inline": "\\displaystyle",
-          },
-          preProcess: (math) => `\\inline ${math}`,
-          throwOnError: false,
-        });
-      } catch {
-        // best-effort
-      }
-    }, 0);
-
-    return () => {
-      cancelled = true;
-      window.clearTimeout(handle);
-    };
-  }, [data]);
-
-  useEffect(() => {
-    if (!statusMessage) return;
-    if (statusMessage === lastToastMessageRef.current) return;
-
-    const status = data?.task?.status;
-    if (status === "completed") {
-      sileo.success({ title: "任务完成", position: "bottom-right" });
-    } else if (status === "failed") {
-      sileo.error({ title: statusMessage || "任务失败", position: "bottom-right" });
-    } else if (status === "cancelled") {
-      sileo.info({ title: "任务已作废", position: "bottom-right" });
-    } else {
-      sileo.info({ title: statusMessage, position: "bottom-right" });
-    }
-
-    lastToastMessageRef.current = statusMessage;
-  }, [statusMessage, data?.task?.status]);
-
   const progressState = useTaskProgress({
     status: data?.task?.status,
     stage: data?.task?.stage,
@@ -215,9 +133,13 @@ export function TaskLiveView({ taskId }: { taskId: string }) {
     streamProgress,
   });
 
-
   return (
-    <Box ref={mathContainerRef} sx={{ p: 3, border: '1px solid', borderColor: 'border.default', borderRadius: 2 }}>
+    <Box sx={{ p: 3, border: '1px solid', borderColor: 'border.default', borderRadius: 2 }}>
+      {/* Math renderer */}
+      <TaskMathRenderer data={data} />
+
+      {/* Status toaster */}
+      <TaskStatusToaster statusMessage={statusMessage} status={data?.task?.status} />
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
         <Box>
           <Text sx={{ fontSize: 0, color: 'fg.muted', textTransform: 'uppercase' }}>Task</Text>
@@ -245,34 +167,8 @@ export function TaskLiveView({ taskId }: { taskId: string }) {
       <ErrorBanner message={error} />
 
       {(data?.task?.status === "pending" || data?.task?.status === "processing") && (
-        <Box
-          sx={{
-            position: "fixed",
-            right: 24,
-            bottom: 24,
-            width: 320,
-            maxWidth: "calc(100vw - 32px)",
-            maxHeight: 240,
-            overflowY: "auto",
-            p: 2,
-            bg: "canvas.subtle",
-            borderRadius: 2,
-            border: "1px solid",
-            borderColor: "border.default",
-            boxShadow: "shadow.large",
-            zIndex: 30,
-          }}
-        >
-          <Text sx={{ fontWeight: "bold", display: "block", mb: 1 }}>实时进度</Text>
-          <Box sx={{ whiteSpace: "pre-wrap", fontFamily: "mono", fontSize: 1 }}>
-            {streamProgress.length > 0
-              ? streamProgress.map((line) => `• ${line}`).join("\n")
-              : "• 等待进度更新..."}
-          </Box>
-        </Box>
+        <TaskLiveStream streamProgress={streamProgress} />
       )}
-
-      {/* LiveStreamRenderer removed - no more streaming text in polling mode */}
 
       {!error && !data && (
         <Box sx={{ textAlign: 'center', p: 4, color: 'fg.muted' }}>

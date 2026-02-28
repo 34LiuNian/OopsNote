@@ -1,5 +1,6 @@
 "use client";
 
+import { memo } from "react";
 import { Box, Button, Label } from "@primer/react";
 import { SyncIcon } from "@primer/octicons-react";
 
@@ -14,7 +15,7 @@ type TaskActionsProps = {
   onDelete: () => void;
 };
 
-export function TaskActions({
+export const TaskActions = memo(function TaskActions({
   status,
   isCancelling,
   isRetrying,
@@ -45,4 +46,4 @@ export function TaskActions({
       </Button>
     </Box>
   );
-}
+});
