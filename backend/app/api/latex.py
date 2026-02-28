@@ -5,6 +5,7 @@ import os
 import shutil
 import subprocess
 import tempfile
+from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
@@ -95,7 +96,7 @@ def _read_text_tail(text: str, max_lines: int = 80) -> str:
     return "\n".join(tail)
 
 
-def _compile_pdf(tex_content: str, *, xelatex_path: str) -> bytes:
+def _compile_pdf(tex_content: str, *, xelatex_path: str, save_error_artifacts: bool = False, error_dir: Optional[Path] = None) -> bytes:
     with tempfile.TemporaryDirectory(prefix="oopsnote-latex-") as tmp_dir:
         workdir = Path(tmp_dir)
         tex_path = workdir / "main.tex"
@@ -119,6 +120,24 @@ def _compile_pdf(tex_content: str, *, xelatex_path: str) -> bytes:
             )
             if result.returncode != 0:
                 log_tail = _read_log_tail(workdir / "main.log")
+                
+                # Save error artifacts if requested
+                if save_error_artifacts and error_dir:
+                    try:
+                        error_dir.mkdir(parents=True, exist_ok=True)
+                        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                        # Save tex file
+                        tex_error_path = error_dir / f"error_{timestamp}.tex"
+                        tex_error_path.write_text(tex_content, encoding="utf-8")
+                        # Save log file
+                        log_path = workdir / "main.log"
+                        if log_path.exists():
+                            log_error_path = error_dir / f"error_{timestamp}.log"
+                            log_error_path.write_text(log_path.read_text(encoding="utf-8", errors="ignore"), encoding="utf-8")
+                        print(f"[LATEX] 错误文件已保存：{tex_error_path}")
+                    except Exception as e:
+                        print(f"[LATEX] 保存错误文件失败：{e}")
+                
                 raise HTTPException(
                     status_code=400,
                     detail={

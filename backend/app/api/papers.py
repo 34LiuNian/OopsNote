@@ -209,8 +209,8 @@ def _build_question_block(text: str, options: Iterable[object] | None) -> str:
             + "\n\t\\end{choices}\n"
             + "\\end{question}\n"
         )
-    # Fill-in question: add \fillinBlank placeholder
-    return "\\begin{question}\n\t" + body + "\\fillinBlank{答案}.\n\\end{question}\n"
+    # Fill-in question: no placeholder, just the question text
+    return "\\begin{question}\n\t" + body + "\n\\end{question}\n"
 
 
 def _build_problem_block(text: str, points: int = 15, is_last: bool = False) -> str:
@@ -397,7 +397,16 @@ def compile_paper(request: Request, payload: PaperCompileRequest) -> Response:
             },
         )
 
-    pdf_bytes = _compile_pdf(tex_content, xelatex_path=xelatex_path)
+    # Prepare error directory for saving artifacts on failure
+    paper_error_dir = _paper_dir() / "errors"
+    
+    try:
+        pdf_bytes = _compile_pdf(tex_content, xelatex_path=xelatex_path, save_error_artifacts=True, error_dir=paper_error_dir)
+    except HTTPException as e:
+        # Re-raise with additional context
+        if isinstance(e.detail, dict):
+            e.detail["message"] = "组卷编译失败：" + e.detail.get("message", "")
+        raise
 
     paper_id = uuid.uuid4().hex
     meta = {
