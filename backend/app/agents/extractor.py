@@ -88,8 +88,11 @@ class LLMOcrExtractor:
         for idx, region in enumerate(regions, start=1):
             started = time.perf_counter()
 
+            # Handle 'auto' subject - pass empty string to let LLM auto-detect
+            subject_for_prompt = "" if payload.subject == "auto" else payload.subject
+
             ctx = {
-                "subject": payload.subject,
+                "subject": subject_for_prompt,
                 "grade": payload.grade or "",
                 "notes": payload.notes or "",
             }
@@ -139,6 +142,11 @@ class LLMOcrExtractor:
             problem_text = utils._coerce_str(payload_dict.get("problem_text"), fallback="")
             # OCR should provide a normalized `question_type` when possible (e.g. 单选/多选/填空/解答)
             question_type = utils._coerce_str(payload_dict.get("question_type"), None)
+            # Auto-detect subject from OCR
+            subject = utils._coerce_str(payload_dict.get("subject"), fallback=None)
+            # Validate subject value - if user selected 'auto' or LLM failed to detect, use 'math' as fallback
+            if subject not in ("math", "physics", "chemistry"):
+                subject = "math" if payload.subject == "auto" else payload.subject
 
             # Some models spam trailing whitespace/newlines when hitting max tokens.
             rstrip_enabled = (
@@ -172,6 +180,7 @@ class LLMOcrExtractor:
                 ProblemBlock(
                     problem_id=uuid4().hex,
                     region_id=region.id,
+                    subject=subject,
                     question_no=payload.question_no,
                     question_type=question_type,
                     problem_text=problem_text,

@@ -16,6 +16,10 @@ class ProblemBlock(BaseModel):
     """Extracted problem block from OCR."""
     problem_id: str
     region_id: str
+    subject: str = Field(
+        default="math",
+        description="Auto-detected subject: math, physics, or chemistry",
+    )
     question_no: Optional[str] = Field(
         default=None,
         description="User-provided problem identifier (can be alphanumeric); used for display only",

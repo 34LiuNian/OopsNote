@@ -158,6 +158,26 @@ export default function PaperBuilderPage() {
               {isLoading && <Spinner size="small" />}
               {error && <Label variant="danger">{error}</Label>}
               <Text sx={{ color: "fg.muted" }}>已选 {selectedCount} 道</Text>
+              <Button 
+                size="small" 
+                onClick={() => setSelected({})}
+                disabled={selectedCount === 0}
+              >
+                取消全选
+              </Button>
+              <Button 
+                size="small" 
+                onClick={() => {
+                  const allSelected: Record<string, boolean> = {};
+                  items.forEach((item) => {
+                    allSelected[`${item.task_id}:${item.problem_id}`] = true;
+                  });
+                  setSelected(allSelected);
+                }}
+                disabled={items.length === 0}
+              >
+                全选
+              </Button>
               <Button size="small" variant="primary" onClick={generatePaper} disabled={selectedCount === 0 || paperLoading}>
                 {paperLoading ? "生成中..." : "生成试卷"}
               </Button>

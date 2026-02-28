@@ -31,7 +31,7 @@ class TaskCreateRequest(BaseModel):
     """Request to create a new task."""
     image_url: HttpUrl
     subject: str = Field(
-        default="math", description="Subject tag for downstream agents"
+        default="auto", description="Subject tag for downstream agents ('auto' for auto-detection)"
     )
     grade: Optional[str] = Field(default=None, description="Grade or difficulty hint")
     notes: Optional[str] = Field(

@@ -542,12 +542,14 @@ class TasksService:
 
         for task in tasks:
             task_subject = task.payload.subject
-            if subject is not None and task_subject != subject:
-                continue
 
             tag_index = {t.problem_id: t for t in task.tags}
 
             for problem in task.problems:
+                # Filter by problem-level subject (auto-detected) or fallback to task subject
+                problem_subject = getattr(problem, "subject", task_subject)
+                if subject is not None and problem_subject != subject:
+                    continue
                 tag_result = tag_index.get(problem.problem_id)
 
                 manual_knowledge = list(getattr(problem, "knowledge_tags", []) or [])
@@ -604,7 +606,7 @@ class TasksService:
                         or (tag_result.question_type if tag_result else None),
                         problem_text=problem.problem_text,
                         options=list(getattr(problem, "options", []) or []),
-                        subject=task_subject,
+                        subject=getattr(problem, "subject", task_subject),
                         grade=task.payload.grade,
                         source=problem.source,
                         knowledge_points=combined_knowledge,

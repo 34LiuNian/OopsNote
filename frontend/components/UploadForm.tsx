@@ -13,7 +13,7 @@ import { AnnotationForm } from "./upload/AnnotationForm";
 import { UploadQueue } from "./upload/UploadQueue";
 import { TagSelectorRow } from "./TagSelectorRow";
 
-const DEFAULT_SUBJECT = "math";
+const DEFAULT_SUBJECT = "auto"; // 默认自动识别
 
 export function UploadForm() {
   const [files, setFiles] = useState<File[]>([]);

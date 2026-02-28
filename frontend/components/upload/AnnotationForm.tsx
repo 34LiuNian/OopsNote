@@ -211,6 +211,7 @@ export function AnnotationForm({
                         <FormControl>
                             <FormControl.Label>学科</FormControl.Label>
                             <Select value={subject} onChange={(e) => onSubjectChange(e.target.value)} block>
+                                <Select.Option value="auto">自动识别</Select.Option>
                                 <Select.Option value="math">数学</Select.Option>
                                 <Select.Option value="physics">物理</Select.Option>
                                 <Select.Option value="chemistry">化学</Select.Option>
@@ -235,12 +236,27 @@ export function AnnotationForm({
             <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
                 <Button
                     variant="primary"
-                    onClick={onSubmit}
+                    onClick={() => {
+                        onSubmit();
+                        // 提交后自动聚焦到难度输入框
+                        setTimeout(() => {
+                            difficultyLeftRef?.current?.focus();
+                        }, 100);
+                    }}
                     disabled={isLoading}
                 >
                     {isLoading ? <><Spinner size="small" sx={{ mr: 1 }} />入队中...</> : "提交并入队"}
                 </Button>
-                <Button onClick={onSkip} disabled={isLoading}>
+                <Button 
+                    onClick={() => {
+                        onSkip();
+                        // 提交后自动聚焦到难度输入框
+                        setTimeout(() => {
+                            difficultyLeftRef?.current?.focus();
+                        }, 100);
+                    }} 
+                    disabled={isLoading}
+                >
                     跳过
                 </Button>
             </Box>

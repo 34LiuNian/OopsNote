@@ -11,6 +11,7 @@ import {
   TextInput,
   FormControl,
   Spinner,
+  Button,
 } from "@primer/react";
 import { sileo } from "sileo";
 import { useEffect } from "react";
@@ -167,6 +168,28 @@ export default function LibraryPage() {
 
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
           <Label variant="secondary">共 {items.length} 道题</Label>
+          <Box sx={{ display: 'flex', gap: 2 }}>
+            <Button 
+              size="small" 
+              onClick={() => setSelectedIds({})}
+              disabled={Object.keys(selectedIds).length === 0}
+            >
+              取消全选
+            </Button>
+            <Button 
+              size="small" 
+              onClick={() => {
+                const allSelected: Record<string, boolean> = {};
+                items.forEach((item) => {
+                  allSelected[`${item.task_id}:${item.problem_id}`] = true;
+                });
+                setSelectedIds(allSelected);
+              }}
+              disabled={items.length === 0}
+            >
+              全选
+            </Button>
+          </Box>
         </Box>
 
         {items.length === 0 ? (
