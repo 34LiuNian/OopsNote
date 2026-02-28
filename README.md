@@ -161,3 +161,8 @@ NEXT_PUBLIC_BACKEND_URL=http://localhost:8000
 ## 📄 许可
 
 尚未指定开源协议；默认遵循企业/团队内部规范，可在成型后补充。
+
+# TODO:
+[ ] 组卷科目filter
+[ ] 组卷全选按钮
+[ ]

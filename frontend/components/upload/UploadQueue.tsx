@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect } from "react";
 import { Box, Button, Label } from "@primer/react";
 import { sileo } from "sileo";
 
@@ -31,14 +32,16 @@ export function UploadQueue({
   const remainingCount = remaining ?? (files.length - index);
 
   // Enable folder import on Chromium browsers.
-  if (folderInputRef.current) {
-    folderInputRef.current.setAttribute('webkitdirectory', '');
-    folderInputRef.current.setAttribute('directory', '');
-  }
-  // Prefer camera on mobile when available.
-  if (singleInputRef.current) {
-    singleInputRef.current.setAttribute('capture', 'environment');
-  }
+  useEffect(() => {
+    if (folderInputRef.current) {
+      folderInputRef.current.setAttribute('webkitdirectory', '');
+      folderInputRef.current.setAttribute('directory', '');
+    }
+    // Prefer camera on mobile when available.
+    if (singleInputRef.current) {
+      singleInputRef.current.setAttribute('capture', 'environment');
+    }
+  }, []);
 
   return (
     <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap' }}>

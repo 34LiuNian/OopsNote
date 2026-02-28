@@ -93,9 +93,11 @@ def _norm_question_type(raw: Optional[str], has_choices: bool) -> str:
 def _normalize_text(raw: str) -> str:
     text = raw or ""
     text = _convert_chemfig_markdown(text)
-    text = text.replace("\\n", "\n")
-    text = text.replace("\\r", "\r")
-    text = text.replace("\\t", "\t")
+    # 避免替换 LaTeX 命令中的 \r, \n, \t（如 \right, \sqrt 等）
+    # 只替换独立的转义序列（后面不是字母的）
+    text = re.sub(r"\\n(?![a-zA-Z])", "\n", text)
+    text = re.sub(r"\\r(?![a-zA-Z])", "\r", text)
+    text = re.sub(r"\\t(?![a-zA-Z])", "\t", text)
     # Fix common OCR misses for tabular blocks.
     text = text.replace("\nbegin{tabular}", "\n\\begin{tabular}")
     text = text.replace("\nend{tabular}", "\n\\end{tabular}")
@@ -378,6 +380,12 @@ def compile_paper(request: Request, payload: PaperCompileRequest) -> Response:
         show_answers=payload.show_answers,
         sections=sections,
     )
+    
+    # 调试：将生成的 LaTeX 内容写入临时文件
+    # debug_path = Path(__file__).resolve().parents[2] / ".." / "_tmp" / "debug_paper.tex"
+    # debug_path.parent.mkdir(parents=True, exist_ok=True)
+    # debug_path.write_text(tex_content, encoding="utf-8")
+    # print(f"[PAPER] 已写入调试文件：{debug_path}")
 
     xelatex_path = _find_xelatex()
     if not xelatex_path:

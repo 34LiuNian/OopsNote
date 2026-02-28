@@ -1,204 +1,444 @@
 {
   "items": [
     {
-      "id": "02e25d5c627743138d588090a568eca5",
-      "dimension": "knowledge",
-      "value": "勾股定理",
-      "aliases": [],
-      "created_at": "2025-12-31T13:15:50.963070Z",
-      "ref_count": 0
-    },
-    {
-      "id": "922bcb86eb344575abb861a3f46c2de5",
-      "dimension": "error",
-      "value": "审题不清",
-      "aliases": [],
-      "created_at": "2025-12-31T13:15:50.969825Z",
-      "ref_count": 0
-    },
-    {
-      "id": "60b06bff53b543d68f7f2372b5281b32",
-      "dimension": "knowledge",
-      "value": "圆锥曲线",
-      "aliases": [],
-      "created_at": "2025-12-31T15:12:51.222912Z",
-      "ref_count": 5
-    },
-    {
-      "id": "24e0dd7699414d39841bf9b6e0b8752f",
-      "dimension": "knowledge",
-      "value": "椭圆",
-      "aliases": [],
-      "created_at": "2025-12-31T15:12:56.801082Z",
-      "ref_count": 2
-    },
-    {
-      "id": "e199da574f4f4afab1b93f49d6e79c59",
-      "dimension": "error",
-      "value": "难",
-      "aliases": [],
-      "created_at": "2025-12-31T15:13:00.508468Z",
-      "ref_count": 0
-    },
-    {
-      "id": "98729c0dadd7464f9583a1518101b1f1",
+      "id": "ac4028dd68414bf190d3572b1020c3d2",
       "dimension": "meta",
       "value": "练透",
       "aliases": [],
-      "created_at": "2025-12-31T15:38:30.993777Z",
-      "ref_count": 0
+      "created_at": "2026-02-28T12:48:29.678531Z",
+      "ref_count": 16
     },
     {
-      "id": "87833ace84c24659813b3e3e3d9d2264",
-      "dimension": "error",
-      "value": "对称性分析错误",
-      "aliases": [],
-      "created_at": "2025-12-31T15:38:30.998557Z",
-      "ref_count": 0
-    },
-    {
-      "id": "3824b0c82fd84b47a7c72378ef5967e4",
-      "dimension": "error",
-      "value": "参数消元错误",
-      "aliases": [],
-      "created_at": "2025-12-31T15:38:31.000565Z",
-      "ref_count": 0
-    },
-    {
-      "id": "228ed70411de48df99d0b75eef0152a6",
+      "id": "fae0e7a040474353a5d6b0d2b7f5cdb7",
       "dimension": "knowledge",
-      "value": "对称性",
+      "value": "空间向量",
       "aliases": [],
-      "created_at": "2025-12-31T15:46:47.090591Z",
-      "ref_count": 0
-    },
-    {
-      "id": "695e45a0a3064211a691458a5b95ea04",
-      "dimension": "knowledge",
-      "value": "反应热",
-      "aliases": [],
-      "created_at": "2026-02-08T14:11:01.173078Z",
-      "ref_count": 0
-    },
-    {
-      "id": "97d74f41ac3347568b595536915a3d0c",
-      "dimension": "error",
-      "value": "难题",
-      "aliases": [],
-      "created_at": "2026-02-08T14:11:07.524487Z",
+      "created_at": "2026-02-28T12:48:44.498835Z",
       "ref_count": 4
     },
     {
-      "id": "292a46a1a4674c7d9301171f2a1ba4d7",
+      "id": "1a409fe4d6c74a55aadac40ef279c76b",
       "dimension": "error",
-      "value": "计算失误",
+      "value": "较难题",
       "aliases": [],
-      "created_at": "2026-02-08T14:13:54.505994Z",
-      "ref_count": 0
+      "created_at": "2026-02-28T12:49:13.700879Z",
+      "ref_count": 6
     },
     {
-      "id": "b0ae76af8b154723bfae47c80a0b5e34",
-      "dimension": "error",
-      "value": "概念混淆",
-      "aliases": [],
-      "created_at": "2026-02-09T08:36:22.609154Z",
-      "ref_count": 0
-    },
-    {
-      "id": "09c0087637f145ceaf1ce5f77c6fb88f",
-      "dimension": "error",
-      "value": "测试",
-      "aliases": [],
-      "created_at": "2026-02-09T10:02:44.342229Z",
-      "ref_count": 2
-    },
-    {
-      "id": "fd77f079dad046d9b2cfbf3eee65ca25",
-      "dimension": "knowledge",
-      "value": "有机",
-      "aliases": [],
-      "created_at": "2026-02-09T10:13:57.484973Z",
-      "ref_count": 0
-    },
-    {
-      "id": "2120c231fef44f93866c8b30a930553b",
-      "dimension": "knowledge",
-      "value": "化学/有机",
-      "aliases": [],
-      "created_at": "2026-02-19T09:47:22.546636Z",
-      "ref_count": 0
-    },
-    {
-      "id": "9f21b0f67df440208d5bd009ef9971e9",
-      "dimension": "meta",
-      "value": "必刷题",
-      "aliases": [],
-      "created_at": "2026-02-20T14:17:41.945820Z",
-      "ref_count": 1
-    },
-    {
-      "id": "ff6a4ec1ec504fa4aa3cbc2d817f7a68",
-      "dimension": "knowledge",
-      "value": "向量/平行条件",
-      "aliases": [],
-      "created_at": "2026-02-20T14:24:21.299770Z",
-      "ref_count": 1
-    },
-    {
-      "id": "32d757e90d834ba28a26bebdbc477d90",
-      "dimension": "meta",
-      "value": "最高考",
-      "aliases": [],
-      "created_at": "2026-02-22T12:45:02.437064Z",
-      "ref_count": 4
-    },
-    {
-      "id": "dd83dae153dc46c7b4a31dafd33a829a",
-      "dimension": "knowledge",
-      "value": "离心率",
-      "aliases": [],
-      "created_at": "2026-02-22T12:45:16.180382Z",
-      "ref_count": 2
-    },
-    {
-      "id": "1223aabfff204908abec423fe1f91cdf",
-      "dimension": "knowledge",
-      "value": "圆",
-      "aliases": [],
-      "created_at": "2026-02-22T13:14:35.509517Z",
-      "ref_count": 1
-    },
-    {
-      "id": "02d0c67aa60a4c26a7311257ace705a5",
+      "id": "4df2ba8edb8f411b8c664a31aae60f23",
       "dimension": "knowledge",
       "value": "函数",
       "aliases": [],
-      "created_at": "2026-02-25T07:41:11.248812Z",
+      "created_at": "2026-02-28T12:49:42.613888Z",
+      "ref_count": 1
+    },
+    {
+      "id": "c4d4e2993c9244138fa091dfe032f540",
+      "dimension": "knowledge",
+      "value": "解析几何",
+      "aliases": [],
+      "created_at": "2026-02-28T12:50:20.743626Z",
+      "ref_count": 12
+    },
+    {
+      "id": "6b2d933336bc42ca8792656ba6e6b698",
+      "dimension": "knowledge",
+      "value": "直线",
+      "aliases": [],
+      "created_at": "2026-02-28T12:50:23.370324Z",
+      "ref_count": 5
+    },
+    {
+      "id": "41b2c0c7db39469aa73bd4c71a1c680c",
+      "dimension": "knowledge",
+      "value": "对称",
+      "aliases": [],
+      "created_at": "2026-02-28T12:50:27.885293Z",
+      "ref_count": 1
+    },
+    {
+      "id": "a3290cf7be614d1ab192578dcd2e8915",
+      "dimension": "knowledge",
+      "value": "光路",
+      "aliases": [],
+      "created_at": "2026-02-28T12:50:38.898848Z",
+      "ref_count": 2
+    },
+    {
+      "id": "59cd5d4ef11c4844ada4fa74cac3caca",
+      "dimension": "knowledge",
+      "value": "数学/空间向量/空间坐标系建立",
+      "aliases": [],
+      "created_at": "2026-02-28T12:50:58.127368Z",
+      "ref_count": 1
+    },
+    {
+      "id": "fbffabd554414cc298ea9230d2a62220",
+      "dimension": "knowledge",
+      "value": "数学/空间向量/平面方程求解",
+      "aliases": [],
+      "created_at": "2026-02-28T12:50:58.131367Z",
+      "ref_count": 1
+    },
+    {
+      "id": "91ae7371bd034e1fb28476981d92d64b",
+      "dimension": "knowledge",
+      "value": "数学/空间向量/向量参数方程",
+      "aliases": [],
+      "created_at": "2026-02-28T12:50:58.136575Z",
+      "ref_count": 1
+    },
+    {
+      "id": "33eb7cc5dc374483b04bc4f0192ea36b",
+      "dimension": "knowledge",
+      "value": "数学/立体几何/空间点线面关系",
+      "aliases": [],
+      "created_at": "2026-02-28T12:50:58.139878Z",
+      "ref_count": 1
+    },
+    {
+      "id": "b12c4ab22a40481a8c01e1514825b4a0",
+      "dimension": "knowledge",
+      "value": "数学/空间向量/向量运算",
+      "aliases": [],
+      "created_at": "2026-02-28T12:51:03.645255Z",
+      "ref_count": 1
+    },
+    {
+      "id": "2f4a725028714c3eb590bdf0e2e93faa",
+      "dimension": "knowledge",
+      "value": "数学/空间向量/向量夹角",
+      "aliases": [],
+      "created_at": "2026-02-28T12:51:03.648260Z",
+      "ref_count": 1
+    },
+    {
+      "id": "ce58dc45e30746908229d72c78415d1a",
+      "dimension": "error",
+      "value": "算错",
+      "aliases": [],
+      "created_at": "2026-02-28T12:51:03.943169Z",
+      "ref_count": 1
+    },
+    {
+      "id": "a328c18cdeb04b70b4fbbe0c34e143fc",
+      "dimension": "knowledge",
+      "value": "截距",
+      "aliases": [],
+      "created_at": "2026-02-28T12:51:27.727915Z",
+      "ref_count": 3
+    },
+    {
+      "id": "f725ee6857dc401f87d7bd37ff8e2bc1",
+      "dimension": "knowledge",
+      "value": "数学/函数/单调性",
+      "aliases": [],
+      "created_at": "2026-02-28T12:51:30.478891Z",
+      "ref_count": 1
+    },
+    {
+      "id": "58b401a74e664563b6b8cec270936fcd",
+      "dimension": "knowledge",
+      "value": "数学/函数/导数应用",
+      "aliases": [],
+      "created_at": "2026-02-28T12:51:30.482384Z",
+      "ref_count": 1
+    },
+    {
+      "id": "859a70e683ac46fd9036d3549ee94566",
+      "dimension": "knowledge",
+      "value": "数学/对数函数",
+      "aliases": [],
+      "created_at": "2026-02-28T12:51:30.486823Z",
+      "ref_count": 1
+    },
+    {
+      "id": "e018578d6d73478d9ca7cd552815b5dd",
+      "dimension": "knowledge",
+      "value": "数学/立体几何/空间向量",
+      "aliases": [],
+      "created_at": "2026-02-28T12:51:35.443592Z",
+      "ref_count": 1
+    },
+    {
+      "id": "39e82ac327274cad8dce5f2d11b10290",
+      "dimension": "error",
+      "value": "坑",
+      "aliases": [],
+      "created_at": "2026-02-28T12:51:36.150665Z",
+      "ref_count": 1
+    },
+    {
+      "id": "426ecaa9db554ff3b0dbc24039b08e0b",
+      "dimension": "knowledge",
+      "value": "图像",
+      "aliases": [],
+      "created_at": "2026-02-28T12:52:20.726851Z",
+      "ref_count": 1
+    },
+    {
+      "id": "2cecd26319e846ff99f928628f6397bf",
+      "dimension": "knowledge",
+      "value": "范围",
+      "aliases": [],
+      "created_at": "2026-02-28T12:52:50.140713Z",
+      "ref_count": 3
+    },
+    {
+      "id": "d7e0bf3d4fae47cd8cd7f618f1e1323f",
+      "dimension": "knowledge",
+      "value": "动点",
+      "aliases": [],
+      "created_at": "2026-02-28T12:52:59.954797Z",
+      "ref_count": 2
+    },
+    {
+      "id": "1e3de6faa1b443de9cf07ce45e72f579",
+      "dimension": "knowledge",
+      "value": "数学/解析几何/直线",
+      "aliases": [],
+      "created_at": "2026-02-28T12:53:06.831240Z",
+      "ref_count": 8
+    },
+    {
+      "id": "7df523293b744a08ac31fe1725f660f5",
+      "dimension": "knowledge",
+      "value": "数学/对称/点关于直线的对称",
+      "aliases": [],
+      "created_at": "2026-02-28T12:53:06.834755Z",
+      "ref_count": 2
+    },
+    {
+      "id": "eb9e54ebdb0646a991e4f081ea650ea9",
+      "dimension": "knowledge",
+      "value": "数学/解析几何/直线/截距",
+      "aliases": [],
+      "created_at": "2026-02-28T12:53:24.668408Z",
+      "ref_count": 2
+    },
+    {
+      "id": "d44f4e9486584f0687c241c29c000759",
+      "dimension": "knowledge",
+      "value": "斜率",
+      "aliases": [],
+      "created_at": "2026-02-28T12:54:38.749688Z",
+      "ref_count": 4
+    },
+    {
+      "id": "e084d47dd64b4fd8abf7033cbdcb5f58",
+      "dimension": "knowledge",
+      "value": "三角形",
+      "aliases": [],
+      "created_at": "2026-02-28T12:54:42.905545Z",
+      "ref_count": 1
+    },
+    {
+      "id": "84406f5959ae4a15b8c801eee681194c",
+      "dimension": "knowledge",
+      "value": "等边三角形",
+      "aliases": [],
+      "created_at": "2026-02-28T12:54:49.092919Z",
+      "ref_count": 2
+    },
+    {
+      "id": "65a1be595e4946188afcb2c4348b1261",
+      "dimension": "knowledge",
+      "value": "斜率关系",
+      "aliases": [],
+      "created_at": "2026-02-28T12:54:58.789847Z",
+      "ref_count": 1
+    },
+    {
+      "id": "699aafd1a5e04839b718e48635749f5f",
+      "dimension": "error",
+      "value": "想错",
+      "aliases": [],
+      "created_at": "2026-02-28T12:55:05.430886Z",
+      "ref_count": 1
+    },
+    {
+      "id": "73a5edfaabde4507b5d271ac375ca1af",
+      "dimension": "knowledge",
+      "value": "三角函数",
+      "aliases": [],
+      "created_at": "2026-02-28T12:55:22.751448Z",
+      "ref_count": 1
+    },
+    {
+      "id": "f63ceb474eaa4fcf93fdb746027a9354",
+      "dimension": "knowledge",
+      "value": "倾斜角",
+      "aliases": [],
+      "created_at": "2026-02-28T12:55:31.416005Z",
+      "ref_count": 1
+    },
+    {
+      "id": "2f7f18df64fe4b2ebc3726791e391d4a",
+      "dimension": "error",
+      "value": "范围开闭",
+      "aliases": [],
+      "created_at": "2026-02-28T12:55:46.167557Z",
+      "ref_count": 1
+    },
+    {
+      "id": "d3eca1ac35ba4322a4f18176f271a17d",
+      "dimension": "error",
+      "value": "漏解",
+      "aliases": [],
+      "created_at": "2026-02-28T12:55:59.076893Z",
+      "ref_count": 2
+    },
+    {
+      "id": "9e999d66ffc140df83b213e5d7324df8",
+      "dimension": "knowledge",
+      "value": "轨迹",
+      "aliases": [],
+      "created_at": "2026-02-28T12:56:13.613350Z",
+      "ref_count": 1
+    },
+    {
+      "id": "1cdf9f1d0d2149c5bb6f2805b0d79798",
+      "dimension": "error",
+      "value": "漏条件",
+      "aliases": [],
+      "created_at": "2026-02-28T12:56:24.971909Z",
+      "ref_count": 1
+    },
+    {
+      "id": "4ee152d1491041d4b4d9137b7cd3e650",
+      "dimension": "error",
+      "value": "范围",
+      "aliases": [],
+      "created_at": "2026-02-28T12:56:28.378306Z",
+      "ref_count": 1
+    },
+    {
+      "id": "63484a1ba89f42acb910ffa660c61fd2",
+      "dimension": "knowledge",
+      "value": "最值",
+      "aliases": [],
+      "created_at": "2026-02-28T12:56:58.807168Z",
       "ref_count": 0
     },
     {
-      "id": "0dbd287ee41543e99c07a199d295ecf7",
+      "id": "69a5361902134bee937177ea18c15cb5",
       "dimension": "knowledge",
-      "value": "化学/氧化还原反应",
+      "value": "圆",
       "aliases": [],
-      "created_at": "2026-02-26T07:22:10.251937Z",
+      "created_at": "2026-02-28T12:57:05.164086Z",
+      "ref_count": 4
+    },
+    {
+      "id": "16ecf0092d7e4a7c8fd1032ae57b5923",
+      "dimension": "knowledge",
+      "value": "数学/解析几何/轨迹",
+      "aliases": [],
+      "created_at": "2026-02-28T12:57:51.250829Z",
+      "ref_count": 1
+    },
+    {
+      "id": "8215e922bb9447fabc763ed88b22c562",
+      "dimension": "knowledge",
+      "value": "数学/解析几何/范围",
+      "aliases": [],
+      "created_at": "2026-02-28T12:57:51.255826Z",
       "ref_count": 2
     },
     {
-      "id": "a60f3900bacd432a88a1f6108831bc07",
+      "id": "b368de115bdc40598b42171cf3354cc1",
       "dimension": "knowledge",
-      "value": "化学/滴定分析",
+      "value": "数学/解析几何/圆",
       "aliases": [],
-      "created_at": "2026-02-26T07:22:10.258917Z",
+      "created_at": "2026-02-28T12:57:51.261493Z",
+      "ref_count": 5
+    },
+    {
+      "id": "c91f28e38b724180a4e6ac8c6484508b",
+      "dimension": "knowledge",
+      "value": "面积",
+      "aliases": [],
+      "created_at": "2026-02-28T12:58:05.535082Z",
+      "ref_count": 0
+    },
+    {
+      "id": "73a9da872f0f49f39660db6bcd6d9b6a",
+      "dimension": "knowledge",
+      "value": "平移齐次化",
+      "aliases": [],
+      "created_at": "2026-02-28T12:58:37.334051Z",
+      "ref_count": 1
+    },
+    {
+      "id": "a72e6243ac6946e5a34cc8d64af1b8c1",
+      "dimension": "knowledge",
+      "value": "数学/最值问题/阿氏圆",
+      "aliases": [],
+      "created_at": "2026-02-28T12:59:11.652402Z",
+      "ref_count": 1
+    },
+    {
+      "id": "b19a494014894a4590ca128dc2920ff9",
+      "dimension": "knowledge",
+      "value": "数学/动点问题",
+      "aliases": [],
+      "created_at": "2026-02-28T12:59:11.657401Z",
+      "ref_count": 1
+    },
+    {
+      "id": "ea44ae0ccc454c518803a3a25354e0d8",
+      "dimension": "knowledge",
+      "value": "数学/解析几何/动点",
+      "aliases": [],
+      "created_at": "2026-02-28T12:59:36.747779Z",
+      "ref_count": 1
+    },
+    {
+      "id": "47a78cc6790b497f8a6f918109873716",
+      "dimension": "knowledge",
+      "value": "数学/函数/二次函数性质",
+      "aliases": [],
+      "created_at": "2026-02-28T12:59:36.751786Z",
+      "ref_count": 1
+    },
+    {
+      "id": "70e58821b22c4999ba87c6967bcfc29f",
+      "dimension": "knowledge",
+      "value": "数学/解析几何/距离公式",
+      "aliases": [],
+      "created_at": "2026-02-28T12:59:36.755786Z",
       "ref_count": 2
     },
     {
-      "id": "c2fd392806714587a5cb8082c17d050e",
+      "id": "ac83252f3b6c43bd8e1e7899f20f5b17",
       "dimension": "knowledge",
-      "value": "化学/物质的量浓度计算",
+      "value": "切线",
       "aliases": [],
-      "created_at": "2026-02-26T07:22:10.260915Z",
-      "ref_count": 2
+      "created_at": "2026-02-28T12:59:53.766088Z",
+      "ref_count": 0
+    },
+    {
+      "id": "d56b7d426b254e9697af229c81ccfe08",
+      "dimension": "knowledge",
+      "value": "最值条件",
+      "aliases": [],
+      "created_at": "2026-02-28T13:00:10.692649Z",
+      "ref_count": 0
+    },
+    {
+      "id": "467aa1bfe79d452481cfff1e50cc1940",
+      "dimension": "knowledge",
+      "value": "数学/解析几何/倾斜角",
+      "aliases": [],
+      "created_at": "2026-02-28T13:04:41.076282Z",
+      "ref_count": 1
+    },
+    {
+      "id": "52df639353f6420789feb80bb2b8c695",
+      "dimension": "knowledge",
+      "value": "数学/三角函数/三角恒等变换",
+      "aliases": [],
+      "created_at": "2026-02-28T13:04:41.091657Z",
+      "ref_count": 1
     }
   ]
 }
