@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from typing import Callable, Iterable
 
 from .models import (
@@ -242,13 +243,14 @@ class TaskProcessingService:
             # Update status
             from .models import TaskStatus
             
+            now = datetime.now(timezone.utc)
             self.repository.update_task(
                 TaskRecord(
                     id=task_id,
                     payload=payload,
                     status=TaskStatus.PROCESSING,
-                    created_at=context.payload.image_url,
-                    updated_at=context.payload.image_url,
+                    created_at=now,
+                    updated_at=now,
                 )
             )
 

@@ -107,7 +107,7 @@ class ApplicationService:
             updated_at=now,
         )
 
-        self.repository.create_task(task)
+        self.repository.create(task)
 
         logger.info("Task created: %s", task_id)
 

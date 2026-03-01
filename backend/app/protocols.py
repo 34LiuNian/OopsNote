@@ -116,14 +116,17 @@ class TasksServiceLike(Protocol):
 class Repository(Protocol):
     """Protocol for task persistence."""
 
-    def create_task(self, payload: TaskCreateRequest) -> TaskRecord:
+    def create(self, payload: TaskCreateRequest, asset: AssetMetadata | None = None) -> TaskRecord:
         """Create a new task record."""
 
-    def get_task(self, task_id: str) -> TaskRecord:
+    def get(self, task_id: str) -> TaskRecord:
         """Retrieve a task by ID."""
 
     def update_task(self, task: TaskRecord) -> TaskRecord:
         """Update an existing task."""
+
+    def list_all(self) -> dict[str, TaskRecord]:
+        """List all tasks."""
 
     def list_tasks(
         self,
@@ -133,11 +136,14 @@ class Repository(Protocol):
     ) -> list[TaskRecord]:
         """List tasks with optional filters."""
 
+    def get_task(self, task_id: str) -> TaskRecord:
+        """Retrieve a task by ID (legacy alias)."""
+
     def save_pipeline_result(
         self,
         task_id: str,
         result: PipelineResult,
-    ) -> None:
+    ) -> TaskRecord:
         """Save pipeline processing result."""
 
 
