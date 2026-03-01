@@ -65,16 +65,19 @@ export function UploadQueue({
         onClick={() => singleInputRef.current?.click()}
         disabled={isLoading}
       >
-        拍照/选择图片
+        拍照 / 选择图片
       </Button>
       <Button
         onClick={() => folderInputRef.current?.click()}
         disabled={isLoading}
+        variant="invisible"
       >
         导入文件夹
       </Button>
       {files.length > 0 && (
-        <Label variant="secondary">剩余 {remainingCount} / {files.length}</Label>
+        <Box className="oops-badge oops-badge-accent">
+          剩余 {remainingCount} / {files.length}
+        </Box>
       )}
     </Box>
   );

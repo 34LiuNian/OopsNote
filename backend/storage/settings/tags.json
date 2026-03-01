@@ -6,7 +6,7 @@
       "value": "练透",
       "aliases": [],
       "created_at": "2026-02-28T12:48:29.678531Z",
-      "ref_count": 16
+      "ref_count": 17
     },
     {
       "id": "fae0e7a040474353a5d6b0d2b7f5cdb7",
@@ -38,7 +38,7 @@
       "value": "解析几何",
       "aliases": [],
       "created_at": "2026-02-28T12:50:20.743626Z",
-      "ref_count": 13
+      "ref_count": 14
     },
     {
       "id": "6b2d933336bc42ca8792656ba6e6b698",
@@ -46,7 +46,7 @@
       "value": "直线",
       "aliases": [],
       "created_at": "2026-02-28T12:50:23.370324Z",
-      "ref_count": 5
+      "ref_count": 6
     },
     {
       "id": "41b2c0c7db39469aa73bd4c71a1c680c",
@@ -54,7 +54,7 @@
       "value": "对称",
       "aliases": [],
       "created_at": "2026-02-28T12:50:27.885293Z",
-      "ref_count": 1
+      "ref_count": 2
     },
     {
       "id": "a3290cf7be614d1ab192578dcd2e8915",
@@ -62,7 +62,7 @@
       "value": "光路",
       "aliases": [],
       "created_at": "2026-02-28T12:50:38.898848Z",
-      "ref_count": 2
+      "ref_count": 3
     },
     {
       "id": "59cd5d4ef11c4844ada4fa74cac3caca",
@@ -118,7 +118,7 @@
       "value": "算错",
       "aliases": [],
       "created_at": "2026-02-28T12:51:03.943169Z",
-      "ref_count": 1
+      "ref_count": 2
     },
     {
       "id": "a328c18cdeb04b70b4fbbe0c34e143fc",
@@ -198,7 +198,7 @@
       "value": "数学/解析几何/直线",
       "aliases": [],
       "created_at": "2026-02-28T12:53:06.831240Z",
-      "ref_count": 9
+      "ref_count": 10
     },
     {
       "id": "7df523293b744a08ac31fe1725f660f5",
@@ -206,7 +206,7 @@
       "value": "数学/对称/点关于直线的对称",
       "aliases": [],
       "created_at": "2026-02-28T12:53:06.834755Z",
-      "ref_count": 2
+      "ref_count": 3
     },
     {
       "id": "eb9e54ebdb0646a991e4f081ea650ea9",

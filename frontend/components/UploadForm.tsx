@@ -199,7 +199,6 @@ export function UploadForm() {
         sx={{
           flex: 1,
           minWidth: '480px',
-          // flexShrink: 0,
           pr: [0, 0, 4],
           pb: [4, 4, 0],
           gap: 3,
@@ -207,8 +206,10 @@ export function UploadForm() {
           flexDirection: 'column',
         }}
       >
-
-        <Heading as="h1" sx={{ fontSize: 4, mb: 1 }}>新建题目</Heading>
+        <Box>
+          <Heading as="h1" sx={{ fontSize: 4, m: 0 }}>新建题目</Heading>
+          <Text sx={{ color: "fg.muted", fontSize: 1 }}>上传手稿图片，AI 自动识别并解答</Text>
+        </Box>
 
         <UploadQueue
           files={files}
@@ -223,37 +224,39 @@ export function UploadForm() {
           onIndexChange={setIndex}
         />
 
-        <AnnotationForm
-          subject={subject}
-          onSubjectChange={setSubject}
-          questionType={questionType}
-          onQuestionTypeChange={setQuestionType}
-          questionNo={questionNo}
-          onQuestionNoChange={setQuestionNo}
-          difficultyLeft={difficultyLeft}
-          difficultyRight={difficultyRight}
-          difficultyLeftRef={difficultyLeftRef}
-          difficultyRightRef={difficultyRightRef}
-          onDifficultyLeftChange={setDifficultyLeft}
-          onDifficultyRightChange={setDifficultyRight}
-          notes={notes}
-          onNotesChange={setNotes}
-          sourceTags={sourceTags}
-          onSourceTagsChange={setSourceTags}
-          knowledgeTags={knowledgeTags}
-          onKnowledgeTagsChange={setKnowledgeTags}
-          errorTags={errorTags}
-          onErrorTagsChange={setErrorTags}
-          customTags={customTags}
-          onCustomTagsChange={setCustomTags}
-          tagStyles={tagStyles}
-          showAdvanced={showAdvanced}
-          onShowAdvancedChange={setShowAdvanced}
-          onSubmit={handleSubmitAndQueue}
-          onSkip={handleSkip}
-          isLoading={isLoading}
-          hasFile={!!currentFile}
-        />
+        <Box className="oops-card" sx={{ p: 3 }}>
+          <AnnotationForm
+            subject={subject}
+            onSubjectChange={setSubject}
+            questionType={questionType}
+            onQuestionTypeChange={setQuestionType}
+            questionNo={questionNo}
+            onQuestionNoChange={setQuestionNo}
+            difficultyLeft={difficultyLeft}
+            difficultyRight={difficultyRight}
+            difficultyLeftRef={difficultyLeftRef}
+            difficultyRightRef={difficultyRightRef}
+            onDifficultyLeftChange={setDifficultyLeft}
+            onDifficultyRightChange={setDifficultyRight}
+            notes={notes}
+            onNotesChange={setNotes}
+            sourceTags={sourceTags}
+            onSourceTagsChange={setSourceTags}
+            knowledgeTags={knowledgeTags}
+            onKnowledgeTagsChange={setKnowledgeTags}
+            errorTags={errorTags}
+            onErrorTagsChange={setErrorTags}
+            customTags={customTags}
+            onCustomTagsChange={setCustomTags}
+            tagStyles={tagStyles}
+            showAdvanced={showAdvanced}
+            onShowAdvancedChange={setShowAdvanced}
+            onSubmit={handleSubmitAndQueue}
+            onSkip={handleSkip}
+            isLoading={isLoading}
+            hasFile={!!currentFile}
+          />
+        </Box>
       </Box>
 
       {/* Right: Image */}
@@ -261,38 +264,43 @@ export function UploadForm() {
         sx={{
           flex: 1,
           minWidth: '320px',
-          borderLeft: ["none", "none", "1px solid"],
-          borderLeftColor: ["border.muted", "border.muted", "border.muted"],
           pl: [0, 0, 4],
           pt: [4, 4, 0],
           display: 'flex',
           flexDirection: 'column',
+          position: ["relative", "relative", "sticky"],
+          top: [0, 0, 64],
+          alignSelf: "flex-start",
+          maxHeight: ["none", "none", "calc(100vh - 80px)"],
         }}
       >
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
-          <Heading as="h2" sx={{ fontSize: 3 }}>图片预览</Heading>
+          <Text sx={{ fontWeight: 600, fontSize: 2 }}>图片预览</Text>
           {files.length > 0 && (
-            <Label variant="secondary">第 {Math.min(index + 1, files.length)} / {files.length}</Label>
+            <Box className="oops-badge oops-badge-muted">
+              {Math.min(index + 1, files.length)} / {files.length}
+            </Box>
           )}
         </Box>
 
         {!currentFile ? (
           <Box
+            className="oops-empty-state"
             sx={{
               flex: 1,
-              p: 5,
-              textAlign: 'center',
-              color: 'fg.muted',
-              border: '1px dashed',
+              border: '2px dashed',
               borderColor: 'border.default',
-              borderRadius: 2,
+              borderRadius: "var(--oops-radius-md)",
+              minHeight: 300,
             }}
           >
-            <Text as="p" sx={{ fontWeight: 'bold' }}>等待导入图片</Text>
-            <Text as="p" sx={{ fontSize: 1 }}>从左侧选择拍照/多图/文件夹导入。</Text>
+            <Text as="p" sx={{ fontWeight: 600 }}>等待导入图片</Text>
+            <Text as="p" sx={{ fontSize: 1 }}>从左侧选择拍照/多图/文件夹导入</Text>
           </Box>
         ) : (
-          <ImagePreview file={currentFile} />
+          <Box className="oops-card" sx={{ overflow: "hidden", flex: 1 }}>
+            <ImagePreview file={currentFile} />
+          </Box>
         )}
       </Box>
     </Box>

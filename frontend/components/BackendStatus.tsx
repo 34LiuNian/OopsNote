@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Label } from "@primer/react";
+import { Box, Text, Tooltip } from "@primer/react";
 
 import { API_BASE } from "../lib/api";
 
@@ -68,12 +68,44 @@ export function BackendStatus() {
     };
   }, []);
 
-  const variant =
+  const dotColor =
     status === "connected"
-      ? "success"
+      ? "var(--fgColor-success, #2da44e)"
       : status === "disconnected"
-        ? "danger"
-        : "secondary";
+        ? "var(--fgColor-danger, #cf222e)"
+        : "var(--fgColor-muted, #8c959f)";
 
-  return <Label variant={variant}>{label}</Label>;
+  return (
+    <Tooltip text={label} direction="sw">
+      <Box
+        sx={{
+          display: "flex",
+          alignItems: "center",
+          gap: "6px",
+          cursor: "default",
+          px: 2,
+          py: 1,
+          borderRadius: "999px",
+          fontSize: "12px",
+          color: "fg.muted",
+          transition: "all var(--oops-transition-fast)",
+          "&:hover": { bg: "canvas.subtle" },
+        }}
+      >
+        <Box
+          sx={{
+            width: 8,
+            height: 8,
+            borderRadius: "50%",
+            backgroundColor: dotColor,
+            boxShadow: status === "connected" ? `0 0 6px ${dotColor}` : "none",
+            transition: "all var(--oops-transition-normal)",
+          }}
+        />
+        <Text sx={{ fontSize: "12px", fontWeight: 500 }}>
+          {status === "connected" ? "已连接" : status === "disconnected" ? "离线" : "检测中"}
+        </Text>
+      </Box>
+    </Tooltip>
+  );
 }

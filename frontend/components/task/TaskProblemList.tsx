@@ -1,6 +1,8 @@
 "use client";
 
-import { Box, Button, Heading, Label, Text } from "@primer/react";
+import { useState } from "react";
+import { Box, Button, Heading, IconButton, Label, Text, Tooltip } from "@primer/react";
+import { PencilIcon, CopyIcon, TrashIcon, ChevronDownIcon, ChevronUpIcon } from "@primer/octicons-react";
 import type { TagDimensionStyle } from "../../types/api";
 import { MarkdownRenderer } from "../MarkdownRenderer";
 import { ProblemCard } from "../ProblemCard";
@@ -101,86 +103,204 @@ export function TaskProblemList({
   };
 
   return (
-    <Box sx={{ mt: 4 }}>
-      <Heading as="h3" sx={{ fontSize: 2, mb: 2, borderBottom: "1px solid", borderColor: "border.muted", pb: 1 }}>
-        题目与解答
-      </Heading>
+    <Box sx={{ mt: 3 }}>
+      <Box sx={{ display: "flex", alignItems: "center", gap: 2, mb: 3 }}>
+        <Heading as="h3" sx={{ fontSize: 2, m: 0 }}>
+          题目与解答
+        </Heading>
+        {problems.length > 0 && (
+          <Box className="oops-badge oops-badge-muted">{problems.length} 题</Box>
+        )}
+      </Box>
+
       {problems.length === 0 ? (
-        <Box sx={{ textAlign: "center", p: 4, color: "fg.muted" }}>
-          <Text as="p" sx={{ fontWeight: "bold" }}>尚未解析出题目。</Text>
-          <Text as="p" sx={{ fontSize: 1 }}>如果任务仍在处理中，稍等片刻或刷新状态。</Text>
+        <Box className="oops-empty-state" sx={{ py: 5 }}>
+          <Text as="p" sx={{ fontWeight: 600, fontSize: 2 }}>尚未解析出题目</Text>
+          <Text as="p" sx={{ fontSize: 1 }}>如果任务仍在处理中，稍等片刻即可看到结果。</Text>
         </Box>
       ) : (
-        <Box as="ul" sx={{ listStyle: "none", p: 0, m: 0, display: "flex", flexDirection: "column", gap: 3 }}>
+        <Box sx={{ display: "flex", flexDirection: "column", gap: 3 }}>
           {problems.map((problem, idx) => {
             const solution = solutions.find((s) => s.problem_id === problem.problem_id);
             const tag = tags.find((t) => t.problem_id === problem.problem_id);
+            const isEditing = editingKey === problem.problem_id;
+
+            // Collect all tags for display
+            const knowledgeTags = Array.isArray(problem.knowledge_tags) ? problem.knowledge_tags : [];
+            const errorTagsList = Array.isArray(problem.error_tags) ? problem.error_tags : [];
+            const userTagsList = Array.isArray(problem.user_tags) ? problem.user_tags : [];
+            const aiKnowledge = tag?.knowledge_points || [];
+            const allTags = [...knowledgeTags, ...errorTagsList, ...userTagsList, ...aiKnowledge];
 
             return (
-              <Box as="li" key={problem.problem_id} sx={{ p: 3, bg: "canvas.subtle", borderRadius: 2 }}>
-                <Text sx={{ fontWeight: "bold", display: "block", mb: 2, fontSize: 2 }}>
-                  {problem.question_no ? `题号 ${problem.question_no}` : `题目 ${idx + 1}`}
-                </Text>
-
-                <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap", mb: 2 }}>
-                  <Button size="small" onClick={() => onEdit(problem.problem_id)}>
-                    编辑
-                  </Button>
-                  <Button size="small" onClick={() => copyMarkdown(problem.problem_id)}>
-                    复制 Markdown
-                  </Button>
-                  <Button size="small" variant="danger" onClick={() => removeProblem(problem.problem_id)}>
-                    删除题目
-                  </Button>
-                </Box>
-
-                {editingKey === problem.problem_id ? (
-                  <ProblemEditPanel
-                    taskId={taskId}
-                    problem={problem}
-                    tagStyles={tagStyles}
-                    onClose={onCloseEdit}
-                    onSaved={onSaved}
-                  />
-                ) : null}
-
-                <Box sx={{ mb: 3 }}>
-                  <ProblemCard
-                    questionType={problem.question_type}
-                    source={problem.source}
-                    problemText={problem.problem_text || ""}
-                    options={problem.options}
-                    itemKeyPrefix={problem.problem_id}
-                    fontSize={2}
-                  />
-                </Box>
-
-                {solution && (
-                  <Box sx={{ mb: 2 }}>
-                    <Text sx={{ fontWeight: "bold", display: "block" }}>答案：</Text>
-                    <MarkdownRenderer text={solution.answer || ""} />
-                    <Text sx={{ fontWeight: "bold", display: "block" }}>解析：</Text>
-                    <MarkdownRenderer text={solution.explanation || ""} />
-                  </Box>
-                )}
-
-                {tag && (
-                  <Box sx={{ mt: 2, pt: 2, borderTop: "1px dashed", borderColor: "border.muted" }}>
-                    <Text sx={{ fontWeight: "bold", mr: 1 }}>知识点：</Text>
-                    {tag.knowledge_points.length > 0 ? (
-                      tag.knowledge_points.map((kp) => (
-                        <Label key={kp} variant="secondary" sx={{ mr: 1 }}>
-                          {kp}
-                        </Label>
-                      ))
-                    ) : (
-                      <Text sx={{ color: "fg.muted" }}>未标注</Text>
-                    )}
-                  </Box>
-                )}
-              </Box>
+              <ProblemCardItem
+                key={problem.problem_id}
+                idx={idx}
+                problem={problem}
+                solution={solution}
+                allTags={allTags}
+                isEditing={isEditing}
+                taskId={taskId}
+                tagStyles={tagStyles}
+                onEdit={onEdit}
+                onCloseEdit={onCloseEdit}
+                onSaved={onSaved}
+                onCopy={copyMarkdown}
+                onRemove={removeProblem}
+              />
             );
           })}
+        </Box>
+      )}
+    </Box>
+  );
+}
+
+/** Individual problem card with collapsible answer */
+function ProblemCardItem({
+  idx,
+  problem,
+  solution,
+  allTags,
+  isEditing,
+  taskId,
+  tagStyles,
+  onEdit,
+  onCloseEdit,
+  onSaved,
+  onCopy,
+  onRemove,
+}: {
+  idx: number;
+  problem: TaskProblemListProps["problems"][0];
+  solution?: { problem_id: string; answer: string; explanation: string };
+  allTags: string[];
+  isEditing: boolean;
+  taskId: string;
+  tagStyles: Record<string, TagDimensionStyle>;
+  onEdit: (id: string) => void;
+  onCloseEdit: () => void;
+  onSaved: () => Promise<void> | void;
+  onCopy: (id: string) => void;
+  onRemove: (id: string) => void;
+}) {
+  const [showAnswer, setShowAnswer] = useState(true);
+
+  return (
+    <Box
+      className="oops-card"
+      sx={{
+        overflow: "hidden",
+        animation: "slideUp 0.3s ease-out",
+        animationDelay: `${idx * 0.05}s`,
+        animationFillMode: "both",
+      }}
+    >
+      {/* Card header */}
+      <Box
+        sx={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          px: 3,
+          py: 2,
+          borderBottom: "1px solid",
+          borderColor: "border.muted",
+          bg: "canvas.subtle",
+        }}
+      >
+        <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
+          <Text sx={{ fontWeight: 600, fontSize: 2 }}>
+            {problem.question_no ? `题 ${problem.question_no}` : `题目 ${idx + 1}`}
+          </Text>
+          {problem.question_type && (
+            <Box className="oops-badge oops-badge-accent">{problem.question_type}</Box>
+          )}
+          {problem.source && (
+            <Text sx={{ fontSize: 0, color: "fg.muted" }}>{problem.source}</Text>
+          )}
+        </Box>
+        <Box sx={{ display: "flex", gap: 1 }}>
+          <Tooltip text="编辑" direction="s">
+            <IconButton icon={PencilIcon} aria-label="编辑" size="small" variant="invisible" onClick={() => onEdit(problem.problem_id)} />
+          </Tooltip>
+          <Tooltip text="复制 Markdown" direction="s">
+            <IconButton icon={CopyIcon} aria-label="复制" size="small" variant="invisible" onClick={() => onCopy(problem.problem_id)} />
+          </Tooltip>
+          <Tooltip text="删除" direction="s">
+            <IconButton icon={TrashIcon} aria-label="删除" size="small" variant="invisible" sx={{ color: "danger.fg" }} onClick={() => onRemove(problem.problem_id)} />
+          </Tooltip>
+        </Box>
+      </Box>
+
+      {/* Edit panel */}
+      {isEditing && (
+        <ProblemEditPanel
+          taskId={taskId}
+          problem={problem}
+          tagStyles={tagStyles}
+          onClose={onCloseEdit}
+          onSaved={onSaved}
+        />
+      )}
+
+      {/* Problem body */}
+      <Box sx={{ px: 3, py: 3 }}>
+        <ProblemCard
+          questionType={null}
+          source={null}
+          problemText={problem.problem_text || ""}
+          options={problem.options}
+          itemKeyPrefix={problem.problem_id}
+          fontSize={2}
+          showMeta={false}
+        />
+      </Box>
+
+      {/* Tags row */}
+      {allTags.length > 0 && (
+        <Box sx={{ px: 3, pb: 2, display: "flex", gap: 1, flexWrap: "wrap" }}>
+          {allTags.map((t) => (
+            <Label key={t} variant="secondary" sx={{ fontSize: "11px" }}>{t}</Label>
+          ))}
+        </Box>
+      )}
+
+      {/* Collapsible answer section */}
+      {solution && (
+        <Box sx={{ borderTop: "1px solid", borderColor: "border.muted" }}>
+          <Box
+            onClick={() => setShowAnswer(!showAnswer)}
+            sx={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              px: 3,
+              py: 2,
+              cursor: "pointer",
+              bg: "canvas.subtle",
+              "&:hover": { bg: "neutral.muted" },
+              transition: "background-color var(--oops-transition-fast)",
+              userSelect: "none",
+            }}
+          >
+            <Text sx={{ fontWeight: 600, fontSize: 1, color: "fg.muted" }}>
+              {showAnswer ? "收起答案与解析" : "展开答案与解析"}
+            </Text>
+            {showAnswer ? <ChevronUpIcon size={16} /> : <ChevronDownIcon size={16} />}
+          </Box>
+          {showAnswer && (
+            <Box sx={{ px: 3, py: 3 }}>
+              <Box sx={{ mb: 3 }}>
+                <Text sx={{ fontWeight: 600, fontSize: 1, color: "accent.fg", display: "block", mb: 1 }}>答案</Text>
+                <MarkdownRenderer text={solution.answer || ""} />
+              </Box>
+              <Box>
+                <Text sx={{ fontWeight: 600, fontSize: 1, color: "accent.fg", display: "block", mb: 1 }}>解析</Text>
+                <MarkdownRenderer text={solution.explanation || ""} />
+              </Box>
+            </Box>
+          )}
         </Box>
       )}
     </Box>

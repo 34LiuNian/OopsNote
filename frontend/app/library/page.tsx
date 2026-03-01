@@ -72,74 +72,65 @@ export default function LibraryPage() {
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-      {/* Active Tasks */}
-      <Box sx={{ p: 3, border: '1px solid', borderColor: 'border.default', borderRadius: 2, minHeight: 200 }}>
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-          <Box>
-            <Text sx={{ fontSize: 0, color: 'fg.muted', textTransform: 'uppercase' }}>Tasks</Text>
-            <Heading as="h2" sx={{ fontSize: 3 }}>进行中的任务</Heading>
-          </Box>
-          {isLoadingActive ? (
-            <Label variant="secondary">刷新中...</Label>
-          ) : activeTaskItems.length > 0 ? (
-            <Label variant="secondary">进行中 {activeTaskItems.length} 条</Label>
-          ) : (
-            <Label variant="secondary">暂无进行中任务</Label>
-          )}
+      {/* Page header */}
+      <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <Box>
+          <Heading as="h1" sx={{ fontSize: 4, m: 0 }}>题库</Heading>
+          <Text sx={{ color: "fg.muted", fontSize: 1 }}>浏览、搜索和管理你的错题集</Text>
         </Box>
+        {isLoading && <Spinner size="small" />}
+      </Box>
 
-        {activeTaskItems.length === 0 ? (
-          isLoadingActive ? (
-            <ListSkeleton count={1} showAvatar={false} />
-          ) : (
-            <Box sx={{ textAlign: 'center', color: 'fg.muted' }}>
-              <Text as="p" sx={{ fontWeight: 'bold' }}>当前没有进行中的任务。</Text>
-              <Text as="p" sx={{ fontSize: 1 }}>上传后任务会出现在这里，可点击进入查看进度。</Text>
+      {/* Active Tasks - compact strip */}
+      {(activeTaskItems.length > 0 || isLoadingActive) && (
+        <Box
+          className="oops-card"
+          sx={{ px: 3, py: 2 }}
+        >
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 3, flexWrap: "wrap" }}>
+            <Box sx={{ display: "flex", alignItems: "center", gap: 2, flexShrink: 0 }}>
+              <Box
+                sx={{
+                  width: 8,
+                  height: 8,
+                  borderRadius: "50%",
+                  bg: "success.fg",
+                  animation: "pulse 2s ease-in-out infinite",
+                }}
+              />
+              <Text sx={{ fontWeight: 600, fontSize: 1 }}>
+                进行中 {activeTaskItems.length} 个任务
+              </Text>
             </Box>
-          )
-        ) : (
-          <Box>
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-              <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
-                {isLoadingActive ? (
-                  <Label variant="secondary">刷新中...</Label>
-                ) : (
-                  <Label variant="secondary">进行中 {activeTaskItems.length} 条</Label>
-                )}
-              </Box>
-            </Box>
-            <Box as="ul" sx={{ listStyle: 'none', p: 0, m: 0, display: 'flex', gap: 2, flexWrap: 'wrap' }}>
-              {activeTaskItems.map((t) => (
-                <Box as="li" key={t.id}>
-                  <Link href={`/tasks/${t.id}`} style={{ textDecoration: 'none', color: 'inherit' }}>
+            {isLoadingActive ? (
+              <Spinner size="small" />
+            ) : (
+              <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+                {activeTaskItems.map((t) => (
+                  <Link key={t.id} href={`/tasks/${t.id}`} style={{ textDecoration: 'none', color: 'inherit' }}>
                     <Box
                       sx={{
                         cursor: 'pointer',
-                        borderRadius: 2,
+                        borderRadius: "var(--oops-radius-sm)",
                         overflow: 'hidden',
-                        '&:hover': { bg: 'canvas.subtle' },
+                        border: "1px solid",
+                        borderColor: "border.default",
+                        transition: "all var(--oops-transition-fast)",
+                        '&:hover': { boxShadow: "var(--oops-shadow-md)", transform: "scale(1.05)" },
                       }}
                     >
                       <TaskThumbnail asset={t.asset} size="medium" />
                     </Box>
                   </Link>
-                </Box>
-              ))}
-            </Box>
+                ))}
+              </Box>
+            )}
           </Box>
-        )}
-      </Box>
-
-      {/* Library Filter */}
-      <Box sx={{ p: 3, border: '1px solid', borderColor: 'border.default', borderRadius: 2}}>
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-          <Box>
-            <Text sx={{ fontSize: 0, color: 'fg.muted', textTransform: 'uppercase' }}>Library</Text>
-            <Heading as="h2" sx={{ fontSize: 3 }}>题库总览</Heading>
-          </Box>
-          {isLoading && <Spinner size="small" />}
         </Box>
+      )}
 
+      {/* Filters */}
+      <Box className="oops-card" sx={{ p: 3 }}>
         <Box sx={{ display: 'grid', gridTemplateColumns: ['1fr', '1fr 1fr'], gap: 3, mb: 3 }}>
           <FormControl>
             <FormControl.Label>学科</FormControl.Label>
@@ -161,7 +152,7 @@ export default function LibraryPage() {
                 sx={{ flex: 1 }}
                 placeholder="起始日期"
               />
-              <Text sx={{ color: 'fg.muted' }}>至</Text>
+              <Text sx={{ color: 'fg.muted', flexShrink: 0 }}>至</Text>
               <TextInput
                 type="date"
                 value={dateBefore}
@@ -169,16 +160,15 @@ export default function LibraryPage() {
                 sx={{ flex: 1 }}
                 placeholder="结束日期"
               />
-              <Button
-                size="small"
-                onClick={() => {
-                  setDateAfter('');
-                  setDateBefore('');
-                }}
-                disabled={!dateAfter && !dateBefore}
-              >
-                清空
-              </Button>
+              {(dateAfter || dateBefore) && (
+                <Button
+                  size="small"
+                  variant="invisible"
+                  onClick={() => { setDateAfter(''); setDateBefore(''); }}
+                >
+                  清空
+                </Button>
+              )}
             </Box>
           </FormControl>
         </Box>
@@ -193,25 +183,30 @@ export default function LibraryPage() {
           customValue={customFilter}
           onCustomChange={setCustomFilter}
           styles={tagStyles}
-          // placeholders={{
-          //   knowledge: "输入知识点关键词进行筛选",
-          //   error: "输入错因关键词进行筛选",
-          //   custom: "输入自定义标签进行筛选",
-          // }}
         />
+      </Box>
 
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-          <Label variant="secondary">共 {items.length} 道题</Label>
+      {/* Results */}
+      <Box>
+        {/* Toolbar */}
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+          <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
+            <Text sx={{ fontWeight: 600, fontSize: 2 }}>题目列表</Text>
+            <Box className="oops-badge oops-badge-muted">{items.length} 题</Box>
+          </Box>
           <Box sx={{ display: 'flex', gap: 2 }}>
+            {Object.keys(selectedIds).filter((k) => selectedIds[k]).length > 0 && (
+              <Button 
+                size="small"
+                variant="invisible"
+                onClick={() => setSelectedIds({})}
+              >
+                取消选择 ({Object.keys(selectedIds).filter((k) => selectedIds[k]).length})
+              </Button>
+            )}
             <Button 
-              size="small" 
-              onClick={() => setSelectedIds({})}
-              disabled={Object.keys(selectedIds).length === 0}
-            >
-              取消全选
-            </Button>
-            <Button 
-              size="small" 
+              size="small"
+              variant="invisible"
               onClick={() => {
                 const allSelected: Record<string, boolean> = {};
                 items.forEach((item) => {
@@ -230,42 +225,40 @@ export default function LibraryPage() {
           isLoading ? (
             <ListSkeleton count={5} showAvatar={false} />
           ) : (
-            <Box sx={{ textAlign: 'center', p: 4, color: 'fg.muted' }}>
-              <Text as="p" sx={{ fontWeight: 'bold' }}>暂无题目。</Text>
-              <Text as="p" sx={{ fontSize: 1 }}>可以先在首页上传一张手稿图片，生成几道题后再回到这里查看。</Text>
+            <Box className="oops-empty-state">
+              <Text as="p" sx={{ fontWeight: 600, fontSize: 2 }}>暂无题目</Text>
+              <Text as="p" sx={{ fontSize: 1 }}>在首页上传手稿图片，AI 会自动识别并生成题目。</Text>
+              <Link href="/" style={{ textDecoration: "none" }}>
+                <Button variant="primary" sx={{ mt: 2 }}>去上传</Button>
+              </Link>
             </Box>
           )
         ) : (
-          <Box>
-            <Box as="ul" sx={{ listStyle: 'none', p: 0, m: 0 }}>
-              {items.map((item) => (
-                <Box
-                  as="li"
-                  key={`${item.task_id}-${item.problem_id}`}
-                  sx={{
-                    px: 2,
-                    py: 2,
-                    borderBottom: '1px solid',
-                    borderColor: 'border.muted',
-                  }}
-                >
-                  <ProblemListItem
-                    item={item}
-                    selected={!!selectedIds[`${item.task_id}:${item.problem_id}`]}
-                    toggleKey={`${item.task_id}:${item.problem_id}`}
-                    onToggleSelection={toggleSelected}
-                    showCheckbox
-                    showViewLink
-                  />
-                </Box>
-              ))}
-            </Box>
+          <Box sx={{ display: "flex", flexDirection: "column" }}>
+            {items.map((item, idx) => (
+              <Box
+                key={`${item.task_id}-${item.problem_id}`}
+                className="oops-list-item"
+                sx={{
+                  px: 2,
+                  py: 2,
+                  borderBottom: idx < items.length - 1 ? '1px solid' : 'none',
+                  borderColor: 'border.muted',
+                }}
+              >
+                <ProblemListItem
+                  item={item}
+                  selected={!!selectedIds[`${item.task_id}:${item.problem_id}`]}
+                  toggleKey={`${item.task_id}:${item.problem_id}`}
+                  onToggleSelection={toggleSelected}
+                  showCheckbox
+                  showViewLink
+                />
+              </Box>
+            ))}
           </Box>
         )}
       </Box>
-
-      {/* Results */}
-
     </Box>
   );
 }
