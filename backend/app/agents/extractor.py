@@ -14,6 +14,7 @@ from ..models import (
     AssetMetadata,
     CropRegion,
     DetectionOutput,
+    OptionItem,
     ProblemBlock,
     TaskCreateRequest,
 )
@@ -171,15 +172,16 @@ class LLMOcrExtractor:
                 for item in raw_options:
                     if not isinstance(item, dict):
                         continue
-                    key = utils._coerce_str(item.get("key"), fallback="").strip()
-                    text = utils._coerce_str(item.get("text"), fallback="").strip()
+                    key_val = item.get("key")
+                    text_val = item.get("text")
+                    if key_val is None or text_val is None:
+                        continue
+                    key = str(key_val).strip() if key_val is not None else ""
+                    text = str(text_val).strip() if text_val is not None else ""
                     if not key or not text:
                         continue
                     normalized_options.append(
-                        {
-                            "key": key,
-                            "text": text,
-                        }
+                        OptionItem(key=key, text=text)
                     )
 
             problems.append(

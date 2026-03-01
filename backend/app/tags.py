@@ -295,8 +295,7 @@ class TagStore:
                     if new_count < 0:
                         # Prevent negative counts, but log a warning
                         logger = __import__("logging").getLogger(__name__)
-                        logger.warning(f"Tag {tag_id} would have negative ref_count: {
-                                item.ref_count} + {delta}")
+                        logger.warning(f"Tag {tag_id} would have negative ref_count: {item.ref_count} + {delta}")
                         new_count = 0
                     updated = item.model_copy(update={"ref_count": new_count})
                     state.items = [

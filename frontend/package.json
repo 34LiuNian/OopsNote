@@ -6,7 +6,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "eslint . --ext .ts,.tsx"
   },
   "dependencies": {
     "@emotion/is-prop-valid": "^1.4.0",
@@ -34,8 +34,6 @@
     "@types/react": "18.3.12",
     "@types/react-dom": "18.3.5",
     "@types/styled-components": "^5.1.36",
-    "eslint": "^10.0.0",
-    "eslint-config-next": "^0.2.4",
     "typescript": "5.6.3"
   }
 }

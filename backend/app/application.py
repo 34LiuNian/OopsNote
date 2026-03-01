@@ -145,9 +145,15 @@ class ApplicationService:
         """
 
         # Convert upload to task payload
-
+        from pydantic import HttpUrl, ValidationError
+        
+        try:
+            http_url = HttpUrl(upload.image_url) if upload.image_url else HttpUrl("data:image/png;base64,placeholder")
+        except (ValidationError, ValueError):
+            http_url = HttpUrl("data:image/png;base64,placeholder")
+        
         payload = TaskCreateRequest(
-            image_url=upload.image_url or "data:image/png;base64,placeholder",
+            image_url=http_url,
             subject=upload.subject,
             grade=upload.grade,
             notes=upload.notes,

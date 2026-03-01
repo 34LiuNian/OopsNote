@@ -141,7 +141,7 @@ def build_pipeline(
             tagger=TaggingProfiler(ai_client),
             archiver=Archiver(),
             archive_store=archive_store,
-            ocr_extractor=ocr_extractor,
+            ocr_extractor=ocr_extractor,  # type: ignore[arg-type]
         ),
         orchestrator=agent_orchestrator,
     )

@@ -36,7 +36,9 @@ build-backend = "setuptools.build_meta"
 dev = [
     "autopep8>=2.3.2",
     "docformatter>=1.7.7",
+    "mypy>=1.19.1",
     "pylint>=4.0.5",
+    "types-requests>=2.32.4.20260107",
 ]
 
 

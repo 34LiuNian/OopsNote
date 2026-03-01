@@ -17,6 +17,7 @@ from .models import (
     TaggingResult,
     TaskCreateRequest,
     TaskRecord,
+    TaskStatus,
     AssetMetadata,
     DetectionOutput,
 )
@@ -46,9 +47,9 @@ class ProcessingContext:
     payload: TaskCreateRequest
     asset: AssetMetadata | None = None
     detection: DetectionOutput | None = None
-    problems: list[ProblemBlock] = None
-    solutions: list[SolutionBlock] = None
-    tags: list[TaggingResult] = None
+    problems: list[ProblemBlock] = None  # type: ignore[assignment]
+    solutions: list[SolutionBlock] = None  # type: ignore[assignment]
+    tags: list[TaggingResult] = None  # type: ignore[assignment]
 
     def __post_init__(self):
         if self.problems is None:
@@ -239,13 +240,15 @@ class TaskProcessingService:
 
         try:
             # Update status
+            from .models import TaskStatus
+            
             self.repository.update_task(
                 TaskRecord(
                     id=task_id,
                     payload=payload,
-                    status="processing",
-                    created_at=context.payload.image_url,  # type: ignore
-                    updated_at=context.payload.image_url,  # type: ignore
+                    status=TaskStatus.PROCESSING,
+                    created_at=context.payload.image_url,
+                    updated_at=context.payload.image_url,
                 )
             )
 

@@ -16,6 +16,9 @@ from ..models import (
 )
 from . import utils
 
+# Re-export PromptTemplate for backward compatibility
+from .agent_flow import PromptTemplate
+
 
 def _load_prompt(name: str) -> "PromptTemplate":
     """Load a prompt template (legacy wrapper, use utils._load_prompt instead)."""

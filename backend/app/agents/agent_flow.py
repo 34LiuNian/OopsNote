@@ -13,9 +13,13 @@ from . import utils
 
 logger = logging.getLogger(__name__)
 
+# Skill cache and directory
+_SKILL_CACHE: dict[str, str] = {}
+_SKILL_DIR = Path(__file__).parent.parent / "skills"
+
 # Keep local regex for chemfig detection (domain-specific logic)
 _CHEMFIG_RE = re.compile(r"\\chemfig|chemfig", re.IGNORECASE)
-_CHEM_HINT_RE = re.compile(r"化学|有机|结构式|分子式|反应", re.IGNORECASE)
+_CHEM_HINT_RE = re.compile(r"化学|有机|结构式|分子式|反应", re.IGNORECASE) # TODO: 优化识别方式
 
 
 @dataclass

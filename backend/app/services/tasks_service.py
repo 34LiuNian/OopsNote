@@ -123,8 +123,15 @@ class TasksService:
             )
             derived_url = str(upload.image_url)
 
+        from pydantic import HttpUrl, ValidationError
+        
+        try:
+            http_url = HttpUrl(derived_url)
+        except (ValidationError, ValueError):
+            http_url = HttpUrl("data:image/png;base64,placeholder")
+        
         payload = TaskCreateRequest(
-            image_url=derived_url,
+            image_url=http_url,
             subject=upload.subject,
             grade=upload.grade,
             notes=upload.notes,

@@ -250,21 +250,21 @@ def render_chemfig(payload: ChemfigRenderRequest) -> Response:
             tex_path.write_text(tex_content, encoding="utf-8")
 
             if latex_path:
-                compile_args = [
-                    latex_path,
+                compile_args: list[str] = [
+                    str(latex_path),
                     "-interaction=nonstopmode",
                     "-halt-on-error",
                     "-no-shell-escape",
-                    tex_path.name,
+                    str(tex_path.name),
                 ]
             else:
                 compile_args = [
-                    xelatex_path,
+                    str(xelatex_path),
                     "-interaction=nonstopmode",
                     "-halt-on-error",
                     "-no-shell-escape",
                     "-no-pdf",
-                    tex_path.name,
+                    str(tex_path.name),
                 ]
 
             result = subprocess.run(

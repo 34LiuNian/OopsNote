@@ -105,6 +105,14 @@ class Archiver(Protocol):
 
 
 @runtime_checkable
+class TasksServiceLike(Protocol):
+    """Protocol for task service."""
+
+    def process_task(self, task_id: str, background: bool = False) -> Any:
+        """Process a task through the AI pipeline."""
+
+
+@runtime_checkable
 class Repository(Protocol):
     """Protocol for task persistence."""
 

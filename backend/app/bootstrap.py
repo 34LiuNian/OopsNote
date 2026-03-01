@@ -195,7 +195,7 @@ def _build_state() -> (
         repository=repository,
         ai_gateway_status=ai_gateway_status,
         agent_settings=agent_settings_service,
-        tasks=tasks_service,
+        tasks=tasks_service,  # type: ignore[arg-type]
         models=models_service,
     )
 

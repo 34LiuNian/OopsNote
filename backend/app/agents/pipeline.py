@@ -28,6 +28,7 @@ class OcrExtractorLike(Protocol):
         payload: TaskCreateRequest,
         detection: DetectionOutput,
         asset: AssetMetadata | None = None,
+        on_delta: Callable[[str, str, str], None] | None = None,
     ) -> list[ProblemBlock]: ...
 
 
@@ -199,7 +200,7 @@ class AgentPipeline:
             detection,
             asset,
             on_delta=(
-                (lambda delta: on_llm_delta("ocr", "ocr", delta))
+                (lambda delta: on_llm_delta("ocr", "ocr", delta))  # type: ignore[arg-type, misc]
                 if on_llm_delta is not None
                 else None
             ),
