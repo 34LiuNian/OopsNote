@@ -9,9 +9,9 @@ def test_parse_json_block_repairs_invalid_backslash_escapes_in_strings() -> None
     text = (
         "```json\n"
         "{\n"
-        '  \"verdict\": \"revise\",\n'
-        '  \"answer\": \"示例：已知 \\(a\\) 与 \\(b\\)，则 c=\\\\sqrt(a^2+b^2)。\",\n'
-        '  \"explanation\": \"使用勾股定理：\\(a^2+b^2=c^2\\)。\"\n'
+        '  "verdict": "revise",\n'
+        '  "answer": "示例：已知 \\(a\\) 与 \\(b\\)，则 c=\\\\sqrt(a^2+b^2)。",\n'
+        '  "explanation": "使用勾股定理：\\(a^2+b^2=c^2\\)。"\n'
         "}\n"
         "```"
     )
@@ -40,7 +40,7 @@ def test_parse_json_block_repairs_literal_newlines_inside_strings() -> None:
 def test_parse_json_block_repairs_unicode_whitespace_outside_strings() -> None:
     # NBSP (\u00A0) is not valid JSON whitespace; some gateways/models emit it.
     # Our repair should normalize it so parsing succeeds.
-    raw = '{"a": 1,\u00A0"b": 2}'
+    raw = '{"a": 1,\u00a0"b": 2}'
     payload = _parse_json_block(raw)
     assert payload == {"a": 1, "b": 2}
 
@@ -55,10 +55,14 @@ def test_parse_json_block_lenient_extraction_on_truncated_json() -> None:
 
 
 def test_lenient_extraction_reports_incomplete_keys() -> None:
-    from app.clients.openai_client import _extract_lenient_top_level_string_fields_with_meta
+    from app.clients.openai_client import (
+        _extract_lenient_top_level_string_fields_with_meta,
+    )
 
     text = '{"answer": "ok", "short_answer": "oops'
-    payload, incomplete = _extract_lenient_top_level_string_fields_with_meta(text, ("answer", "short_answer"))
+    payload, incomplete = _extract_lenient_top_level_string_fields_with_meta(
+        text, ("answer", "short_answer")
+    )
     assert payload["answer"] == "ok"
     assert payload["short_answer"].startswith("oops")
     assert "short_answer" in incomplete
@@ -66,7 +70,7 @@ def test_lenient_extraction_reports_incomplete_keys() -> None:
 
 def test_parse_json_block_lenient_extraction_on_pretty_truncated_json() -> None:
     text = (
-        '{\n'
+        "{\n"
         '  "answer": "aa\\n\\n$$\\\\frac{x^2}{4}+\\\\frac{y^2}{3}=1$$",\n'
         '  "explanation": "ok",\n'
         '  "short_answer": "oops'  # truncated mid-string

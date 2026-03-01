@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from openai import OpenAI, OpenAIError
+from openai import OpenAI
 
 from .base import AIClient
 
@@ -71,7 +71,9 @@ class OpenAIClient(AIClient):
         thinking: bool | None = None,
     ) -> dict[str, Any]:
         """通用结构化图文对话入口。"""
-        data_url = f"data:{mime_type};base64,{base64.b64encode(image_bytes).decode('utf-8')}"
+        data_url = (
+            f"data:{mime_type};base64,{base64.b64encode(image_bytes).decode('utf-8')}"
+        )
         messages: list[dict[str, Any]] = [
             {"role": "system", "content": system_prompt},
             {
@@ -102,7 +104,8 @@ class OpenAIClient(AIClient):
         # Some models or gateways are picky about 'system' role in vision tasks.
         # We also want to merge prompts into a single user message if desirable.
         has_image = any(
-            isinstance(m.get("content"), list) and any(c.get("type") == "image_url" for c in m["content"])
+            isinstance(m.get("content"), list)
+            and any(c.get("type") == "image_url" for c in m["content"])
             for m in messages
         )
 
@@ -113,7 +116,8 @@ class OpenAIClient(AIClient):
             system_msgs = [m for m in messages if m["role"] == "system"]
             user_msgs = [m for m in messages if m["role"] == "user"]
             if system_msgs and user_msgs:
-                system_content = "\n".join([str(m["content"]) for m in system_msgs])
+                system_content = "\n".join(
+                    [str(m["content"]) for m in system_msgs])
                 # We assume the first user message is the one to prepend to.
                 user_content = user_msgs[0]["content"]
                 if isinstance(user_content, list):
@@ -125,10 +129,11 @@ class OpenAIClient(AIClient):
                             text_found = True
                             break
                     if not text_found:
-                        user_content.insert(0, {"type": "text", "text": system_content})
+                        user_content.insert(
+                            0, {"type": "text", "text": system_content})
                 else:
                     user_msgs[0]["content"] = f"{system_content}\n\n{user_content}"
-                
+
                 # Remove system messages
                 final_messages = [m for m in messages if m["role"] != "system"]
 
@@ -161,21 +166,30 @@ class OpenAIClient(AIClient):
         except Exception as e:
             err_msg = str(e)
             # Fallback for thinking mode if it fails
-            if "extra_body" in kwargs and ("enable_thinking" in err_msg or "extra_body" in err_msg or "400" in err_msg):
-                logger.warning("Model/Gateway failed with thinking mode, falling back to standard. err=%s", err_msg)
-                new_kwargs = {k: v for k, v in kwargs.items() if k != "extra_body"}
+            if "extra_body" in kwargs and (
+                "enable_thinking" in err_msg
+                or "extra_body" in err_msg
+                or "400" in err_msg
+            ):
+                logger.warning(
+                    "Model/Gateway failed with thinking mode, falling back to standard. err=%s",
+                    err_msg,
+                )
+                new_kwargs = {k: v for k,
+                              v in kwargs.items() if k != "extra_body"}
                 try:
-                    response = self._client.chat.completions.create(**new_kwargs)
+                    response = self._client.chat.completions.create(
+                        **new_kwargs)
                     content = str(response.choices[0].message.content or "")
                     finish_reason = response.choices[0].finish_reason
                     usage = response.usage.model_dump() if response.usage else {}
                     if self.debug_payload:
-                         self._write_payload_log(
-                            messages=final_messages, 
-                            response_text=content, 
+                        self._write_payload_log(
+                            messages=final_messages,
+                            response_text=content,
                             finish_reason=finish_reason,
                             usage=usage,
-                            thinking=False
+                            thinking=False,
                         )
                     return content
                 except Exception as retry_exc:
@@ -188,7 +202,7 @@ class OpenAIClient(AIClient):
                     finish_reason="error",
                     thinking=thinking,
                 )
-            raise 
+            raise
 
     def _write_payload_log(
         self,
@@ -203,7 +217,8 @@ class OpenAIClient(AIClient):
             log_path = self.debug_payload_path
             if not log_path:
                 log_path = str(
-                    Path(__file__).resolve().parents[2] / "storage" / "llm_payloads.log"
+                    Path(__file__).resolve(
+                    ).parents[2] / "storage" / "llm_payloads.log"
                 )
 
             # 简化消息体，移除图片 base64 数据避免撑爆日志
@@ -250,10 +265,10 @@ def _parse_json_block(text: str) -> dict[str, Any]:
     if start < 0:
         logger.debug("Raw content for failed JSON search: %s", text)
         raise ValueError("JSON braces not found")
-    
+
     end = text.rfind("}")
     if end > start:
-        candidate = text[start : end + 1]
+        candidate = text[start: end + 1]
         try:
             return json.loads(candidate)
         except json.JSONDecodeError:
@@ -277,7 +292,7 @@ def _parse_json_block(text: str) -> dict[str, Any]:
     pattern = r'"(\w+)":\s*"((?:\\.|[^"\\])*)"'
     for match in re.finditer(pattern, text):
         results[match.group(1)] = match.group(2)
-    
+
     if results:
         logger.warning("Standard JSON parsing failed, used regex fallback.")
         return results

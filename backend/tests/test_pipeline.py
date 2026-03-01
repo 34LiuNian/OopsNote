@@ -6,7 +6,13 @@ from fastapi.testclient import TestClient
 
 from app.clients import StubAIClient
 from app.agents.pipeline import AgentPipeline, PipelineDependencies
-from app.agents.stages import Archiver, HandwrittenExtractor, ProblemRebuilder, SolutionWriter, TaggingProfiler
+from app.agents.stages import (
+    Archiver,
+    HandwrittenExtractor,
+    ProblemRebuilder,
+    SolutionWriter,
+    TaggingProfiler,
+)
 from app.main import app
 from app.models import TaskCreateRequest
 from app.repository import ArchiveStore

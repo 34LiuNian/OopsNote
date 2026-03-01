@@ -22,5 +22,5 @@ def test_trace_event_writes_jsonl(tmp_path, monkeypatch):
     p = tmp_path / "ridtest.jsonl"
     assert p.exists()
     content = p.read_text(encoding="utf-8")
-    assert "\"event\": \"unit_test\"" in content
-    assert "\"foo\": \"bar\"" in content
+    assert '"event": "unit_test"' in content
+    assert '"foo": "bar"' in content

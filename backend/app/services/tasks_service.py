@@ -1,21 +1,15 @@
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
 import os
 import threading
-import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Callable, Optional
 
 from fastapi import HTTPException
 
 from ..models import (
-    CropRegion,
-    DetectionOutput,
-    PipelineResult,
     ProblemSummary,
     ProblemsResponse,
     TaggingResult,
@@ -81,7 +75,9 @@ class TasksService:
 
     # -------------------- workers --------------------
 
-    def start_processing_in_background(self, task_id: str, existing_problems=None) -> None:
+    def start_processing_in_background(
+        self, task_id: str, existing_problems=None
+    ) -> None:
         """Process a task in a background thread without a complex queue."""
         try:
             self.repository.get(task_id)
@@ -203,11 +199,19 @@ class TasksService:
                 updated_at=t.updated_at,
                 subject=t.payload.subject,
                 question_no=getattr(t.payload, "question_no", None),
-                asset={
-                    "asset_id": t.asset.asset_id,
-                    "path": f"/assets/{Path(t.asset.path).name}" if t.asset and t.asset.path else None,
-                    "mime_type": t.asset.mime_type,
-                } if t.asset else None,
+                asset=(
+                    {
+                        "asset_id": t.asset.asset_id,
+                        "path": (
+                            f"/assets/{Path(t.asset.path).name}"
+                            if t.asset and t.asset.path
+                            else None
+                        ),
+                        "mime_type": t.asset.mime_type,
+                    }
+                    if t.asset
+                    else None
+                ),
             )
             for t in tasks
         ]
@@ -220,16 +224,18 @@ class TasksService:
         except KeyError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
 
-    def process_task(self, task_id: str, *, background: bool = False, existing_problems=None):
+    def process_task(
+        self, task_id: str, *, background: bool = False, existing_problems=None
+    ):
         """Process a task in foreground or background."""
         if background:
-            self.start_processing_in_background(task_id, existing_problems=existing_problems)
+            self.start_processing_in_background(
+                task_id, existing_problems=existing_problems
+            )
             return self.repository.get(task_id)
         return self.process_task_sync(task_id, existing_problems=existing_problems)
 
-    def retry_task(
-        self, task_id: str, *, background: bool = True
-    ):
+    def retry_task(self, task_id: str, *, background: bool = True):
         """Retry a task (failed or completed).
 
         This re-runs the full pipeline (OCR, solve, tag) but preserves the original
@@ -257,7 +263,9 @@ class TasksService:
         except Exception:  # pylint: disable=broad-exception-caught
             pass
 
-        return self.process_task(task_id, background=background, existing_problems=existing_problems)
+        return self.process_task(
+            task_id, background=background, existing_problems=existing_problems
+        )
 
     # -------------------- per-problem operations --------------------
 
@@ -280,7 +288,7 @@ class TasksService:
             return
         solutions = {s.problem_id: s for s in task.solutions}
         solution = solutions.get(problem.problem_id)
-        
+
         # Decrease counts for old tags before replacement
         old_tags = [t for t in (task.tags or []) if t.problem_id == problem.problem_id]
         for tag in old_tags:
@@ -292,13 +300,13 @@ class TasksService:
                     tag_store.update_ref_count_by_value(dim, value, delta=-1)
                 except (ValueError, KeyError):
                     continue
-        
+
         tag = self.pipeline.retag_problem(
             payload=task.payload,
             problem=problem,
             solution=solution,
         )
-        
+
         # Increase count for new tag
         dim_key = getattr(tag, "dimension", None)
         value = getattr(tag, "value", None)
@@ -308,7 +316,7 @@ class TasksService:
                 tag_store.update_ref_count_by_value(dim, value, delta=1)
             except (ValueError, KeyError):
                 pass
-        
+
         task.tags = [t for t in task.tags if t.problem_id != problem.problem_id] + [tag]
 
     def rerun_ocr(self, task_id: str, problem_id: str):
@@ -346,37 +354,55 @@ class TasksService:
         problem = self._get_problem(task, problem_id)
         updates = problem.model_copy(
             update={
-                "question_no": override.question_no
-                if override.question_no is not None
-                else problem.question_no,
-                "question_type": override.question_type
-                if override.question_type is not None
-                else problem.question_type,
+                "question_no": (
+                    override.question_no
+                    if override.question_no is not None
+                    else problem.question_no
+                ),
+                "question_type": (
+                    override.question_type
+                    if override.question_type is not None
+                    else problem.question_type
+                ),
                 "problem_text": override.problem_text or problem.problem_text,
-                "options": override.options
-                if override.options is not None
-                else problem.options,
-                "locked_tags": override.locked_tags
-                if override.locked_tags is not None
-                else problem.locked_tags,
-                "source": override.source
-                if override.source is not None
-                else problem.source,
-                "knowledge_tags": override.knowledge_tags
-                if override.knowledge_tags is not None
-                else getattr(problem, "knowledge_tags", []),
-                "error_tags": override.error_tags
-                if override.error_tags is not None
-                else getattr(problem, "error_tags", []),
-                "user_tags": override.user_tags
-                if override.user_tags is not None
-                else getattr(problem, "user_tags", []),
-                "crop_bbox": override.crop_bbox
-                if override.crop_bbox is not None
-                else problem.crop_bbox,
-                "crop_image_url": override.crop_image_url
-                if override.crop_image_url is not None
-                else problem.crop_image_url,
+                "options": (
+                    override.options
+                    if override.options is not None
+                    else problem.options
+                ),
+                "locked_tags": (
+                    override.locked_tags
+                    if override.locked_tags is not None
+                    else problem.locked_tags
+                ),
+                "source": (
+                    override.source if override.source is not None else problem.source
+                ),
+                "knowledge_tags": (
+                    override.knowledge_tags
+                    if override.knowledge_tags is not None
+                    else getattr(problem, "knowledge_tags", [])
+                ),
+                "error_tags": (
+                    override.error_tags
+                    if override.error_tags is not None
+                    else getattr(problem, "error_tags", [])
+                ),
+                "user_tags": (
+                    override.user_tags
+                    if override.user_tags is not None
+                    else getattr(problem, "user_tags", [])
+                ),
+                "crop_bbox": (
+                    override.crop_bbox
+                    if override.crop_bbox is not None
+                    else problem.crop_bbox
+                ),
+                "crop_image_url": (
+                    override.crop_image_url
+                    if override.crop_image_url is not None
+                    else problem.crop_image_url
+                ),
             }
         )
         self._update_problem(task, updates)
@@ -398,14 +424,20 @@ class TasksService:
                 value = getattr(tag, "value", None)
                 if dim_key and value:
                     try:
-                        dim = TagDimension(dim_key) if isinstance(dim_key, str) else dim_key
+                        dim = (
+                            TagDimension(dim_key)
+                            if isinstance(dim_key, str)
+                            else dim_key
+                        )
                         tag_store.update_ref_count_by_value(dim, value, delta=-1)
                     except (ValueError, KeyError):
                         continue
-            
+
             task.tags = [t for t in task.tags if t.problem_id != problem_id]
-            new_tag = self.pipeline.classify_problem(payload=task.payload, problem=updates)
-            
+            new_tag = self.pipeline.classify_problem(
+                payload=task.payload, problem=updates
+            )
+
             # Increase count for new tag
             dim_key = getattr(new_tag, "dimension", None)
             value = getattr(new_tag, "value", None)
@@ -415,7 +447,7 @@ class TasksService:
                     tag_store.update_ref_count_by_value(dim, value, delta=1)
                 except (ValueError, KeyError):
                     pass
-            
+
             task.tags.append(new_tag)
         elif override.retag:
             self._retag_single(task, updates, force=True)
@@ -473,9 +505,9 @@ class TasksService:
             problem=problem,
         )
 
-        task.solutions = [
-            s for s in task.solutions if s.problem_id != problem_id
-        ] + [solution]
+        task.solutions = [s for s in task.solutions if s.problem_id != problem_id] + [
+            solution
+        ]
         task.tags = [t for t in task.tags if t.problem_id != problem_id] + [tag]
         updated = self.repository.patch_task(
             task_id, solutions=task.solutions, tags=task.tags
@@ -497,7 +529,7 @@ class TasksService:
 
     def _sync_tag_counts_after_task_deletion(self, task):
         """Decrease tag reference counts after deleting a task."""
-        for tag in (task.tags or []):
+        for tag in task.tags or []:
             dim_key = getattr(tag, "dimension", None)
             value = getattr(tag, "value", None)
             if dim_key and value:
@@ -531,7 +563,7 @@ class TasksService:
         if created_after is not None:
             try:
                 # Support both "YYYY-MM-DD" format (from HTML date input) and ISO 8601
-                if len(created_after) == 10 and created_after.count('-') == 2:
+                if len(created_after) == 10 and created_after.count("-") == 2:
                     # Parse "YYYY-MM-DD" format as midnight UTC
                     parsed = datetime.strptime(created_after, "%Y-%m-%d")
                     date_after = parsed.replace(tzinfo=timezone.utc)
@@ -546,10 +578,16 @@ class TasksService:
         if created_before is not None:
             try:
                 # Support both "YYYY-MM-DD" format (from HTML date input) and ISO 8601
-                if len(created_before) == 10 and created_before.count('-') == 2:
+                if len(created_before) == 10 and created_before.count("-") == 2:
                     # Parse "YYYY-MM-DD" format as end of day UTC (23:59:59.999999)
                     parsed = datetime.strptime(created_before, "%Y-%m-%d")
-                    date_before = parsed.replace(hour=23, minute=59, second=59, microsecond=999999, tzinfo=timezone.utc)
+                    date_before = parsed.replace(
+                        hour=23,
+                        minute=59,
+                        second=59,
+                        microsecond=999999,
+                        tzinfo=timezone.utc,
+                    )
                 else:
                     # Parse ISO format and ensure it's timezone-aware (assume UTC if no timezone)
                     parsed = datetime.fromisoformat(created_before)
@@ -563,15 +601,17 @@ class TasksService:
         source_list = None
         if source is not None:
             source_list = [source] if isinstance(source, str) else source
-        
+
         knowledge_tag_list = None
         if knowledge_tag is not None:
-            knowledge_tag_list = [knowledge_tag] if isinstance(knowledge_tag, str) else knowledge_tag
-        
+            knowledge_tag_list = (
+                [knowledge_tag] if isinstance(knowledge_tag, str) else knowledge_tag
+            )
+
         error_tag_list = None
         if error_tag is not None:
             error_tag_list = [error_tag] if isinstance(error_tag, str) else error_tag
-        
+
         user_tag_list = None
         if user_tag is not None:
             user_tag_list = [user_tag] if isinstance(user_tag, str) else user_tag
@@ -668,7 +708,7 @@ class TasksService:
     def _finalize_success(self, task_id: str, result):
         updated = self.repository.save_pipeline_result(task_id, result)
         self.repository.patch_task(task_id, stage="done", stage_message="完成")
-        
+
         return updated
 
     def _finalize_cancelled(self, task_id: str):
@@ -676,7 +716,7 @@ class TasksService:
         updated = self.repository.patch_task(
             task_id, stage="cancelled", stage_message="已作废"
         )
-        
+
         return updated
 
     def _finalize_failed(self, task_id: str, exc: Exception):
@@ -684,14 +724,14 @@ class TasksService:
         updated = self.repository.patch_task(
             task_id, stage="failed", stage_message="处理失败"
         )
-        
+
         return updated
 
     def cancel_task(self, task_id: str):
         """Cancel an in-progress task."""
         with self._task_cancel_lock:
             self._task_cancelled.add(task_id)
-        
+
         # 立即更新任务状态，让前端可以立即停止轮询
         try:
             task = self.repository.get(task_id)
@@ -707,7 +747,7 @@ class TasksService:
         except Exception:
             # 如果任务不存在或更新失败，至少保证取消标志已设置
             pass
-        
+
         return self.get_task(task_id)
 
     def _is_task_cancelled(self, task_id: str) -> bool:
@@ -742,14 +782,18 @@ class TasksService:
         tags: list[TaggingResult],
     ) -> None:
         """Update the global tag store with tags from the pipeline run and update ref_counts.
-        
+
         Important: Tags that appear in both manual_knowledge and AI tags should only be counted once.
         Manual tags take priority - they are upserted and counted first.
         AI tags that are NOT already in manual tags are then upserted and counted.
         """
         # Create normalized sets for deduplication (case-insensitive)
-        manual_knowledge_normalized = {str(v).strip().casefold() for v in manual_knowledge if str(v).strip()}
-        manual_error_normalized = {str(v).strip().casefold() for v in manual_error if str(v).strip()}
+        manual_knowledge_normalized = {
+            str(v).strip().casefold() for v in manual_knowledge if str(v).strip()
+        }
+        manual_error_normalized = {
+            str(v).strip().casefold() for v in manual_error if str(v).strip()
+        }
 
         if manual_knowledge or manual_error or manual_source:
             logger.info(
@@ -760,7 +804,9 @@ class TasksService:
         # Upsert and count manual tags first
         for val in manual_knowledge:
             self.tag_store.upsert(TagDimension.KNOWLEDGE, val)
-            self.tag_store.update_ref_count_by_value(TagDimension.KNOWLEDGE, val, delta=1)
+            self.tag_store.update_ref_count_by_value(
+                TagDimension.KNOWLEDGE, val, delta=1
+            )
             logger.debug(f"Manual knowledge tag upserted: {val}")
         for val in manual_error:
             self.tag_store.upsert(TagDimension.ERROR, val)
@@ -768,7 +814,9 @@ class TasksService:
             logger.debug(f"Manual error tag upserted: {val}")
         if manual_source:
             self.tag_store.upsert(TagDimension.META, manual_source)
-            self.tag_store.update_ref_count_by_value(TagDimension.META, manual_source, delta=1)
+            self.tag_store.update_ref_count_by_value(
+                TagDimension.META, manual_source, delta=1
+            )
             logger.debug(f"Manual source tag upserted: {manual_source}")
 
         # Upsert and count AI tags, but skip those already in manual tags
@@ -782,12 +830,16 @@ class TasksService:
                     ai_tags_skipped += 1
                     continue
                 self.tag_store.upsert(TagDimension.KNOWLEDGE, val)
-                self.tag_store.update_ref_count_by_value(TagDimension.KNOWLEDGE, val, delta=1)
+                self.tag_store.update_ref_count_by_value(
+                    TagDimension.KNOWLEDGE, val, delta=1
+                )
                 logger.debug(f"AI knowledge tag upserted: {val}")
                 ai_tags_counted += 1
-        
+
         if ai_tags_counted > 0 or ai_tags_skipped > 0:
-            logger.info(f"AI tags processed: counted={ai_tags_counted}, skipped={ai_tags_skipped}")
+            logger.info(
+                f"AI tags processed: counted={ai_tags_counted}, skipped={ai_tags_skipped}"
+            )
 
     def process_task_sync(
         self,
@@ -803,11 +855,13 @@ class TasksService:
 
         def progress_bridge(stage: str, message: str | None = None):
             # Write progress to stream file for polling
-            self._write_stream_event(task_id, "progress", {"stage": stage, "message": message})
-            
+            self._write_stream_event(
+                task_id, "progress", {"stage": stage, "message": message}
+            )
+
             # Also update task stage field for real-time status
             self.repository.patch_task(task_id, stage=stage, stage_message=message)
-            
+
             if on_progress:
                 try:
                     on_progress(stage, message)
@@ -856,14 +910,18 @@ class TasksService:
                 self._write_stream_event(task_id, "done", {"status": "failed"})
             else:
                 self._write_stream_event(task_id, "done", {"status": "completed"})
-            
+
             with self._processing_lock:
                 self._processing_inflight.discard(task_id)
 
     def _write_stream_event(self, task_id: str, event: str, payload: dict):
         """Write an event to the task stream file for polling."""
-        data = {"event": event, "payload": payload, "ts": datetime.now(timezone.utc).isoformat()}
-        
+        data = {
+            "event": event,
+            "payload": payload,
+            "ts": datetime.now(timezone.utc).isoformat(),
+        }
+
         path = self.streams_dir / f"{task_id}.txt"
         try:
             with open(path, "a", encoding="utf-8") as f:

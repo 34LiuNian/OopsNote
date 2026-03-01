@@ -1,3 +1,5 @@
+"""Backend module - auto-generated docstring."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -5,10 +7,14 @@ from typing import Any, Protocol
 
 
 class TaskRepositoryLike(Protocol):
+    """Protocol for task repository dependency injection."""
+
     def list_all(self) -> dict[str, Any]: ...
 
 
 class AgentSettingsLike(Protocol):
+    """Protocol for agent settings service dependency injection."""
+
     def load_models(self) -> dict[str, str]: ...
 
     def save_models(self, models: dict[str, str] | None) -> dict[str, str]: ...
@@ -23,15 +29,21 @@ class AgentSettingsLike(Protocol):
 
 
 class TasksServiceLike(Protocol):
+    """Protocol for tasks service dependency injection."""
+
     def ensure_workers_started(self) -> None: ...
 
 
 class ModelsServiceLike(Protocol):
+    """Protocol for models service dependency injection."""
+
     def prefetch_cache(self) -> None: ...
 
 
 @dataclass
 class BackendState:
+    """Container for backend application state and services."""
+
     repository: TaskRepositoryLike
     ai_gateway_status: dict[str, object]
     agent_settings: AgentSettingsLike

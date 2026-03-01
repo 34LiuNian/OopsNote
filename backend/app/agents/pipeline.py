@@ -133,7 +133,9 @@ class AgentPipeline:
         if asset and self.deps.ocr_extractor:
             # If retrying with existing problems, reuse their region_id
             if existing_problems:
-                region_id = existing_problems[0].region_id if existing_problems else uuid4().hex
+                region_id = (
+                    existing_problems[0].region_id if existing_problems else uuid4().hex
+                )
                 detection = DetectionOutput(
                     action="single",
                     regions=[
@@ -161,14 +163,14 @@ class AgentPipeline:
                 detection,
                 asset,
             )
-            
+
             # Preserve original problem_id and region_id if retrying
             if existing_problems and problems:
                 for idx, problem in enumerate(problems):
                     if idx < len(existing_problems):
                         problem.problem_id = existing_problems[idx].problem_id
                         problem.region_id = existing_problems[idx].region_id
-            
+
             logger.info("Recognize OCR done problems=%s", len(problems))
             return detection, problems
         detection, problems = self.deps.extractor.run(payload)

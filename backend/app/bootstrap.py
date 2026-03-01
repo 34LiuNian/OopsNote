@@ -1,13 +1,15 @@
-﻿from __future__ import annotations
+"""Backend module - auto-generated docstring."""
+
+from __future__ import annotations
 
 import logging
 import os
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from pathlib import Path
 
 from .clients import load_agent_config_bundle
 from .config import AppConfig, load_app_config
@@ -51,7 +53,7 @@ def configure_logging():
     logging.basicConfig(
         level=level,
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-        force=True  # This ensures the configuration is applied even if logging was already configured
+        force=True,  # This ensures the configuration is applied even if logging was already configured
     )
 
     # Also configure uvicorn loggers to use the same level
@@ -70,7 +72,7 @@ class HealthCheckFilter(logging.Filter):
         if "/health" in message:
             return False
         # Filter task polling requests (GET /tasks/{id} without body)
-        if 'GET /tasks/' in message and 'HTTP/1.1" 200' in message:
+        if "GET /tasks/" in message and 'HTTP/1.1" 200' in message:
             return False
         return True
 
@@ -80,18 +82,21 @@ logging.getLogger("uvicorn.access").addFilter(HealthCheckFilter())
 
 
 def create_app() -> FastAPI:
+    """Create and configure the FastAPI application."""
     # Configure logging before creating the app
     configure_logging()
 
     @asynccontextmanager
-    async def lifespan(app: FastAPI):
+    async def lifespan(app: FastAPI):  # pylint: disable=unused-argument
         # Recalculate tag reference counts on startup
         try:
             from app.tags import tag_store
+
             stats = tag_store.recalculate_all_counts()
-            logger.info(f"Tag counts recalculated on startup: {stats}")
+            logger.info("Tag counts recalculated on startup: %s", stats)
         except Exception as exc:
-            logger.warning(f"Failed to recalculate tag counts on startup: {exc}")
+            logger.warning(
+                "Failed to recalculate tag counts on startup: %s", exc)
 
         # Prefetch models
         try:
@@ -135,9 +140,10 @@ def create_app() -> FastAPI:
     return app
 
 
-def _build_state() -> tuple[
-    BackendState, ModelsService, TasksService, dict[str, object], AppConfig
-]:
+def _build_state() -> (
+    tuple[BackendState, ModelsService,
+          TasksService, dict[str, object], AppConfig]
+):
     config = load_app_config()
     global _APP_CONFIG
     _APP_CONFIG = config

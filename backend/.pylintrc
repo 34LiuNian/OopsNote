@@ -1,0 +1,87 @@
+[MASTER]
+# Specify a score threshold under which the program will exit with error.
+fail-under=9.0
+
+# Add files or directories to the blacklist. They should be base names, not
+# paths.
+ignore=CVS
+
+# Use multiple processes to speed up Pylint.
+jobs=0
+
+# Control the amount of potential inferred values Pylint will allow for a single
+# variable.
+limit-inference-results=100
+
+# Python version to use for checking compatibility.
+py-version=3.12
+
+[MESSAGES CONTROL]
+# Disable the message, report, category or checker with the given id(s).
+disable=
+    C0114,
+    C0115,
+    C0116,
+    R0903,
+    R0913,
+    R0914,
+    R0915,
+    R0912,
+    R0917,
+    W0718,
+    R0801,
+    C0415,
+    W0603,
+    W0108,
+    W0401,
+    W0406,
+    W0614,
+
+[FORMAT]
+# Maximum number of characters on a single line.
+max-line-length=120
+
+# Regexp for a line that is allowed to be longer than the limit.
+ignore-long-lines=^\s*(# )?<?https?://\S+>?$
+
+# Number of spaces of indent required inside a hanging or continued line.
+indent-after-paren=4
+
+# String used as indentation unit. This is usually "    " (4 spaces) or "\t" (1
+# tab).
+indent-string='    '
+
+# Maximum number of lines in a module.
+max-module-lines=1000
+
+# Allow the body of a class to be on the same line as the declaration if body
+# contains single statement.
+single-line-class-stmt=no
+
+# Allow the body of an if statement to be on the same line as the test if there
+# is no else.
+single-line-if-stmt=no
+
+[MISCELLANEOUS]
+# List of note tags to take in consideration, separated by a comma.
+notes=FIXME,XXX,TODO
+
+[TYPECHECK]
+# List of class names for which member attributes should not be checked (useful
+# for classes with dynamically set attributes).
+ignored-classes=optparse.Values,cmdline.Cmdline
+
+# Show a hint with possible names when a member name was not found.
+missing-member-hint=yes
+
+# Minimum similarity score for similar lines.
+min-similarity-lines=4
+
+# Ignore comments when computing similarities.
+ignore-comments=yes
+
+# Ignore docstrings when computing similarities.
+ignore-docstrings=yes
+
+# Ignore imports when computing similarities.
+ignore-imports=yes

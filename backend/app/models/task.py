@@ -7,7 +7,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import List, Optional
 
-from pydantic import BaseModel, ConfigDict, Field, HttpUrl, model_validator
+from pydantic import BaseModel, ConfigDict, Field, HttpUrl
 
 from .common import AssetSource, DetectionOutput, OptionItem, TaskStatus
 from .problem import ProblemBlock, SolutionBlock, TaggingResult, ArchiveRecord
@@ -15,6 +15,7 @@ from .problem import ProblemBlock, SolutionBlock, TaggingResult, ArchiveRecord
 
 class AssetMetadata(BaseModel):
     """Asset metadata for uploaded images."""
+
     # Backward compatible with previously persisted tasks that may include extra keys.
     model_config = ConfigDict(extra="ignore")
 
@@ -29,17 +30,20 @@ class AssetMetadata(BaseModel):
 
 class TaskCreateRequest(BaseModel):
     """Request to create a new task."""
+
     image_url: HttpUrl
     subject: str = Field(
-        default="auto", description="Subject tag for downstream agents ('auto' for auto-detection)"
+        default="auto",
+        description="Subject tag for downstream agents ('auto' for auto-detection)",
     )
-    grade: Optional[str] = Field(default=None, description="Grade or difficulty hint")
+    grade: Optional[str] = Field(
+        default=None, description="Grade or difficulty hint")
     notes: Optional[str] = Field(
         default=None, description="Free-form hints such as multi-problem cues"
     )
     question_no: Optional[str] = Field(
         default=None,
-        description="User-provided problem identifier (alphanumeric). Stored for display; internal problem_id uses UUID",
+        description="User-provided problem identifier (alphanumeric).",  # noqa: E501
     )
     question_type: Optional[str] = Field(
         default=None, description="Optional manual question type label"
@@ -70,6 +74,7 @@ class TaskCreateRequest(BaseModel):
 
 class TaskRecord(BaseModel):
     """Task record with full details."""
+
     id: str
     payload: TaskCreateRequest
     asset: Optional[AssetMetadata] = None
@@ -92,11 +97,13 @@ class TaskRecord(BaseModel):
 
 class TaskResponse(BaseModel):
     """Response with single task."""
+
     task: TaskRecord
 
 
 class TaskSummary(BaseModel):
     """Summary view of a task for list views."""
+
     id: str
     status: TaskStatus
     stage: Optional[str] = None
@@ -107,10 +114,11 @@ class TaskSummary(BaseModel):
     question_no: Optional[str] = None
     asset: Optional[dict] = Field(
         default=None,
-        description="Simplified asset info for thumbnail display (asset_id, path, mime_type)"
+        description="Simplified asset info for thumbnail display (asset_id, path, mime_type)",
     )
 
 
 class TasksResponse(BaseModel):
     """Response with task list."""
+
     items: List[TaskSummary]

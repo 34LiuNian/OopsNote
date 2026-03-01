@@ -6,7 +6,9 @@ from pathlib import Path
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Seed demo tasks into backend/storage/tasks")
+    parser = argparse.ArgumentParser(
+        description="Seed demo tasks into backend/storage/tasks"
+    )
     parser.add_argument(
         "--overwrite",
         action="store_true",
@@ -48,7 +50,9 @@ def main() -> int:
             if existing_source != "渲染测试":
                 continue
 
-        dest.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        dest.write_text(
+            json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+        )
         count += 1
 
     print(f"Seeded {count} task(s) into {out_dir}")

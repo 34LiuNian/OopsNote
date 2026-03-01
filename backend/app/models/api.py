@@ -9,11 +9,11 @@ from typing import List, Optional, Dict
 from pydantic import BaseModel, Field, HttpUrl, model_validator
 
 from .common import OptionItem
-from .task import TaskCreateRequest
 
 
 class UploadRequest(BaseModel):
     """Request to upload an image for processing."""
+
     image_url: Optional[HttpUrl] = None
     image_base64: Optional[str] = Field(
         default=None,
@@ -43,6 +43,7 @@ class UploadRequest(BaseModel):
 
 class LatexCompileRequest(BaseModel):
     """Request to compile LaTeX content."""
+
     content: str = Field(description="LaTeX document body content")
     title: Optional[str] = Field(default="LaTeX 测试", description="Document title")
     author: Optional[str] = Field(default="OopsNote", description="Document author")
@@ -50,12 +51,14 @@ class LatexCompileRequest(BaseModel):
 
 class PaperItemRequest(BaseModel):
     """Request item for paper compilation."""
+
     task_id: str
     problem_id: str
 
 
 class PaperCompileRequest(BaseModel):
     """Request to compile a paper from multiple problems."""
+
     items: List[PaperItemRequest]
     title: Optional[str] = Field(default="试卷", description="Paper title")
     show_answers: bool = Field(
@@ -65,12 +68,14 @@ class PaperCompileRequest(BaseModel):
 
 class ChemfigRenderRequest(BaseModel):
     """Request to render chemfig structure."""
+
     content: str = Field(description="Chemfig content (with or without \\chemfig{...})")
     inline: bool = Field(default=False, description="Whether to render as inline math")
 
 
 class OverrideProblemRequest(BaseModel):
     """Request to override problem details."""
+
     question_no: Optional[str] = None
     problem_text: Optional[str] = None
     options: Optional[List[OptionItem]] = None
@@ -93,6 +98,7 @@ class OverrideProblemRequest(BaseModel):
 
 class RetagRequest(BaseModel):
     """Request to retag a problem."""
+
     model: Optional[str] = Field(
         default=None, description="Optional model override for tagging"
     )
@@ -101,6 +107,7 @@ class RetagRequest(BaseModel):
 
 class ModelSummary(BaseModel):
     """Summary of an available model."""
+
     id: str
     provider: Optional[str] = None
     provider_type: Optional[str] = None
@@ -108,34 +115,41 @@ class ModelSummary(BaseModel):
 
 class ModelsResponse(BaseModel):
     """Response with available models."""
+
     items: List[ModelSummary]
 
 
 class AgentModelsResponse(BaseModel):
     """Response with agent model configuration."""
+
     models: Dict[str, str]
 
 
 class AgentModelsUpdateRequest(BaseModel):
     """Request to update agent model configuration."""
+
     models: Dict[str, str]
 
 
 class AgentEnabledResponse(BaseModel):
     """Response with agent enabled status."""
+
     enabled: Dict[str, bool]
 
 
 class AgentEnabledUpdateRequest(BaseModel):
     """Request to update agent enabled status."""
+
     enabled: Dict[str, bool]
 
 
 class AgentThinkingResponse(BaseModel):
     """Response with agent thinking mode status."""
+
     thinking: Dict[str, bool]
 
 
 class AgentThinkingUpdateRequest(BaseModel):
     """Request to update agent thinking mode status."""
+
     thinking: Dict[str, bool]

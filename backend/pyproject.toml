@@ -12,6 +12,7 @@ dependencies = [
   "Pillow>=10.0.0",
   "python-dotenv>=1.0.1",
   "aiohttp>=3.13.3",
+  "black>=26.1.0",
 ]
 
 [tool.setuptools]
@@ -33,95 +34,9 @@ build-backend = "setuptools.build_meta"
 
 [dependency-groups]
 dev = [
+    "autopep8>=2.3.2",
+    "docformatter>=1.7.7",
     "pylint>=4.0.5",
 ]
 
-[tool.pylint.messages_control]
-# Ignore docstring requirements for this codebase.
-disable = [
-  # Style/doc guidelines we don't enforce.
-  "missing-module-docstring",
-  "missing-class-docstring",
-  "missing-function-docstring",
 
-  # Allow pragmatic error handling and interface-compatible signatures.
-  "broad-exception-caught",
-  "unused-argument",
-  
-  # Data classes and Pydantic models don't need many methods.
-  "too-few-public-methods",
-  
-  # Line length is flexible with modern editors.
-  "line-too-long",
-  
-  # Wildcard imports are used for re-exports.
-  "wildcard-import",
-  "unused-wildcard-import",
-  
-  # Config classes naturally have many attributes.
-  "too-many-instance-attributes",
-  "too-many-locals",
-  
-  # Protocol methods use ellipsis.
-  "unnecessary-ellipsis",
-  
-  # Protocol methods can have many arguments.
-  "too-many-arguments",
-  "too-many-positional-arguments",
-  
-  # Deprecated models.py re-exports from itself.
-  "import-self",
-  
-  # Global statements are used for singleton state.
-  "global-statement",
-  
-  # Lambda is sometimes clearer.
-  "unnecessary-lambda",
-  
-  # Imports inside functions are used for lazy loading.
-  "import-outside-toplevel",
-  
-  # Reimport is sometimes necessary for type hints.
-  "reimported",
-  "redefined-outer-name",
-  
-  # API functions can have many branches/statements.
-  "too-many-branches",
-  "too-many-statements",
-  
-  # Unused imports in models are for re-exports.
-  "unused-import",
-  
-  # Protected access for legacy methods.
-  "protected-access",
-  
-  # Duplicate code in models is acceptable.
-  "duplicate-code",
-  
-  # Trailing whitespace is handled by formatters.
-  "trailing-whitespace",
-  
-  # Indentation issues are handled by formatters.
-  "bad-indentation",
-  
-  # Test files don't need final newline.
-  "missing-final-newline",
-  
-  # Test files may have pointless strings.
-  "pointless-string-statement",
-  
-  # Import errors in tests are OK (mocking).
-  "import-error",
-  "no-name-in-module",
-  
-  # Duplicate code in tests is OK.
-  "duplicate-code",
-]
-
-[tool.pylint.main]
-# Ignore test files for import checks.
-ignored-modules = ["fastapi", "httpx", "pytest"]
-
-[tool.pylint.typecheck]
-# Skip import checks for external dependencies.
-ignored-classes = ["TestClient", "HTTPException"]

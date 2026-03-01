@@ -1,14 +1,11 @@
 from __future__ import annotations
 
 import mimetypes
-import json
 from dataclasses import dataclass
 import logging
 import os
 from pathlib import Path
-import re
 import time
-import traceback
 from typing import Callable
 from uuid import uuid4
 
@@ -39,7 +36,9 @@ class OcrExtractor:
         on_delta: Callable[[str], None] | None = None,
         thinking: bool | None = None,
     ) -> list[ProblemBlock]:
-        raise RuntimeError("OCR extraction failed: No LLM result available and placeholders are disabled.")
+        raise RuntimeError(
+            "OCR extraction failed: No LLM result available and placeholders are disabled."
+        )
 
 
 @dataclass
@@ -60,8 +59,13 @@ class LLMOcrExtractor:
         image_path = Path(asset.path)
         if not image_path.is_absolute():
             # Relative path from storage module
-            image_path = Path(__file__).resolve().parent.parent.parent / "storage" / "assets" / image_path.name
-        
+            image_path = (
+                Path(__file__).resolve().parent.parent.parent
+                / "storage"
+                / "assets"
+                / image_path.name
+            )
+
         if not image_path.exists():
             raise RuntimeError(f"OCR failed: Image file not found at {image_path}")
 
@@ -122,7 +126,7 @@ class LLMOcrExtractor:
                     region_mime_type,
                     thinking=thinking,
                 )
-            except Exception as exc:
+            except Exception:
                 elapsed_ms = (time.perf_counter() - started) * 1000
                 logger.exception(
                     "LLM-OCR failed region=%s ms=%.1f",
@@ -130,7 +134,7 @@ class LLMOcrExtractor:
                     elapsed_ms,
                 )
                 raise
-            
+
             elapsed_ms = (time.perf_counter() - started) * 1000
             logger.info(
                 "LLM-OCR done region=%s ms=%.1f",
@@ -139,7 +143,9 @@ class LLMOcrExtractor:
             )
 
             # Business Layer Extraction (Plain Dict)
-            problem_text = utils._coerce_str(payload_dict.get("problem_text"), fallback="")
+            problem_text = utils._coerce_str(
+                payload_dict.get("problem_text"), fallback=""
+            )
             # OCR should provide a normalized `question_type` when possible (e.g. 单选/多选/填空/解答)
             question_type = utils._coerce_str(payload_dict.get("question_type"), None)
             # Auto-detect subject from OCR

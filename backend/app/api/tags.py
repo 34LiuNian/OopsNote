@@ -1,6 +1,8 @@
+"""Tag management API endpoints."""
+
 from __future__ import annotations
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter
 
 from ..tags import (
     TagCreateRequest,
@@ -16,7 +18,6 @@ router = APIRouter()
 
 @router.get("/tags", response_model=TagsResponse)
 def list_tags(
-    request: Request,
     dimension: TagDimension | None = None,
     query: str | None = None,
     limit: int = 50,
@@ -56,13 +57,12 @@ def list_tags(
         )
         items = candidates[:lim]
 
-    return TagsResponse(
-        items=[TagItemView(**t.model_dump(mode="json")) for t in items]
-    )
+    return TagsResponse(items=[TagItemView(**t.model_dump(mode="json")) for t in items])
 
 
 @router.post("/tags", response_model=TagsResponse, status_code=201)
 def create_tag(payload: TagCreateRequest) -> TagsResponse:
+    """Create a new tag."""
     item, _created = tag_store.upsert(
         payload.dimension, payload.value, aliases=payload.aliases
     )
@@ -79,6 +79,7 @@ def delete_tag(tag_id: str) -> dict:
     success = tag_store.delete(tag_id)
     if not success:
         from fastapi import HTTPException
+
         raise HTTPException(status_code=404, detail="标签不存在或已被删除")
     return {"ok": True, "tag_id": tag_id}
 
@@ -87,16 +88,17 @@ def delete_tag(tag_id: str) -> dict:
 def update_tag(tag_id: str, payload: dict) -> TagsResponse:
     """Update a tag's value by ID."""
     from fastapi import HTTPException
-    
+
     value = payload.get("value", "").strip()
     if not value:
         raise HTTPException(status_code=400, detail="标签内容不能为空")
-    
+
     item = tag_store.update_value(tag_id, value)
     if item is None:
         raise HTTPException(status_code=404, detail="标签不存在")
-    
+
     from ..tags import TagItemView
+
     return TagsResponse(
         items=[TagItemView(**item.model_dump(mode="json"), ref_count=0)]
     )

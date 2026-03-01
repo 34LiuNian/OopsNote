@@ -1,7 +1,8 @@
+"""Model management API endpoints."""
+
 from __future__ import annotations
 
-from fastapi import APIRouter, Request
-from fastapi import HTTPException
+from fastapi import APIRouter, HTTPException, Request
 
 from ..models import ModelsResponse, ModelSummary
 from ..services.models_service import ModelsServiceConfigError

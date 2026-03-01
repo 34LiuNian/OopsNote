@@ -1,3 +1,5 @@
+"""Dependency injection helpers for API routes."""
+
 from __future__ import annotations
 
 from fastapi import HTTPException, Request
@@ -34,5 +36,7 @@ def get_agent_settings_service(request: Request):
     state = get_backend_state(request)
     service = getattr(state, "agent_settings", None)
     if service is None:
-        raise HTTPException(status_code=500, detail="Agent settings service unavailable")
+        raise HTTPException(
+            status_code=500, detail="Agent settings service unavailable"
+        )
     return service

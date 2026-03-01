@@ -30,6 +30,15 @@ def get_agent_models(request: Request) -> AgentModelsResponse:
 def update_agent_models(
     request: Request, payload: AgentModelsUpdateRequest
 ) -> AgentModelsResponse:
+    """Update agent model configuration.
+
+    Args:
+        request: HTTP request
+        payload: Model update payload
+
+    Returns:
+        Updated model configuration
+    """
     svc = _service(request)
     saved = svc.save_models(payload.models)
     return AgentModelsResponse(models=saved)

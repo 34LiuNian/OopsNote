@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-import time
 import logging
 import re
 from typing import Any, Callable, Iterable, Mapping, Sequence
@@ -80,9 +79,7 @@ class LLMAgent:
         self.required_keys = list(required_keys or [])
         self.model_resolver = model_resolver
 
-    def run(
-        self, context: Mapping[str, Any]
-    ) -> AgentResult:
+    def run(self, context: Mapping[str, Any]) -> AgentResult:
         system_prompt, user_prompt = self.template.render(context)
         thinking = context.get("agent_thinking")
 
@@ -143,17 +140,18 @@ class AgentOrchestrator:
     ) -> tuple[list[SolutionBlock], list[TaggingResult]]:
         solutions: list[SolutionBlock] = []
         tags: list[TaggingResult] = []
-        
+
         problems_list = list(problems)
         total = len(problems_list)
-        
+
         for i, problem in enumerate(problems_list, 1):
             # 检查任务是否被取消
             if self.is_cancelled and self.is_cancelled():
                 # 延迟导入避免循环依赖
                 from ..services.tasks_service import _TaskCancelled
+
                 raise _TaskCancelled("Task was cancelled by user")
-            
+
             context = self._build_context(payload, problem)
 
             def _set_thinking(agent_key: str) -> None:
@@ -167,7 +165,7 @@ class AgentOrchestrator:
 
             if on_progress:
                 on_progress("solving", f"正在解题 ({i}/{total})...")
-            
+
             _set_thinking("SOLVER")
             solve = self.solver.run(context).output
             context.update({k: v for k, v in solve.items() if v is not None})

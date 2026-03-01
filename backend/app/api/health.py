@@ -1,6 +1,9 @@
+"""Health check API endpoint."""
+
 from __future__ import annotations
 
 from fastapi import APIRouter, Request
+
 from .deps import get_backend_state
 
 router = APIRouter()

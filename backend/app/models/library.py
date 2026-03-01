@@ -10,11 +10,11 @@ from typing import List, Optional
 from pydantic import BaseModel, Field
 
 from .common import OptionItem
-from .problem import TaggingResult
 
 
 class ProblemSummary(BaseModel):
     """Flattened view of a single problem across all tasks, for library/list APIs."""
+
     task_id: str
     problem_id: str
     question_no: Optional[str] = None
@@ -30,17 +30,19 @@ class ProblemSummary(BaseModel):
     user_tags: List[str] = Field(default_factory=list)
     created_at: datetime = Field(
         default_factory=lambda: datetime.now(),
-        description="Task creation timestamp, inherited from parent task"
+        description="Task creation timestamp, inherited from parent task",
     )
 
 
 class ProblemsResponse(BaseModel):
     """Response with problem list."""
+
     items: List[ProblemSummary]
 
 
 class TaggingQuery(BaseModel):
     """Query parameters for tagging operations."""
+
     knowledge_points: List[str] = Field(default_factory=list)
     question_type: Optional[str] = None
     skills: List[str] = Field(default_factory=list)

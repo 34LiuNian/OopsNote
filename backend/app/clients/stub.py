@@ -23,7 +23,9 @@ class StubAIClient:
         on_delta: Callable[[str], None] | None = None,
         thinking: bool | None = None,
     ) -> dict[str, Any]:
-        raise RuntimeError("StubAIClient: Placeholder functionality is disabled. Please configure a real AI provider.")
+        raise RuntimeError(
+            "StubAIClient: Placeholder functionality is disabled. Please configure a real AI provider."
+        )
 
     def structured_chat_with_image(
         self,
@@ -35,7 +37,9 @@ class StubAIClient:
         on_delta: Callable[[str], None] | None = None,
         thinking: bool | None = None,
     ) -> dict[str, Any]:
-        raise RuntimeError("StubAIClient: Placeholder functionality is disabled. Please configure a real AI provider.")
+        raise RuntimeError(
+            "StubAIClient: Placeholder functionality is disabled. Please configure a real AI provider."
+        )
 
 
 def _maybe_stream_payload(
@@ -49,6 +53,6 @@ def _maybe_stream_payload(
         text = str(payload)
     for i in range(0, len(text), 12):
         try:
-            on_delta(text[i : i + 12])
+            on_delta(text[i: i + 12])
         except Exception:
             break

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 from fastapi import APIRouter, Request
 
 from ..models import (
@@ -26,6 +25,16 @@ def _svc(request: Request):
 def create_task(
     request: Request, payload: TaskCreateRequest, auto_process: bool = True
 ) -> TaskResponse:
+    """Create a new task.
+
+    Args:
+        request: HTTP request
+        payload: Task creation payload
+        auto_process: Whether to start processing immediately
+
+    Returns:
+        Created task response
+    """
     task = _svc(request).create_task(payload, auto_process=auto_process)
     return TaskResponse(task=task)
 
@@ -71,23 +80,24 @@ def simulate_processing(
     """Simulate task processing with fake progress events for testing."""
     import threading
     import time
-    
+
     svc = _svc(request)
-    
+
     # Mark as processing
     svc.repository.patch_task(task_id, stage="simulating", stage_message="模拟处理中")
-    
+
     def send_fake_progress():
         """Send fake progress events to test SSE."""
         import logging
+
         logger = logging.getLogger(__name__)
-        
+
         try:
             logger.info("Starting fake progress for task %s", task_id)
             logger.info("svc type: %s", type(svc))
             logger.info("svc has event_bus: %s", hasattr(svc, "event_bus"))
             logger.info("svc.event_bus: %s", getattr(svc, "event_bus", "NOT_FOUND"))
-            
+
             stages = [
                 ("starting", "开始处理"),
                 ("ocr", "OCR 提取中..."),
@@ -95,21 +105,25 @@ def simulate_processing(
                 ("tagger", "打标中..."),
                 ("done", "处理完成"),
             ]
-            
+
             for stage, message in stages:
                 time.sleep(8)  # Simulate work - 20 seconds per stage
                 # Write progress to stream file
-                svc._write_stream_event(task_id, "progress", {"stage": stage, "message": message})
-                
+                svc._write_stream_event(  # pylint: disable=protected-access
+                    task_id, "progress", {"stage": stage, "message": message}
+                )
+
             logger.info("Fake progress completed for task %s", task_id)
-            
+
         except Exception as e:
-            logger.error("Error in send_fake_progress for task %s: %s", task_id, e, exc_info=True)
+            logger.error(
+                "Error in send_fake_progress for task %s: %s", task_id, e, exc_info=True
+            )
             raise
-        
+
         # Mark as completed
         svc.repository.patch_task(task_id, stage="done", stage_message="模拟完成")
-    
+
     if background:
         # Start in background thread with better error handling
         def run_with_error_handling():
@@ -117,9 +131,15 @@ def simulate_processing(
                 send_fake_progress()
             except Exception as e:
                 import logging
+
                 logger = logging.getLogger(__name__)
-                logger.error("Error in background simulate thread for task %s: %s", task_id, e, exc_info=True)
-        
+                logger.error(
+                    "Error in background simulate thread for task %s: %s",
+                    task_id,
+                    e,
+                    exc_info=True,
+                )
+
         thread = threading.Thread(
             target=run_with_error_handling,
             name=f"simulate-{task_id}",
@@ -128,7 +148,7 @@ def simulate_processing(
         thread.start()
     else:
         send_fake_progress()
-    
+
     return TaskResponse(task=svc.get_task(task_id))
 
 
@@ -138,9 +158,7 @@ def retry_task(
     task_id: str,
     background: bool = True,
 ) -> TaskResponse:
-    task = _svc(request).retry_task(
-        task_id, background=background
-    )
+    task = _svc(request).retry_task(task_id, background=background)
     return TaskResponse(task=task)
 
 

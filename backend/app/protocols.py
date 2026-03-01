@@ -42,7 +42,7 @@ class AIClient(Protocol):
         thinking: bool | None = None,
     ) -> dict[str, Any]:
         """Execute a structured chat completion."""
-    
+
     def structured_chat_with_image(
         self,
         system_prompt: str,

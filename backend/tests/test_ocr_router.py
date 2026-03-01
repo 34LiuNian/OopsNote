@@ -5,14 +5,18 @@ from datetime import datetime, timezone
 
 from app.agents.extractor import LLMOcrExtractor, OcrExtractor, OcrRouter
 from app.clients.stub import StubAIClient
-from app.models import AssetMetadata, AssetSource, CropRegion, DetectionOutput, TaskCreateRequest
+from app.models import (
+    AssetMetadata,
+    AssetSource,
+    CropRegion,
+    DetectionOutput,
+    TaskCreateRequest,
+)
 
 
 def _write_1x1_png(path) -> None:
     # 1x1 transparent PNG
-    png_b64 = (
-        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO0pJ8cAAAAASUVORK5CYII="
-    )
+    png_b64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO0pJ8cAAAAASUVORK5CYII="
     path.write_bytes(base64.b64decode(png_b64))
 
 
@@ -31,7 +35,10 @@ def test_ocr_router_falls_back_without_override(tmp_path) -> None:
     )
 
     payload = TaskCreateRequest(image_url="https://example.com/a.png", subject="math")
-    detection = DetectionOutput(action="single", regions=[CropRegion(id="r1", bbox=[0.1, 0.1, 0.8, 0.8], label="full")])
+    detection = DetectionOutput(
+        action="single",
+        regions=[CropRegion(id="r1", bbox=[0.1, 0.1, 0.8, 0.8], label="full")],
+    )
 
     router = OcrRouter(
         base_extractor=OcrExtractor(),
@@ -60,7 +67,10 @@ def test_ocr_router_uses_llm_when_override_present(tmp_path) -> None:
     )
 
     payload = TaskCreateRequest(image_url="https://example.com/a.png", subject="math")
-    detection = DetectionOutput(action="single", regions=[CropRegion(id="r1", bbox=[0.1, 0.1, 0.8, 0.8], label="full")])
+    detection = DetectionOutput(
+        action="single",
+        regions=[CropRegion(id="r1", bbox=[0.1, 0.1, 0.8, 0.8], label="full")],
+    )
 
     router = OcrRouter(
         base_extractor=OcrExtractor(),

@@ -14,6 +14,7 @@ from .problem import ProblemBlock, SolutionBlock, TaggingResult, ArchiveRecord
 
 class PipelineResult(BaseModel):
     """Result from AI pipeline execution."""
+
     detection: DetectionOutput
     problems: List[ProblemBlock]
     solutions: List[SolutionBlock]

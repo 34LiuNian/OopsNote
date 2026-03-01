@@ -129,6 +129,18 @@ def fetch_openai_models(
     auth_header_name: str = "Authorization",
     timeout_seconds: float = 5.0,
 ) -> list[dict[str, object]]:
+    """Fetch available models from OpenAI gateway.
+
+    Args:
+        base_url: Gateway base URL
+        api_key: API key
+        authorization: Authorization header value
+        auth_header_name: Authorization header name
+        timeout_seconds: Request timeout
+
+    Returns:
+        List of model dictionaries
+    """
     url = base_url.rstrip("/") + "/models"
 
     headers = {

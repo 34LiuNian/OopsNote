@@ -1,3 +1,5 @@
+"""Paper building and compilation API endpoints."""
+
 from __future__ import annotations
 
 import json
@@ -49,27 +51,27 @@ def _load_template(path: Path) -> str:
 def _load_paper_template() -> str:
     """Load main paper template with section_headers and question_formats inlined."""
     template = _load_template(_PAPER_TEMPLATE_PATH)
-    
+
     # Read and inline section_headers.tex
     section_headers_content = _load_template(_SECTION_HEADERS_TEMPLATE_PATH)
-    
+
     # Read and inline question_formats.tex
     question_formats_content = _load_template(_QUESTION_FORMATS_TEMPLATE_PATH)
-    
+
     # Replace \input commands with actual content
     template = template.replace(
         "\\input{section_headers.tex}",
         "% ========== section_headers.tex (inlined) ==========\n"
         + section_headers_content
-        + "% ========== end section_headers.tex ==========\n"
+        + "% ========== end section_headers.tex ==========\n",
     )
     template = template.replace(
         "\\input{question_formats.tex}",
         "% ========== question_formats.tex (inlined) ==========\n"
         + question_formats_content
-        + "% ========== end question_formats.tex ==========\n"
+        + "% ========== end question_formats.tex ==========\n",
     )
-    
+
     return template
 
 
@@ -92,20 +94,20 @@ def _norm_question_type(raw: Optional[str], has_choices: bool) -> str:
 
 def _parse_difficulty(difficulty_str: Optional[str]) -> float:
     """解析难度分数字符串为浮点数。
-    
+
     Args:
         difficulty_str: 格式如 "11/12" 的字符串
-        
+
     Returns:
         解析后的数值，格式无效时返回 0.0
     """
     if not difficulty_str:
         return 0.0
     try:
-        numerator, denominator = difficulty_str.split('/')
+        numerator, denominator = difficulty_str.split("/")
         return float(numerator) / float(denominator)
     except (ValueError, ZeroDivisionError):
-        return 0.0 # TODO: 可能需要更严格的错误处理或日志记录
+        return 0.0  # TODO: 可能需要更严格的错误处理或日志记录
 
 
 def _normalize_text(raw: str) -> str:
@@ -221,7 +223,8 @@ def _build_question_block(text: str, options: Iterable[object] | None) -> str:
         choices_block = "\n".join(rendered_options)
         return (
             "\\begin{question}\n"
-            + "\t" + body
+            + "\t"
+            + body
             + "\n\t\\begin{choices}\n"
             + choices_block
             + "\n\t\\end{choices}\n"
@@ -240,7 +243,7 @@ def _build_problem_block(text: str, points: int = 15, is_last: bool = False) -> 
 
 def _get_section_header(question_type: str, count: int, total_points: int = 0) -> str:
     """Get section header command with dynamic parameters.
-    
+
     Args:
         question_type: Type of questions in this section
         count: Number of questions
@@ -248,19 +251,20 @@ def _get_section_header(question_type: str, count: int, total_points: int = 0) -
     """
     if question_type == "单选题":
         return f"\\sectionSingleChoice[{count}]"
-    elif question_type == "多选题":
+    if question_type == "多选题":
         return f"\\sectionMultipleChoice[{count}]"
-    elif question_type == "填空题":
+    if question_type == "填空题":
         return f"\\sectionFillIn[{count}]"
-    elif question_type == "解答题":
+    if question_type == "解答题":
         return f"\\sectionProblem[{count}]{{{total_points}}}"
-    else:
-        return f"\\sectionOther[{count}]"
+    return f"\\sectionOther[{count}]"
 
 
-def _render_section(question_type: str, blocks: list[str], count: int, total_points: int = 0) -> str:
+def _render_section(
+    question_type: str, blocks: list[str], count: int, total_points: int = 0
+) -> str:
     """Render a section with header and question blocks.
-    
+
     Args:
         question_type: Type of questions in this section
         blocks: List of LaTeX question blocks
@@ -281,10 +285,10 @@ def _paper_template(
 ) -> str:
     """Build final LaTeX document using template system."""
     template = _load_paper_template()
-    
+
     # Build sections content (with headers included)
     sections_content = []
-    
+
     for sec_title, blocks in sections:
         if blocks:
             # Get count of questions in this section
@@ -294,13 +298,15 @@ def _paper_template(
             if sec_title == "解答题":
                 # Default 15 points per problem, can be customized
                 total_points = count * 15
-            
+
             # Add section content (header is included in _render_section)
-            sections_content.append(_render_section(sec_title, blocks, count, total_points))
-    
+            sections_content.append(
+                _render_section(sec_title, blocks, count, total_points)
+            )
+
     # Join sections with proper spacing
     sections_text = "\n\n".join(sections_content)
-    
+
     return (
         template.replace("{{TITLE}}", title)
         .replace("{{SHOW_ANSWERS}}", "true" if show_answers else "false")
@@ -310,6 +316,7 @@ def _paper_template(
 
 @router.post("/papers/compile")
 def compile_paper(request: Request, payload: PaperCompileRequest) -> Response:
+    """Compile paper LaTeX to PDF."""
     svc = _tasks_service(request)
 
     if not payload.items:
@@ -324,7 +331,7 @@ def compile_paper(request: Request, payload: PaperCompileRequest) -> Response:
 
     tasks_by_id = {t.id: t for t in svc.iter_tasks()}
     print(f"[PAPER] 当前任务数：{len(tasks_by_id)}")
-    
+
     # First pass: collect all problems by type with their metadata
     problems_by_type: dict[str, list[dict]] = {
         "单选题": [],
@@ -355,42 +362,48 @@ def compile_paper(request: Request, payload: PaperCompileRequest) -> Response:
         )
         question_type = _norm_question_type(raw_type, bool(problem.options))
         print(f"[PAPER] 处理题目 {item.problem_id}: 类型={question_type}")
-        
+
         # 解析难度分数 (a/b 格式，如 "11/12" -> 0.917)
         difficulty_value = _parse_difficulty(task.payload.difficulty)
-        
+
         # Store problem data for second pass
-        problems_by_type.setdefault(question_type, []).append({
-            "problem_text": problem.problem_text or "",
-            "options": problem.options,
-            "problem_id": item.problem_id,
-            "difficulty": difficulty_value,
-        })
-    
+        problems_by_type.setdefault(question_type, []).append(
+            {
+                "problem_text": problem.problem_text or "",
+                "options": problem.options,
+                "problem_id": item.problem_id,
+                "difficulty": difficulty_value,
+            }
+        )
+
     # Second pass: build LaTeX blocks with proper spacing
     sections_map: dict[str, list[str]] = {}
     for qtype, problems in problems_by_type.items():
         if not problems:
             continue
-        
+
         # 按难度升序排序（难度越小，越接近0，排在前）
         problems.sort(key=lambda p: p["difficulty"])
-        
+
         # 打印排序后的难度顺序
         difficulty_list = [(p["problem_id"], p["difficulty"]) for p in problems]
         print(f"[PAPER] {qtype} 按难度升序排序: {difficulty_list}")
-        
+
         blocks = []
         total_problems = len(problems)
         for idx, prob in enumerate(problems):
-            is_last = (idx == total_problems - 1)
+            is_last = idx == total_problems - 1
             if qtype in ("单选题", "多选题", "填空题"):
                 block = _build_question_block(prob["problem_text"], prob["options"])
             elif qtype == "解答题":
                 # Default 15 points, last problem gets larger spacing
-                block = _build_problem_block(prob["problem_text"], points=15, is_last=is_last)
+                block = _build_problem_block(
+                    prob["problem_text"], points=15, is_last=is_last
+                )
             else:
-                block = _build_problem_block(prob["problem_text"], points=15, is_last=is_last)
+                block = _build_problem_block(
+                    prob["problem_text"], points=15, is_last=is_last
+                )
             blocks.append(block)
         sections_map[qtype] = blocks
 
@@ -410,7 +423,7 @@ def compile_paper(request: Request, payload: PaperCompileRequest) -> Response:
         show_answers=payload.show_answers,
         sections=sections,
     )
-    
+
     # 调试：将生成的 LaTeX 内容写入临时文件
     # debug_path = Path(__file__).resolve().parents[2] / ".." / "_tmp" / "debug_paper.tex"
     # debug_path.parent.mkdir(parents=True, exist_ok=True)
@@ -429,9 +442,14 @@ def compile_paper(request: Request, payload: PaperCompileRequest) -> Response:
 
     # Prepare error directory for saving artifacts on failure
     paper_error_dir = _paper_dir() / "errors"
-    
+
     try:
-        pdf_bytes = _compile_pdf(tex_content, xelatex_path=xelatex_path, save_error_artifacts=True, error_dir=paper_error_dir)
+        pdf_bytes = _compile_pdf(
+            tex_content,
+            xelatex_path=xelatex_path,
+            save_error_artifacts=True,
+            error_dir=paper_error_dir,
+        )
     except HTTPException as e:
         # Re-raise with additional context
         if isinstance(e.detail, dict):

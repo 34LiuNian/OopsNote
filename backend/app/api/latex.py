@@ -1,3 +1,5 @@
+"""LaTeX compilation and rendering API endpoints."""
+
 from __future__ import annotations
 
 import hashlib
@@ -96,7 +98,13 @@ def _read_text_tail(text: str, max_lines: int = 80) -> str:
     return "\n".join(tail)
 
 
-def _compile_pdf(tex_content: str, *, xelatex_path: str, save_error_artifacts: bool = False, error_dir: Optional[Path] = None) -> bytes:
+def _compile_pdf(
+    tex_content: str,
+    *,
+    xelatex_path: str,
+    save_error_artifacts: bool = False,
+    error_dir: Optional[Path] = None,
+) -> bytes:
     with tempfile.TemporaryDirectory(prefix="oopsnote-latex-") as tmp_dir:
         workdir = Path(tmp_dir)
         tex_path = workdir / "main.tex"
@@ -120,7 +128,7 @@ def _compile_pdf(tex_content: str, *, xelatex_path: str, save_error_artifacts: b
             )
             if result.returncode != 0:
                 log_tail = _read_log_tail(workdir / "main.log")
-                
+
                 # Save error artifacts if requested
                 if save_error_artifacts and error_dir:
                     try:
@@ -133,11 +141,14 @@ def _compile_pdf(tex_content: str, *, xelatex_path: str, save_error_artifacts: b
                         log_path = workdir / "main.log"
                         if log_path.exists():
                             log_error_path = error_dir / f"error_{timestamp}.log"
-                            log_error_path.write_text(log_path.read_text(encoding="utf-8", errors="ignore"), encoding="utf-8")
+                            log_error_path.write_text(
+                                log_path.read_text(encoding="utf-8", errors="ignore"),
+                                encoding="utf-8",
+                            )
                         print(f"[LATEX] 错误文件已保存：{tex_error_path}")
                     except Exception as e:
                         print(f"[LATEX] 保存错误文件失败：{e}")
-                
+
                 raise HTTPException(
                     status_code=400,
                     detail={
@@ -162,6 +173,7 @@ def _compile_pdf(tex_content: str, *, xelatex_path: str, save_error_artifacts: b
 
 @router.post("/latex/compile")
 def compile_latex(payload: LatexCompileRequest) -> Response:
+    """Compile LaTeX to PDF."""
     if "\\documentclass" in payload.content:
         tex_content = payload.content
     else:
@@ -198,6 +210,7 @@ def compile_latex(payload: LatexCompileRequest) -> Response:
 
 @router.post("/latex/chemfig")
 def render_chemfig(payload: ChemfigRenderRequest) -> Response:
+    """Render chemfig structure to SVG."""
     latex_path = _find_latex()
     xelatex_path = _find_xelatex()
     if not latex_path and not xelatex_path:

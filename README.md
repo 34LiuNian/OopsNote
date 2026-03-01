@@ -1,7 +1,7 @@
 <div align="center">
 
-# <img src="frontend/public/favicon.svg" height="40" alt="OopsNote Logo" /> 
-# <img src="assets/oopsnote.svg" height="90" alt="OopsNote Logo" />
+# <img src="frontend/public/favicon.svg" height="150" alt="OopsNote Logo" /> 
+<img src="assets/oopsnote.svg" height="100" alt="OopsNote Logo" />
 
 **面向理科学科的 AI 驱动错题整理平台**
 
@@ -15,24 +15,24 @@
 
 <!-- shields.io badges -->
 <p align="center">
-  <img src="https://img.shields.io/badge/Python-3.11+-3776AB?style=for-the-badge&logo=python&logoColor=white" alt="Python" />
-  <img src="https://img.shields.io/badge/FastAPI-0.115+-009688?style=for-the-badge&logo=fastapi&logoColor=white" alt="FastAPI" />
-  <img src="https://img.shields.io/badge/Next.js-14+-000000?style=for-the-badge&logo=next.js&logoColor=white" alt="Next.js" />
-  <img src="https://img.shields.io/badge/TypeScript-5.0+-3178C6?style=for-the-badge&logo=typescript&logoColor=white" alt="TypeScript" />
+  <img src="https://img.shields.io/badge/Python-3.11+-3776AB?logo=python&logoColor=white" alt="Python" />
+  <img src="https://img.shields.io/badge/FastAPI-0.115+-009688?logo=fastapi&logoColor=white" alt="FastAPI" />
+  <img src="https://img.shields.io/badge/Next.js-14+-000000?logo=next.js&logoColor=white" alt="Next.js" />
+  <img src="https://img.shields.io/badge/TypeScript-5.0+-3178C6?logo=typescript&logoColor=white" alt="TypeScript" />
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/License-MIT-yellow?style=for-the-badge" alt="License" />
-  <img src="https://img.shields.io/badge/Last_Update-2026--02--28-blue?style=for-the-badge" alt="Last Update" />
-  <img src="https://img.shields.io/github/stars/34LiuNian/OopsNote?style=for-the-badge&logo=github" alt="GitHub Stars" />
-  <img src="https://img.shields.io/github/forks/34LiuNian/OopsNote?style=for-the-badge&logo=github" alt="GitHub Forks" />
+  <img src="https://img.shields.io/badge/License-MIT-yellow?" alt="License" />
+  <img src="https://img.shields.io/badge/Last_Update-2026--02--28-blue?" alt="Last Update" />
+  <img src="https://img.shields.io/github/stars/34LiuNian/OopsNote?logo=github" alt="GitHub Stars" />
+  <img src="https://img.shields.io/github/forks/34LiuNian/OopsNote?logo=github" alt="GitHub Forks" />
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Frontend-Next.js%20%7C%20React-61DAFB?style=for-the-badge&logo=react" alt="Frontend" />
-  <img src="https://img.shields.io/badge/Backend-FastAPI%20%7C%20Python-009688?style=for-the-badge&logo=fastapi" alt="Backend" />
-  <img src="https://img.shields.io/badge/AI-Multi_Agent%20%7C%20LLM-FF6B6B?style=for-the-badge&logo=openai" alt="AI" />
-  <img src="https://img.shields.io/badge/Database-File_Storage%20%7C%20PostgreSQL-4479A1?style=for-the-badge&logo=postgresql" alt="Database" />
+  <img src="https://img.shields.io/badge/Frontend-Next.js%20%7C%20React-61DAFB?logo=react" alt="Frontend" />
+  <img src="https://img.shields.io/badge/Backend-FastAPI%20%7C%20Python-009688?logo=fastapi" alt="Backend" />
+  <img src="https://img.shields.io/badge/AI-Multi_Agent%20%7C%20LLM-FF6B6B?logo=openai" alt="AI" />
+  <img src="https://img.shields.io/badge/Database-File_Storage%20%7C%20PostgreSQL-4479A1?logo=postgresql" alt="Database" />
 </p>
 
 ---

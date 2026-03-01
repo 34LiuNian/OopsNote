@@ -41,6 +41,7 @@ class ProcessingContext:
     - Add new context fields without changing function signatures
     - Test individual stages in isolation
     """
+
     task_id: str
     payload: TaskCreateRequest
     asset: AssetMetadata | None = None
@@ -88,11 +89,9 @@ class ExtractionService:
 
         detection = DetectionOutput(
             action="single",
-            regions=[CropRegion(
-                id=uuid4().hex,
-                bbox=[0.05, 0.05, 0.9, 0.9],
-                label="full"
-            )]
+            regions=[
+                CropRegion(id=uuid4().hex, bbox=[0.05, 0.05, 0.9, 0.9], label="full")
+            ],
         )
 
         problems = self.extractor.run(payload, detection, asset)
@@ -251,60 +250,58 @@ class TaskProcessingService:
             )
 
             # Stage 1: Extraction
-            self.event_bus.publish(task_id, "progress", {
-                "stage": "extraction",
-                "message": "姝ｅ湪鎻愬彇棰樼洰..."
-            })
+            self.event_bus.publish(
+                task_id,
+                "progress",
+                {"stage": "extraction", "message": "姝ｅ湪鎻愬彇棰樼洰..."},
+            )
             detection, problems = self.extraction.extract_problems(payload, asset)
             context.detection = detection
             context.problems = problems
 
             # Stage 2: Solving
-            self.event_bus.publish(task_id, "progress", {
-                "stage": "solving",
-                "message": "姝ｅ湪瑙ｉ..."
-            })
+            self.event_bus.publish(
+                task_id, "progress", {"stage": "solving", "message": "姝ｅ湪瑙ｉ..."}
+            )
             solutions = self.solving.generate_solutions(
                 payload,
                 problems,
                 on_progress=lambda idx, total: self.event_bus.publish(
                     task_id,
                     "progress",
-                    {"stage": "solving", "message": f"瑙ｉ涓?({idx}/{total})..."}
-                )
+                    {"stage": "solving", "message": f"瑙ｉ涓?({idx}/{total})..."},
+                ),
             )
             context.solutions = solutions
 
             # Stage 3: Tagging
-            self.event_bus.publish(task_id, "progress", {
-                "stage": "tagging",
-                "message": "姝ｅ湪鏍囨敞..."
-            })
+            self.event_bus.publish(
+                task_id, "progress", {"stage": "tagging", "message": "姝ｅ湪鏍囨敞..."}
+            )
             tags = self.tagging.generate_tags(payload, problems, solutions)
             context.tags = tags
 
             # Stage 4: Archiving
-            self.event_bus.publish(task_id, "progress", {
-                "stage": "archiving",
-                "message": "姝ｅ湪褰掓。..."
-            })
+            self.event_bus.publish(
+                task_id,
+                "progress",
+                {"stage": "archiving", "message": "姝ｅ湪褰掓。..."},
+            )
             self.archiving.archive_task(task_id, problems)
 
             # Save results
             self.repository.save_pipeline_result(task_id, None)  # type: ignore
 
             # Mark as completed
-            self.event_bus.publish(task_id, "progress", {
-                "stage": "completed",
-                "message": "澶勭悊瀹屾垚"
-            })
+            self.event_bus.publish(
+                task_id, "progress", {"stage": "completed", "message": "澶勭悊瀹屾垚"}
+            )
 
             return context
 
         except Exception as e:
             logger.exception("Task processing failed: %s", e)
-            self.event_bus.publish(task_id, "error", {
-                "stage": "failed",
-                "message": str(e)
-            })
+            self.event_bus.publish(
+                task_id, "error", {"stage": "failed", "message": str(e)}
+            )
             raise

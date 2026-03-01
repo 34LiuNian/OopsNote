@@ -1,3 +1,5 @@
+"""Backend module - auto-generated docstring."""
+
 from __future__ import annotations
 
 import os
@@ -8,7 +10,9 @@ from .env import float_env
 
 
 @dataclass(frozen=True)
-class AppConfig:
+class AppConfig:  # pylint: disable=too-many-instance-attributes
+    """Application configuration container."""
+
     persist_tasks: bool
     tasks_dir: str | None
     running_under_pytest: bool
@@ -26,6 +30,7 @@ class AppConfig:
 
 
 def load_app_config() -> AppConfig:
+    """Load application configuration from environment variables."""
     running_under_pytest = ("pytest" in sys.modules) or (
         "PYTEST_CURRENT_TEST" in os.environ
     )

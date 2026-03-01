@@ -14,6 +14,7 @@ from .common import OptionItem
 
 class ProblemBlock(BaseModel):
     """Extracted problem block from OCR."""
+
     problem_id: str
     region_id: str
     subject: str = Field(
@@ -62,6 +63,7 @@ class ProblemBlock(BaseModel):
 
 class SolutionBlock(BaseModel):
     """Solution block for a problem."""
+
     problem_id: str
     answer: str
     explanation: str
@@ -72,6 +74,7 @@ class SolutionBlock(BaseModel):
 
 class TaggingResult(BaseModel):
     """Tagging result from AI agent."""
+
     # Backward compatible with previously persisted tasks that may include extra keys.
     model_config = ConfigDict(extra="ignore")
 
@@ -85,6 +88,7 @@ class TaggingResult(BaseModel):
 
 class ArchiveRecord(BaseModel):
     """Archive record for persisted problems."""
+
     task_id: str
     stored_problem_ids: List[str]
     timestamp: datetime

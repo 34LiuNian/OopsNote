@@ -6,7 +6,13 @@ from typing import Any
 from .agents.agent_flow import AgentOrchestrator, LLMAgent, PromptTemplate
 from .agents.extractor import LLMOcrExtractor, OcrExtractor, OcrRouter
 from .agents.pipeline import AgentPipeline, PipelineDependencies
-from .agents.stages import Archiver, HandwrittenExtractor, ProblemRebuilder, SolutionWriter, TaggingProfiler
+from .agents.stages import (
+    Archiver,
+    HandwrittenExtractor,
+    ProblemRebuilder,
+    SolutionWriter,
+    TaggingProfiler,
+)
 from .clients import OpenAIClient, StubAIClient, build_client_for_agent
 from .config import AppConfig
 from .repository import ArchiveStore, FileTaskRepository, InMemoryTaskRepository
@@ -17,13 +23,32 @@ from .tags import tag_store
 
 
 def build_repository(*, config: AppConfig):
+    """Build task repository based on configuration.
+
+    Args:
+        config: Application configuration
+
+    Returns:
+        Task repository instance (in-memory or file-based)
+    """
     if config.running_under_pytest or (not config.persist_tasks):
         return InMemoryTaskRepository()
-    return FileTaskRepository(base_dir=Path(config.tasks_dir) if config.tasks_dir else None)
+    return FileTaskRepository(
+        base_dir=Path(config.tasks_dir) if config.tasks_dir else None
+    )
 
 
 def build_agent_settings_service() -> AgentSettingsService:
-    from .agent_settings import AgentEnableSettingsStore, AgentModelSettingsStore, AgentThinkingSettingsStore
+    """Build agent settings service with all configuration stores.
+
+    Returns:
+        Configured AgentSettingsService instance
+    """
+    from .agent_settings import (
+        AgentEnableSettingsStore,
+        AgentModelSettingsStore,
+        AgentThinkingSettingsStore,
+    )
 
     agent_model_store = AgentModelSettingsStore()
     agent_enable_store = AgentEnableSettingsStore()
@@ -36,6 +61,14 @@ def build_agent_settings_service() -> AgentSettingsService:
 
 
 def build_ai_client(*, config: AppConfig):
+    """Build AI client for the specified agent.
+
+    Args:
+        config: Application configuration
+
+    Returns:
+        Configured AI client instance
+    """
     if config.openai_api_key:
         return OpenAIClient(
             api_key=config.openai_api_key,
@@ -60,8 +93,12 @@ def build_pipeline(
     def _load_prompt(name: str) -> PromptTemplate:
         return PromptTemplate.from_file(prompt_dir / f"{name}.md")
 
-    solver_client = build_client_for_agent("SOLVER", ai_client, bundle=agent_config_bundle)
-    tagger_client = build_client_for_agent("TAGGER", ai_client, bundle=agent_config_bundle)
+    solver_client = build_client_for_agent(
+        "SOLVER", ai_client, bundle=agent_config_bundle
+    )
+    tagger_client = build_client_for_agent(
+        "TAGGER", ai_client, bundle=agent_config_bundle
+    )
 
     agent_orchestrator = AgentOrchestrator(
         solver=LLMAgent(
@@ -75,7 +112,13 @@ def build_pipeline(
             "tagger",
             tagger_client,
             _load_prompt("tagger"),
-            ("knowledge_points", "question_type", "skills", "error_hypothesis", "recommended_actions"),
+            (
+                "knowledge_points",
+                "question_type",
+                "skills",
+                "error_hypothesis",
+                "recommended_actions",
+            ),
             model_resolver=agent_settings_service.resolve_saved_model,
         ),
         is_enabled=agent_settings_service.is_agent_enabled,
@@ -104,7 +147,9 @@ def build_pipeline(
     )
 
 
-def build_tasks_service(*, repository, pipeline: AgentPipeline, asset_store: LocalAssetStore) -> TasksService:
+def build_tasks_service(
+    *, repository, pipeline: AgentPipeline, asset_store: LocalAssetStore
+) -> TasksService:
     return TasksService(
         repository=repository,
         pipeline=pipeline,
