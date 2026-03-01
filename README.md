@@ -1,6 +1,7 @@
 <div align="center">
 
-# <div style="display: inline-flex; align-items: center; gap: 4px;"><img src="frontend/public/favicon.svg" height="60" alt="OopsNote Logo" /> <img src="assets/oopsnote.svg" height="90" alt="OopsNote Logo" /></div>
+# <img src="frontend/public/favicon.svg" height="40" alt="OopsNote Logo" /> 
+# <img src="assets/oopsnote.svg" height="90" alt="OopsNote Logo" />
 
 **面向理科学科的 AI 驱动错题整理平台**
 
@@ -40,21 +41,9 @@
 
 ## 📋 TODO
 
-### ✅ 已完成
 
-- [x] 导入文件夹时优化操作
-    - 每个提交后，焦点自动跑到难度框，方便 tab，而非保留道提交并入队
-- [x] 组卷功能增强
-    - [x] 组卷科目 filter
-    - [x] 组卷全选按钮
-- [x] 题目学科自动识别
-    - [x] 默认学科为"自动识别"
-- [x] 当组卷错误时，保存日志和错误的 tex 文件
-- [x] 去除填空题自动占位
-- [x] 优化 tagger.md
-- [x] 日期相关
-  - [x] 筛选再加一个日期，可以选择某个时间段内的题目
-  - [x] taskid界面显示任务执行时间，任务用时
+- [ ] 搜寻相似题目并去重相关
+- [ ] 
 
 ---
 

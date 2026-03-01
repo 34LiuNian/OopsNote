@@ -94,6 +94,8 @@ export default function PaperBuilderPage() {
     }
     setPaperError(null);
     setPaperLoading(true);
+    // 清空上一次生成的 PDF URL，避免在加载时显示旧试卷
+    setPaperPdfUrl(null);
     try {
       const response = await compilePaper({
         items: selectedItems.map((item) => ({
@@ -280,7 +282,27 @@ export default function PaperBuilderPage() {
         </Box>
         {/* </Box> */}
         <Box sx={{ minHeight: 320, border: "1px solid", borderColor: "border.default", borderRadius: 2, overflow: "hidden" }}>
-          {paperError ? (
+          {paperLoading ? (
+            <Box sx={{ p: 4, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: 320 }}>
+              <Spinner size="large" />
+              <Text sx={{ mt: 3, color: "fg.muted" }}>正在生成试卷...</Text>
+              {/* <Box
+                sx={{
+                  mt: 4,
+                  width: "80%",
+                  height: 200,
+                  bg: "canvas.subtle",
+                  borderRadius: 2,
+                  animation: "pulse 1.5s ease-in-out infinite",
+                  "@keyframes pulse": {
+                    "0%": { opacity: 0.6 },
+                    "50%": { opacity: 1 },
+                    "100%": { opacity: 0.6 },
+                  },
+                }}
+              /> */}
+            </Box>
+          ) : paperError ? (
             <Box sx={{ p: 3, height: "100%", overflow: "auto" }}>
               <Text sx={{ color: "danger.fg", fontWeight: "bold" }}>生成失败</Text>
               <Text sx={{ mt: 2, display: "block", color: "danger.fg", whiteSpace: "pre-wrap" }}>{paperError.message}</Text>

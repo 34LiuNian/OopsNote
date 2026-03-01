@@ -373,12 +373,12 @@ def compile_paper(request: Request, payload: PaperCompileRequest) -> Response:
         if not problems:
             continue
         
-        # 按难度降序排序（难度越大，越接近1，排在前）
-        problems.sort(key=lambda p: p["difficulty"], reverse=True)
+        # 按难度升序排序（难度越小，越接近0，排在前）
+        problems.sort(key=lambda p: p["difficulty"])
         
         # 打印排序后的难度顺序
         difficulty_list = [(p["problem_id"], p["difficulty"]) for p in problems]
-        print(f"[PAPER] {qtype} 按难度降序排序: {difficulty_list}")
+        print(f"[PAPER] {qtype} 按难度升序排序: {difficulty_list}")
         
         blocks = []
         total_problems = len(problems)
