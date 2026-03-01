@@ -22,6 +22,8 @@ def list_problems(
     knowledge_tag: str | None = Query(None, description="Knowledge tag filter (can be repeated for OR logic)"),
     error_tag: str | None = Query(None, description="Error tag filter (can be repeated for OR logic)"),
     user_tag: str | None = Query(None, description="Custom tag filter (can be repeated for OR logic)"),
+    created_after: str | None = Query(None, description="Filter problems created after this date (ISO 8601 format)"),
+    created_before: str | None = Query(None, description="Filter problems created before this date (ISO 8601 format)"),
 ) -> ProblemsResponse:
     # FastAPI automatically handles repeated query params as lists
     # Access the raw query params to get all values
@@ -39,4 +41,6 @@ def list_problems(
         knowledge_tag=knowledge_tag_list,
         error_tag=error_tag_list,
         user_tag=user_tag_list,
+        created_after=created_after,
+        created_before=created_before,
     )

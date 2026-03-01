@@ -90,6 +90,24 @@ def _norm_question_type(raw: Optional[str], has_choices: bool) -> str:
     return "其它"
 
 
+def _parse_difficulty(difficulty_str: Optional[str]) -> float:
+    """解析难度分数字符串为浮点数。
+    
+    Args:
+        difficulty_str: 格式如 "11/12" 的字符串
+        
+    Returns:
+        解析后的数值，格式无效时返回 0.0
+    """
+    if not difficulty_str:
+        return 0.0
+    try:
+        numerator, denominator = difficulty_str.split('/')
+        return float(numerator) / float(denominator)
+    except (ValueError, ZeroDivisionError):
+        return 0.0 # TODO: 可能需要更严格的错误处理或日志记录
+
+
 def _normalize_text(raw: str) -> str:
     text = raw or ""
     text = _convert_chemfig_markdown(text)
@@ -338,11 +356,15 @@ def compile_paper(request: Request, payload: PaperCompileRequest) -> Response:
         question_type = _norm_question_type(raw_type, bool(problem.options))
         print(f"[PAPER] 处理题目 {item.problem_id}: 类型={question_type}")
         
+        # 解析难度分数 (a/b 格式，如 "11/12" -> 0.917)
+        difficulty_value = _parse_difficulty(task.payload.difficulty)
+        
         # Store problem data for second pass
         problems_by_type.setdefault(question_type, []).append({
             "problem_text": problem.problem_text or "",
             "options": problem.options,
             "problem_id": item.problem_id,
+            "difficulty": difficulty_value,
         })
     
     # Second pass: build LaTeX blocks with proper spacing
@@ -350,6 +372,14 @@ def compile_paper(request: Request, payload: PaperCompileRequest) -> Response:
     for qtype, problems in problems_by_type.items():
         if not problems:
             continue
+        
+        # 按难度降序排序（难度越大，越接近1，排在前）
+        problems.sort(key=lambda p: p["difficulty"], reverse=True)
+        
+        # 打印排序后的难度顺序
+        difficulty_list = [(p["problem_id"], p["difficulty"]) for p in problems]
+        print(f"[PAPER] {qtype} 按难度降序排序: {difficulty_list}")
+        
         blocks = []
         total_problems = len(problems)
         for idx, prob in enumerate(problems):

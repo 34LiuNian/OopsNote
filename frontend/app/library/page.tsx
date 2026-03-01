@@ -35,6 +35,8 @@ export default function LibraryPage() {
   const [knowledgeFilter, setKnowledgeFilter] = useState<string[]>([]);
   const [errorFilter, setErrorFilter] = useState<string[]>([]);
   const [customFilter, setCustomFilter] = useState<string[]>([]);
+  const [dateAfter, setDateAfter] = useState<string>("");
+  const [dateBefore, setDateBefore] = useState<string>("");
   const { effectiveDimensions: tagStyles } = useTagDimensions();
   const {
     items,
@@ -46,6 +48,8 @@ export default function LibraryPage() {
     knowledge_tag: knowledgeFilter.length > 0 ? knowledgeFilter : undefined,
     error_tag: errorFilter.length > 0 ? errorFilter : undefined,
     user_tag: customFilter.length > 0 ? customFilter : undefined,
+    created_after: dateAfter || undefined,
+    created_before: dateBefore || undefined,
   });
   const {
     items: activeTasks,
@@ -146,6 +150,36 @@ export default function LibraryPage() {
                 </Select.Option>
               ))}
             </Select>
+          </FormControl>
+          <FormControl>
+            <FormControl.Label>日期范围</FormControl.Label>
+            <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
+              <TextInput
+                type="date"
+                value={dateAfter}
+                onChange={(e) => setDateAfter(e.target.value)}
+                sx={{ flex: 1 }}
+                placeholder="起始日期"
+              />
+              <Text sx={{ color: 'fg.muted' }}>至</Text>
+              <TextInput
+                type="date"
+                value={dateBefore}
+                onChange={(e) => setDateBefore(e.target.value)}
+                sx={{ flex: 1 }}
+                placeholder="结束日期"
+              />
+              <Button
+                size="small"
+                onClick={() => {
+                  setDateAfter('');
+                  setDateBefore('');
+                }}
+                disabled={!dateAfter && !dateBefore}
+              >
+                清空
+              </Button>
+            </Box>
           </FormControl>
         </Box>
 

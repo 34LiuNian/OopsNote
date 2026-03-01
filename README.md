@@ -1,6 +1,6 @@
 <div align="center">
 
-# <img src="frontend/public/favicon.svg" height="40" valign="middle" alt="OopsNote Logo" /> <img src="assets/oopsnote.svg" height="60" valign="middle" alt="OopsNote Logo" />
+# <div style="display: inline-flex; align-items: center; gap: 4px;"><img src="frontend/public/favicon.svg" height="60" alt="OopsNote Logo" /> <img src="assets/oopsnote.svg" height="90" alt="OopsNote Logo" /></div>
 
 **面向理科学科的 AI 驱动错题整理平台**
 
@@ -52,6 +52,9 @@
 - [x] 当组卷错误时，保存日志和错误的 tex 文件
 - [x] 去除填空题自动占位
 - [x] 优化 tagger.md
+- [x] 日期相关
+  - [x] 筛选再加一个日期，可以选择某个时间段内的题目
+  - [x] taskid界面显示任务执行时间，任务用时
 
 ---
 

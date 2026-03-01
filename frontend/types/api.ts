@@ -4,6 +4,8 @@ export interface TaskResponse {
     status: string;
     stage?: string | null;
     stage_message?: string | null;
+    created_at: string;
+    updated_at: string;
     asset?: {
       asset_id: string;
       source: string;
@@ -75,6 +77,7 @@ export interface ProblemSummary {
   knowledge_tags?: string[];
   error_tags?: string[];
   user_tags?: string[];
+  created_at: string;
 }
 
 export interface ProblemsResponse {

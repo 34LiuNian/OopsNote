@@ -38,6 +38,8 @@ export default function PaperBuilderPage() {
   const [knowledgeFilter, setKnowledgeFilter] = useState<string[]>([]);
   const [errorFilter, setErrorFilter] = useState<string[]>([]);
   const [customFilter, setCustomFilter] = useState<string[]>([]);
+  const [dateAfter, setDateAfter] = useState<string>("");
+  const [dateBefore, setDateBefore] = useState<string>("");
   const { effectiveDimensions: tagStyles } = useTagDimensions();
 
   const {
@@ -50,6 +52,8 @@ export default function PaperBuilderPage() {
     knowledge_tag: knowledgeFilter.length > 0 ? knowledgeFilter : undefined,
     error_tag: errorFilter.length > 0 ? errorFilter : undefined,
     user_tag: customFilter.length > 0 ? customFilter : undefined,
+    created_after: dateAfter || undefined,
+    created_before: dateBefore || undefined,
   });
 
   const [selected, setSelected] = useState<Record<string, boolean>>({});
@@ -183,7 +187,7 @@ export default function PaperBuilderPage() {
               </Button>
             </Box>
           </Box>
-          <Box sx={{ display: "grid", gridTemplateColumns: ["1fr", "1fr 1fr"], gap: 3, mb: 3 }}>
+          <Box sx={{ display: 'grid', gridTemplateColumns: ['1fr', '1fr 1fr 1fr'], gap: 3, mb: 3 }}>
             <FormControl>
               <FormControl.Label>试卷标题</FormControl.Label>
               <TextInput value={paperTitle} onChange={(e) => setPaperTitle(e.target.value)} block />
@@ -198,8 +202,38 @@ export default function PaperBuilderPage() {
                 ))}
               </Select>
             </FormControl>
+            <FormControl>
+              <FormControl.Label>日期范围</FormControl.Label>
+              <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+                <TextInput
+                  type="date"
+                  value={dateAfter}
+                  onChange={(e) => setDateAfter(e.target.value)}
+                  sx={{ flex: 1, fontSize: 0 }}
+                  placeholder="起始"
+                />
+                <Text sx={{ color: 'fg.muted', fontSize: 1 }}>-</Text>
+                <TextInput
+                  type="date"
+                  value={dateBefore}
+                  onChange={(e) => setDateBefore(e.target.value)}
+                  sx={{ flex: 1, fontSize: 0 }}
+                  placeholder="结束"
+                />
+                <Button
+                  size="small"
+                  onClick={() => {
+                    setDateAfter('');
+                    setDateBefore('');
+                  }}
+                  disabled={!dateAfter && !dateBefore}
+                  sx={{ fontSize: 0, px: 1, py: 0 }}
+                >
+                  清空
+                </Button>
+              </Box>
+            </FormControl>
           </Box>
-
           <TagSelectorRow
             sourceValue={sourceFilter}
             onSourceChange={setSourceFilter}

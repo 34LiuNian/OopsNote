@@ -22,6 +22,32 @@ import { TaskLiveStream } from "./task/TaskLiveStream";
 import { TaskMathRenderer } from "./task/TaskMathRenderer";
 import { TaskStatusToaster } from "./task/TaskStatusToaster";
 
+// Format duration between two dates
+function formatDuration(start: string, end: string): string {
+  const startDate = new Date(start).getTime();
+  const endDate = new Date(end).getTime();
+
+  // Return "未知" for invalid dates
+  if (Number.isNaN(startDate) || Number.isNaN(endDate)) return "未知";
+
+  const diffMs = endDate - startDate;
+
+  if (diffMs < 0) return "未知";
+
+  const seconds = Math.floor(diffMs / 1000);
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = seconds % 60;
+  const hours = Math.floor(minutes / 60);
+  const remainingMinutes = minutes % 60;
+  if (hours > 0) {
+    return `${hours}小时${remainingMinutes}分${remainingSeconds}秒`;
+  } else if (minutes > 0) {
+    return `${minutes}分${remainingSeconds}秒`;
+  } else {
+    return `${remainingSeconds}秒`;
+  }
+}
+
 export function TaskLiveView({ taskId }: { taskId: string }) {
   const [data, setData] = useState<TaskResponse | null>(null);
   const [error, setError] = useState<string>("");
@@ -144,6 +170,23 @@ export function TaskLiveView({ taskId }: { taskId: string }) {
         <Box>
           <Text sx={{ fontSize: 0, color: 'fg.muted', textTransform: 'uppercase' }}>Task</Text>
           <Heading as="h2" sx={{ fontSize: 3 }}>任务 {taskId}</Heading>
+          {data?.task?.created_at && (
+            <Box sx={{ mt: 1, display: 'flex', gap: 3, flexWrap: 'wrap' }}>
+              <Text sx={{ fontSize: 0, color: 'fg.muted' }}>
+                创建时间：{new Date(data.task.created_at).toLocaleString('zh-CN')}
+              </Text>
+              {data.task.updated_at && (
+                <Text sx={{ fontSize: 0, color: 'fg.muted' }}>
+                  最后更新：{new Date(data.task.updated_at).toLocaleString('zh-CN')}
+                </Text>
+              )}
+              {(data.task.status === 'completed' || data.task.status === 'failed' || data.task.status === 'cancelled') && (
+                <Text sx={{ fontSize: 0, color: 'fg.muted' }}>
+                  任务用时：{formatDuration(data.task.created_at, data.task.updated_at)}
+                </Text>
+              )}
+            </Box>
+          )}
         </Box>
         <TaskActions
           status={data?.task?.status}

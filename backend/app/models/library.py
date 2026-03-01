@@ -4,6 +4,7 @@ Library and query models.
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import List, Optional
 
 from pydantic import BaseModel, Field
@@ -27,6 +28,10 @@ class ProblemSummary(BaseModel):
     knowledge_tags: List[str] = Field(default_factory=list)
     error_tags: List[str] = Field(default_factory=list)
     user_tags: List[str] = Field(default_factory=list)
+    created_at: datetime = Field(
+        default_factory=lambda: datetime.now(),
+        description="Task creation timestamp, inherited from parent task"
+    )
 
 
 class ProblemsResponse(BaseModel):

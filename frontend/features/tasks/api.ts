@@ -79,6 +79,8 @@ export type ListProblemsParams = {
   knowledge_tag?: string | string[];
   error_tag?: string | string[];
   user_tag?: string | string[];
+  created_after?: string;
+  created_before?: string;
 };
 
 export async function listProblems(params?: ListProblemsParams): Promise<ProblemsResponse> {

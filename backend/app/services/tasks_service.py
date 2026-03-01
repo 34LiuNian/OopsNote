@@ -518,10 +518,46 @@ class TasksService:
         knowledge_tag: str | list[str] | None = None,
         error_tag: str | list[str] | None = None,
         user_tag: str | list[str] | None = None,
+        created_after: str | None = None,
+        created_before: str | None = None,
     ) -> ProblemsResponse:  # pylint: disable=too-many-locals
         """Return a flattened library view of problems."""
         tasks = self.repository.list_all().values()
         items: list[ProblemSummary] = []
+
+        # Parse date filters
+        date_after: datetime | None = None
+        date_before: datetime | None = None
+        if created_after is not None:
+            try:
+                # Support both "YYYY-MM-DD" format (from HTML date input) and ISO 8601
+                if len(created_after) == 10 and created_after.count('-') == 2:
+                    # Parse "YYYY-MM-DD" format as midnight UTC
+                    parsed = datetime.strptime(created_after, "%Y-%m-%d")
+                    date_after = parsed.replace(tzinfo=timezone.utc)
+                else:
+                    # Parse ISO format and ensure it's timezone-aware (assume UTC if no timezone)
+                    parsed = datetime.fromisoformat(created_after)
+                    if parsed.tzinfo is None:
+                        parsed = parsed.replace(tzinfo=timezone.utc)
+                    date_after = parsed
+            except ValueError:
+                logger.warning("Invalid created_after format: %s", created_after)
+        if created_before is not None:
+            try:
+                # Support both "YYYY-MM-DD" format (from HTML date input) and ISO 8601
+                if len(created_before) == 10 and created_before.count('-') == 2:
+                    # Parse "YYYY-MM-DD" format as end of day UTC (23:59:59.999999)
+                    parsed = datetime.strptime(created_before, "%Y-%m-%d")
+                    date_before = parsed.replace(hour=23, minute=59, second=59, microsecond=999999, tzinfo=timezone.utc)
+                else:
+                    # Parse ISO format and ensure it's timezone-aware (assume UTC if no timezone)
+                    parsed = datetime.fromisoformat(created_before)
+                    if parsed.tzinfo is None:
+                        parsed = parsed.replace(tzinfo=timezone.utc)
+                    date_before = parsed
+            except ValueError:
+                logger.warning("Invalid created_before format: %s", created_before)
 
         # Normalize filters to lists for consistent filtering
         source_list = None
@@ -596,6 +632,10 @@ class TasksService:
                     # Filter by multiple custom tags (OR logic)
                     if not any(ut in manual_custom for ut in user_tag_list):
                         continue
+                if date_after is not None and task.created_at < date_after:
+                    continue
+                if date_before is not None and task.created_at > date_before:
+                    continue
 
                 items.append(
                     ProblemSummary(
@@ -613,6 +653,7 @@ class TasksService:
                         knowledge_tags=manual_knowledge,
                         error_tags=manual_error,
                         user_tags=manual_custom,
+                        created_at=task.created_at,
                     )
                 )
 
