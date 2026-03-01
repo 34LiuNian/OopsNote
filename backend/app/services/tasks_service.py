@@ -700,21 +700,53 @@ class TasksService:
         manual_source: str,
         tags: list[TaggingResult],
     ) -> None:
-        """Update the global tag store with tags from the pipeline run and update ref_counts."""
+        """Update the global tag store with tags from the pipeline run and update ref_counts.
+        
+        Important: Tags that appear in both manual_knowledge and AI tags should only be counted once.
+        Manual tags take priority - they are upserted and counted first.
+        AI tags that are NOT already in manual tags are then upserted and counted.
+        """
+        # Create normalized sets for deduplication (case-insensitive)
+        manual_knowledge_normalized = {str(v).strip().casefold() for v in manual_knowledge if str(v).strip()}
+        manual_error_normalized = {str(v).strip().casefold() for v in manual_error if str(v).strip()}
+
+        if manual_knowledge or manual_error or manual_source:
+            logger.info(
+                f"Syncing manual tags: knowledge={len(manual_knowledge)}, error={len(manual_error)}, "
+                f"source={'yes' if manual_source else 'no'}"
+            )
+
+        # Upsert and count manual tags first
         for val in manual_knowledge:
             self.tag_store.upsert(TagDimension.KNOWLEDGE, val)
             self.tag_store.update_ref_count_by_value(TagDimension.KNOWLEDGE, val, delta=1)
+            logger.debug(f"Manual knowledge tag upserted: {val}")
         for val in manual_error:
             self.tag_store.upsert(TagDimension.ERROR, val)
             self.tag_store.update_ref_count_by_value(TagDimension.ERROR, val, delta=1)
+            logger.debug(f"Manual error tag upserted: {val}")
         if manual_source:
             self.tag_store.upsert(TagDimension.META, manual_source)
             self.tag_store.update_ref_count_by_value(TagDimension.META, manual_source, delta=1)
+            logger.debug(f"Manual source tag upserted: {manual_source}")
 
+        # Upsert and count AI tags, but skip those already in manual tags
+        ai_tags_counted = 0
+        ai_tags_skipped = 0
         for tag_res in tags:
             for val in tag_res.knowledge_points:
+                # Skip if this tag was already manually selected
+                if str(val).strip().casefold() in manual_knowledge_normalized:
+                    logger.debug(f"AI tag skipped (already in manual): {val}")
+                    ai_tags_skipped += 1
+                    continue
                 self.tag_store.upsert(TagDimension.KNOWLEDGE, val)
                 self.tag_store.update_ref_count_by_value(TagDimension.KNOWLEDGE, val, delta=1)
+                logger.debug(f"AI knowledge tag upserted: {val}")
+                ai_tags_counted += 1
+        
+        if ai_tags_counted > 0 or ai_tags_skipped > 0:
+            logger.info(f"AI tags processed: counted={ai_tags_counted}, skipped={ai_tags_skipped}")
 
     def process_task_sync(
         self,

@@ -4,7 +4,7 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Box, Button, Label, Spinner, Text, TextInput } from "@primer/react";
 import { XIcon } from "@primer/octicons-react";
 import type { TagDimension, TagDimensionStyle, TagItem } from "../types/api";
-import { createTag, searchTags } from "../features/tags/api";
+import { searchTags } from "../features/tags/api";
 
 export type { TagDimension, TagDimensionStyle };
 
@@ -74,11 +74,8 @@ export const TagPicker = memo(function TagPicker({
     async (raw: string) => {
       const s = normalizeTag(raw);
       if (!s) return;
-      try {
-        await createTag({ dimension, value: s, aliases: [] });
-      } catch {
-        // ignore; still add locally
-      }
+      // Don't create tag immediately - only create on submit
+      // This prevents orphaned tags when user creates then deletes before submitting
       addTag(s);
     },
     [addTag, dimension]

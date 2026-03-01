@@ -1,6 +1,6 @@
 <div align="center">
 
-# <img src="frontend/public/favicon.svg" width="40" height="40" valign="middle" alt="OopsNote Logo" /> OopsNote
+# <img src="frontend/public/favicon.svg" height="40" valign="middle" alt="OopsNote Logo" /> <img src="assets/oopsnote.svg" height="60" valign="middle" alt="OopsNote Logo" />
 
 **面向理科学科的 AI 驱动错题整理平台**
 
