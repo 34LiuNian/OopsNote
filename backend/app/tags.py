@@ -335,6 +335,171 @@ class TagStore:
                     return True
             return False
 
+    def get_by_id(self, tag_id: str) -> TagItem | None:
+        """Return a single tag by ID or None."""
+        state = self._load_state()
+        for item in state.items:
+            if item.id == tag_id:
+                return item
+        return None
+
+    def merge_into(self, source_id: str, target_id: str) -> dict:
+        """Merge *source* tag into *target* tag.
+
+        1. Replace all occurrences of source.value with target.value in every
+           task file (payload, problems, tagging results).
+        2. Add source.value + source.aliases as aliases on target.
+        3. Delete source tag.
+        4. Recalculate ref_count for target.
+
+        Returns a stats dict: ``{tasks_modified, fields_modified}``.
+        """
+        import logging
+
+        log = logging.getLogger(__name__)
+
+        source = self.get_by_id(source_id)
+        target = self.get_by_id(target_id)
+        if source is None:
+            raise ValueError("源标签不存在")
+        if target is None:
+            raise ValueError("目标标签不存在")
+        if source.id == target.id:
+            raise ValueError("不能合并到自身")
+        if source.dimension != target.dimension:
+            raise ValueError("只能合并同一维度的标签")
+
+        old_val = source.value
+        new_val = target.value
+        dim = source.dimension
+
+        # ── 1. Rewrite all task files ────────────────────────────
+        tasks_dir = Path(__file__).resolve().parents[1] / "storage" / "tasks"
+        tasks_modified = 0
+        fields_modified = 0
+
+        def _replace_in_list(lst: list | None) -> tuple[list | None, int]:
+            """Replace old_val with new_val in a string list, dedup."""
+            if not lst or not isinstance(lst, list):
+                return lst, 0
+            c = 0
+            result: list[str] = []
+            for v in lst:
+                if isinstance(v, str) and v.strip().casefold() == old_val.casefold():
+                    if new_val not in result:
+                        result.append(new_val)
+                    c += 1
+                else:
+                    if v not in result:
+                        result.append(v)
+            return result, c
+
+        def _field_names() -> list[str]:
+            if dim == TagDimension.KNOWLEDGE:
+                return ["knowledge_tags"]
+            elif dim == TagDimension.ERROR:
+                return ["error_tags"]
+            elif dim == TagDimension.CUSTOM:
+                return ["user_tags"]
+            return []
+
+        def _tagging_field_names() -> list[str]:
+            if dim == TagDimension.KNOWLEDGE:
+                return ["knowledge_points"]
+            elif dim == TagDimension.ERROR:
+                return ["error_hypothesis"]
+            return []
+
+        if tasks_dir.exists():
+            fnames = _field_names()
+            tfnames = _tagging_field_names()
+
+            for path in sorted(tasks_dir.glob("*.json")):
+                try:
+                    raw = json.loads(path.read_text(encoding="utf-8"))
+                except Exception:
+                    continue
+
+                count = 0
+
+                # payload level
+                payload = raw.get("payload")
+                if isinstance(payload, dict):
+                    for fn in fnames:
+                        if fn in payload:
+                            payload[fn], c = _replace_in_list(payload[fn])
+                            count += c
+                    if dim == TagDimension.META:
+                        src = payload.get("source")
+                        if isinstance(src, str) and src.strip().casefold() == old_val.casefold():
+                            payload["source"] = new_val
+                            count += 1
+
+                # problems level
+                for prob in raw.get("problems", []) or []:
+                    if not isinstance(prob, dict):
+                        continue
+                    for fn in fnames:
+                        if fn in prob:
+                            prob[fn], c = _replace_in_list(prob[fn])
+                            count += c
+                    if dim == TagDimension.META:
+                        src = prob.get("source")
+                        if isinstance(src, str) and src.strip().casefold() == old_val.casefold():
+                            prob["source"] = new_val
+                            count += 1
+
+                # tagging results level
+                for tag_result in raw.get("tags", []) or []:
+                    if not isinstance(tag_result, dict):
+                        continue
+                    for fn in tfnames:
+                        if fn in tag_result:
+                            tag_result[fn], c = _replace_in_list(tag_result[fn])
+                            count += c
+
+                if count > 0:
+                    tasks_modified += 1
+                    fields_modified += count
+                    tmp = path.with_suffix(".json.tmp")
+                    tmp.write_text(
+                        json.dumps(raw, ensure_ascii=False, indent=2),
+                        encoding="utf-8",
+                    )
+                    tmp.replace(path)
+
+        log.info(
+            "Tag merge %s -> %s: tasks_modified=%d, fields_modified=%d",
+            old_val, new_val, tasks_modified, fields_modified,
+        )
+
+        # ── 2. Transfer aliases and delete source ─────────────────
+        merged_aliases = list(
+            dict.fromkeys(
+                [*(target.aliases or []), old_val, *(source.aliases or [])]
+            )
+        )
+        merged_aliases = [a for a in merged_aliases if a.casefold() != new_val.casefold()]
+
+        with self._lock:
+            state = self._load_state_unlocked()
+            state.items = [
+                t.model_copy(update={"aliases": merged_aliases})
+                if t.id == target_id
+                else t
+                for t in state.items
+            ]
+            state.items = [t for t in state.items if t.id != source_id]
+            self._write_state_unlocked(state)
+
+        # ── 3. Recalculate ref_count ──────────────────────────────
+        self.recalculate_all_counts()
+
+        return {
+            "tasks_modified": tasks_modified,
+            "fields_modified": fields_modified,
+        }
+
     def recalculate_all_counts(self) -> dict[str, int]:
         """Recalculate all tag reference counts from tasks. Returns stats."""
         from app.repository import FileTaskRepository

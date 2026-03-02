@@ -121,6 +121,70 @@ export interface AgentThinkingUpdateRequest {
   thinking: Record<string, boolean>;
 }
 
+// ── Agent Temperature ────────────────────────────────────────────────────
+
+export interface AgentTemperatureResponse {
+  temperature: Record<string, number>;
+}
+
+export interface AgentTemperatureUpdateRequest {
+  temperature: Record<string, number>;
+}
+
+// ── Gateway Settings ─────────────────────────────────────────────────────
+
+export interface GatewaySettingsResponse {
+  base_url: string | null;
+  api_key_masked: string | null;
+  has_api_key: boolean;
+  default_model: string | null;
+  temperature: number | null;
+  env_base_url: string | null;
+  env_has_api_key: boolean;
+  env_default_model: string | null;
+  env_temperature: number | null;
+}
+
+export interface GatewaySettingsUpdateRequest {
+  base_url?: string | null;
+  api_key?: string | null;
+  default_model?: string | null;
+  temperature?: number | null;
+}
+
+export interface GatewayTestRequest {
+  base_url: string;
+  api_key?: string | null;
+}
+
+export interface GatewayTestResponse {
+  success: boolean;
+  message: string;
+  models_count: number;
+}
+
+// ── Debug Settings ───────────────────────────────────────────────────────
+
+export interface DebugSettingsResponse {
+  debug_llm_payload: boolean;
+  persist_tasks: boolean;
+}
+
+export interface DebugSettingsUpdateRequest {
+  debug_llm_payload?: boolean;
+  persist_tasks?: boolean;
+}
+
+// ── System Info ──────────────────────────────────────────────────────────
+
+export interface SystemInfoResponse {
+  gateway_reachable: boolean | null;
+  gateway_url: string | null;
+  storage_path: string;
+  env_configured: boolean;
+  models_count: number;
+}
+
 export type TagDimension = "knowledge" | "error" | "meta" | "custom";
 
 export interface TagItem {

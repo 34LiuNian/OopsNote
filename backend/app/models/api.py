@@ -153,3 +153,101 @@ class AgentThinkingUpdateRequest(BaseModel):
     """Request to update agent thinking mode status."""
 
     thinking: Dict[str, bool]
+
+
+# ---------------------------------------------------------------------------
+# Agent Temperature
+# ---------------------------------------------------------------------------
+
+
+class AgentTemperatureResponse(BaseModel):
+    """Response with per-agent temperature overrides."""
+
+    temperature: Dict[str, float]
+
+
+class AgentTemperatureUpdateRequest(BaseModel):
+    """Request to update per-agent temperature overrides."""
+
+    temperature: Dict[str, float]
+
+
+# ---------------------------------------------------------------------------
+# Gateway Settings
+# ---------------------------------------------------------------------------
+
+
+class GatewaySettingsResponse(BaseModel):
+    """Response with gateway connection settings (API key masked)."""
+
+    base_url: Optional[str] = None
+    api_key_masked: Optional[str] = None
+    has_api_key: bool = False
+    default_model: Optional[str] = None
+    temperature: Optional[float] = None
+    env_base_url: Optional[str] = None
+    env_has_api_key: bool = False
+    env_default_model: Optional[str] = None
+    env_temperature: Optional[float] = None
+
+
+class GatewaySettingsUpdateRequest(BaseModel):
+    """Request to update gateway connection settings.
+
+    Send ``api_key = "__UNCHANGED__"`` to keep the existing key.
+    Send ``api_key = ""`` to clear it.
+    """
+
+    base_url: Optional[str] = None
+    api_key: Optional[str] = None
+    default_model: Optional[str] = None
+    temperature: Optional[float] = None
+
+
+class GatewayTestRequest(BaseModel):
+    """Request to test a gateway connection."""
+
+    base_url: str
+    api_key: Optional[str] = None
+
+
+class GatewayTestResponse(BaseModel):
+    """Response from testing a gateway connection."""
+
+    success: bool
+    message: str
+    models_count: int = 0
+
+
+# ---------------------------------------------------------------------------
+# Debug Settings
+# ---------------------------------------------------------------------------
+
+
+class DebugSettingsResponse(BaseModel):
+    """Response with debug switches."""
+
+    debug_llm_payload: bool = False
+    persist_tasks: bool = True
+
+
+class DebugSettingsUpdateRequest(BaseModel):
+    """Request to update debug switches."""
+
+    debug_llm_payload: Optional[bool] = None
+    persist_tasks: Optional[bool] = None
+
+
+# ---------------------------------------------------------------------------
+# System Info
+# ---------------------------------------------------------------------------
+
+
+class SystemInfoResponse(BaseModel):
+    """Read-only system information."""
+
+    gateway_reachable: Optional[bool] = None
+    gateway_url: Optional[str] = None
+    storage_path: str = ""
+    env_configured: bool = False
+    models_count: int = 0

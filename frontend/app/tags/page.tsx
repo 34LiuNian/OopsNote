@@ -21,6 +21,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { sileo } from "sileo";
 import {
   GearIcon,
+  GitMergeIcon,
   KebabHorizontalIcon,
   PencilIcon,
   PlusIcon,
@@ -30,7 +31,7 @@ import {
   TrashIcon,
   XIcon,
 } from "@primer/octicons-react";
-import { createTag, deleteTag, searchTags, updateTag } from "../../features/tags/api";
+import { createTag, deleteTag, mergeTags, searchTags, updateTag } from "../../features/tags/api";
 import { TAG_DIMENSIONS, useTagDimensions } from "../../features/tags";
 import type { TagDimension, TagItem } from "../../types/api";
 
@@ -79,6 +80,13 @@ export default function TagsPage() {
 
   /* ── dims config dialog ── */
   const [showDimsConfig, setShowDimsConfig] = useState(false);
+
+  /* ── merge dialog ── */
+  const [mergingTag, setMergingTag] = useState<TagItem | null>(null);
+  const [mergeQuery, setMergeQuery] = useState("");
+  const [mergeCandidates, setMergeCandidates] = useState<TagItem[]>([]);
+  const [mergeTarget, setMergeTarget] = useState<TagItem | null>(null);
+  const [merging, setMerging] = useState(false);
 
   /* ─────────────── data loading ─────────────── */
 
@@ -193,6 +201,60 @@ export default function TagsPage() {
       });
     }
   };
+
+  /* ── merge handlers ── */
+  const openMerge = useCallback((tag: TagItem) => {
+    setMergingTag(tag);
+    setMergeQuery("");
+    setMergeTarget(null);
+    setMergeCandidates([]);
+  }, []);
+
+  // Search candidates when mergeQuery or mergingTag changes
+  useEffect(() => {
+    if (!mergingTag) return;
+    let cancelled = false;
+    const doSearch = async () => {
+      try {
+        const data = await searchTags({
+          dimension: mergingTag.dimension,
+          query: mergeQuery.trim() || undefined,
+          limit: 50,
+        });
+        if (!cancelled) {
+          setMergeCandidates(
+            (data.items || []).filter((t) => t.id !== mergingTag.id)
+          );
+        }
+      } catch {
+        // ignore
+      }
+    };
+    const timer = setTimeout(doSearch, 150);
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [mergingTag, mergeQuery]);
+
+  const onConfirmMerge = useCallback(async () => {
+    if (!mergingTag || !mergeTarget) return;
+    setMerging(true);
+    try {
+      const res = await mergeTags(mergingTag.id, mergeTarget.id);
+      sileo.success({
+        title: "合并完成",
+        description: `已更新 ${res.tasks_modified} 个任务，${res.fields_modified} 处引用`,
+      });
+      setMergingTag(null);
+      setMergeTarget(null);
+      await loadTags();
+    } catch (e) {
+      sileo.error({
+        title: "合并失败",
+        description: e instanceof Error ? e.message : "请稍后重试",
+      });
+    } finally {
+      setMerging(false);
+    }
+  }, [mergingTag, mergeTarget, loadTags]);
 
   /* ─────────────── render helpers ─────────────── */
 
@@ -328,6 +390,7 @@ export default function TagsPage() {
                   getDimVariant={getDimVariant}
                   onDelete={setDeletingTag}
                   onRename={(t) => { setEditingTag(t); setEditValue(t.value); }}
+                  onMerge={openMerge}
                 />
               );
             })}
@@ -340,6 +403,7 @@ export default function TagsPage() {
               variant={getDimVariant(dimFilter)}
               onDelete={setDeletingTag}
               onRename={(t) => { setEditingTag(t); setEditValue(t.value); }}
+              onMerge={openMerge}
             />
           ) : (
             <CardView
@@ -348,6 +412,7 @@ export default function TagsPage() {
               getDimVariant={getDimVariant}
               onDelete={setDeletingTag}
               onRename={(t) => { setEditingTag(t); setEditValue(t.value); }}
+              onMerge={openMerge}
             />
           )
         )}
@@ -445,6 +510,138 @@ export default function TagsPage() {
           <Box sx={{ display: "flex", gap: 2, justifyContent: "flex-end" }}>
             <Button onClick={() => setDeletingTag(null)}>取消</Button>
             <Button variant="danger" onClick={onConfirmDelete}>删除</Button>
+          </Box>
+        </DialogOverlay>
+      )}
+
+      {/* ══════ Merge Dialog ══════ */}
+      {mergingTag && (
+        <DialogOverlay onClose={() => setMergingTag(null)} wide>
+          <Heading as="h3" sx={{ fontSize: 3, mb: 2, display: "flex", alignItems: "center", gap: 2 }}>
+            <GitMergeIcon size={20} /> 合并标签
+          </Heading>
+          <Text sx={{ color: "fg.muted", fontSize: 1, mb: 3, display: "block" }}>
+            将 <Label variant={getDimVariant(mergingTag.dimension)}>{mergingTag.value}</Label> 合并到另一个标签。
+            所有引用会被替换，原标签将被删除并成为目标标签的别名。
+          </Text>
+
+          {/* 搜索目标 */}
+          <FormControl sx={{ mb: 3 }}>
+            <FormControl.Label>搜索目标标签（{getDimLabel(mergingTag.dimension)}）</FormControl.Label>
+            <TextInput
+              leadingVisual={SearchIcon}
+              value={mergeQuery}
+              onChange={(e) => { setMergeQuery(e.target.value); setMergeTarget(null); }}
+              placeholder="输入关键词搜索同维度标签…"
+              autoFocus
+              block
+            />
+          </FormControl>
+
+          {/* candidates list */}
+          <Box
+            sx={{
+              maxHeight: 220,
+              overflowY: "auto",
+              border: "1px solid",
+              borderColor: "border.default",
+              borderRadius: "var(--oops-radius-sm)",
+              mb: 3,
+            }}
+          >
+            {mergeCandidates.length === 0 ? (
+              <Box sx={{ p: 3, textAlign: "center", color: "fg.muted", fontSize: 1 }}>
+                没有可合并的标签
+              </Box>
+            ) : (
+              mergeCandidates.map((c) => (
+                <Box
+                  key={c.id}
+                  onClick={() => setMergeTarget(c)}
+                  sx={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 2,
+                    px: 3,
+                    py: 2,
+                    cursor: "pointer",
+                    bg: mergeTarget?.id === c.id ? "accent.subtle" : "transparent",
+                    borderBottom: "1px solid",
+                    borderColor: "border.muted",
+                    "&:last-child": { borderBottom: "none" },
+                    "&:hover": { bg: mergeTarget?.id === c.id ? "accent.subtle" : "canvas.subtle" },
+                    transition: "background var(--oops-transition-fast)",
+                  }}
+                >
+                  <Box
+                    sx={{
+                      width: 16,
+                      height: 16,
+                      borderRadius: "50%",
+                      border: "2px solid",
+                      borderColor: mergeTarget?.id === c.id ? "accent.fg" : "border.default",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      flexShrink: 0,
+                    }}
+                  >
+                    {mergeTarget?.id === c.id && (
+                      <Box sx={{ width: 8, height: 8, borderRadius: "50%", bg: "accent.fg" }} />
+                    )}
+                  </Box>
+                  <Box sx={{ flex: 1, minWidth: 0 }}>
+                    <Text sx={{ fontWeight: 500, fontSize: 1 }}>{c.value}</Text>
+                    {((c.ref_count ?? 0) > 0 || (c.aliases && c.aliases.length > 0)) && (
+                      <Text sx={{ fontSize: 0, color: "fg.muted", ml: 1 }}>
+                        {(c.ref_count ?? 0) > 0 ? `引用 ${c.ref_count}` : ""}
+                        {(c.ref_count ?? 0) > 0 && c.aliases && c.aliases.length > 0 ? " · " : ""}
+                        {c.aliases && c.aliases.length > 0 ? `别名 ${c.aliases.length}` : ""}
+                      </Text>
+                    )}
+                  </Box>
+                </Box>
+              ))
+            )}
+          </Box>
+
+          {/* 合并预览 */}
+          {mergeTarget && (
+            <Box
+              sx={{
+                p: 3,
+                mb: 3,
+                bg: "canvas.subtle",
+                borderRadius: "var(--oops-radius-sm)",
+                border: "1px solid",
+                borderColor: "border.default",
+              }}
+            >
+              <Text sx={{ fontSize: 1, fontWeight: 600, mb: 2, display: "block" }}>合并预览</Text>
+              <Box sx={{ display: "flex", alignItems: "center", gap: 2, flexWrap: "wrap" }}>
+                <Label variant={getDimVariant(mergingTag.dimension)} sx={{ textDecoration: "line-through", opacity: 0.6 }}>
+                  {mergingTag.value}
+                </Label>
+                <Text sx={{ color: "fg.muted", fontSize: 1 }}>→</Text>
+                <Label variant={getDimVariant(mergeTarget.dimension)}>
+                  {mergeTarget.value}
+                </Label>
+              </Box>
+              <Text sx={{ color: "fg.muted", fontSize: 0, mt: 2, display: "block" }}>
+                「{mergingTag.value}」的 {mergingTag.ref_count ?? 0} 处引用将替换为「{mergeTarget.value}」，原标签删除并成为别名。
+              </Text>
+            </Box>
+          )}
+
+          <Box sx={{ display: "flex", gap: 2, justifyContent: "flex-end" }}>
+            <Button onClick={() => setMergingTag(null)}>取消</Button>
+            <Button
+              variant="primary"
+              onClick={onConfirmMerge}
+              disabled={!mergeTarget || merging}
+            >
+              {merging ? <><Spinner size="small" sx={{ mr: 1 }} />合并中…</> : "确认合并"}
+            </Button>
           </Box>
         </DialogOverlay>
       )}
@@ -586,6 +783,7 @@ function DimGroup({
   getDimVariant,
   onDelete,
   onRename,
+  onMerge,
 }: {
   dimKey: string;
   label: string;
@@ -596,6 +794,7 @@ function DimGroup({
   getDimVariant: (dim: string) => any;
   onDelete: (t: TagItem) => void;
   onRename: (t: TagItem) => void;
+  onMerge: (t: TagItem) => void;
 }) {
   return (
     <Box>
@@ -614,9 +813,9 @@ function DimGroup({
         <Text sx={{ color: "fg.muted", fontSize: 1 }}>{items.length}</Text>
       </Box>
       {viewMode === "label" ? (
-        <LabelView items={items} variant={variant} onDelete={onDelete} onRename={onRename} />
+        <LabelView items={items} variant={variant} onDelete={onDelete} onRename={onRename} onMerge={onMerge} />
       ) : (
-        <CardView items={items} getDimLabel={getDimLabel} getDimVariant={getDimVariant} onDelete={onDelete} onRename={onRename} />
+        <CardView items={items} getDimLabel={getDimLabel} getDimVariant={getDimVariant} onDelete={onDelete} onRename={onRename} onMerge={onMerge} />
       )}
     </Box>
   );
@@ -628,12 +827,14 @@ function LabelView({
   variant,
   onDelete,
   onRename,
+  onMerge,
   getDimVariant,
 }: {
   items: TagItem[];
   variant?: any;
   onDelete: (t: TagItem) => void;
   onRename: (t: TagItem) => void;
+  onMerge: (t: TagItem) => void;
   getDimVariant?: (dim: string) => any;
 }) {
   return (
@@ -672,6 +873,14 @@ function LabelView({
               }}
             >
               <IconButton
+                aria-label="合并"
+                icon={GitMergeIcon}
+                size="small"
+                variant="invisible"
+                onClick={(e: React.MouseEvent) => { e.stopPropagation(); onMerge(t); }}
+                sx={{ color: "fg.muted" }}
+              />
+              <IconButton
                 aria-label="重命名"
                 icon={PencilIcon}
                 size="small"
@@ -702,12 +911,14 @@ function CardView({
   getDimVariant,
   onDelete,
   onRename,
+  onMerge,
 }: {
   items: TagItem[];
   getDimLabel?: (dim: string) => string;
   getDimVariant?: (dim: string) => any;
   onDelete: (t: TagItem) => void;
   onRename: (t: TagItem) => void;
+  onMerge: (t: TagItem) => void;
 }) {
   return (
     <Box
@@ -779,6 +990,10 @@ function CardView({
                 <ActionList.Item onSelect={() => onRename(t)}>
                   <ActionList.LeadingVisual><PencilIcon /></ActionList.LeadingVisual>
                   重命名
+                </ActionList.Item>
+                <ActionList.Item onSelect={() => onMerge(t)}>
+                  <ActionList.LeadingVisual><GitMergeIcon /></ActionList.LeadingVisual>
+                  合并到…
                 </ActionList.Item>
                 <ActionList.Divider />
                 <ActionList.Item variant="danger" onSelect={() => onDelete(t)}>

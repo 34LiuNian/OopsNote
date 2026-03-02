@@ -5,6 +5,7 @@ import json
 import logging
 import os
 import re
+import threading
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -35,6 +36,7 @@ class OpenAIClient(AIClient):
         self.temperature = temperature
         self.debug_payload = debug_payload
         self.debug_payload_path = debug_payload_path
+        self._reconfigure_lock = threading.Lock()
         if max_tokens is None:
             env_max = os.getenv("OPENAI_MAX_TOKENS")
             if env_max:
@@ -43,11 +45,50 @@ class OpenAIClient(AIClient):
                 except ValueError:
                     max_tokens = None
         self.max_tokens = max_tokens if max_tokens is not None else 100000
+        self._api_key = api_key
         self._client = (
             OpenAI(api_key=api_key, base_url=base_url)
             if base_url
             else OpenAI(api_key=api_key)
         )
+
+    def reconfigure(
+        self,
+        *,
+        base_url: str | None = None,
+        api_key: str | None = None,
+        model: str | None = None,
+        temperature: float | None = None,
+        debug_payload: bool | None = None,
+    ) -> None:
+        """Hot-reload connection parameters without server restart.
+
+        Only rebuilds the internal ``openai.OpenAI`` instance when *base_url*
+        or *api_key* actually change.  Other fields are updated in-place.
+        """
+        with self._reconfigure_lock:
+            need_rebuild = False
+            if api_key is not None and api_key != self._api_key:
+                self._api_key = api_key
+                need_rebuild = True
+            if base_url is not None and base_url != self.base_url:
+                self.base_url = base_url
+                need_rebuild = True
+            if need_rebuild:
+                self._client = (
+                    OpenAI(api_key=self._api_key, base_url=self.base_url)
+                    if self.base_url
+                    else OpenAI(api_key=self._api_key)
+                )
+                logger.info(
+                    "OpenAIClient reconfigured: base_url=%s", self.base_url
+                )
+            if model is not None:
+                self.model = model
+            if temperature is not None:
+                self.temperature = temperature
+            if debug_payload is not None:
+                self.debug_payload = debug_payload
 
     def structured_chat(
         self,

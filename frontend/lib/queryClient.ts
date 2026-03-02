@@ -54,6 +54,10 @@ export const queryKeys = {
     agentModels: () => [...queryKeys.settings.all, 'agentModels'] as const,
     agentEnabled: () => [...queryKeys.settings.all, 'agentEnabled'] as const,
     agentThinking: () => [...queryKeys.settings.all, 'agentThinking'] as const,
+    agentTemperature: () => [...queryKeys.settings.all, 'agentTemperature'] as const,
     models: () => [...queryKeys.settings.all, 'models'] as const,
+    gateway: () => [...queryKeys.settings.all, 'gateway'] as const,
+    debug: () => [...queryKeys.settings.all, 'debug'] as const,
+    systemInfo: () => [...queryKeys.settings.all, 'systemInfo'] as const,
   },
 };

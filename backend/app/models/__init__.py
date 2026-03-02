@@ -66,6 +66,15 @@ from .api import (
     AgentEnabledUpdateRequest,
     AgentThinkingResponse,
     AgentThinkingUpdateRequest,
+    AgentTemperatureResponse,
+    AgentTemperatureUpdateRequest,
+    GatewaySettingsResponse,
+    GatewaySettingsUpdateRequest,
+    GatewayTestRequest,
+    GatewayTestResponse,
+    DebugSettingsResponse,
+    DebugSettingsUpdateRequest,
+    SystemInfoResponse,
 )
 
 __all__ = [
@@ -111,4 +120,13 @@ __all__ = [
     "AgentEnabledUpdateRequest",
     "AgentThinkingResponse",
     "AgentThinkingUpdateRequest",
+    "AgentTemperatureResponse",
+    "AgentTemperatureUpdateRequest",
+    "GatewaySettingsResponse",
+    "GatewaySettingsUpdateRequest",
+    "GatewayTestRequest",
+    "GatewayTestResponse",
+    "DebugSettingsResponse",
+    "DebugSettingsUpdateRequest",
+    "SystemInfoResponse",
 ]

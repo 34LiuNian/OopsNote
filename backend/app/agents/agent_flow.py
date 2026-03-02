@@ -76,12 +76,14 @@ class LLMAgent:
         template: PromptTemplate,
         required_keys: Sequence[str] | None = None,
         model_resolver: Callable[[str], str | None] | None = None,
+        temperature_resolver: Callable[[str], float | None] | None = None,
     ) -> None:
         self.name = name
         self.client = client
         self.template = template
         self.required_keys = list(required_keys or [])
         self.model_resolver = model_resolver
+        self.temperature_resolver = temperature_resolver
 
     def run(self, context: Mapping[str, Any]) -> AgentResult:
         system_prompt, user_prompt = self.template.render(context)
@@ -92,6 +94,12 @@ class LLMAgent:
             override = self.model_resolver(self.name)
             if override:
                 self.client.model = override
+
+        # Apply per-agent temperature override if available
+        if self.temperature_resolver:
+            temp_override = self.temperature_resolver(self.name)
+            if temp_override is not None:
+                self.client.temperature = temp_override
 
         try:
             if "image_bytes" in context:
