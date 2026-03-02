@@ -69,7 +69,7 @@ def create_tag(payload: TagCreateRequest) -> TagsResponse:
     from ..tags import TagItemView
 
     return TagsResponse(
-        items=[TagItemView(**item.model_dump(mode="json"), ref_count=0)]
+        items=[TagItemView(**item.model_dump(mode="json"))]
     )
 
 
@@ -100,7 +100,7 @@ def update_tag(tag_id: str, payload: dict) -> TagsResponse:
     from ..tags import TagItemView
 
     return TagsResponse(
-        items=[TagItemView(**item.model_dump(mode="json"), ref_count=0)]
+        items=[TagItemView(**item.model_dump(mode="json"))]
     )
 
 
