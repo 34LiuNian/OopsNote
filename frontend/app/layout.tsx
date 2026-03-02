@@ -10,10 +10,18 @@ import StyledComponentsRegistry from '@/lib/registry';
 import { SileoToaster } from '@/components/SileoToaster';
 import { KatexAutoRender } from '@/components/KatexAutoRender';
 import { SplashScreen } from '@/components/SplashScreen';
+import { PWARegister } from '@/features/pwa/components/PWARegister';
 
 export const metadata: Metadata = {
   title: "OopsNote: AI Mistake Organizer",
   description: "Organize your mistakes problems with AI",
+  manifest: '/manifest.webmanifest',
+  applicationName: 'OopsNote',
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: 'default',
+    title: 'OopsNote',
+  },
   icons: {
     icon: '/favicon.svg',
   },
@@ -49,6 +57,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         />
       </head>
       <body style={{ backgroundColor: "Canvas", color: "CanvasText" }}>
+        <PWARegister />
         <SplashScreen />
         <StyledComponentsRegistry>
           <ReactQueryProvider>
