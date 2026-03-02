@@ -17,8 +17,7 @@
     {
       "label": "frontend: dev",
       "type": "shell",
-      "command": "npm install; npm run dev",
-      // "command": "npm run dev",
+      "command": "npm run dev",
       "options": {
         "cwd": "${workspaceFolder}/frontend"
       },

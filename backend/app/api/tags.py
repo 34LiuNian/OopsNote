@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
+from pydantic import BaseModel
+
 from ..tags import (
     TagCreateRequest,
     TagDimension,
@@ -69,7 +71,7 @@ def create_tag(payload: TagCreateRequest) -> TagsResponse:
     from ..tags import TagItemView
 
     return TagsResponse(
-        items=[TagItemView(**item.model_dump(mode="json"), ref_count=0)]
+        items=[TagItemView(**item.model_dump(mode="json"))]
     )
 
 
@@ -100,7 +102,35 @@ def update_tag(tag_id: str, payload: dict) -> TagsResponse:
     from ..tags import TagItemView
 
     return TagsResponse(
-        items=[TagItemView(**item.model_dump(mode="json"), ref_count=0)]
+        items=[TagItemView(**item.model_dump(mode="json"))]
+    )
+
+
+class TagMergeRequest(BaseModel):
+    """Request payload for merging tags."""
+    target_id: str
+
+
+class TagMergeResponse(BaseModel):
+    """Response payload for merge result."""
+    ok: bool
+    tasks_modified: int
+    fields_modified: int
+
+
+@router.post("/tags/{source_id}/merge", response_model=TagMergeResponse)
+def merge_tag(source_id: str, payload: TagMergeRequest) -> TagMergeResponse:
+    """Merge source tag into target tag, replacing all references."""
+    from fastapi import HTTPException
+
+    try:
+        stats = tag_store.merge_into(source_id, payload.target_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return TagMergeResponse(
+        ok=True,
+        tasks_modified=stats["tasks_modified"],
+        fields_modified=stats["fields_modified"],
     )
 
 

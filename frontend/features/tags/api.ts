@@ -61,3 +61,16 @@ export async function updateTag(
     body: JSON.stringify(payload),
   });
 }
+
+export async function mergeTags(
+  sourceId: string,
+  targetId: string
+): Promise<{ ok: boolean; tasks_modified: number; fields_modified: number }> {
+  return fetchJson<{ ok: boolean; tasks_modified: number; fields_modified: number }>(
+    `/tags/${sourceId}/merge`,
+    {
+      method: "POST",
+      body: JSON.stringify({ target_id: targetId }),
+    }
+  );
+}

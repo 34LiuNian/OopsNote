@@ -160,46 +160,83 @@ export function TaskLiveView({ taskId }: { taskId: string }) {
   });
 
   return (
-    <Box sx={{ p: 3, border: '1px solid', borderColor: 'border.default', borderRadius: 2 }}>
+    <Box sx={{ display: "flex", flexDirection: "column", gap: 4 }}>
       {/* Math renderer */}
       <TaskMathRenderer data={data} />
 
       {/* Status toaster */}
       <TaskStatusToaster statusMessage={statusMessage} status={data?.task?.status} />
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-        <Box>
-          <Text sx={{ fontSize: 0, color: 'fg.muted', textTransform: 'uppercase' }}>Task</Text>
-          <Heading as="h2" sx={{ fontSize: 3 }}>任务 {taskId}</Heading>
-          {data?.task?.created_at && (
-            <Box sx={{ mt: 1, display: 'flex', gap: 3, flexWrap: 'wrap' }}>
-              <Text sx={{ fontSize: 0, color: 'fg.muted' }}>
-                创建时间：{new Date(data.task.created_at).toLocaleString('zh-CN')}
-              </Text>
-              {data.task.updated_at && (
-                <Text sx={{ fontSize: 0, color: 'fg.muted' }}>
-                  最后更新：{new Date(data.task.updated_at).toLocaleString('zh-CN')}
-                </Text>
-              )}
-              {(data.task.status === 'completed' || data.task.status === 'failed' || data.task.status === 'cancelled') && (
-                <Text sx={{ fontSize: 0, color: 'fg.muted' }}>
-                  任务用时：{formatDuration(data.task.created_at, data.task.updated_at)}
-                </Text>
-              )}
-            </Box>
-          )}
-        </Box>
-        <TaskActions
-          status={data?.task?.status}
-          isCancelling={isCancelling}
-          isRetrying={isRetrying}
-          isLoading={isLoading}
-          onCancel={cancelTask}
-          onRetry={retryTask}
-          onRefresh={loadOnce}
-          onDelete={removeTask}
+
+      {/* Task header card */}
+      <Box
+        className="oops-card"
+        sx={{ p: 4, position: "relative", overflow: "hidden" }}
+      >
+        {/* Subtle gradient accent bar at top */}
+        <Box
+          sx={{
+            position: "absolute",
+            top: 0,
+            left: 0,
+            right: 0,
+            height: "3px",
+            background: data?.task?.status === "completed"
+              ? "linear-gradient(90deg, var(--fgColor-success, #2da44e), var(--fgColor-done, #8250df))"
+              : data?.task?.status === "failed"
+                ? "linear-gradient(90deg, var(--fgColor-danger, #cf222e), var(--fgColor-attention, #bf8700))"
+                : "linear-gradient(90deg, var(--fgColor-accent, #0969da), var(--fgColor-done, #8250df))",
+            borderRadius: "var(--oops-radius-md) var(--oops-radius-md) 0 0",
+          }}
         />
+
+        <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 3, flexWrap: "wrap" }}>
+          <Box sx={{ flex: 1, minWidth: 200 }}>
+            <Box sx={{ display: "flex", alignItems: "center", gap: 2, mb: 1 }}>
+              <Heading as="h2" sx={{ fontSize: 3, m: 0 }}>任务详情</Heading>
+              <Box
+                className={`oops-badge ${
+                  data?.task?.status === "completed" ? "oops-badge-success"
+                    : data?.task?.status === "failed" ? "oops-badge-danger"
+                      : data?.task?.status === "processing" || data?.task?.status === "pending" ? "oops-badge-accent"
+                        : "oops-badge-muted"
+                }`}
+              >
+                {data?.task?.status === "completed" ? "已完成"
+                  : data?.task?.status === "failed" ? "失败"
+                    : data?.task?.status === "processing" ? "处理中"
+                      : data?.task?.status === "pending" ? "排队中"
+                        : data?.task?.status === "cancelled" ? "已取消"
+                          : data?.task?.status ?? "加载中"}
+              </Box>
+            </Box>
+            <Text sx={{ fontSize: 0, color: "fg.muted", fontFamily: "mono" }}>{taskId}</Text>
+            {data?.task?.created_at && (
+              <Box sx={{ mt: 2, display: "flex", gap: 3, flexWrap: "wrap" }}>
+                <Text sx={{ fontSize: 0, color: "fg.muted" }}>
+                  创建：{new Date(data.task.created_at).toLocaleString("zh-CN")}
+                </Text>
+                {(data.task.status === "completed" || data.task.status === "failed" || data.task.status === "cancelled") && data.task.updated_at && (
+                  <Text sx={{ fontSize: 0, color: "fg.muted" }}>
+                    用时：{formatDuration(data.task.created_at, data.task.updated_at)}
+                  </Text>
+                )}
+              </Box>
+            )}
+          </Box>
+          <TaskActions
+            status={data?.task?.status}
+            isCancelling={isCancelling}
+            isRetrying={isRetrying}
+            isLoading={isLoading}
+            onCancel={cancelTask}
+            onRetry={retryTask}
+            onRefresh={loadOnce}
+            onDelete={removeTask}
+          />
+        </Box>
       </Box>
 
+      {/* Progress bar */}
       <TaskProgressBar
         progressState={progressState}
         latestLine={progressState.latestLine}
@@ -214,15 +251,16 @@ export function TaskLiveView({ taskId }: { taskId: string }) {
       )}
 
       {!error && !data && (
-        <Box sx={{ textAlign: 'center', p: 4, color: 'fg.muted' }}>
-          <Spinner size="medium" sx={{ mb: 2 }} />
-          <Text as="p">正在加载任务数据...</Text>
+        <Box className="oops-empty-state" sx={{ py: 6 }}>
+          <Spinner size="medium" />
+          <Text as="p" sx={{ color: "fg.muted" }}>正在加载任务数据...</Text>
         </Box>
       )}
 
       {data && (
         <TaskProblemList
           taskId={taskId}
+          taskDifficulty={data.task.payload?.difficulty}
           problems={data.task.problems}
           solutions={data.task.solutions}
           tags={data.task.tags}
@@ -236,13 +274,13 @@ export function TaskLiveView({ taskId }: { taskId: string }) {
         />
       )}
 
-      <Box sx={{ mt: 4, pt: 3, borderTop: '1px solid', borderColor: 'border.muted', fontSize: 1 }}>
-        <Link href="/">
-          <Text as="span" sx={{ color: 'accent.fg', textDecoration: 'none', mr: 2, cursor: 'pointer' }}>返回采集面板</Text>
+      {/* Bottom navigation */}
+      <Box sx={{ display: "flex", gap: 3, pt: 2, borderTop: "1px solid", borderColor: "border.muted", fontSize: 1 }}>
+        <Link href="/" style={{ textDecoration: "none" }}>
+          <Text as="span" sx={{ color: "accent.fg", fontWeight: 500, "&:hover": { textDecoration: "underline" } }}>← 采集面板</Text>
         </Link>
-        <Text sx={{ color: 'fg.muted' }}>·</Text>
-        <Link href="/library">
-          <Text as="span" sx={{ color: 'accent.fg', textDecoration: 'none', ml: 2, cursor: 'pointer' }}>返回题库总览</Text>
+        <Link href="/library" style={{ textDecoration: "none" }}>
+          <Text as="span" sx={{ color: "accent.fg", fontWeight: 500, "&:hover": { textDecoration: "underline" } }}>题库总览</Text>
         </Link>
       </Box>
     </Box>

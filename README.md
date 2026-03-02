@@ -1,13 +1,23 @@
 <div align="center">
 
-# <img src="frontend/public/favicon.svg" height="150" alt="OopsNote Logo" /> 
-<img src="assets/oopsnote.svg" height="100" alt="OopsNote Logo" />
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/favicon_white.svg">
+  <img src="assets/favicon_black.svg" height="150" alt="OopsNote Logo" />
+</picture>
+<br/>
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/oopsnote_white.svg">
+  <img src="assets/oopsnote_black.svg" height="100" alt="OopsNote Logo" />
+</picture>
 
-**面向理科学科的 AI 驱动错题整理平台**
+<h2>面向理科学科的 AI 驱动错题整理平台</h2>
 
 支持图片识别、题面重建、自动解析、标签打标与档案管理，并预留 Web 端的二次编辑与协同流程。
 
-![OopsNote Preview](assets/image.png)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/page1_dark.png">
+  <img src="assets/page1_light.png" height="" alt="Page1" />
+</picture>
 
 </div>
 
@@ -37,13 +47,11 @@
 
 ---
 
----
-
 ## 📋 TODO
 
 
 - [ ] 搜寻相似题目并去重相关
-- [ ] 
+- [ ] 权限设置
 
 ---
 
@@ -60,18 +68,12 @@
 ```text
 +------------------+      +-----------------+      +-------------------+
 |  Web / 移动端 UI  | ---> |  Agent Router   | ---> |   Agent Pipeline   |
-|  - 上传/裁剪      |      |  - 状态机        |      | 1. 题块检测         |
-|  - 题目编辑      |      |  - 回滚控制      |      | 2. OCR+重建        |
-|  - 标签管理      |      |  - AI 调度       |      | 3. 求解/解析       |
-+------------------+      +-----------------+      | 4. 标签建议        |
-                                                   | 5. 存档与回写       |
-                                                   +-------------------+
-                                                       ↓
-                                                +-------------------+
-                                                |  数据与向量存储    |
-                                                |  - Postgres + S3   |
-                                                |  - pgvector 检索   |
-                                                +-------------------+
+|  - 上传/裁剪      |      |  - 状态机        |      | 1. 题块检测        |
+|  - 题目编辑       |      |  - 回滚控制      |      | 2. OCR+重建        |
+|  - 标签管理       |      |  - AI 调度       |      | 3. 求解/解析       |
++------------------+      +-----------------+       | 4. 标签建议        |
+                                                    | 5. 存档与回写      |
+                                                    +-------------------+
 ```
 
 **当前实现：**
@@ -243,20 +245,25 @@ graph LR
 
 - **💻 语言**：TypeScript / Python（或 Node.js 全栈，视 Agent 选型而定）。
 - **🧠 模型**：GPT-4o, Claude 3.5 Sonnet, Gemini 2.0 Flash, Qwen-VL-Max 等可替换。
-- **🗄️ 向量库**：pgvector / Supabase Vector / Pinecone（视部署环境）。
 
 后端本地默认使用 stub client；配置 API key 后会启用真实模型。
 
-<p align="center">
+<!-- <p align="center">
   <img src="https://img.shields.io/badge/OpenAI-GPT--4o-412991?style=flat-square&logo=openai" alt="OpenAI" />
   <img src="https://img.shields.io/badge/Anthropic-Claude-3.5-202A44?style=flat-square&logo=anthropic" alt="Claude" />
   <img src="https://img.shields.io/badge/Google-Gemini-2.0-4285F4?style=flat-square&logo=google" alt="Gemini" />
   <img src="https://img.shields.io/badge/Alibaba-Qwen-VL-FF6A00?style=flat-square&logo=alibabacloud" alt="Qwen" />
-</p>
+</p> -->
 
 ## 📄 许可
 
-尚未指定开源协议；默认遵循企业/团队内部规范，可在成型后补充。
+AGPL-3.0 LICENSE
+
+## 🙏 致谢
+
+- [**Primer**](https://primer.style/) 项目UI框架
+- **Sirivennela-Regular** 项目名称字体
+- [**imsyy/home**](https://github.com/imsyy/home) 项目Loading页参考
 
 ---
 
@@ -270,9 +277,7 @@ graph LR
 
 <div align="center">
 
-**Made with ❤️ by OopsNote Team**
-
-[🔝 返回顶部](#oopsnote)
+**Made with ❤️ by 34LiuNian**
 
 </div>
 

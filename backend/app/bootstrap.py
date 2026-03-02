@@ -105,7 +105,7 @@ def create_app() -> FastAPI:
             pass
         yield
 
-    app = FastAPI(title="AI Mistake Organizer Backend", lifespan=lifespan)
+    app = FastAPI(title="OopsNote Backend", lifespan=lifespan)
 
     # Mount static files for asset access
     assets_dir = Path(__file__).resolve().parent.parent / "storage" / "assets"
@@ -154,11 +154,19 @@ def _build_state() -> (
 
     agent_settings_service = build_agent_settings_service()
 
+    # Apply gateway settings overrides (UI settings > env vars)
+    gateway_settings = agent_settings_service.load_gateway()
+    debug_settings = agent_settings_service.load_debug()
+
     agent_config_bundle = load_agent_config_bundle(config.agent_config_path)
     global _AGENT_CONFIG_BUNDLE
     _AGENT_CONFIG_BUNDLE = agent_config_bundle
 
-    ai_client = build_ai_client(config=config)
+    ai_client = build_ai_client(
+        config=config,
+        gateway_settings=gateway_settings,
+        debug_settings=debug_settings,
+    )
 
     models_service = ModelsService(
         # Use dynamic lookups so tests can monkeypatch module-level helpers.

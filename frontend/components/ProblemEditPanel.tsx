@@ -136,14 +136,14 @@ export function ProblemEditPanel({ taskId, problem, tagStyles, onClose, onSaved 
   ]);
 
   return (
-    <Box sx={{ mb: 3, border: "1px solid", borderColor: "border.default", borderRadius: 2, bg: "canvas.default" }}>
-      <Box sx={{ p: 3, borderBottom: "1px solid", borderColor: "border.muted" }}>
+    <Box className="oops-card" sx={{ mb: 3, overflow: "hidden", animation: "slideUp 0.25s ease-out" }}>
+      <Box sx={{ p: 3, borderBottom: "1px solid", borderColor: "border.muted", bg: "canvas.subtle" }}>
         <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <Box>
-            <Text sx={{ fontWeight: "bold", display: "block" }}>编辑题目</Text>
-            <Text sx={{ color: "fg.muted", fontSize: 1 }}>支持 Markdown/LaTeX，修改后会立即覆盖此题。</Text>
+            <Text sx={{ fontWeight: 600, fontSize: 2, display: "block" }}>编辑题目</Text>
+            <Text sx={{ color: "fg.muted", fontSize: 1, mt: 1 }}>支持 Markdown / LaTeX，修改后会立即覆盖此题。</Text>
           </Box>
-          <Button size="small" onClick={onClose}>关闭</Button>
+          <Button size="small" variant="invisible" onClick={onClose}>关闭</Button>
         </Box>
       </Box>
 
@@ -200,7 +200,7 @@ export function ProblemEditPanel({ taskId, problem, tagStyles, onClose, onSaved 
                   block
                   rows={2}
                 />
-                <Button size="small" variant="invisible" onClick={() => removeOptionDraft(opt.id)}>
+                <Button size="small" variant="danger" onClick={() => removeOptionDraft(opt.id)}>
                   删除
                 </Button>
               </Box>
@@ -244,8 +244,8 @@ export function ProblemEditPanel({ taskId, problem, tagStyles, onClose, onSaved 
           />
         </Box>
 
-        <Box sx={{ display: "flex", gap: 2, justifyContent: "flex-end" }}>
-          <Button size="small" onClick={onClose}>取消</Button>
+        <Box sx={{ display: "flex", gap: 2, justifyContent: "flex-end", pt: 2, borderTop: "1px solid", borderColor: "border.muted" }}>
+          <Button size="small" variant="invisible" onClick={onClose}>取消</Button>
           <Button variant="primary" onClick={save} disabled={isSaving}>
             {isSaving ? (
               <>

@@ -9,9 +9,10 @@ import { ReactQueryProvider } from '@/components/ReactQueryProvider';
 import StyledComponentsRegistry from '@/lib/registry';
 import { SileoToaster } from '@/components/SileoToaster';
 import { KatexAutoRender } from '@/components/KatexAutoRender';
+import { SplashScreen } from '@/components/SplashScreen';
 
 export const metadata: Metadata = {
-  title: "AI Mistake Organizer",
+  title: "OopsNote: AI Mistake Organizer",
   description: "Organize your mistakes problems with AI",
   icons: {
     icon: '/favicon.svg',
@@ -48,6 +49,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         />
       </head>
       <body style={{ backgroundColor: "Canvas", color: "CanvasText" }}>
+        <SplashScreen />
         <StyledComponentsRegistry>
           <ReactQueryProvider>
             <ThemeProvider initialPreference={initialPreference}>

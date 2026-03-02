@@ -99,15 +99,7 @@ class ApplicationService:
 
         now = datetime.now(timezone.utc)
 
-        task = TaskRecord(
-            id=task_id,
-            payload=payload,
-            status=TaskStatus.PENDING,
-            created_at=now,
-            updated_at=now,
-        )
-
-        self.repository.create(task)
+        task = self.repository.create(payload)
 
         logger.info("Task created: %s", task_id)
 

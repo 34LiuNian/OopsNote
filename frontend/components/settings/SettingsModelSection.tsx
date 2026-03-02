@@ -1,7 +1,7 @@
 "use client";
 
-import { Box, Button, Heading, Label, Spinner, Text } from "@primer/react";
-import { SyncIcon } from "@primer/octicons-react";
+import { Box, Button, Heading, Spinner, Text } from "@primer/react";
+import { CpuIcon, SyncIcon } from "@primer/octicons-react";
 import { AgentSettingsRow } from "./AgentSettingsRow";
 import { ErrorBanner } from "../ErrorBanner";
 import { sileo } from "sileo";
@@ -25,6 +25,7 @@ type SettingsModelSectionProps = {
   lockedEnabled: Set<string>;
   agentEnabled: Record<string, boolean>;
   agentThinking: Record<string, boolean>;
+  agentTemperature: Record<string, number>;
   isDirty: boolean;
   isSaving: boolean;
   isLoadingSettings: boolean;
@@ -33,6 +34,7 @@ type SettingsModelSectionProps = {
   isLoadingThinking: boolean;
   savingEnabledAgent: string | null;
   savingThinkingAgent: string | null;
+  savingTemperatureAgent: string | null;
   statusMessage: string;
   agentModelsErrorMessage: string;
   modelsErrorMessage: string;
@@ -40,12 +42,14 @@ type SettingsModelSectionProps = {
   enabledErrorMessage: string;
   thinkingStatusMessage: string;
   thinkingErrorMessage: string;
+  temperatureErrorMessage: string;
   onRefreshModels: (refreshFromServer: boolean) => void;
   onReset: () => void;
   onSave: () => void;
   onChangeModel: (agentKey: string, value: string) => void;
   onToggleEnabled: (agentKey: string, nextValue: boolean) => void;
   onToggleThinking: (agentKey: string, nextValue: boolean) => void;
+  onChangeTemperature: (agentKey: string, value: number | null) => void;
 };
 
 export function SettingsModelSection({
@@ -56,6 +60,7 @@ export function SettingsModelSection({
   lockedEnabled,
   agentEnabled,
   agentThinking,
+  agentTemperature,
   isDirty,
   isSaving,
   isLoadingSettings,
@@ -64,6 +69,7 @@ export function SettingsModelSection({
   isLoadingThinking,
   savingEnabledAgent,
   savingThinkingAgent,
+  savingTemperatureAgent,
   statusMessage,
   agentModelsErrorMessage,
   modelsErrorMessage,
@@ -71,12 +77,14 @@ export function SettingsModelSection({
   enabledErrorMessage,
   thinkingStatusMessage,
   thinkingErrorMessage,
+  temperatureErrorMessage,
   onRefreshModels,
   onReset,
   onSave,
   onChangeModel,
   onToggleEnabled,
   onToggleThinking,
+  onChangeTemperature,
 }: SettingsModelSectionProps) {
   // 显示 Sileo 通知
   useEffect(() => {
@@ -98,13 +106,16 @@ export function SettingsModelSection({
   }, [thinkingStatusMessage]);
 
   return (
-    <Box sx={{ p: 3, border: "1px solid", borderColor: "border.default", borderRadius: 2 }}>
-      <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 3 }}>
-        <Box>
-          <Text sx={{ fontSize: 0, color: "fg.muted", textTransform: "uppercase" }}>Settings</Text>
-          <Heading as="h2" sx={{ fontSize: 3 }}>
-            模型设置
-          </Heading>
+    <Box className="oops-card" sx={{ p: 3 }}>
+      <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", mb: 3 }}>
+        <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
+          <CpuIcon size={16} />
+          <Box>
+            <Text className="oops-section-subtitle">Models</Text>
+            <Heading as="h3" className="oops-section-title" sx={{ m: 0, fontSize: 2 }}>
+              模型设置
+            </Heading>
+          </Box>
         </Box>
         <Box sx={{ display: "flex", gap: 2 }}>
           <Button onClick={() => onRefreshModels(true)} disabled={isLoadingModels || isSaving} leadingVisual={SyncIcon}>
@@ -120,22 +131,19 @@ export function SettingsModelSection({
       </Box>
 
       {isDirty && !isSaving && !isLoadingSettings && (
-        <Label variant="attention" sx={{ mb: 3, display: "inline-block" }}>
+        <Box className="oops-badge oops-badge-warning" sx={{ mb: 3 }}>
           有未保存更改
-        </Label>
+        </Box>
       )}
       <ErrorBanner message={agentModelsErrorMessage} />
       <ErrorBanner message={modelsErrorMessage} />
       <ErrorBanner message={enabledErrorMessage} />
       <ErrorBanner message={thinkingErrorMessage} />
+      <ErrorBanner message={temperatureErrorMessage} />
 
-      <Box sx={{ p: 3, bg: "canvas.subtle", borderRadius: 2, mb: 4 }}>
-        <Text as="p" sx={{ mb: 1 }}>
-          说明：模型列表来自后端的 <strong>/models</strong>（会转发到 OpenAI 兼容网关的 <strong>/v1/models</strong>）。
-        </Text>
+      <Box sx={{ p: 3, bg: "canvas.subtle", borderRadius: "var(--oops-radius-sm)", mb: 4 }}>
         <Text as="p" sx={{ fontSize: 1, color: "fg.muted" }}>
-          如果提示缺少配置，请先在后端设置 <strong>OPENAI_BASE_URL</strong>（例如 http://127.0.0.1:23333/v1）和
-          <strong>OPENAI_API_KEY</strong>，或在 agent TOML 配置里填写 default.base_url/default.api_key。
+          为每个 Agent 选择模型覆盖，或留空使用全局默认值。温度可单独设置，留空则使用全局默认温度。
         </Text>
       </Box>
 
@@ -153,6 +161,8 @@ export function SettingsModelSection({
           const isThisThinkingSaving = savingThinkingAgent === agent.key;
           const isEnabledBusy = isLoadingEnabled || isThisSaving;
           const isThinkingBusy = isLoadingThinking || isThisThinkingSaving;
+          const tempValue = agentTemperature[agent.key];
+          const isThisTemperatureSaving = savingTemperatureAgent === agent.key;
 
           return (
             <AgentSettingsRow
@@ -171,9 +181,12 @@ export function SettingsModelSection({
               isThisThinkingSaving={isThisThinkingSaving}
               isEnabledBusy={isEnabledBusy}
               isThinkingBusy={isThinkingBusy}
+              temperature={tempValue}
+              isTemperatureSaving={isThisTemperatureSaving}
               onChangeModel={onChangeModel}
               onToggleEnabled={onToggleEnabled}
               onToggleThinking={onToggleThinking}
+              onChangeTemperature={onChangeTemperature}
             />
           );
         })}

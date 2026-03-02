@@ -1,6 +1,7 @@
 "use client";
 
 import { Box, FormControl, Heading, Select, Text } from "@primer/react";
+import { PaintbrushIcon } from "@primer/octicons-react";
 
 type SettingsAppearanceSectionProps = {
   preference: "system" | "light" | "dark";
@@ -14,12 +15,15 @@ export function SettingsAppearanceSection({
   onChangePreference,
 }: SettingsAppearanceSectionProps) {
   return (
-    <Box sx={{ p: 3, border: "1px solid", borderColor: "border.default", borderRadius: 2 }}>
-      <Box sx={{ mb: 3 }}>
-        <Text sx={{ fontSize: 0, color: "fg.muted", textTransform: "uppercase" }}>Appearance</Text>
-        <Heading as="h2" sx={{ fontSize: 3 }}>
-          外观
-        </Heading>
+    <Box className="oops-card" sx={{ p: 3 }}>
+      <Box sx={{ display: "flex", alignItems: "center", gap: 2, mb: 3 }}>
+        <PaintbrushIcon size={16} />
+        <Box>
+          <Text className="oops-section-subtitle">Appearance</Text>
+          <Heading as="h3" className="oops-section-title" sx={{ m: 0, fontSize: 2 }}>
+            外观
+          </Heading>
+        </Box>
       </Box>
 
       <FormControl>

@@ -1,8 +1,8 @@
 "use client";
 
 import { memo } from "react";
-import { Box, Button, Label } from "@primer/react";
-import { SyncIcon } from "@primer/octicons-react";
+import { Box, Button, IconButton, Tooltip } from "@primer/react";
+import { SyncIcon, TrashIcon, XCircleIcon } from "@primer/octicons-react";
 
 type TaskActionsProps = {
   status?: string | null;
@@ -26,24 +26,49 @@ export const TaskActions = memo(function TaskActions({
   onDelete,
 }: TaskActionsProps) {
   return (
-    <Box sx={{ display: "flex", gap: 2, alignItems: "center" }}>
-      {status && <Label variant="secondary">状态：{status}</Label>}
+    <Box sx={{ display: "flex", gap: 2, alignItems: "center", flexWrap: "wrap" }}>
       {(status === "pending" || status === "processing") && (
-        <Button variant="danger" onClick={onCancel} disabled={isCancelling || isLoading}>
-          {isCancelling ? "作废中..." : "停止并作废"}
+        <Button
+          variant="danger"
+          size="small"
+          onClick={onCancel}
+          disabled={isCancelling || isLoading}
+          leadingVisual={XCircleIcon}
+        >
+          {isCancelling ? "作废中..." : "停止"}
         </Button>
       )}
       {(status === "failed" || status === "completed" || status === "cancelled") && (
-        <Button onClick={onRetry} disabled={isRetrying || isLoading || isCancelling} leadingVisual={SyncIcon}>
+        <Button
+          size="small"
+          onClick={onRetry}
+          disabled={isRetrying || isLoading || isCancelling}
+          leadingVisual={SyncIcon}
+        >
           {isRetrying ? "重试中..." : "重试"}
         </Button>
       )}
-      <Button onClick={onRefresh} disabled={isLoading} leadingVisual={SyncIcon}>
-        {isLoading ? "刷新中..." : "查看最新状态"}
-      </Button>
-      <Button variant="danger" onClick={onDelete} disabled={isLoading || isCancelling}>
-        删除任务
-      </Button>
+      <Tooltip text="刷新状态" direction="s">
+        <IconButton
+          icon={SyncIcon}
+          aria-label="刷新状态"
+          size="small"
+          onClick={onRefresh}
+          disabled={isLoading}
+          variant="invisible"
+        />
+      </Tooltip>
+      <Tooltip text="删除任务" direction="s">
+        <IconButton
+          icon={TrashIcon}
+          aria-label="删除任务"
+          size="small"
+          onClick={onDelete}
+          disabled={isLoading || isCancelling}
+          variant="invisible"
+          sx={{ color: "danger.fg" }}
+        />
+      </Tooltip>
     </Box>
   );
 });

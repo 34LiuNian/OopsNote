@@ -56,8 +56,18 @@ function writePreferenceCookie(value: ThemePreference) {
 
 function applyDocumentColorScheme(resolved: ResolvedTheme) {
   if (typeof document === "undefined") return;
-  document.documentElement.dataset.oopsnoteColorScheme = resolved;
-  document.documentElement.style.colorScheme = resolved;
+  const root = document.documentElement;
+  
+  // Force remove any existing color scheme first to ensure clean transition
+  root.removeAttribute('data-oopsnote-color-scheme');
+  root.style.removeProperty('color-scheme');
+  
+  // Force reflow to ensure the removal is applied
+  void root.offsetHeight;
+  
+  // Then apply the new color scheme
+  root.dataset.oopsnoteColorScheme = resolved;
+  root.style.colorScheme = resolved;
 }
 
 export function ThemeProvider({
@@ -68,10 +78,16 @@ export function ThemeProvider({
   initialPreference?: ThemePreference;
 }) {
   const [preference, setPreferenceState] = useState<ThemePreference>(() => initialPreference ?? "system");
-  const [resolvedTheme, setResolvedTheme] = useState<ResolvedTheme>("dark");
+  const [resolvedTheme, setResolvedTheme] = useState<ResolvedTheme>(() => {
+    // Initialize based on initialPreference to match SSR
+    if (initialPreference === "light") return "light";
+    if (initialPreference === "dark") return "dark";
+    return "dark"; // Default fallback
+  });
 
   const mqlRef = useRef<MediaQueryList | null>(null);
   const preferenceRef = useRef<ThemePreference>("system");
+  const isInitialMountRef = useRef(true);
 
   const sync = useCallback(
     (nextPreference: ThemePreference) => {
@@ -89,6 +105,7 @@ export function ThemeProvider({
     setPreferenceState(effective);
     preferenceRef.current = effective;
     sync(effective);
+    isInitialMountRef.current = false;
 
     if (typeof window === "undefined" || !window.matchMedia) return;
     const mql = window.matchMedia("(prefers-color-scheme: dark)");
@@ -98,6 +115,7 @@ export function ThemeProvider({
       if (preferenceRef.current !== "system") return;
       const next = getSystemTheme();
       setResolvedTheme(next);
+      applyDocumentColorScheme(next);
     };
 
     if (typeof mql.addEventListener === "function") {
@@ -127,7 +145,15 @@ export function ThemeProvider({
     [preference, resolvedTheme, setPreference]
   );
 
-  const primerColorMode = preference === "system" ? "auto" : (preference === "light" ? "day" : "night");
+  // Use resolvedTheme for Primer colorMode to ensure consistency
+  // When preference is "system", use "auto" to let Primer follow system
+  // When preference is "light" or "dark", use the resolved theme directly
+  const primerColorMode = useMemo(() => {
+    if (preference === "system") {
+      return "auto";
+    }
+    return resolvedTheme === "light" ? "day" : "night";
+  }, [preference, resolvedTheme]);
 
   return (
     <ThemeContext.Provider value={value}>
