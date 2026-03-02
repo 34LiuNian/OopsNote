@@ -12,7 +12,7 @@ import { KatexAutoRender } from '@/components/KatexAutoRender';
 import { SplashScreen } from '@/components/SplashScreen';
 
 export const metadata: Metadata = {
-  title: "AI Mistake Organizer",
+  title: "OopsNote: AI Mistake Organizer",
   description: "Organize your mistakes problems with AI",
   icons: {
     icon: '/favicon.svg',

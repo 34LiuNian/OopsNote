@@ -105,7 +105,7 @@ def create_app() -> FastAPI:
             pass
         yield
 
-    app = FastAPI(title="AI Mistake Organizer Backend", lifespan=lifespan)
+    app = FastAPI(title="OopsNote Backend", lifespan=lifespan)
 
     # Mount static files for asset access
     assets_dir = Path(__file__).resolve().parent.parent / "storage" / "assets"
