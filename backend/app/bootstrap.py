@@ -18,6 +18,7 @@ from .repository import ArchiveStore
 from .storage import LocalAssetStore
 from .app_state import BackendState
 from .api.health import router as health_router
+from .api.auth import router as auth_router
 from .api.tags import router as tags_router
 from .api.agent_settings import router as agent_settings_router
 from .api.tasks import router as tasks_router
@@ -129,6 +130,7 @@ def create_app() -> FastAPI:
     app.state.oops = state
 
     app.include_router(health_router)
+    app.include_router(auth_router)
     app.include_router(tags_router)
     app.include_router(agent_settings_router)
     app.include_router(tasks_router)

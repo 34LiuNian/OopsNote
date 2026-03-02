@@ -9,14 +9,15 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterable, Optional
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from starlette.responses import Response
 
+from ..auth.deps import require_user
 from ..api.latex import _compile_pdf, _find_xelatex
 from ..models import PaperCompileRequest
 from .deps import get_tasks_service
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(require_user)])
 
 
 def _tasks_service(request: Request):

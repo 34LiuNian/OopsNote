@@ -193,6 +193,9 @@ NEXT_PUBLIC_BACKEND_URL=http://localhost:8000
 | | `OPENAI_BASE_URL` | OpenAI API 基础 URL（可选） |
 | | `GEMINI_API_KEY` | Google Gemini API 密钥 |
 | | `XELATEX_PATH` | LaTeX 引擎路径（可选） |
+| | `JWT_SECRET` | JWT 签名密钥（生产环境必须修改） |
+| | `AUTH_ADMIN_USERNAME` | 默认管理员用户名 |
+| | `AUTH_ADMIN_PASSWORD` | 默认管理员密码 |
 | **🎨 前端** | `NEXT_PUBLIC_BACKEND_URL` | 后端 API 地址 |
 
 **配置说明：**
@@ -201,6 +204,15 @@ NEXT_PUBLIC_BACKEND_URL=http://localhost:8000
 - 前端：复制 [`frontend/.env.example`](frontend/.env.example) 为 `frontend/.env`
 
 > ⚠️ **注意**：`.env` 文件应只用于本地/部署环境配置，不应提交到仓库（已在 `.gitignore` 中忽略）。
+
+## 🔐 权限设置（MVP）
+
+- 认证方式：JWT（`/auth/login` 登录，`/auth/me` 获取当前用户）
+- 角色模型：`admin` / `member`
+- `member`：可上传、处理、查看任务与题库，使用已有标签
+- `admin`：额外可访问系统设置页与标签治理（新建/删除/合并/维度配置）
+
+首次启动若 `backend/storage/settings/users.json` 为空，会自动根据后端环境变量创建默认管理员账号。
 
 ## ✅ 已实现能力（摘要）
 

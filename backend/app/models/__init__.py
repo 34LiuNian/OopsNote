@@ -77,6 +77,16 @@ from .api import (
     SystemInfoResponse,
 )
 
+# Auth models
+from .auth import (
+    UserRole,
+    UserRecord,
+    UserPublic,
+    LoginRequest,
+    AuthTokenResponse,
+    AuthMeResponse,
+)
+
 __all__ = [
     # Pydantic
     "HttpUrl",
@@ -129,4 +139,11 @@ __all__ = [
     "DebugSettingsResponse",
     "DebugSettingsUpdateRequest",
     "SystemInfoResponse",
+    # Auth
+    "UserRole",
+    "UserRecord",
+    "UserPublic",
+    "LoginRequest",
+    "AuthTokenResponse",
+    "AuthMeResponse",
 ]

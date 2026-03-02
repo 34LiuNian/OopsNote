@@ -27,6 +27,12 @@ class AppConfig:  # pylint: disable=too-many-instance-attributes
     debug_llm_payload: bool
     debug_llm_payload_path: str | None
     agent_base_urls: dict[str, str]
+    auth_enabled: bool
+    jwt_secret: str
+    jwt_algorithm: str
+    jwt_access_token_expire_minutes: int
+    auth_admin_username: str
+    auth_admin_password: str
 
 
 def load_app_config() -> AppConfig:
@@ -57,6 +63,15 @@ def load_app_config() -> AppConfig:
         if value:
             agent_base_urls[name] = value
 
+    auth_enabled = os.getenv("AUTH_ENABLED", "true").lower() == "true"
+    jwt_secret = os.getenv("JWT_SECRET", "oopsnote-dev-secret-change-me")
+    jwt_algorithm = os.getenv("JWT_ALGORITHM", "HS256")
+    jwt_access_token_expire_minutes = int(
+        os.getenv("JWT_ACCESS_TOKEN_EXPIRE_MINUTES", "120")
+    )
+    auth_admin_username = os.getenv("AUTH_ADMIN_USERNAME", "admin")
+    auth_admin_password = os.getenv("AUTH_ADMIN_PASSWORD", "admin123456")
+
     return AppConfig(
         persist_tasks=persist_tasks,
         tasks_dir=tasks_dir,
@@ -72,4 +87,10 @@ def load_app_config() -> AppConfig:
         debug_llm_payload=debug_llm_payload,
         debug_llm_payload_path=debug_llm_payload_path,
         agent_base_urls=agent_base_urls,
+        auth_enabled=auth_enabled,
+        jwt_secret=jwt_secret,
+        jwt_algorithm=jwt_algorithm,
+        jwt_access_token_expire_minutes=jwt_access_token_expire_minutes,
+        auth_admin_username=auth_admin_username,
+        auth_admin_password=auth_admin_password,
     )

@@ -3,8 +3,9 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Depends, Request
 
+from ..auth.deps import require_admin
 from ..agent_settings import DebugSettings, GatewaySettings
 from ..config import load_app_config
 from ..gateway import fetch_openai_models, probe_openai_gateway
@@ -27,7 +28,7 @@ from ..models import (
 )
 from .deps import get_agent_settings_service, get_backend_state
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(require_admin)])
 logger = logging.getLogger(__name__)
 
 _SENTINEL_UNCHANGED = "__UNCHANGED__"

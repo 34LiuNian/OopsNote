@@ -11,12 +11,13 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from starlette.responses import Response
 
+from ..auth.deps import require_user
 from ..models import ChemfigRenderRequest, LatexCompileRequest
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(require_user)])
 
 CHEMFIG_CACHE_VERSION = "v1"
 

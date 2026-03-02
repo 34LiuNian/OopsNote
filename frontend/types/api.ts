@@ -212,3 +212,26 @@ export interface TagDimensionsResponse {
 export interface TagDimensionsUpdateRequest {
   dimensions: Record<string, TagDimensionStyle>;
 }
+
+export type UserRole = "admin" | "member";
+
+export interface UserPublic {
+  username: string;
+  role: UserRole;
+}
+
+export interface LoginRequest {
+  username: string;
+  password: string;
+}
+
+export interface AuthTokenResponse {
+  access_token: string;
+  token_type: string;
+  expires_in: number;
+  user: UserPublic;
+}
+
+export interface AuthMeResponse {
+  user: UserPublic;
+}

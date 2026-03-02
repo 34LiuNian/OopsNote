@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 
+from ..auth.deps import require_user
 from ..models import ModelsResponse, ModelSummary
 from ..services.models_service import ModelsServiceConfigError
 from .deps import get_models_service
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(require_user)])
 
 
 def _service(request: Request):

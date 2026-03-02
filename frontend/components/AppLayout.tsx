@@ -1,13 +1,48 @@
 'use client';
 
-import { useEffect } from 'react';
-import { usePathname } from 'next/navigation';
-import { Box } from '@primer/react';
+import { useEffect, useState } from 'react';
+import { usePathname, useRouter } from 'next/navigation';
+import { Box, Button, Text } from '@primer/react';
 import { Sidebar } from './Sidebar';
 import { BackendStatus } from './BackendStatus';
+import { clearAuthSession, getCurrentUser, onAuthChanged } from '../features/auth/store';
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const router = useRouter();
+  const [ready, setReady] = useState(false);
+  const [username, setUsername] = useState('');
+
+  useEffect(() => {
+    const isLoginRoute = pathname.startsWith('/login');
+    if (isLoginRoute) {
+      setReady(true);
+      return;
+    }
+
+    const user = getCurrentUser();
+    if (!user) {
+      const next = encodeURIComponent(pathname || '/');
+      router.replace(`/login?next=${next}`);
+      return;
+    }
+
+    const adminRoute = pathname.startsWith('/settings') || pathname.startsWith('/tags') || pathname.startsWith('/debug');
+    if (adminRoute && user.role !== 'admin') {
+      router.replace('/');
+      return;
+    }
+
+    setUsername(user.username);
+    setReady(true);
+  }, [pathname, router]);
+
+  useEffect(() => {
+    return onAuthChanged(() => {
+      const user = getCurrentUser();
+      setUsername(user?.username ?? '');
+    });
+  }, []);
 
   useEffect(() => {
     // Use double-rAF + requestIdleCallback to ensure content has actually painted
@@ -38,6 +73,19 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
+  if (!ready) {
+    return null;
+  }
+
+  if (pathname.startsWith('/login')) {
+    return <>{children}</>;
+  }
+
+  const handleLogout = () => {
+    clearAuthSession();
+    router.replace('/login');
+  };
+
   return (
     <Box sx={{ display: 'flex', flexDirection: ['column', 'row'], minHeight: '100vh', bg: 'canvas.default' }}>
       <Sidebar />
@@ -51,7 +99,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
              borderBottom: '1px solid', 
              borderColor: 'border.muted',
              display: 'flex',
-             justifyContent: 'flex-end',
+             justifyContent: 'space-between',
              alignItems: 'center',
              position: 'sticky',
              top: 0,
@@ -59,7 +107,11 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
              height: 50,
            }}
          >
-            <BackendStatus />
+            <Text sx={{ color: 'fg.muted', fontSize: 1 }}>当前用户：{username}</Text>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+              <BackendStatus />
+              <Button size="small" onClick={handleLogout}>退出登录</Button>
+            </Box>
          </Box>
          <Box as="main" sx={{ px: [3, 4, 5], py: 4, flex: 1, width: '100%' }}>
             <div key={pathname} className="oops-page-enter">
