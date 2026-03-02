@@ -1,13 +1,23 @@
 <div align="center">
 
-# <img src="frontend/public/favicon.svg" height="150" alt="OopsNote Logo" /> 
-<img src="assets/oopsnote.svg" height="100" alt="OopsNote Logo" />
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/favicon_white.svg">
+  <img src="assets/favicon_black.svg" height="150" alt="OopsNote Logo" />
+</picture>
+
+# <picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/oopsnote_white.svg">
+  <img src="assets/oopsnote_black.svg" height="100" alt="OopsNote Logo" />
+</picture>
 
 **面向理科学科的 AI 驱动错题整理平台**
 
 支持图片识别、题面重建、自动解析、标签打标与档案管理，并预留 Web 端的二次编辑与协同流程。
 
-![OopsNote Preview](assets/image.png)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/page1_dark.png">
+  <img src="assets/page1_light.png" height="100" alt="Page1" />
+</picture>
 
 </div>
 

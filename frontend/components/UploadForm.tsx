@@ -193,12 +193,12 @@ export function UploadForm() {
   ]);
 
   return (
-    <Box sx={{ display: 'flex', flexDirection: ['column', 'column', 'row'], gap: 4, height: '100%' }}>
+    <Box sx={{ display: 'flex', flexDirection: ['column', 'column', 'row'], gap: 0, height: '100%' }}>
       {/* Left: Form */}
       <Box
         sx={{
-          flex: 1,
-          minWidth: '480px',
+          flex: '1 1 0',
+          minWidth: 0,
           pr: [0, 0, 4],
           pb: [4, 4, 0],
           gap: 3,
@@ -262,16 +262,17 @@ export function UploadForm() {
       {/* Right: Image */}
       <Box
         sx={{
-          flex: 1,
-          minWidth: '320px',
+          flex: '0 0 50%',
+          width: '50%',
           pl: [0, 0, 4],
-          pt: [4, 4, 0],
-          display: 'flex',
+          pt: [4, 4, 2],
+          pb: [0, 0, 2],
+          display: ['none', 'none', 'flex'],
           flexDirection: 'column',
-          position: ["relative", "relative", "sticky"],
-          top: [0, 0, 64],
+          position: "sticky",
+          top: "50px",
+          height: 'calc(100vh - 100px)',
           alignSelf: "flex-start",
-          maxHeight: ["none", "none", "calc(100vh - 80px)"],
         }}
       >
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
