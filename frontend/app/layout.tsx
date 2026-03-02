@@ -49,7 +49,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         />
       </head>
       <body style={{ backgroundColor: "Canvas", color: "CanvasText" }}>
-        {/* <SplashScreen /> */}
+        <SplashScreen />
         <StyledComponentsRegistry>
           <ReactQueryProvider>
             <ThemeProvider initialPreference={initialPreference}>

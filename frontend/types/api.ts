@@ -14,6 +14,9 @@ export interface TaskResponse {
       mime_type?: string | null;
       size_bytes?: number | null;
     } | null;
+    payload?: {
+      difficulty?: string | null;
+    } | null;
     problems: Array<{
       problem_id: string;
       question_no?: string | null;

@@ -260,6 +260,7 @@ export function TaskLiveView({ taskId }: { taskId: string }) {
       {data && (
         <TaskProblemList
           taskId={taskId}
+          taskDifficulty={data.task.payload?.difficulty}
           problems={data.task.problems}
           solutions={data.task.solutions}
           tags={data.task.tags}

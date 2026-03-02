@@ -11,6 +11,7 @@ import { deleteProblem } from "../../features/tasks";
 
 type TaskProblemListProps = {
   taskId: string;
+  taskDifficulty?: string | null;
   problems: Array<{
     problem_id: string;
     question_no?: string | null;
@@ -35,6 +36,7 @@ type TaskProblemListProps = {
 
 export function TaskProblemList({
   taskId,
+  taskDifficulty,
   problems,
   solutions,
   tags,
@@ -139,6 +141,7 @@ export function TaskProblemList({
                 problem={problem}
                 solution={solution}
                 allTags={allTags}
+                taskDifficulty={taskDifficulty}
                 isEditing={isEditing}
                 taskId={taskId}
                 tagStyles={tagStyles}
@@ -162,6 +165,7 @@ function ProblemCardItem({
   problem,
   solution,
   allTags,
+  taskDifficulty,
   isEditing,
   taskId,
   tagStyles,
@@ -175,6 +179,7 @@ function ProblemCardItem({
   problem: TaskProblemListProps["problems"][0];
   solution?: { problem_id: string; answer: string; explanation: string };
   allTags: string[];
+  taskDifficulty?: string | null;
   isEditing: boolean;
   taskId: string;
   tagStyles: Record<string, TagDimensionStyle>;
@@ -218,6 +223,9 @@ function ProblemCardItem({
           )}
           {problem.source && (
             <Text sx={{ fontSize: 0, color: "fg.muted" }}>{problem.source}</Text>
+          )}
+          {taskDifficulty && (
+            <Text sx={{ fontSize: 0, color: "fg.muted" }}>难度：{taskDifficulty}</Text>
           )}
         </Box>
         <Box sx={{ display: "flex", gap: 1 }}>

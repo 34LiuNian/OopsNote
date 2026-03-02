@@ -376,6 +376,7 @@ html.oops-splash-skip #oops-splash {
 /* ── Loaded state: exit animation ── */
 #oops-splash.loaded {
   visibility: hidden;
+  pointer-events: none;
   transform: translateY(-100%);
   transition:
     transform 0.3s 1s ease-out,
@@ -408,7 +409,11 @@ html.oops-splash-skip #oops-splash {
   100% { transform: rotate(-360deg); }
 }
 
-/* === Page entrance animation === */
-main > * {
+/* === Page entrance animation (after splash) === */
+html:not(.oops-splash-done) .oops-page-enter {
+  opacity: 0;
+}
+
+html.oops-splash-done .oops-page-enter {
   animation: fadeIn 0.3s ease-out;
 }
