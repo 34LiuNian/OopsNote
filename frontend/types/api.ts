@@ -218,11 +218,41 @@ export type UserRole = "admin" | "member";
 export interface UserPublic {
   username: string;
   role: UserRole;
+  nickname?: string | null;
+  avatar_url?: string | null;
+  is_active?: boolean;
 }
 
 export interface LoginRequest {
   username: string;
   password: string;
+}
+
+export interface RegisterRequest {
+  username: string;
+  password: string;
+  nickname?: string;
+  avatar_url?: string;
+}
+
+export interface UserProfileUpdateRequest {
+  username?: string;
+  nickname?: string;
+  avatar_url?: string;
+}
+
+export interface PasswordUpdateRequest {
+  current_password: string;
+  new_password: string;
+}
+
+export interface AdminPasswordResetRequest {
+  new_password: string;
+}
+
+export interface AdminUserUpdateRequest {
+  role?: UserRole;
+  is_active?: boolean;
 }
 
 export interface AuthTokenResponse {
@@ -234,4 +264,16 @@ export interface AuthTokenResponse {
 
 export interface AuthMeResponse {
   user: UserPublic;
+}
+
+export interface UserListResponse {
+  items: UserPublic[];
+}
+
+export interface RegistrationSettingsResponse {
+  enabled: boolean;
+}
+
+export interface RegistrationSettingsUpdateRequest {
+  enabled: boolean;
 }

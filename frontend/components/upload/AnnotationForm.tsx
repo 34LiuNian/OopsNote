@@ -11,7 +11,6 @@ import {
 } from "@primer/react";
 import { TagSelectorRow } from "../TagSelectorRow";
 import type { TagDimensionStyle } from "../../types/api";
-import '@primer/primitives/dist/css/functional/themes/light.css';
 
 type AnnotationFormProps = {
     subject: string;

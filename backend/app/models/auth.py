@@ -14,17 +14,54 @@ class UserRecord(BaseModel):
     password_hash: str
     role: UserRole = "member"
     is_active: bool = True
+    nickname: str | None = None
+    avatar_url: str | None = None
     created_at: datetime
+    updated_at: datetime | None = None
 
 
 class UserPublic(BaseModel):
     username: str
     role: UserRole
+    nickname: str | None = None
+    avatar_url: str | None = None
+    is_active: bool = True
 
 
 class LoginRequest(BaseModel):
     username: str = Field(min_length=1)
     password: str = Field(min_length=1)
+
+
+class RegisterRequest(BaseModel):
+    username: str = Field(min_length=3, max_length=32)
+    password: str = Field(min_length=8, max_length=128)
+    nickname: str | None = Field(default=None, max_length=64)
+    avatar_url: str | None = Field(default=None, max_length=512)
+
+
+class UserProfileUpdateRequest(BaseModel):
+    username: str | None = Field(default=None, min_length=3, max_length=32)
+    nickname: str | None = Field(default=None, max_length=64)
+    avatar_url: str | None = Field(default=None, max_length=512)
+
+
+class PasswordUpdateRequest(BaseModel):
+    current_password: str = Field(min_length=1)
+    new_password: str = Field(min_length=8, max_length=128)
+
+
+class AdminPasswordResetRequest(BaseModel):
+    new_password: str = Field(min_length=8, max_length=128)
+
+
+class AdminUserUpdateRequest(BaseModel):
+    role: UserRole | None = None
+    is_active: bool | None = None
+
+
+class UserListResponse(BaseModel):
+    items: list[UserPublic]
 
 
 class AuthTokenResponse(BaseModel):
@@ -36,3 +73,11 @@ class AuthTokenResponse(BaseModel):
 
 class AuthMeResponse(BaseModel):
     user: UserPublic
+
+
+class RegistrationSettingsResponse(BaseModel):
+    enabled: bool
+
+
+class RegistrationSettingsUpdateRequest(BaseModel):
+    enabled: bool

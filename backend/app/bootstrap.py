@@ -26,10 +26,13 @@ from .api.problems import router as problems_router
 from .api.models import router as models_router
 from .api.latex import router as latex_router
 from .api.papers import router as papers_router
+from .api.account import router as account_router
+from .api.users import router as users_router
 from .services.models_service import ModelsService
 from .services.tasks_service import TasksService
 from .builders import (
     build_agent_settings_service,
+    build_auth_settings_service,
     build_ai_client,
     build_pipeline,
     build_repository,
@@ -138,6 +141,8 @@ def create_app() -> FastAPI:
     app.include_router(models_router)
     app.include_router(latex_router)
     app.include_router(papers_router)
+    app.include_router(account_router)
+    app.include_router(users_router)
 
     return app
 
@@ -155,6 +160,7 @@ def _build_state() -> (
     asset_store = LocalAssetStore()
 
     agent_settings_service = build_agent_settings_service()
+    auth_settings_service = build_auth_settings_service()
 
     # Apply gateway settings overrides (UI settings > env vars)
     gateway_settings = agent_settings_service.load_gateway()
@@ -205,6 +211,7 @@ def _build_state() -> (
         repository=repository,
         ai_gateway_status=ai_gateway_status,
         agent_settings=agent_settings_service,
+        auth_settings=auth_settings_service,
         tasks=tasks_service,  # type: ignore[arg-type]
         models=models_service,
     )

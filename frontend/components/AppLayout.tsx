@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { Box, Button, Text } from '@primer/react';
+import { PersonIcon } from '@primer/octicons-react';
 import { Sidebar } from './Sidebar';
 import { BackendStatus } from './BackendStatus';
 import { clearAuthSession, getCurrentUser, onAuthChanged } from '../features/auth/store';
@@ -27,7 +28,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    const adminRoute = pathname.startsWith('/settings') || pathname.startsWith('/tags') || pathname.startsWith('/debug');
+    const adminRoute = pathname.startsWith('/settings') || pathname.startsWith('/tags') || pathname.startsWith('/debug') || pathname.startsWith('/users');
     if (adminRoute && user.role !== 'admin') {
       router.replace('/');
       return;
@@ -83,7 +84,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
   const handleLogout = () => {
     clearAuthSession();
-    router.replace('/login');
+    // 使用硬跳转（非 SPA 路由），确保 React 树完全卸载，
+    // 释放任务列表、LLM 流式数据等大对象占用的 JS 堆内存。
+    window.location.href = '/login';
   };
 
   return (
@@ -96,6 +99,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
            sx={{ 
              py: 2, 
              px: 4, 
+             bg: 'canvas.overlay',
              borderBottom: '1px solid', 
              borderColor: 'border.muted',
              display: 'flex',
@@ -107,9 +111,13 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
              height: 50,
            }}
          >
-            <Text sx={{ color: 'fg.muted', fontSize: 1 }}>当前用户：{username}</Text>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+            <Box />
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 3 }}>
               <BackendStatus />
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, color: 'fg.muted' }}>
+                <PersonIcon size={14} />
+                <Text sx={{ fontSize: 1 }}>{username}</Text>
+              </Box>
               <Button size="small" onClick={handleLogout}>退出登录</Button>
             </Box>
          </Box>

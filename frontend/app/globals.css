@@ -417,3 +417,85 @@ html:not(.oops-splash-done) .oops-page-enter {
 html.oops-splash-done .oops-page-enter {
   animation: fadeIn 0.3s ease-out;
 }
+
+/* === Login brand panel (left column) === */
+.oops-login-brand {
+  background: linear-gradient(160deg, #0550ae 0%, #0969da 40%, #1a7f37 100%);
+  color: white;
+}
+html[data-oopsnote-color-scheme="dark"] .oops-login-brand {
+  background: linear-gradient(160deg, #0a3069 0%, #1158c7 40%, #0f3d1e 100%);
+}
+
+/* Login form card entrance */
+.oops-login-card {
+  animation: oops-login-card-in 0.45s cubic-bezier(0.16, 1, 0.3, 1);
+}
+@keyframes oops-login-card-in {
+  from { opacity: 0; transform: translateY(20px) scale(0.97); }
+  to   { opacity: 1; transform: translateY(0)   scale(1); }
+}
+
+/* Login logo pulse */
+.oops-login-logo {
+  animation: oops-login-logo-in 0.5s cubic-bezier(0.16, 1, 0.3, 1) 0.1s both;
+}
+@keyframes oops-login-logo-in {
+  from { opacity: 0; transform: scale(0.6); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+/* Breathing glow */
+.oops-login-glow {
+  animation: oops-login-glow-pulse 4s ease-in-out infinite;
+}
+@keyframes oops-login-glow-pulse {
+  0%, 100% { opacity: 0.5; transform: translate(-50%, -50%) scale(1); }
+  50%      { opacity: 0.8; transform: translate(-50%, -50%) scale(1.15); }
+}
+
+/* Floating decorative circles */
+.oops-login-circle {
+  position: absolute;
+  border-radius: 50%;
+  pointer-events: none;
+  border: 1.5px solid rgba(255,255,255,0.1);
+}
+.oops-login-circle-1 {
+  width: 300px; height: 300px;
+  bottom: -100px; right: -80px;
+  animation: oops-float 8s ease-in-out infinite;
+}
+.oops-login-circle-2 {
+  width: 180px; height: 180px;
+  top: -50px; left: -50px;
+  animation: oops-float 6s ease-in-out 1s infinite reverse;
+}
+.oops-login-circle-3 {
+  width: 120px; height: 120px;
+  top: 30%; right: -30px;
+  border-color: rgba(255,255,255,0.06);
+  animation: oops-float 7s ease-in-out 0.5s infinite;
+}
+@keyframes oops-float {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-14px); }
+}
+
+/* Right panel subtle dot grid */
+.oops-login-right {
+  background-image: radial-gradient(circle, var(--borderColor-muted, rgba(0,0,0,0.06)) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+html[data-oopsnote-color-scheme="dark"] .oops-login-right {
+  background-image: radial-gradient(circle, rgba(255,255,255,0.03) 1px, transparent 1px);
+}
+
+/* === Login error slide-down animation === */
+@keyframes oops-slide-down-kf {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.oops-slide-down {
+  animation: oops-slide-down-kf 0.2s ease-out;
+}

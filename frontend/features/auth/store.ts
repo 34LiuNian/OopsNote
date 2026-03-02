@@ -30,6 +30,12 @@ function emitAuthChanged() {
   window.dispatchEvent(new Event(AUTH_CHANGE_EVENT));
 }
 
+/** 静默清理（不触发事件），用于内部有效期检查路径，防止递归 */
+function silentClear() {
+  if (typeof window === "undefined") return;
+  window.localStorage.removeItem(AUTH_STORAGE_KEY);
+}
+
 export function getAuthSession(): AuthSession | null {
   if (typeof window === "undefined") return null;
   return parseSession(window.localStorage.getItem(AUTH_STORAGE_KEY));
@@ -43,7 +49,8 @@ export function isAuthSessionValid(session: AuthSession | null): boolean {
 export function getAccessToken(): string | null {
   const session = getAuthSession();
   if (!isAuthSessionValid(session)) {
-    clearAuthSession();
+    // 用 silentClear 而非 clearAuthSession，避免触发事件→监听器→本函数的无限递归
+    silentClear();
     return null;
   }
   return session?.accessToken ?? null;
@@ -52,7 +59,8 @@ export function getAccessToken(): string | null {
 export function getCurrentUser(): UserPublic | null {
   const session = getAuthSession();
   if (!isAuthSessionValid(session)) {
-    clearAuthSession();
+    // 同上，静默清理，不广播事件
+    silentClear();
     return null;
   }
   return session?.user ?? null;
@@ -77,6 +85,18 @@ export function saveAuthSession(payload: {
 export function clearAuthSession(): void {
   if (typeof window === "undefined") return;
   window.localStorage.removeItem(AUTH_STORAGE_KEY);
+  emitAuthChanged();
+}
+
+export function updateSessionUser(user: UserPublic): void {
+  if (typeof window === "undefined") return;
+  const session = getAuthSession();
+  if (!session) return;
+  const next: AuthSession = {
+    ...session,
+    user,
+  };
+  window.localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(next));
   emitAuthChanged();
 }
 

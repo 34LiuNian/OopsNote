@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef } from "react";
-import { Box, Heading, Text } from "@primer/react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Box, Button, Checkbox, Flash, Heading, Text } from "@primer/react";
 import { GearIcon } from "@primer/octicons-react";
 import { useTheme } from "../../components/ThemeProvider";
 import { SettingsAppearanceSection } from "../../components/settings/SettingsAppearanceSection";
@@ -19,6 +19,7 @@ import {
   useModelList,
   useSystemInfo,
 } from "../../features/settings";
+import { getRegistrationSettings, updateRegistrationSettings } from "../../features/auth/api";
 
 const AGENTS: Array<{ key: string; label: string; description: string }> = [
   { key: "SOLVER", label: "Solver", description: "主解题与结构化输出" },
@@ -96,6 +97,11 @@ export default function SettingsPage() {
 
   // --- System Info ---
   const systemInfo = useSystemInfo();
+  const [registrationEnabled, setRegistrationEnabled] = useState(false);
+  const [registrationLoaded, setRegistrationLoaded] = useState(false);
+  const [registrationSaving, setRegistrationSaving] = useState(false);
+  const [registrationError, setRegistrationError] = useState("");
+  const [registrationStatus, setRegistrationStatus] = useState("");
 
   const sortedModels = useMemo(() => {
     return [...models].filter((m) => m?.id).sort((a, b) => a.id.localeCompare(b.id));
@@ -113,6 +119,16 @@ export default function SettingsPage() {
     void gateway.refresh();
     void debug.refresh();
     void systemInfo.refresh();
+    void getRegistrationSettings()
+      .then((value) => {
+        setRegistrationEnabled(Boolean(value.enabled));
+      })
+      .catch((err) => {
+        setRegistrationError(err instanceof Error ? err.message : "加载注册设置失败");
+      })
+      .finally(() => {
+        setRegistrationLoaded(true);
+      });
   }, [
     refreshAgentModels,
     refreshModels,
@@ -123,6 +139,21 @@ export default function SettingsPage() {
     debug.refresh,
     systemInfo.refresh,
   ]);
+
+  const handleSaveRegistration = useCallback(async () => {
+    setRegistrationError("");
+    setRegistrationStatus("");
+    setRegistrationSaving(true);
+    try {
+      const next = await updateRegistrationSettings({ enabled: registrationEnabled });
+      setRegistrationEnabled(Boolean(next.enabled));
+      setRegistrationStatus("注册开关已更新");
+    } catch (err) {
+      setRegistrationError(err instanceof Error ? err.message : "保存注册设置失败");
+    } finally {
+      setRegistrationSaving(false);
+    }
+  }, [registrationEnabled]);
 
   const handleEnabledChange = useCallback(
     async (agentKey: string, nextValue: boolean) => {
@@ -195,6 +226,32 @@ export default function SettingsPage() {
         onSave={gateway.save}
         onTest={gateway.test}
       />
+
+      <Box className="oops-card" sx={{ p: 3, display: "grid", gap: 3 }}>
+        <Box>
+          <Heading as="h3" sx={{ fontSize: 2, mb: 1 }}>
+            账号注册
+          </Heading>
+          <Text sx={{ color: "fg.muted", fontSize: 1 }}>
+            控制登录页是否允许用户自助注册。
+          </Text>
+        </Box>
+        {!registrationLoaded ? <Text sx={{ color: "fg.muted" }}>加载中...</Text> : null}
+        <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
+          <Checkbox
+            checked={registrationEnabled}
+            onChange={(event) => setRegistrationEnabled(event.target.checked)}
+          />
+          <Text>开放自助注册</Text>
+        </Box>
+        {registrationError ? <Flash variant="danger">{registrationError}</Flash> : null}
+        {registrationStatus ? <Flash variant="success">{registrationStatus}</Flash> : null}
+        <Box>
+          <Button variant="primary" onClick={() => void handleSaveRegistration()} disabled={registrationSaving}>
+            {registrationSaving ? "保存中..." : "保存注册设置"}
+          </Button>
+        </Box>
+      </Box>
 
       {/* 3. Model Settings */}
       <SettingsModelSection

@@ -35,13 +35,17 @@ def require_user(
     if not username:
         raise HTTPException(status_code=401, detail="无效的登录凭证")
 
-    role = str(payload.get("role") or "member").strip() or "member"
-
     user = user_store.get_user(username)
     if user is None or not user.is_active:
         raise HTTPException(status_code=401, detail="用户不存在或已禁用")
 
-    return UserPublic(username=user.username, role=role if role in {"admin", "member"} else user.role)
+    return UserPublic(
+        username=user.username,
+        role=user.role,
+        nickname=user.nickname,
+        avatar_url=user.avatar_url,
+        is_active=user.is_active,
+    )
 
 
 def require_admin(current_user: UserPublic = Depends(require_user)) -> UserPublic:
