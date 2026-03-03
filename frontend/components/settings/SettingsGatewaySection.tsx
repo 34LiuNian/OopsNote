@@ -2,7 +2,7 @@
 
 import { Box, Button, FormControl, Heading, Label, Text, TextInput, Spinner } from "@primer/react";
 import { CheckCircleFillIcon, PlugIcon, XCircleFillIcon, ZapIcon } from "@primer/octicons-react";
-import { ErrorBanner } from "../ErrorBanner";
+import { ErrorBanner } from "../ui/ErrorBanner";
 import { useEffect } from "react";
 import { sileo } from "sileo";
 import type { GatewaySettingsResponse, GatewayTestResponse } from "../../types/api";

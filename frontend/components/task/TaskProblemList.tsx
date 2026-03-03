@@ -3,11 +3,11 @@
 import { useState } from "react";
 import { Box, Button, Heading, IconButton, Label, Text, Tooltip } from "@primer/react";
 import { PencilIcon, CopyIcon, TrashIcon, ChevronDownIcon, ChevronUpIcon } from "@primer/octicons-react";
-import type { TagDimensionStyle } from "../../types/api";
-import { MarkdownRenderer } from "../MarkdownRenderer";
+import type { TagDimensionStyle } from "@/types/api";
+import { MarkdownRenderer } from "../renderers/MarkdownRenderer";
 import { ProblemCard } from "../ProblemCard";
 import { ProblemEditPanel } from "../ProblemEditPanel";
-import { deleteProblem } from "../../features/tasks";
+import { deleteProblem } from "@/features/tasks";
 
 type TaskProblemListProps = {
   taskId: string;

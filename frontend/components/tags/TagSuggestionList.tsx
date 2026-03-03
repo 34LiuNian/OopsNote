@@ -2,7 +2,7 @@
 
 import { memo, useRef, useEffect } from "react";
 import { Box, Text, Spinner } from "@primer/react";
-import type { TagDimensionStyle } from "../../types/api";
+import type { TagDimensionStyle } from "@/types/api";
 
 type SuggestionItem =
   | { type: "existing"; id: string; value: string; ref_count?: number }

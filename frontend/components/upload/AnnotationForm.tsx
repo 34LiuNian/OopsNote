@@ -9,8 +9,8 @@ import {
     Select,
     Spinner,
 } from "@primer/react";
-import { TagSelectorRow } from "../TagSelectorRow";
-import type { TagDimensionStyle } from "../../types/api";
+import { TagSelectorRow } from "@/components/TagSelectorRow";
+import type { TagDimensionStyle } from "@/types/api";
 
 type AnnotationFormProps = {
     subject: string;

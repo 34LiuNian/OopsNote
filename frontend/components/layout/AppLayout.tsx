@@ -5,8 +5,8 @@ import { usePathname, useRouter } from 'next/navigation';
 import { Box, Button, Text } from '@primer/react';
 import { PersonIcon } from '@primer/octicons-react';
 import { Sidebar } from './Sidebar';
-import { BackendStatus } from './BackendStatus';
-import { clearAuthSession, getCurrentUser, onAuthChanged } from '../features/auth/store';
+import { BackendStatus } from '../ui/BackendStatus';
+import { clearAuthSession, getCurrentUser, onAuthChanged } from '../../features/auth/store';
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();

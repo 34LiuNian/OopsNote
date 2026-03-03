@@ -8,16 +8,16 @@ import {
   Text,
   Spinner,
 } from "@primer/react";
-import { fetchJson } from "../lib/api";
-import type { TaskResponse } from "../types/api";
+import { fetchJson } from "@/lib/api";
+import type { TaskResponse } from "@/types/api";
 import { TaskActions } from "./task/TaskActions";
 import { TaskProblemList } from "./task/TaskProblemList";
-import { deleteTask } from "../features/tasks";
-import { useTagDimensions } from "../features/tags";
-import { useTaskStream } from "../hooks/useTaskStream";
-import { useTaskProgress } from "../hooks/useTaskProgress";
+import { deleteTask } from "@/features/tasks";
+import { useTagDimensions } from "@/features/tags";
+import { useTaskStream } from "@/hooks/useTaskStream";
+import { useTaskProgress } from "@/hooks/useTaskProgress";
 import { TaskProgressBar } from "./task/TaskProgressBar";
-import { ErrorBanner } from "./ErrorBanner";
+import { ErrorBanner } from "./ui/ErrorBanner";
 import { TaskLiveStream } from "./task/TaskLiveStream";
 import { TaskMathRenderer } from "./task/TaskMathRenderer";
 import { TaskStatusToaster } from "./task/TaskStatusToaster";

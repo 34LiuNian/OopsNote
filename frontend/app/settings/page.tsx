@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Box, Button, Checkbox, Flash, Heading, Text } from "@primer/react";
 import { GearIcon } from "@primer/octicons-react";
-import { useTheme } from "../../components/ThemeProvider";
+import { useTheme } from "../../components/providers/ThemeProvider";
 import { SettingsAppearanceSection } from "../../components/settings/SettingsAppearanceSection";
 import { SettingsGatewaySection } from "../../components/settings/SettingsGatewaySection";
 import { SettingsModelSection } from "../../components/settings/SettingsModelSection";

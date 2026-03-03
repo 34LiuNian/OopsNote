@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Box, Button, Heading, Text, Textarea } from "@primer/react";
-import { MarkdownRenderer } from "../../components/MarkdownRenderer";
+import { MarkdownRenderer } from "../../components/renderers/MarkdownRenderer";
 import { TaskProgressBar } from "../../components/task/TaskProgressBar";
 import { useTaskProgress, ProgressStepKey } from "../../hooks/useTaskProgress";
 import { API_BASE } from "../../lib/api";

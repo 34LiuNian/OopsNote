@@ -19,7 +19,7 @@ import { useActiveTaskList, useProblemList } from "../../features/tasks";
 import { ProblemListItem } from "../../components/ProblemListItem";
 import { TaskThumbnail } from "../../components/TaskThumbnail";
 import { TagSelectorRow } from "../../components/TagSelectorRow";
-import { ListSkeleton } from "../../components/LoadingStates";
+import { ListSkeleton } from "../../components/ui/LoadingStates";
 import { useTagDimensions } from "../../features/tags";
 
 const SUBJECT_OPTIONS = [

@@ -1,7 +1,7 @@
 "use client";
 
 import { Box, Text } from "@primer/react";
-import { useLatexAsset } from "../hooks/useLatexAsset";
+import { useLatexAsset } from "@/hooks/useLatexAsset";
 
 type LatexAssetRendererProps = {
   kind: "chemfig" | "tikz";

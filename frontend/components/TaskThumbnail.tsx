@@ -1,7 +1,7 @@
 "use client";
 
 import { Box } from "@primer/react";
-import { API_BASE } from "../lib/api";
+import { API_BASE } from "@/lib/api";
 
 interface TaskThumbnailProps {
   asset?: {

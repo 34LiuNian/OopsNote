@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef } from "react";
 import { Box, Spinner, Text } from "@primer/react";
-import type { TaskResponse } from "../../types/api";
+import type { TaskResponse } from "@/types/api";
 
 interface TaskMathRendererProps {
   data: TaskResponse | null;

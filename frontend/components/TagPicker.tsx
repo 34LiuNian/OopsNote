@@ -3,8 +3,8 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Box, Button, Label, Spinner, Text, TextInput } from "@primer/react";
 import { XIcon } from "@primer/octicons-react";
-import type { TagDimension, TagDimensionStyle, TagItem } from "../types/api";
-import { searchTags } from "../features/tags/api";
+import type { TagDimension, TagDimensionStyle, TagItem } from "@/types/api";
+import { searchTags } from "@/features/tags/api";
 
 export type { TagDimension, TagDimensionStyle };
 

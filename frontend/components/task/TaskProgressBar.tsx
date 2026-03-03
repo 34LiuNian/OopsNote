@@ -3,7 +3,7 @@
 import { Fragment } from "react";
 import { Box, Text, Spinner, Octicon } from "@primer/react";
 import { CheckIcon, XIcon, SkipIcon } from "@primer/octicons-react";
-import { PROGRESS_STEPS, UseTaskProgressResult } from "../../hooks/useTaskProgress";
+import { PROGRESS_STEPS, UseTaskProgressResult } from "@/hooks/useTaskProgress";
 
 interface TaskProgressBarProps {
   progressState: UseTaskProgressResult;

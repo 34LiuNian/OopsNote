@@ -3,14 +3,11 @@ import Script from "next/script";
 import { cookies } from "next/headers";
 import "./globals.css";
 import "katex/dist/katex.min.css";
-import AppLayout from '@/components/AppLayout';
-import { ThemeProvider } from '@/components/ThemeProvider';
-import { ReactQueryProvider } from '@/components/ReactQueryProvider';
+import { AppLayout, SplashScreen } from '@/components/layout';
+import { ThemeProvider, ReactQueryProvider } from '@/components/providers';
 import StyledComponentsRegistry from '@/lib/registry';
-import { SileoToaster } from '@/components/SileoToaster';
-import { KatexAutoRender } from '@/components/KatexAutoRender';
-import { SplashScreen } from '@/components/SplashScreen';
-import { PWARegister } from '@/features/pwa/components/PWARegister';
+import { SileoToaster } from '@/components/ui';
+import { KatexAutoRender } from '@/components/renderers';
 
 export const metadata: Metadata = {
   title: "OopsNote: AI Mistake Organizer",
@@ -55,9 +52,24 @@ export default async function RootLayout({ children }: { children: React.ReactNo
       root.style.backgroundColor = 'Canvas';\n      root.style.color = 'CanvasText';\n      if (document.body) {\n        document.body.style.backgroundColor = 'Canvas';\n        document.body.style.color = 'CanvasText';\n      }\n    }\n  } catch (e) {}\n})();`,
           }}
         />
+        <Script
+          id="oopsnote-sw-register"
+          strategy="afterInteractive"
+          dangerouslySetInnerHTML={{
+            __html: `(function(){
+  try {
+    if (!('serviceWorker' in navigator)) return;
+    window.addEventListener('load', function() {
+      navigator.serviceWorker.register('/sw.js', { scope: '/' })
+        .then(function(registration) { return registration.update(); })
+        .catch(function() {});
+    });
+  } catch (e) {}
+})();`,
+          }}
+        />
       </head>
       <body style={{ backgroundColor: "Canvas", color: "CanvasText" }}>
-        <PWARegister />
         <SplashScreen />
         <StyledComponentsRegistry>
           <ReactQueryProvider>

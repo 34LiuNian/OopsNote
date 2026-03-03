@@ -2,8 +2,8 @@
 
 import { Box } from "@primer/react";
 import { InlineMath } from "react-katex";
-import { MarkdownRenderer } from "./MarkdownRenderer";
-import { OptionsList } from "./OptionsList";
+import { MarkdownRenderer } from "./renderers/MarkdownRenderer";
+import { OptionsList } from "./ui/OptionsList";
 
 type ProblemOption = {
   key: string;

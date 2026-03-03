@@ -2,7 +2,7 @@
 
 import { Box, Heading, Spinner, Text, ToggleSwitch } from "@primer/react";
 import { BugIcon } from "@primer/octicons-react";
-import { ErrorBanner } from "../ErrorBanner";
+import { ErrorBanner } from "../ui/ErrorBanner";
 import { useEffect } from "react";
 import { sileo } from "sileo";
 import type { DebugSettingsResponse } from "../../types/api";

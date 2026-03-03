@@ -16,7 +16,7 @@ import {
   SidebarExpandIcon,
 } from "@primer/octicons-react";
 import Link from "next/link";
-import { getCurrentUser, onAuthChanged } from "../features/auth/store";
+import { getCurrentUser, onAuthChanged } from "../../features/auth/store";
 
 const NAV_ITEMS = [
   { href: "/", label: "新建题目", icon: PlusIcon, section: "main" },

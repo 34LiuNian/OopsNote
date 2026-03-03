@@ -2,7 +2,7 @@
 
 import { Box, Text } from "@primer/react";
 import { TagPicker } from "./TagPicker";
-import type { TagDimensionStyle } from "../types/api";
+import type { TagDimensionStyle } from "@/types/api";
 
 /**
  * 统一的标签选择器行组件
