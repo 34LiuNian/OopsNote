@@ -57,3 +57,4 @@ _tmp/
 *.bak
 
 docs/archive/
+backend/scripts/
