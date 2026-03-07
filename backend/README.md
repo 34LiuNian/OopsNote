@@ -113,3 +113,74 @@ To force an early failure (useful in production), set:
 ## Per-agent config
 
 See `README_AGENT_CONFIG.md` for enabling per-agent providers/models via TOML or env vars.
+
+## AI Pipeline Details
+
+### Current Implementation
+
+The backend implements a multi-stage AI pipeline for processing uploaded problem images:
+
+1. **OCR Extractor** (`backend/app/agents/extractor.py`)
+   - Multi-modal LLM outputs structured JSON with `problem_text` and `options`
+   - Supports LaTeX formulas in problem content
+   - Strict JSON validation with retry on schema mismatch
+
+2. **Solver** (`backend/app/agents/stages.py`)
+   - Generates solutions with `answer` and `explanation`
+   - Streaming output via SSE for real-time feedback
+   - Configurable via `backend/app/agents/prompts/solver.txt`
+
+3. **Tagger** (`backend/app/agents/stages.py`)
+   - Multi-dimensional tagging: knowledge points, error hypotheses, skills, recommended actions
+   - Prefers selecting from existing tag registry to avoid duplicates
+   - User-specified tags are always included in output
+
+### Storage Layout
+
+All data is persisted to disk under `backend/storage/`:
+
+- **Tasks**: `storage/tasks/{task_id}.json` - Complete task state
+- **Streams**: `storage/task_streams/{task_id}.txt` - SSE stream history for replay
+- **Errors**: `storage/llm_errors.log` - Structured LLM error details
+- **Traces**: `storage/traces/*.jsonl` - Structured trace events
+- **Settings**: `storage/settings/` - Tags, dimensions, user configs
+
+### Streaming & Replay
+
+- **SSE Endpoint**: `GET /tasks/{id}/stream`
+- **Events**: `progress`, `llm_delta`, `llm_snapshot`, `done`, `error`
+- **Replay**: After refresh, frontend can replay stored stream from `task_streams/{task_id}.txt`
+
+### Failure Handling
+
+| Stage | Failure Mode | Behavior |
+| --- | --- | --- |
+| OCR Extractor | JSON parse error | Log error → task failed state |
+| Solver | Model exception | Log error → task failed state |
+| Tagger | JSON parse error | Retry with fallback strategy |
+
+See [`AGENTS.md`](../AGENTS.md) for detailed AI flow documentation.
+
+## Observability
+
+### Debug Endpoints
+
+- `GET /health` - Backend health check with AI gateway status
+- `GET /models` - Available models for selection
+- `GET /settings/agent-models` - Current per-agent model configuration
+- `GET /settings/agent-enabled` - Which agents are currently enabled
+
+### Logging
+
+- **LLM Errors**: `storage/llm_errors.log` - Parse/validation/transport failures
+- **Task Streams**: `storage/task_streams/{task_id}.txt` - Complete SSE history
+- **Traces**: `storage/traces/*.jsonl` - Structured events for analysis
+
+### Performance Metrics (Future)
+
+Recommended additions for production monitoring:
+
+- Record `model_name / latency / token_usage` in traces
+- Add `started_at / finished_at` timestamps to each stage for Gantt charts
+- Track OCR fidelity (LaTeX diff rate vs original)
+- Monitor tag consistency (human edit frequency)

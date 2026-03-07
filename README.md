@@ -33,7 +33,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/License-MIT-yellow?" alt="License" />
-  <img src="https://img.shields.io/badge/Last_Update-2026--02--28-blue?" alt="Last Update" />
+  <img src="https://img.shields.io/badge/Last_Update-2026--03--08-blue?" alt="Last Update" />
   <img src="https://img.shields.io/github/stars/34LiuNian/OopsNote?logo=github" alt="GitHub Stars" />
   <img src="https://img.shields.io/github/forks/34LiuNian/OopsNote?logo=github" alt="GitHub Forks" />
 </p>
@@ -55,14 +55,17 @@
   - [ ] 权限模式的切换
     - [ ] 自用
     - [ ] 运营
-- [ ] 将题目处理分为入库处理和后期处理两个阶段（名字未确定）：预处理为ocr+人工标签；后处理为解题+tagger
-- [ ] tagger体系的完善
-  - [ ] 导入、整理、合并已有的两个标签源[https://filatex.cn/] [https://github.com/wttwins/wrong-notebook] 内容
+- [ ] tagger 体系的完善
+  - [ ] 导入、整理、合并已有的两个标签源 [https://filatex.cn/] [https://github.com/wttwins/wrong-notebook] 内容
 - [ ] 科目扩展英语、生物
-- [ ] PWA完善
+- [ ] PWA 完善
   - [ ] 目录
   - [ ] 横屏边框
 - [ ] 选项自适应
+- [ ] 增量学习：将用户最终确认的标签作为 few-shot 示例缓存给 Agent
+- [ ] 多模态裁剪工具：在前端加入可视化框选，写回裁剪结果用于再训练
+- [ ] 协同模式：支持多人共享错题集，基于角色管理编辑/打标权限
+- [ ] 评测框架：构建自动化 benchmark（真实题图 + 标准答案 + 标签）来回归测试各 Agent
 
 ---
 

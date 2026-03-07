@@ -1,57 +1,119 @@
-# OopsNote 架构基线（高内聚 / 低耦合）
+# OopsNote 架构与 AI 流程文档
 
-本文定义 OopsNote 当前重构基线（2026-02-14），目标是：
+本文档整合 OopsNote 的架构设计与 AI 流程说明（最后更新：2026-03-08），覆盖：
 
-1) 模块职责单一（高内聚）
-2) 依赖方向稳定（低耦合）
-3) OCR 问题可定位、可复盘、可量化
+1. 分层架构与依赖方向
+2. 多阶段 AI 流程（OCR → 解题 → 打标 → 持久化）
+3. 任务状态机与 SSE 流式输出
+4. 失败处理与重试策略
+5. 可观测性与调试手册
 
 ---
 
-## 1. 分层与依赖方向（后端）
+## 1. 分层架构（后端）
 
 统一采用 4 层：
 
-- API 层（`backend/app/api`）
+- **API 层**（`backend/app/api`）
   - 只负责：参数校验、HTTP 错误映射、调用应用服务。
   - 禁止：直接访问 pipeline 内部依赖对象。
 
-- 应用层（`backend/app/services`）
+- **应用层**（`backend/app/services`）
   - 只负责：任务用例编排（创建、处理、取消、重试、单题重跑）。
   - 只依赖：仓储接口 + pipeline 端口 + 资产/标签服务。
 
-- 领域层（`backend/app/agents`）
+- **领域层**（`backend/app/agents`）
   - 只负责：OCR / 解题 / 打标 / 归档的领域流程与规则。
   - 对应用层暴露稳定端口（`AgentPipeline` 公共方法）。
 
-- 基础设施层（`backend/app/repository.py`、`storage.py`、`clients/*`）
+- **基础设施层**（`backend/app/repository.py`、`backend/app/storage.py`、`backend/app/clients/*`）
   - 只负责：文件持久化、模型请求、日志落盘。
 
-关键约束（强制）：
+**关键约束（强制）：**
 
 - `clients/*` 只能提供通用能力（如 `structured_chat` / `structured_chat_with_image`）。
 - 禁止在 `clients/*` 中出现业务用例方法（如 `generate_solution`、`classify_problem`）。
 - 解题/打标业务逻辑必须放在 Domain 层（`agents/*`）实现。
 
-依赖方向固定为：API -> Application -> Domain -> Infrastructure。
+**依赖方向：** API → Application → Domain → Infrastructure
 
 ---
 
-## 2. 已落地重构（Phase-1）
+## 2. AI 流程总览
 
-### 2.1 独立取消终态
+OopsNote 采用多阶段 AI 流程处理上传的题目图片，所有阶段以 `task_id` 贯穿，便于追踪与回放。
+
+### 2.1 流程阶段
+
+```text
+┌──────────────┐    ┌──────────────────────────┐
+│ OCR 提取器     │ -> │ 解题 -> 打标             │
+└──────────────┘    │ (per-problem sequential) │
+  │ task_id     │ problems[]                   │
+  └────────────────────────────────────────────┘
+          ↓
+       File persistence
+```
+
+**阶段说明：**
+
+| 阶段 | 状态 | 说明 |
+| --- | --- | --- |
+| **多题检测器** | ⚠️ 暂时弃用 | 统一使用单题默认区域（full frame） |
+| **OCR 提取器** | ✅ 启用 | 针对每个裁剪块输出结构化题面（含选项） |
+| **解题器** | ✅ 启用 | 对每题逐题生成解答与解析 |
+| **打标器** | ✅ 启用 | 为每题生成多维标签（知识/错因/技能等） |
+| **持久化** | ✅ 启用 | 将任务、流式输出、资产与标签库落盘 |
+
+### 2.2 任务生命周期
+
+1. **创建任务**：前端上传图片 → 后端初始化任务状态并落盘
+2. **启动流程**：AgentOrchestrator 进入多阶段流程，产出流式日志
+3. **流式推送**：SSE 实时推送给前端，同时将日志写入 `task_streams` 供回放
+4. **终态处理**：任务完成或被取消，落盘终态，前端可回放与编辑
+
+**相关 API：**
+
+- `POST /tasks`：创建任务并启动 pipeline
+- `POST /tasks/{id}/cancel`：终止正在执行的任务
+- `GET /tasks/{id}/stream`：SSE 流式输出与回放
+
+---
+
+## 3. 核心组件与编排
+
+### 3.1 编排逻辑与核心类
+
+| 组件 | 位置 | 作用 |
+| --- | --- | --- |
+| `AgentOrchestrator` | `backend/app/agents/agent_flow.py` | 统一编排任务流程与上下文注入 |
+| `pipeline` | `backend/app/agents/pipeline.py` | 组织多阶段执行与结果聚合 |
+| `stages` | `backend/app/agents/stages.py` | Extractor / Solver / Tagger 等阶段实现 |
+| `extractor` | `backend/app/agents/extractor.py` | OCR Extractor 的多模态与重试逻辑 |
+| `TasksService` | `backend/app/services/tasks_service.py` | 任务执行/队列/SSE/持久化聚合 |
+
+**执行顺序（单任务）：**
+
+1. OCR Extractor 逐块生成 `problems[]`
+2. Solver 逐题生成 `solutions[]`
+3. Tagger 逐题生成标签结构
+4. 持久化与流式回放
+
+### 3.2 已落地重构
+
+#### 独立取消终态
 
 - `TaskStatus` 新增 `cancelled`，不再用 `failed + cancelled stage` 伪装取消。
 - 仓储新增 `mark_cancelled`，取消语义在存储层与服务层保持一致。
 - SSE `done` 终止条件包含 `cancelled`。
 
-涉及文件：
+**涉及文件：**
 
 - `backend/app/models.py`
 - `backend/app/repository.py`
 - `backend/app/services/tasks_service.py`
 
-### 2.2 服务层与 pipeline 内部解耦
+#### 服务层与 pipeline 内部解耦
 
 `TasksService` 不再直接访问 `pipeline.deps` / `pipeline.orchestrator`。
 
@@ -64,12 +126,12 @@
 
 这样应用层只依赖 pipeline 端口，不依赖其内部实现细节。
 
-涉及文件：
+**涉及文件：**
 
 - `backend/app/agents/pipeline.py`
 - `backend/app/services/tasks_service.py`
 
-### 2.3 OCR 可观测增强（排错重点）
+#### OCR 可观测增强（排错重点）
 
 OCR 增量日志统一为结构化事件：
 
@@ -82,16 +144,16 @@ OCR 增量日志统一为结构化事件：
 - 增加 `question_type` 字段以标注题型（取值示例：`单选`、`多选`、`填空`、`解答`）
 - 首次 schema 校验失败时直接进入任务失败态（严格模式）
 
-涉及文件：
+**涉及文件：**
 
 - `backend/app/agents/extractor.py`
 - `backend/app/llm_schemas.py`
 
 ---
 
-## 3. 运行时契约
+## 4. 运行时契约
 
-### 3.1 任务状态机
+### 4.1 任务状态机
 
 状态集合：
 
@@ -103,7 +165,7 @@ OCR 增量日志统一为结构化事件：
 
 合法终态：`completed / failed / cancelled`。
 
-### 3.2 任务流事件（SSE）
+### 4.2 任务流事件（SSE）
 
 当前事件类型：
 
