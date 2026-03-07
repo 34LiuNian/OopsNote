@@ -7,7 +7,7 @@ import {
   XCircleFillIcon,
   DashIcon,
 } from "@primer/octicons-react";
-import { ErrorBanner } from "../ErrorBanner";
+import { ErrorBanner } from "../ui/ErrorBanner";
 import type { SystemInfoResponse } from "../../types/api";
 
 type SettingsSystemInfoSectionProps = {

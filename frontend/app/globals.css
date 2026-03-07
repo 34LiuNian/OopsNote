@@ -17,11 +17,52 @@
   --oops-radius-sm: 6px;
   --oops-radius-md: 10px;
   --oops-radius-lg: 14px;
+  
+  /* GitHub Primer color system - Light mode */
+  --fgColor-default: #1f2328;
+  --fgColor-muted: #656d76;
+  --fgColor-accent: #0969da;
+  --fgColor-success: #1a7f37;
+  --fgColor-danger: #cf222e;
+  --fgColor-attention: #9a6700;
+  --bgColor-default: #ffffff;
+  --bgColor-muted: #f6f8fa;
+  --bgColor-accent-muted: #ddf4ff;
+  --bgColor-success-muted: #dafbe1;
+  --bgColor-danger-muted: #ffebe9;
+  --bgColor-attention-muted: #fff8c5;
+  --borderColor-default: #d0d7de;
+  --borderColor-muted: #d8dee4;
 }
 
 html {
   color-scheme: light dark;
   scroll-behavior: smooth;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* === Mobile touch optimizations === */
+@media (hover: none) and (pointer: coarse) {
+  .oops-card:hover {
+    box-shadow: var(--oops-shadow-sm);
+  }
+  .oops-card:active {
+    box-shadow: var(--oops-shadow-md);
+  }
+  .oops-card-elevated:hover {
+    box-shadow: var(--oops-shadow-md);
+    transform: none;
+  }
+  .oops-card-elevated:active {
+    box-shadow: var(--oops-shadow-lg);
+    transform: translateY(-1px);
+  }
+  .oops-list-item:hover {
+    background-color: inherit;
+  }
+  .oops-list-item:active {
+    background-color: var(--bgColor-muted, #f6f8fa);
+  }
 }
 
 html[data-oopsnote-color-scheme="light"] {
@@ -36,11 +77,30 @@ html[data-oopsnote-color-scheme="dark"] {
   --oops-shadow-md: 0 4px 6px -1px rgba(0,0,0,0.35), 0 2px 4px -2px rgba(0,0,0,0.25);
   --oops-shadow-lg: 0 10px 15px -3px rgba(0,0,0,0.3), 0 4px 6px -4px rgba(0,0,0,0.2);
   --oops-shadow-float: 0 20px 25px -5px rgba(0,0,0,0.35), 0 8px 10px -6px rgba(0,0,0,0.2);
+  
+  /* GitHub Primer color system - Dark mode */
+  --fgColor-default: #f0f6fc;
+  --fgColor-muted: #8b949e;
+  --fgColor-accent: #58a6ff;
+  --fgColor-success: #3fb950;
+  --fgColor-danger: #f85149;
+  --fgColor-attention: #d29922;
+  --bgColor-default: #0d1117;
+  --bgColor-muted: #161b22;
+  --bgColor-accent-muted: #0c2d6b;
+  --bgColor-success-muted: #0f2d16;
+  --bgColor-danger-muted: #3c1318;
+  --bgColor-attention-muted: #2d2000;
+  --borderColor-default: #30363d;
+  --borderColor-muted: #3d444d;
 }
 
 body {
   margin: 0;
   padding: 0;
+  padding-top: env(safe-area-inset-top);
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
   background-color: Canvas;
   color: CanvasText;
   -webkit-font-smoothing: antialiased;
@@ -416,4 +476,143 @@ html:not(.oops-splash-done) .oops-page-enter {
 
 html.oops-splash-done .oops-page-enter {
   animation: fadeIn 0.3s ease-out;
+}
+
+/* === Mobile Tab Bar === */
+.oops-mobile-tabbar {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 40;
+  display: flex;
+  align-items: stretch;
+  justify-content: space-around;
+  height: calc(56px + env(safe-area-inset-bottom));
+  padding-bottom: env(safe-area-inset-bottom);
+  border-top: 1px solid var(--borderColor-muted, #d0d7de);
+  backdrop-filter: blur(12px) saturate(180%);
+  -webkit-backdrop-filter: blur(12px) saturate(180%);
+  background: rgba(255, 255, 255, 0.88);
+}
+/* Hide tab bar on desktop (≥ 544px, Primer sm breakpoint) */
+@media (min-width: 544px) {
+  .oops-mobile-tabbar {
+    display: none;
+  }
+}
+html[data-oopsnote-color-scheme="dark"] .oops-mobile-tabbar {
+  background: rgba(30, 33, 38, 0.9);
+  border-top-color: var(--borderColor-muted, #3d444d);
+}
+.oops-mobile-tabbar a,
+.oops-mobile-tabbar button {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  border: none;
+  background: transparent;
+  color: var(--fgColor-muted, #656d76);
+  font-size: 10px;
+  font-weight: 500;
+  text-decoration: none;
+  cursor: pointer;
+  transition: color var(--oops-transition-fast);
+  -webkit-tap-highlight-color: transparent;
+  padding: 4px 0;
+}
+.oops-mobile-tabbar a.active,
+.oops-mobile-tabbar button.active {
+  color: var(--fgColor-accent, #0969da);
+}
+.oops-mobile-tabbar a:active,
+.oops-mobile-tabbar button:active {
+  color: var(--fgColor-accent, #0969da);
+  transform: scale(0.92);
+  transition: transform 80ms ease;
+}
+
+/* === Login brand panel (left column) === */
+.oops-login-brand {
+  background: linear-gradient(160deg, #0550ae 0%, #0969da 40%, #1a7f37 100%);
+  color: white;
+}
+html[data-oopsnote-color-scheme="dark"] .oops-login-brand {
+  background: linear-gradient(160deg, #0a3069 0%, #1158c7 40%, #0f3d1e 100%);
+}
+
+/* Login form card entrance */
+.oops-login-card {
+  animation: oops-login-card-in 0.45s cubic-bezier(0.16, 1, 0.3, 1);
+}
+@keyframes oops-login-card-in {
+  from { opacity: 0; transform: translateY(20px) scale(0.97); }
+  to   { opacity: 1; transform: translateY(0)   scale(1); }
+}
+
+/* Login logo pulse */
+.oops-login-logo {
+  animation: oops-login-logo-in 0.5s cubic-bezier(0.16, 1, 0.3, 1) 0.1s both;
+}
+@keyframes oops-login-logo-in {
+  from { opacity: 0; transform: scale(0.6); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+/* Breathing glow */
+.oops-login-glow {
+  animation: oops-login-glow-pulse 4s ease-in-out infinite;
+}
+@keyframes oops-login-glow-pulse {
+  0%, 100% { opacity: 0.5; transform: translate(-50%, -50%) scale(1); }
+  50%      { opacity: 0.8; transform: translate(-50%, -50%) scale(1.15); }
+}
+
+/* Floating decorative circles */
+.oops-login-circle {
+  position: absolute;
+  border-radius: 50%;
+  pointer-events: none;
+  border: 1.5px solid rgba(255,255,255,0.1);
+}
+.oops-login-circle-1 {
+  width: 300px; height: 300px;
+  bottom: -100px; right: -80px;
+  animation: oops-float 8s ease-in-out infinite;
+}
+.oops-login-circle-2 {
+  width: 180px; height: 180px;
+  top: -50px; left: -50px;
+  animation: oops-float 6s ease-in-out 1s infinite reverse;
+}
+.oops-login-circle-3 {
+  width: 120px; height: 120px;
+  top: 30%; right: -30px;
+  border-color: rgba(255,255,255,0.06);
+  animation: oops-float 7s ease-in-out 0.5s infinite;
+}
+@keyframes oops-float {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-14px); }
+}
+
+/* Right panel subtle dot grid */
+.oops-login-right {
+  background-image: radial-gradient(circle, var(--borderColor-muted, rgba(0,0,0,0.06)) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+html[data-oopsnote-color-scheme="dark"] .oops-login-right {
+  background-image: radial-gradient(circle, rgba(255,255,255,0.03) 1px, transparent 1px);
+}
+
+/* === Login error slide-down animation === */
+@keyframes oops-slide-down-kf {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.oops-slide-down {
+  animation: oops-slide-down-kf 0.2s ease-out;
 }

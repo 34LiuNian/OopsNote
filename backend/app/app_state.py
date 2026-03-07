@@ -64,6 +64,12 @@ class ModelsServiceLike(Protocol):
     def prefetch_cache(self) -> None: ...
 
 
+class AuthSettingsLike(Protocol):
+    def load_registration(self) -> Any: ...
+
+    def save_registration(self, enabled: bool) -> Any: ...
+
+
 @dataclass
 class BackendState:
     """Container for backend application state and services."""
@@ -71,5 +77,6 @@ class BackendState:
     repository: TaskRepositoryLike
     ai_gateway_status: dict[str, object]
     agent_settings: AgentSettingsLike
+    auth_settings: AuthSettingsLike
     tasks: TasksServiceLike
     models: ModelsServiceLike

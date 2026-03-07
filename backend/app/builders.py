@@ -17,6 +17,7 @@ from .clients import OpenAIClient, StubAIClient, build_client_for_agent
 from .config import AppConfig
 from .repository import ArchiveStore, FileTaskRepository, InMemoryTaskRepository
 from .services.agent_settings import AgentSettingsService
+from .services.auth_settings import AuthSettingsService
 from .services.tasks_service import TasksService
 from .storage import LocalAssetStore
 from .tags import tag_store
@@ -67,6 +68,12 @@ def build_agent_settings_service() -> AgentSettingsService:
         gateway_store=gateway_store,
         debug_store=debug_store,
     )
+
+
+def build_auth_settings_service() -> AuthSettingsService:
+    from .auth_settings import RegistrationSettingsStore
+
+    return AuthSettingsService(registration_store=RegistrationSettingsStore())
 
 
 def build_ai_client(

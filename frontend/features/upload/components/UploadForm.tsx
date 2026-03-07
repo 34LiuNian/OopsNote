@@ -1,19 +1,16 @@
 "use client";
 
 import { useCallback, useState, useRef, useEffect } from "react";
-import { Box, Heading, Label, Text } from "@primer/react";
-import { Button, FormControl, Select, Spinner, TextInput } from "@primer/react";
+import { Box, Heading, Text } from "@primer/react";
 import { sileo } from "sileo";
-import { fetchJson } from "../lib/api";
-import type { TaskResponse } from "../types/api";
-import { useTagDimensions } from "../features/tags";
-import { useApiError } from "../hooks/useApiError";
-import { ImagePreview } from "./upload/ImagePreview";
-import { AnnotationForm } from "./upload/AnnotationForm";
-import { UploadQueue } from "./upload/UploadQueue";
-import { TagSelectorRow } from "./TagSelectorRow";
+import { useTagDimensions } from "@/features/tags";
+import { useApiError } from "@/hooks/useApiError";
+import { createUploadTaskAndProcess } from "../api";
+import { ImagePreview } from "@/components/upload/ImagePreview";
+import { AnnotationForm } from "@/components/upload/AnnotationForm";
+import { UploadQueue } from "@/components/upload/UploadQueue";
 
-const DEFAULT_SUBJECT = "auto"; // 默认自动识别
+const DEFAULT_SUBJECT = "auto";
 
 export function UploadForm() {
   const [files, setFiles] = useState<File[]>([]);
@@ -44,11 +41,9 @@ export function UploadForm() {
   const currentFile = files[index] ?? null;
   const remaining = files.length - index;
 
-  // 当切换到新图片时，自动聚焦到难度输入框
   useEffect(() => {
     console.log('[UploadForm] index 变化:', { index, filesLength: files.length, hasRef: !!difficultyLeftRef.current });
     if (files.length > 0 && index < files.length) {
-      // 等待 DOM 更新后聚焦
       const timer = setTimeout(() => {
         console.log('[UploadForm] 尝试聚焦难度输入框，ref 存在:', !!difficultyLeftRef.current);
         difficultyLeftRef.current?.focus();
@@ -101,10 +96,7 @@ export function UploadForm() {
   }, []);
 
   const moveNext = useCallback(() => {
-    setIndex((prev) => {
-      const next = prev + 1;
-      return next;
-    });
+    setIndex((prev) => prev + 1);
   }, []);
 
   const handleSkip = useCallback(() => {
@@ -132,7 +124,7 @@ export function UploadForm() {
       }
       const difficultyValue = leftScore && rightScore ? `${leftScore}/${rightScore}` : undefined;
 
-      const payload: Record<string, unknown> = {
+      const payload = {
         subject,
         notes,
         question_no: questionNo.trim() || undefined,
@@ -142,22 +134,13 @@ export function UploadForm() {
         knowledge_tags: knowledgeTags,
         error_tags: errorTags,
         user_tags: customTags,
+        image_base64: await convertFileToBase64(currentFile),
+        filename: currentFile.name,
+        mime_type: currentFile.type || "image/png",
       };
 
-      payload.image_base64 = await convertFileToBase64(currentFile);
-      payload.filename = currentFile.name;
-      payload.mime_type = currentFile.type || "image/png";
-
-      const data = await fetchJson<TaskResponse>("/upload?auto_process=false", {
-        method: "POST",
-        body: JSON.stringify(payload),
-      });
-
+      const data = await createUploadTaskAndProcess(payload);
       const id = data.task.id;
-      // Kick off background processing.
-      await fetchJson<TaskResponse>(`/tasks/${id}/process?background=true`, {
-        method: "POST",
-      });
 
       setLastTaskId(id);
       sileo.success({
@@ -194,7 +177,6 @@ export function UploadForm() {
 
   return (
     <Box sx={{ display: 'flex', flexDirection: ['column', 'column', 'row'], gap: 0, height: '100%' }}>
-      {/* Left: Form */}
       <Box
         sx={{
           flex: '1 1 0',
@@ -259,7 +241,6 @@ export function UploadForm() {
         </Box>
       </Box>
 
-      {/* Right: Image */}
       <Box
         sx={{
           flex: '0 0 50%',

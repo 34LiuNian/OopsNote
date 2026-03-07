@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 
 from pydantic import BaseModel
 
+from ..auth.deps import require_admin, require_user
 from ..tags import (
     TagCreateRequest,
     TagDimension,
@@ -15,7 +16,7 @@ from ..tags import (
     tag_store,
 )
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(require_user)])
 
 
 @router.get("/tags", response_model=TagsResponse)
@@ -62,7 +63,12 @@ def list_tags(
     return TagsResponse(items=[TagItemView(**t.model_dump(mode="json")) for t in items])
 
 
-@router.post("/tags", response_model=TagsResponse, status_code=201)
+@router.post(
+    "/tags",
+    response_model=TagsResponse,
+    status_code=201,
+    dependencies=[Depends(require_admin)],
+)
 def create_tag(payload: TagCreateRequest) -> TagsResponse:
     """Create a new tag."""
     item, _created = tag_store.upsert(
@@ -75,7 +81,7 @@ def create_tag(payload: TagCreateRequest) -> TagsResponse:
     )
 
 
-@router.delete("/tags/{tag_id}")
+@router.delete("/tags/{tag_id}", dependencies=[Depends(require_admin)])
 def delete_tag(tag_id: str) -> dict:
     """Delete a tag by ID."""
     success = tag_store.delete(tag_id)
@@ -86,7 +92,11 @@ def delete_tag(tag_id: str) -> dict:
     return {"ok": True, "tag_id": tag_id}
 
 
-@router.put("/tags/{tag_id}", response_model=TagsResponse)
+@router.put(
+    "/tags/{tag_id}",
+    response_model=TagsResponse,
+    dependencies=[Depends(require_admin)],
+)
 def update_tag(tag_id: str, payload: dict) -> TagsResponse:
     """Update a tag's value by ID."""
     from fastapi import HTTPException
@@ -118,7 +128,11 @@ class TagMergeResponse(BaseModel):
     fields_modified: int
 
 
-@router.post("/tags/{source_id}/merge", response_model=TagMergeResponse)
+@router.post(
+    "/tags/{source_id}/merge",
+    response_model=TagMergeResponse,
+    dependencies=[Depends(require_admin)],
+)
 def merge_tag(source_id: str, payload: TagMergeRequest) -> TagMergeResponse:
     """Merge source tag into target tag, replacing all references."""
     from fastapi import HTTPException
@@ -134,12 +148,20 @@ def merge_tag(source_id: str, payload: TagMergeRequest) -> TagMergeResponse:
     )
 
 
-@router.get("/settings/tag-dimensions", response_model=TagDimensionsResponse)
+@router.get(
+    "/settings/tag-dimensions",
+    response_model=TagDimensionsResponse,
+    dependencies=[Depends(require_admin)],
+)
 def get_tag_dimensions() -> TagDimensionsResponse:
     return TagDimensionsResponse(dimensions=tag_store.load_dimensions())
 
 
-@router.put("/settings/tag-dimensions", response_model=TagDimensionsResponse)
+@router.put(
+    "/settings/tag-dimensions",
+    response_model=TagDimensionsResponse,
+    dependencies=[Depends(require_admin)],
+)
 def update_tag_dimensions(payload: TagDimensionsUpdateRequest) -> TagDimensionsResponse:
     saved = tag_store.save_dimensions(payload.dimensions)
     return TagDimensionsResponse(dimensions=saved)

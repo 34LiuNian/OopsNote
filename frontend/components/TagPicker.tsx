@@ -3,8 +3,8 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Box, Button, Label, Spinner, Text, TextInput } from "@primer/react";
 import { XIcon } from "@primer/octicons-react";
-import type { TagDimension, TagDimensionStyle, TagItem } from "../types/api";
-import { searchTags } from "../features/tags/api";
+import type { TagDimension, TagDimensionStyle, TagItem } from "@/types/api";
+import { searchTags } from "@/features/tags/api";
 
 export type { TagDimension, TagDimensionStyle };
 
@@ -176,40 +176,42 @@ export const TagPicker = memo(function TagPicker({
   }, [dimension, enableRemoteSearch, input, maxSuggestions]);
 
   return (
-    <Box sx={{ display: "flex", flexDirection: "row", alignItems: "center", gap: 2 }}>
-      <Text sx={{ fontWeight: "bold", lineHeight: "28px" }}>{title}</Text>
+    <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
+      {/* Title + Selected tags row */}
+      <Box sx={{ display: "flex", alignItems: "center", gap: 2, flexWrap: "wrap" }}>
+        <Text sx={{ fontWeight: "bold", lineHeight: "28px", flexShrink: 0 }}>{title}</Text>
 
-      <Box sx={{ display: "flex", flexWrap: "wrap", gap: 2, flex: 1, minWidth: 0, alignItems: "center" }}>
-        {value.length === 0 ? (
-          <Text sx={{ color: "fg.muted", fontSize: 1 }}>未选择</Text>
-        ) : (
-          value.map((t) => (
-            <Box
-              key={`${dimension}:${t}`}
-              as="button"
-              type="button"
-              onClick={() => removeTag(t)}
-              sx={{
-                display: "inline-flex",
-                alignItems: "center",
-                bg: "transparent",
-                border: "none",
-                cursor: "pointer",
-                p: 0,
-                position: "relative",
-                "&:hover .tag-label": { opacity: 0 },
-                "&:hover .delete-icon": { opacity: 1 },
-              }}
-            >
-              <Label variant={variant as any} className="tag-label" sx={{ transition: "opacity 0.15s", verticalAlign: "middle" }}>{t}</Label>
-              <Box className="delete-icon" sx={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", color: "danger.fg", opacity: 0, transition: "opacity 0.15s" }}>
-                <XIcon size={12} />
+        <Box sx={{ display: "flex", flexWrap: "wrap", gap: 2, flex: 1, minWidth: 0, alignItems: "center" }}>
+          {value.length === 0 ? (
+            <Text sx={{ color: "fg.muted", fontSize: 1 }}>未选择</Text>
+          ) : (
+            value.map((t) => (
+              <Box
+                key={`${dimension}:${t}`}
+                as="button"
+                type="button"
+                onClick={() => removeTag(t)}
+                sx={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  bg: "transparent",
+                  border: "none",
+                  cursor: "pointer",
+                  p: 0,
+                  position: "relative",
+                }}
+              >
+                <Label variant={variant as any} className="tag-label" sx={{ transition: "opacity 0.15s", verticalAlign: "middle", pr: "20px" }}>{t}</Label>
+                <Box className="delete-icon" sx={{ position: "absolute", right: "4px", top: "50%", transform: "translateY(-50%)", display: "flex", alignItems: "center", justifyContent: "center", color: "danger.fg", opacity: 0.45, transition: "opacity 0.15s", "&:hover": { opacity: 1 } }}>
+                  <XIcon size={12} />
+                </Box>
               </Box>
-            </Box>
-          ))
-        )}
+            ))
+          )}
+        </Box>
       </Box>
 
+      {/* Input field row */}
       <Box sx={{ position: "relative", maxWidth: 560 }}>
         <TextInput
           value={input}
@@ -300,7 +302,7 @@ export const TagPicker = memo(function TagPicker({
               borderColor: "border.default",
               borderRadius: 2,
               bg: "canvas.default",
-              maxHeight: 220,
+              maxHeight: "min(220px, 40vh)",
               overflowY: "auto",
               zIndex: 50,
             }}
@@ -318,7 +320,7 @@ export const TagPicker = memo(function TagPicker({
                   type="button"
                   data-suggestion-index={idx}
                   onMouseDown={(e) => e.preventDefault()}
-                  onMouseEnter={() => setHighlightIndex(idx)}
+                  onPointerEnter={() => setHighlightIndex(idx)}
                   onClick={() => {
                     if (s.type === "create") {
                       void createAndAdd(s.value);

@@ -40,9 +40,8 @@ function readStoredPreference(): ThemePreference {
 
 function readCookiePreference(): ThemePreference {
   if (typeof document === "undefined") return "system";
-  const m = document.cookie.match(
-    /(?:^|;\s*)oopsnote-theme=([^;]*)/
-  );
+  const escaped = STORAGE_KEY.replace(/[-.$?*|{}()\[\]\\/+^]/g, "\\$&");
+  const m = document.cookie.match(new RegExp(`(?:^|;\\s*)${escaped}=([^;]*)`));
   const raw = m ? decodeURIComponent(m[1]) : null;
   if (raw === "light" || raw === "dark" || raw === "system") return raw;
   return "system";
@@ -102,6 +101,12 @@ export function ThemeProvider({
     const stored = readStoredPreference();
     const cookiePref = readCookiePreference();
     const effective = stored !== "system" ? stored : cookiePref;
+
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(STORAGE_KEY, effective);
+    }
+    writePreferenceCookie(effective);
+
     setPreferenceState(effective);
     preferenceRef.current = effective;
     sync(effective);

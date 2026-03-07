@@ -10,6 +10,7 @@ from typing import List, Optional
 from pydantic import BaseModel, ConfigDict, Field
 
 from .common import OptionItem
+from ..config.subjects import DEFAULT_SUBJECT, VALID_SUBJECT_KEYS
 
 
 class ProblemBlock(BaseModel):
@@ -18,8 +19,8 @@ class ProblemBlock(BaseModel):
     problem_id: str
     region_id: str
     subject: str = Field(
-        default="math",
-        description="Auto-detected subject: math, physics, or chemistry",
+        default=DEFAULT_SUBJECT,
+        description=f"Auto-detected subject: {', '.join(VALID_SUBJECT_KEYS)}",
     )
     question_no: Optional[str] = Field(
         default=None,

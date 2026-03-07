@@ -9,6 +9,7 @@ from typing import List, Optional, Dict
 from pydantic import BaseModel, Field, HttpUrl, model_validator
 
 from .common import OptionItem
+from ..config.subjects import DEFAULT_SUBJECT
 
 
 class UploadRequest(BaseModel):
@@ -21,7 +22,7 @@ class UploadRequest(BaseModel):
     )
     filename: Optional[str] = None
     mime_type: Optional[str] = Field(default="image/png")
-    subject: str = Field(default="math")
+    subject: str = Field(default=DEFAULT_SUBJECT)
     grade: Optional[str] = None
     notes: Optional[str] = None
     question_no: Optional[str] = None

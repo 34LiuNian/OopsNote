@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Depends, Request
 
+from ..auth.deps import require_admin, require_user
 from ..models import (
     OverrideProblemRequest,
     RetagRequest,
@@ -13,7 +14,7 @@ from ..models import (
 )
 from .deps import get_tasks_service
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(require_user)])
 
 
 def _svc(request: Request):
@@ -194,13 +195,21 @@ def override_problem(
     return TaskResponse(task=task)
 
 
-@router.delete("/tasks/{task_id}", response_model=TaskResponse)
+@router.delete(
+    "/tasks/{task_id}",
+    response_model=TaskResponse,
+    dependencies=[Depends(require_admin)],
+)
 def delete_task(request: Request, task_id: str) -> TaskResponse:
     task = _svc(request).delete_task(task_id)
     return TaskResponse(task=task)
 
 
-@router.delete("/tasks/{task_id}/problems/{problem_id}", response_model=TaskResponse)
+@router.delete(
+    "/tasks/{task_id}/problems/{problem_id}",
+    response_model=TaskResponse,
+    dependencies=[Depends(require_admin)],
+)
 def delete_problem(request: Request, task_id: str, problem_id: str) -> TaskResponse:
     task = _svc(request).delete_problem(task_id, problem_id)
     return TaskResponse(task=task)

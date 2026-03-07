@@ -25,10 +25,10 @@ export function TaskLiveStream({ streamProgress }: TaskLiveStreamProps) {
         className="oops-glass"
         sx={{
           position: "fixed",
-          right: 20,
-          bottom: 20,
-          width: 44,
-          height: 44,
+          right: [12, 20],
+          bottom: ["calc(64px + env(safe-area-inset-bottom))", 20],
+          width: [40, 44],
+          height: [40, 44],
           borderRadius: "50%",
           border: "1px solid",
           borderColor: "border.default",
@@ -54,10 +54,10 @@ export function TaskLiveStream({ streamProgress }: TaskLiveStreamProps) {
       className="oops-glass"
       sx={{
         position: "fixed",
-        right: 20,
-        bottom: 20,
-        width: 340,
-        maxWidth: "calc(100vw - 32px)",
+        right: [8, 20],
+        bottom: ["calc(64px + env(safe-area-inset-bottom))", 20],
+        width: ["calc(100vw - 16px)", 340],
+        maxWidth: "calc(100vw - 16px)",
         borderRadius: "var(--oops-radius-md)",
         border: "1px solid",
         borderColor: "border.default",

@@ -1,0 +1,34 @@
+{
+  "items": [
+    {
+      "username": "Alan0634",
+      "password_hash": "pbkdf2_sha256$390000$GAz/ONwrE2F5eEHYH137mw==$4apcXw1Zt5hEr8T1oA4NITG9Ta81N2WVaj8w14aYgmY=",
+      "role": "admin",
+      "is_active": true,
+      "nickname": "Alan",
+      "avatar_url": "",
+      "created_at": "2026-03-02T14:27:27.238247Z",
+      "updated_at": "2026-03-07T18:30:47.339130Z"
+    },
+    {
+      "username": "ztr",
+      "password_hash": "pbkdf2_sha256$390000$08DFpCZXmQnITnR9NNt6NA==$YyI+xpwd6Wpg4w4kssLq7tXPywm2RjE0ZbfEy7E//ec=",
+      "role": "member",
+      "is_active": false,
+      "nickname": "ztr",
+      "avatar_url": null,
+      "created_at": "2026-03-02T15:30:26.331903Z",
+      "updated_at": "2026-03-02T15:31:41.394350Z"
+    },
+    {
+      "username": "testadmin",
+      "password_hash": "pbkdf2_sha256$390000$T3AnZqPWoFPLrULvVQmRVw==$oMV5uJX4l7liBMOZtDkiSv8a0bKLtHXT7kiWBh+anRY=",
+      "role": "admin",
+      "is_active": true,
+      "nickname": "Test Admin",
+      "avatar_url": null,
+      "created_at": "2026-03-07T18:30:47.899309Z",
+      "updated_at": "2026-03-07T18:30:47.899309Z"
+    }
+  ]
+}

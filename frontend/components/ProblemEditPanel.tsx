@@ -165,7 +165,7 @@ export function ProblemEditPanel({ taskId, problem, tagStyles, onClose, onSaved 
 
         <FormControl>
           <FormControl.Label>题干</FormControl.Label>
-          <Textarea value={problemText} onChange={(e) => setProblemText(e.target.value)} block rows={6} />
+          <Textarea value={problemText} onChange={(e) => setProblemText(e.target.value)} block rows={4} sx={{ resize: "vertical" }} />
           <Text sx={{ color: "fg.muted", fontSize: 1, mt: 1, display: "block" }}>
             可直接粘贴 Markdown，数学公式用 $...$ 或 \\(...\\)。
           </Text>
@@ -182,7 +182,7 @@ export function ProblemEditPanel({ taskId, problem, tagStyles, onClose, onSaved 
                 key={opt.id}
                 sx={{
                   display: "grid",
-                  gridTemplateColumns: ["1fr", "80px 1fr 80px"],
+                  gridTemplateColumns: ["60px 1fr 50px", "80px 1fr 80px"],
                   gap: 2,
                   alignItems: "start",
                 }}
@@ -244,7 +244,7 @@ export function ProblemEditPanel({ taskId, problem, tagStyles, onClose, onSaved 
           />
         </Box>
 
-        <Box sx={{ display: "flex", gap: 2, justifyContent: "flex-end", pt: 2, borderTop: "1px solid", borderColor: "border.muted" }}>
+        <Box sx={{ display: "flex", gap: 2, justifyContent: "flex-end", pt: 2, borderTop: "1px solid", borderColor: "border.muted", position: "sticky", bottom: 0, bg: "canvas.default", pb: 2, zIndex: 10 }}>
           <Button size="small" variant="invisible" onClick={onClose}>取消</Button>
           <Button variant="primary" onClick={save} disabled={isSaving}>
             {isSaving ? (

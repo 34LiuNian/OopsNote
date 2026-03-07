@@ -40,3 +40,12 @@ def get_agent_settings_service(request: Request):
             status_code=500, detail="Agent settings service unavailable"
         )
     return service
+
+
+def get_auth_settings_service(request: Request):
+    """Return auth settings service from backend state and fail fast when unavailable."""
+    state = get_backend_state(request)
+    service = getattr(state, "auth_settings", None)
+    if service is None:
+        raise HTTPException(status_code=500, detail="Auth settings service unavailable")
+    return service

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import { Box, NavList, Text, IconButton } from "@primer/react";
 import {
@@ -8,6 +8,7 @@ import {
   RepoIcon,
   TagIcon,
   GearIcon,
+  PersonIcon,
   BookIcon,
   ChecklistIcon,
   ThreeBarsIcon,
@@ -15,11 +16,14 @@ import {
   SidebarExpandIcon,
 } from "@primer/octicons-react";
 import Link from "next/link";
+import { getCurrentUser, onAuthChanged } from "../../features/auth/store";
 
 const NAV_ITEMS = [
   { href: "/", label: "新建题目", icon: PlusIcon, section: "main" },
   { href: "/library", label: "题库", icon: RepoIcon, section: "main" },
   { href: "/paper-builder", label: "组卷", icon: ChecklistIcon, section: "main" },
+  { href: "/account", label: "账号设置", icon: PersonIcon, section: "main" },
+  { href: "/users", label: "账号管理", icon: PersonIcon, section: "manage" },
   { href: "/tags", label: "标签管理", icon: TagIcon, section: "manage" },
   { href: "/settings", label: "设置", icon: GearIcon, section: "manage" },
   { href: "/debug", label: "Debug", icon: BookIcon, section: "manage" },
@@ -28,9 +32,19 @@ const NAV_ITEMS = [
 export function Sidebar() {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
+
+  useEffect(() => {
+    const syncRole = () => {
+      setIsAdmin(getCurrentUser()?.role === "admin");
+    };
+    syncRole();
+    return onAuthChanged(syncRole);
+  }, []);
 
   const mainItems = NAV_ITEMS.filter((i) => i.section === "main");
   const manageItems = NAV_ITEMS.filter((i) => i.section === "manage");
+  const visibleManageItems = isAdmin ? manageItems : [];
 
   const isActive = (href: string) => {
     if (href === "/") return pathname === "/";
@@ -47,7 +61,7 @@ export function Sidebar() {
         borderRightColor: ["border.muted", "border.muted"],
         borderBottom: ["1px solid", "none"],
         borderBottomColor: ["border.muted", "none"],
-        display: "flex",
+        display: ["none", "flex"],
         flexDirection: "column",
         flexShrink: 0,
         position: ["relative", "sticky"],
@@ -88,7 +102,7 @@ export function Sidebar() {
       <Box sx={{ flex: 1, py: 2 }}>
         {collapsed ? (
           <Box sx={{ display: "flex", flexDirection: "column", gap: "2px", px: 1 }}>
-            {[...mainItems, ...manageItems].map((item) => {
+            {[...mainItems, ...visibleManageItems].map((item) => {
               const active = isActive(item.href);
               return (
                 <Box key={item.href} sx={{ display: "flex", justifyContent: "center" }}>
@@ -135,46 +149,50 @@ export function Sidebar() {
             {/* Divider */}
             <Box sx={{ mx: 3, my: 2, borderTop: "1px solid", borderColor: "border.muted" }} />
 
-            <Text
-              sx={{
-                fontSize: "11px",
-                fontWeight: 600,
-                color: "fg.muted",
-                textTransform: "uppercase",
-                letterSpacing: "0.05em",
-                px: 3,
-                mb: 1,
-                display: "block",
-              }}
-            >
-              管理
-            </Text>
+            {visibleManageItems.length > 0 ? (
+              <>
+                <Text
+                  sx={{
+                    fontSize: "11px",
+                    fontWeight: 600,
+                    color: "fg.muted",
+                    textTransform: "uppercase",
+                    letterSpacing: "0.05em",
+                    px: 3,
+                    mb: 1,
+                    display: "block",
+                  }}
+                >
+                  管理
+                </Text>
 
-            <NavList sx={{ px: "6px" }}>
-              {manageItems.map((item) => {
-                const active = isActive(item.href);
-                return (
-                  <Box key={item.href} sx={{ my: "1px" }}>
-                    <NavList.Item
-                      href={item.href}
-                      aria-current={active ? "page" : undefined}
-                      as={Link}
-                      sx={{
-                        whiteSpace: "nowrap",
-                        borderRadius: "var(--oops-radius-sm)",
-                        transition: "background-color var(--oops-transition-fast)",
-                        px: 2,
-                      }}
-                    >
-                      <NavList.LeadingVisual>
-                        <item.icon />
-                      </NavList.LeadingVisual>
-                      {item.label}
-                    </NavList.Item>
-                  </Box>
-                );
-              })}
-            </NavList>
+                <NavList sx={{ px: "6px" }}>
+                  {visibleManageItems.map((item) => {
+                    const active = isActive(item.href);
+                    return (
+                      <Box key={item.href} sx={{ my: "1px" }}>
+                        <NavList.Item
+                          href={item.href}
+                          aria-current={active ? "page" : undefined}
+                          as={Link}
+                          sx={{
+                            whiteSpace: "nowrap",
+                            borderRadius: "var(--oops-radius-sm)",
+                            transition: "background-color var(--oops-transition-fast)",
+                            px: 2,
+                          }}
+                        >
+                          <NavList.LeadingVisual>
+                            <item.icon />
+                          </NavList.LeadingVisual>
+                          {item.label}
+                        </NavList.Item>
+                      </Box>
+                    );
+                  })}
+                </NavList>
+              </>
+            ) : null}
           </>
         )}
       </Box>

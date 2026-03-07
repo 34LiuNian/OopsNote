@@ -106,7 +106,12 @@ export function OptionsList(props: {
             sx={{
               whiteSpace: forceWrap ? "normal" : "nowrap",
               overflowWrap: forceWrap ? "anywhere" : "normal",
-              "& p": { display: "inline", margin: 0 },
+              "& p": { 
+                display: "inline", 
+                margin: 0,
+                whiteSpace: forceWrap ? "normal" : "nowrap",
+                overflowWrap: forceWrap ? "anywhere" : "normal",
+              },
             }}
           >
             {renderOptionText(opt, forceWrap)}

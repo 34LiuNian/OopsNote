@@ -43,6 +43,16 @@ curl -s http://localhost:8000/health
 
 ## API overview
 
+### Auth
+
+- `POST /auth/login` username/password 登录，返回 JWT access token
+- `GET /auth/me` 获取当前登录用户信息
+
+权限模型（MVP）：
+
+- `member`：任务、题库、LaTeX、组卷等业务能力
+- `admin`：系统设置与标签治理能力（含标签维度设置）
+
 ### Tasks
 
 - `POST /upload` create task from an uploaded image (multipart)

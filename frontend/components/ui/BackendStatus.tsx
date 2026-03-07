@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Box, Text, Tooltip } from "@primer/react";
 
-import { API_BASE } from "../lib/api";
+import { API_BASE } from "@/lib/api";
 
 type BackendStatusState = "checking" | "connected" | "disconnected";
 

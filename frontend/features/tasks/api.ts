@@ -5,6 +5,7 @@ import type {
   TasksResponse,
 } from "../../types/api";
 import { API_BASE } from "../../lib/api";
+import { fetchApi } from "../../lib/api";
 
 export type ListTasksParams = {
   active_only?: boolean;
@@ -97,7 +98,7 @@ export type PaperCompilePayload = {
 };
 
 export async function compilePaper(payload: PaperCompilePayload): Promise<Response> {
-  return fetch(`${API_BASE}/papers/compile`, {
+  return fetchApi("/papers/compile", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),

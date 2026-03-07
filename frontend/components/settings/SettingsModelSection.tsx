@@ -3,7 +3,7 @@
 import { Box, Button, Heading, Spinner, Text } from "@primer/react";
 import { CpuIcon, SyncIcon } from "@primer/octicons-react";
 import { AgentSettingsRow } from "./AgentSettingsRow";
-import { ErrorBanner } from "../ErrorBanner";
+import { ErrorBanner } from "../ui/ErrorBanner";
 import { sileo } from "sileo";
 import { useEffect } from "react";
 
