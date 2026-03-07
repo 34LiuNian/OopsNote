@@ -17,11 +17,52 @@
   --oops-radius-sm: 6px;
   --oops-radius-md: 10px;
   --oops-radius-lg: 14px;
+  
+  /* GitHub Primer color system - Light mode */
+  --fgColor-default: #1f2328;
+  --fgColor-muted: #656d76;
+  --fgColor-accent: #0969da;
+  --fgColor-success: #1a7f37;
+  --fgColor-danger: #cf222e;
+  --fgColor-attention: #9a6700;
+  --bgColor-default: #ffffff;
+  --bgColor-muted: #f6f8fa;
+  --bgColor-accent-muted: #ddf4ff;
+  --bgColor-success-muted: #dafbe1;
+  --bgColor-danger-muted: #ffebe9;
+  --bgColor-attention-muted: #fff8c5;
+  --borderColor-default: #d0d7de;
+  --borderColor-muted: #d8dee4;
 }
 
 html {
   color-scheme: light dark;
   scroll-behavior: smooth;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* === Mobile touch optimizations === */
+@media (hover: none) and (pointer: coarse) {
+  .oops-card:hover {
+    box-shadow: var(--oops-shadow-sm);
+  }
+  .oops-card:active {
+    box-shadow: var(--oops-shadow-md);
+  }
+  .oops-card-elevated:hover {
+    box-shadow: var(--oops-shadow-md);
+    transform: none;
+  }
+  .oops-card-elevated:active {
+    box-shadow: var(--oops-shadow-lg);
+    transform: translateY(-1px);
+  }
+  .oops-list-item:hover {
+    background-color: inherit;
+  }
+  .oops-list-item:active {
+    background-color: var(--bgColor-muted, #f6f8fa);
+  }
 }
 
 html[data-oopsnote-color-scheme="light"] {
@@ -36,11 +77,30 @@ html[data-oopsnote-color-scheme="dark"] {
   --oops-shadow-md: 0 4px 6px -1px rgba(0,0,0,0.35), 0 2px 4px -2px rgba(0,0,0,0.25);
   --oops-shadow-lg: 0 10px 15px -3px rgba(0,0,0,0.3), 0 4px 6px -4px rgba(0,0,0,0.2);
   --oops-shadow-float: 0 20px 25px -5px rgba(0,0,0,0.35), 0 8px 10px -6px rgba(0,0,0,0.2);
+  
+  /* GitHub Primer color system - Dark mode */
+  --fgColor-default: #f0f6fc;
+  --fgColor-muted: #8b949e;
+  --fgColor-accent: #58a6ff;
+  --fgColor-success: #3fb950;
+  --fgColor-danger: #f85149;
+  --fgColor-attention: #d29922;
+  --bgColor-default: #0d1117;
+  --bgColor-muted: #161b22;
+  --bgColor-accent-muted: #0c2d6b;
+  --bgColor-success-muted: #0f2d16;
+  --bgColor-danger-muted: #3c1318;
+  --bgColor-attention-muted: #2d2000;
+  --borderColor-default: #30363d;
+  --borderColor-muted: #3d444d;
 }
 
 body {
   margin: 0;
   padding: 0;
+  padding-top: env(safe-area-inset-top);
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
   background-color: Canvas;
   color: CanvasText;
   -webkit-font-smoothing: antialiased;
@@ -416,6 +476,63 @@ html:not(.oops-splash-done) .oops-page-enter {
 
 html.oops-splash-done .oops-page-enter {
   animation: fadeIn 0.3s ease-out;
+}
+
+/* === Mobile Tab Bar === */
+.oops-mobile-tabbar {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 40;
+  display: flex;
+  align-items: stretch;
+  justify-content: space-around;
+  height: calc(56px + env(safe-area-inset-bottom));
+  padding-bottom: env(safe-area-inset-bottom);
+  border-top: 1px solid var(--borderColor-muted, #d0d7de);
+  backdrop-filter: blur(12px) saturate(180%);
+  -webkit-backdrop-filter: blur(12px) saturate(180%);
+  background: rgba(255, 255, 255, 0.88);
+}
+/* Hide tab bar on desktop (≥ 544px, Primer sm breakpoint) */
+@media (min-width: 544px) {
+  .oops-mobile-tabbar {
+    display: none;
+  }
+}
+html[data-oopsnote-color-scheme="dark"] .oops-mobile-tabbar {
+  background: rgba(30, 33, 38, 0.9);
+  border-top-color: var(--borderColor-muted, #3d444d);
+}
+.oops-mobile-tabbar a,
+.oops-mobile-tabbar button {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  border: none;
+  background: transparent;
+  color: var(--fgColor-muted, #656d76);
+  font-size: 10px;
+  font-weight: 500;
+  text-decoration: none;
+  cursor: pointer;
+  transition: color var(--oops-transition-fast);
+  -webkit-tap-highlight-color: transparent;
+  padding: 4px 0;
+}
+.oops-mobile-tabbar a.active,
+.oops-mobile-tabbar button.active {
+  color: var(--fgColor-accent, #0969da);
+}
+.oops-mobile-tabbar a:active,
+.oops-mobile-tabbar button:active {
+  color: var(--fgColor-accent, #0969da);
+  transform: scale(0.92);
+  transition: transform 80ms ease;
 }
 
 /* === Login brand panel (left column) === */

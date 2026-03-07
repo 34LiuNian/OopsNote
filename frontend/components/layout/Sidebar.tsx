@@ -61,7 +61,7 @@ export function Sidebar() {
         borderRightColor: ["border.muted", "border.muted"],
         borderBottom: ["1px solid", "none"],
         borderBottomColor: ["border.muted", "none"],
-        display: "flex",
+        display: ["none", "flex"],
         flexDirection: "column",
         flexShrink: 0,
         position: ["relative", "sticky"],

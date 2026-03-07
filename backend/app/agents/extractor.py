@@ -18,6 +18,7 @@ from ..models import (
     ProblemBlock,
     TaskCreateRequest,
 )
+from ..config.subjects import VALID_SUBJECT_KEYS, DEFAULT_SUBJECT
 from . import utils
 
 logger = logging.getLogger(__name__)
@@ -151,9 +152,9 @@ class LLMOcrExtractor:
             question_type = utils._coerce_str(payload_dict.get("question_type"), None)
             # Auto-detect subject from OCR
             subject = utils._coerce_str(payload_dict.get("subject"), fallback=None)
-            # Validate subject value - if user selected 'auto' or LLM failed to detect, use 'math' as fallback
-            if subject not in ("math", "physics", "chemistry"):
-                subject = "math" if payload.subject == "auto" else payload.subject
+            # Validate subject value - if user selected 'auto' or LLM failed to detect, use default subject as fallback
+            if subject not in VALID_SUBJECT_KEYS:
+                subject = DEFAULT_SUBJECT if payload.subject == "auto" else payload.subject
 
             # Some models spam trailing whitespace/newlines when hitting max tokens.
             rstrip_enabled = (

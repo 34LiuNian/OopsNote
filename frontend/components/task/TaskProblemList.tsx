@@ -214,7 +214,7 @@ function ProblemCardItem({
           bg: "canvas.subtle",
         }}
       >
-        <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
+        <Box sx={{ display: "flex", alignItems: "center", gap: 2, flexWrap: "wrap", flex: 1, minWidth: 0 }}>
           <Text sx={{ fontWeight: 600, fontSize: 2 }}>
             {problem.question_no ? `题 ${problem.question_no}` : `题目 ${idx + 1}`}
           </Text>
@@ -228,7 +228,7 @@ function ProblemCardItem({
             <Text sx={{ fontSize: 0, color: "fg.muted" }}>难度：{taskDifficulty}</Text>
           )}
         </Box>
-        <Box sx={{ display: "flex", gap: 1 }}>
+        <Box sx={{ display: "flex", gap: 1, flexShrink: 0 }}>
           <Tooltip text="编辑" direction="s">
             <IconButton icon={PencilIcon} aria-label="编辑" size="small" variant="invisible" onClick={() => onEdit(problem.problem_id)} />
           </Tooltip>
@@ -288,6 +288,7 @@ function ProblemCardItem({
               cursor: "pointer",
               bg: "canvas.subtle",
               "&:hover": { bg: "neutral.muted" },
+              "&:active": { bg: "neutral.muted" },
               transition: "background-color var(--oops-transition-fast)",
               userSelect: "none",
             }}

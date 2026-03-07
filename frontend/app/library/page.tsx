@@ -21,12 +21,11 @@ import { TaskThumbnail } from "../../components/TaskThumbnail";
 import { TagSelectorRow } from "../../components/TagSelectorRow";
 import { ListSkeleton } from "../../components/ui/LoadingStates";
 import { useTagDimensions } from "../../features/tags";
+import { SUBJECT_OPTIONS } from "../../config/subjects";
 
-const SUBJECT_OPTIONS = [
+const LIBRARY_SUBJECT_OPTIONS = [
   { value: "", label: "全部学科" },
-  { value: "math", label: "数学" },
-  { value: "physics", label: "物理" },
-  { value: "chemistry", label: "化学" },
+  ...SUBJECT_OPTIONS,
 ];
 
 export default function LibraryPage() {
@@ -135,7 +134,7 @@ export default function LibraryPage() {
           <FormControl>
             <FormControl.Label>学科</FormControl.Label>
             <Select value={subject} onChange={(e) => setSubject(e.target.value)} block>
-              {SUBJECT_OPTIONS.map((option) => (
+                {LIBRARY_SUBJECT_OPTIONS.map((option) => (
                 <Select.Option key={option.value || "all"} value={option.value}>
                   {option.label}
                 </Select.Option>

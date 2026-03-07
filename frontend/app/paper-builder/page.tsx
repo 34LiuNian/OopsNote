@@ -16,11 +16,10 @@ import { compilePaper, useProblemList } from "../../features/tasks";
 import { ProblemListItem } from "../../components/ProblemListItem";
 import { TagSelectorRow } from "../../components/TagSelectorRow";
 import { useTagDimensions } from "../../features/tags";
+import { SUBJECT_OPTIONS, DEFAULT_SUBJECT } from "../../config/subjects";
 
-const SUBJECT_OPTIONS = [
-  { value: "math", label: "数学" },
-  { value: "physics", label: "物理" },
-  { value: "chemistry", label: "化学" },
+const BUILDER_SUBJECT_OPTIONS = [
+  ...SUBJECT_OPTIONS,
   { value: "", label: "全部学科" },
 ];
 
@@ -33,7 +32,7 @@ function generateDefaultTitle(subjectLabel: string): string {
 }
 
 export default function PaperBuilderPage() {
-  const [subject, setSubject] = useState<string>("math");
+  const [subject, setSubject] = useState<string>(DEFAULT_SUBJECT);
   const [sourceFilter, setSourceFilter] = useState<string[]>([]);
   const [knowledgeFilter, setKnowledgeFilter] = useState<string[]>([]);
   const [errorFilter, setErrorFilter] = useState<string[]>([]);
@@ -60,7 +59,7 @@ export default function PaperBuilderPage() {
 
   // 根据学科获取学科标签
   const subjectLabel = useMemo(() => {
-    const subj = SUBJECT_OPTIONS.find((opt) => opt.value === subject);
+    const subj = BUILDER_SUBJECT_OPTIONS.find((opt) => opt.value === subject);
     return subj?.label || "综合";
   }, [subject]);
 
@@ -197,7 +196,7 @@ export default function PaperBuilderPage() {
             <FormControl>
               <FormControl.Label>学科</FormControl.Label>
               <Select value={subject} onChange={(e) => setSubject(e.target.value)} block>
-                {SUBJECT_OPTIONS.map((option) => (
+                  {BUILDER_SUBJECT_OPTIONS.map((option) => (
                   <Select.Option key={option.value || "all"} value={option.value}>
                     {option.label}
                   </Select.Option>

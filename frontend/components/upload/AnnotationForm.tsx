@@ -11,6 +11,7 @@ import {
 } from "@primer/react";
 import { TagSelectorRow } from "@/components/TagSelectorRow";
 import type { TagDimensionStyle } from "@/types/api";
+import { SUBJECT_OPTIONS } from "@/config/subjects";
 
 type AnnotationFormProps = {
     subject: string;
@@ -87,7 +88,7 @@ export function AnnotationForm({
 
     return (
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-            <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 3 }}>
+            <Box sx={{ display: 'grid', gridTemplateColumns: ['1fr', '1fr 1fr'], gap: 3 }}>
                 <FormControl>
                     <FormControl.Label>难度</FormControl.Label>
                     <Box
@@ -221,7 +222,7 @@ export function AnnotationForm({
 
             {showAdvanced && (
                 <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-                    <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 3 }}>
+                    <Box sx={{ display: 'grid', gridTemplateColumns: ['1fr', '1fr 1fr'], gap: 3 }}>
                         <FormControl>
                             <FormControl.Label>题号</FormControl.Label>
                             <TextInput
@@ -234,9 +235,11 @@ export function AnnotationForm({
                             <FormControl.Label>学科</FormControl.Label>
                             <Select value={subject} onChange={(e) => onSubjectChange(e.target.value)} block>
                                 <Select.Option value="auto">自动识别</Select.Option>
-                                <Select.Option value="math">数学</Select.Option>
-                                <Select.Option value="physics">物理</Select.Option>
-                                <Select.Option value="chemistry">化学</Select.Option>
+                                  {SUBJECT_OPTIONS.map((option) => (
+                                    <Select.Option key={option.value} value={option.value}>
+                                      {option.label}
+                                    </Select.Option>
+                                  ))}
                             </Select>
                         </FormControl>
                     </Box>

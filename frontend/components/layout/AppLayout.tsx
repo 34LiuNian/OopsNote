@@ -5,6 +5,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { Box, Button, Text } from '@primer/react';
 import { PersonIcon } from '@primer/octicons-react';
 import { Sidebar } from './Sidebar';
+import { MobileTabBar } from './MobileTabBar';
 import { BackendStatus } from '../ui/BackendStatus';
 import { clearAuthSession, getCurrentUser, onAuthChanged } from '../../features/auth/store';
 
@@ -111,7 +112,10 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
              height: 50,
            }}
          >
-            <Box />
+            <Box sx={{ display: ['flex', 'none'], alignItems: 'center', gap: 2, color: 'fg.default' }}>
+              <Text sx={{ fontWeight: 'bold', fontSize: 3, fontFamily: "'OopsNoteFont', 'Inter', 'HarmonyOS Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" }}>OopsNote</Text>
+            </Box>
+            <Box sx={{ display: ['none', 'flex'] }} />
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 3 }}>
               <BackendStatus />
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, color: 'fg.muted' }}>
@@ -121,12 +125,13 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
               <Button size="small" onClick={handleLogout}>退出登录</Button>
             </Box>
          </Box>
-         <Box as="main" sx={{ px: [3, 4, 5], py: 4, flex: 1, width: '100%' }}>
+         <Box as="main" sx={{ px: [3, 4, 5], py: [3, 4], flex: 1, width: '100%', pb: ['80px', 4] }}>
             <div key={pathname} className="oops-page-enter">
               {children}
             </div>
          </Box>
       </Box>
+      <MobileTabBar />
     </Box>
   );
 }

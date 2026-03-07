@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import Script from "next/script";
 import { cookies } from "next/headers";
 import "./globals.css";
@@ -8,6 +8,16 @@ import { ThemeProvider, ReactQueryProvider } from '@/components/providers';
 import StyledComponentsRegistry from '@/lib/registry';
 import { SileoToaster } from '@/components/ui';
 import { KatexAutoRender } from '@/components/renderers';
+
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  viewportFit: 'cover',
+  themeColor: [
+    { media: '(prefers-color-scheme: light)', color: '#ffffff' },
+    { media: '(prefers-color-scheme: dark)', color: '#111827' },
+  ],
+};
 
 export const metadata: Metadata = {
   title: "OopsNote: AI Mistake Organizer",
@@ -20,7 +30,13 @@ export const metadata: Metadata = {
     title: 'OopsNote',
   },
   icons: {
-    icon: '/favicon.svg',
+    icon: [
+      { url: '/icon-light', type: 'image/png', media: '(prefers-color-scheme: light)' },
+      { url: '/icon-dark', type: 'image/png', media: '(prefers-color-scheme: dark)' },
+      { url: '/icon', type: 'image/png' },
+      { url: '/favicon.svg', type: 'image/svg+xml' },
+    ],
+    apple: [{ url: '/apple-icon', sizes: '180x180', type: 'image/png' }],
   },
 };
 
