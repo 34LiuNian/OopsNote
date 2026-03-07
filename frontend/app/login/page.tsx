@@ -95,7 +95,9 @@ export default function LoginPage() {
         : await login({ username: normalizedUsername, password });
       saveAuthSession({
         accessToken: result.access_token,
+        refreshToken: result.refresh_token,
         expiresIn: result.expires_in,
+        refreshExpiresIn: result.refresh_expires_in,
         user: result.user,
       });
       router.replace(next);

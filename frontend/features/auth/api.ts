@@ -6,6 +6,8 @@ import type {
   AuthTokenResponse,
   LoginRequest,
   PasswordUpdateRequest,
+  RefreshTokenRequest,
+  RefreshTokenResponse,
   RegisterRequest,
   RegistrationSettingsResponse,
   RegistrationSettingsUpdateRequest,
@@ -15,6 +17,16 @@ import type {
 
 export async function login(payload: LoginRequest): Promise<AuthTokenResponse> {
   return fetchJson<AuthTokenResponse>("/auth/login", {
+    method: "POST",
+    body: JSON.stringify(payload),
+    skipAuth: true,
+  });
+}
+
+export async function refreshAccessToken(
+  payload: RefreshTokenRequest
+): Promise<RefreshTokenResponse> {
+  return fetchJson<RefreshTokenResponse>("/auth/refresh", {
     method: "POST",
     body: JSON.stringify(payload),
     skipAuth: true,

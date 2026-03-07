@@ -67,6 +67,26 @@ def create_access_token(
     return token, int((expire - now).total_seconds())
 
 
+def create_refresh_token(
+    *,
+    subject: str,
+    secret: str,
+    algorithm: str,
+    expires_days: int,
+) -> tuple[str, int]:
+    """Create a refresh token for long-term authentication."""
+    now = datetime.now(timezone.utc)
+    expire = now + timedelta(days=max(1, int(expires_days)))
+    payload: dict[str, Any] = {
+        "sub": subject,
+        "type": "refresh",
+        "iat": int(now.timestamp()),
+        "exp": int(expire.timestamp()),
+    }
+    token = jwt.encode(payload, secret, algorithm=algorithm)
+    return token, int((expire - now).total_seconds())
+
+
 def decode_access_token(token: str, *, secret: str, algorithm: str) -> dict[str, Any]:
     try:
         payload = jwt.decode(token, secret, algorithms=[algorithm])
@@ -74,4 +94,27 @@ def decode_access_token(token: str, *, secret: str, algorithm: str) -> dict[str,
         raise ValueError("无效或已过期的登录凭证") from exc
     if not isinstance(payload, dict):
         raise ValueError("无效的登录凭证")
+    
+    # Verify token type
+    token_type = payload.get("type", "access")
+    if token_type != "access":
+        raise ValueError("无效的访问令牌")
+    
+    return payload
+
+
+def decode_refresh_token(token: str, *, secret: str, algorithm: str) -> dict[str, Any]:
+    """Decode and validate a refresh token."""
+    try:
+        payload = jwt.decode(token, secret, algorithms=[algorithm])
+    except JWTError as exc:
+        raise ValueError("无效或已过期的刷新凭证") from exc
+    if not isinstance(payload, dict):
+        raise ValueError("无效的刷新凭证")
+    
+    # Verify token type
+    token_type = payload.get("type")
+    if token_type != "refresh":
+        raise ValueError("无效的刷新令牌")
+    
     return payload

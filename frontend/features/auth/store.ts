@@ -7,7 +7,9 @@ const AUTH_CHANGE_EVENT = "oopsnote-auth-changed";
 
 export type AuthSession = {
   accessToken: string;
+  refreshToken: string;
   expiresAt: number;
+  refreshExpiresAt: number;
   user: UserPublic;
 };
 
@@ -15,10 +17,17 @@ function parseSession(raw: string | null): AuthSession | null {
   if (!raw) return null;
   try {
     const parsed = JSON.parse(raw) as AuthSession;
-    if (!parsed?.accessToken || !parsed?.user?.username || !parsed?.user?.role) {
+    if (
+      !parsed?.accessToken ||
+      !parsed?.refreshToken ||
+      !parsed?.user?.username ||
+      !parsed?.user?.role
+    ) {
       return null;
     }
-    if (typeof parsed.expiresAt !== "number") return null;
+    if (typeof parsed.expiresAt !== "number" || typeof parsed.refreshExpiresAt !== "number") {
+      return null;
+    }
     return parsed;
   } catch {
     return null;
@@ -68,14 +77,19 @@ export function getCurrentUser(): UserPublic | null {
 
 export function saveAuthSession(payload: {
   accessToken: string;
+  refreshToken: string;
   expiresIn: number;
+  refreshExpiresIn: number;
   user: UserPublic;
 }): void {
   if (typeof window === "undefined") return;
   const expiresAt = Date.now() + Math.max(1, payload.expiresIn) * 1000;
+  const refreshExpiresAt = Date.now() + Math.max(1, payload.refreshExpiresIn) * 1000;
   const session: AuthSession = {
     accessToken: payload.accessToken,
+    refreshToken: payload.refreshToken,
     expiresAt,
+    refreshExpiresAt,
     user: payload.user,
   };
   window.localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(session));
@@ -98,6 +112,30 @@ export function updateSessionUser(user: UserPublic): void {
   };
   window.localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(next));
   emitAuthChanged();
+}
+
+export function updateSessionTokens(accessToken: string, expiresIn: number): void {
+  if (typeof window === "undefined") return;
+  const session = getAuthSession();
+  if (!session) return;
+  const expiresAt = Date.now() + Math.max(1, expiresIn) * 1000;
+  const next: AuthSession = {
+    ...session,
+    accessToken,
+    expiresAt,
+  };
+  window.localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(next));
+  emitAuthChanged();
+}
+
+export function getRefreshToken(): string | null {
+  const session = getAuthSession();
+  if (!session) return null;
+  if (session.refreshExpiresAt <= Date.now()) {
+    silentClear();
+    return null;
+  }
+  return session.refreshToken;
 }
 
 export function onAuthChanged(listener: () => void): () => void {

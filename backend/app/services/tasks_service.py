@@ -659,6 +659,7 @@ class TasksService:
                     return out
 
                 combined_knowledge = _merge_unique([*manual_knowledge, *ai_knowledge])
+                combined_error = _merge_unique([*manual_error, *ai_knowledge])
 
                 # Apply filters
                 if tag is not None and tag not in combined_knowledge:
@@ -668,15 +669,15 @@ class TasksService:
                     if problem.source not in source_list:
                         continue
                 if knowledge_tag_list is not None:
-                    # Filter by multiple knowledge tags (OR logic)
-                    if not any(kt in manual_knowledge for kt in knowledge_tag_list):
+                    # Filter by multiple knowledge tags (OR logic) - check combined tags
+                    if not any(kt in combined_knowledge for kt in knowledge_tag_list):
                         continue
                 if error_tag_list is not None:
-                    # Filter by multiple error tags (OR logic)
-                    if not any(et in manual_error for et in error_tag_list):
+                    # Filter by multiple error tags (OR logic) - check combined tags
+                    if not any(et in combined_error for et in error_tag_list):
                         continue
                 if user_tag_list is not None:
-                    # Filter by multiple custom tags (OR logic)
+                    # Filter by multiple custom tags (OR logic) - only manual tags
                     if not any(ut in manual_custom for ut in user_tag_list):
                         continue
                 if date_after is not None and task.created_at < date_after:
