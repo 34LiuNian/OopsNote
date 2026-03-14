@@ -15,6 +15,8 @@ from uuid import uuid4
 
 from pydantic import BaseModel, Field
 
+from .default_tags_seed import load_builtin_tags
+
 
 class TagDimension(str, Enum):
     """Tag dimension enumeration and utilities."""
@@ -108,6 +110,7 @@ class TagStore:
         self.tags_path = tags_path or (base / "tags.json")
         self.dims_path = dims_path or (base / "tag_dimensions.json")
         self._lock = threading.Lock()
+        self._defaults_ensured = False
 
     def load_dimensions(self) -> dict[str, TagDimensionStyle]:
         """Load or initialize tag dimension styles."""
@@ -624,17 +627,60 @@ class TagStore:
     def _load_state_unlocked(self) -> _TagState:
         if not self.tags_path.exists():
             state = _TagState(items=[])
+        else:
+            raw = json.loads(self.tags_path.read_text(encoding="utf-8"))
+            items = raw.get("items", []) if isinstance(raw, dict) else []
+            parsed: List[TagItem] = []
+            for item in items or []:
+                try:
+                    parsed.append(TagItem.model_validate(item))
+                except Exception:  # pylint: disable=broad-exception-caught
+                    continue
+            state = _TagState(items=parsed)
+
+        if not self._defaults_ensured:
+            state = self._merge_builtin_defaults_unlocked(state)
+            self._defaults_ensured = True
+
+        if not self.tags_path.exists():
             self._write_state_unlocked(state)
             return state
-        raw = json.loads(self.tags_path.read_text(encoding="utf-8"))
-        items = raw.get("items", []) if isinstance(raw, dict) else []
-        parsed: List[TagItem] = []
-        for item in items or []:
-            try:
-                parsed.append(TagItem.model_validate(item))
-            except Exception:  # pylint: disable=broad-exception-caught
+
+        return state
+
+    def _merge_builtin_defaults_unlocked(self, state: _TagState) -> _TagState:
+        changed = False
+        index_by_key = {
+            self._key(item.dimension, item.value): idx
+            for idx, item in enumerate(state.items)
+        }
+
+        for record in load_builtin_tags():
+            payload = record.as_dict()
+            dimension = TagDimension(str(payload["dimension"]))
+            key = self._key(dimension, str(payload["value"]))
+            aliases = [str(a).strip() for a in (payload.get("aliases") or []) if str(a).strip()]
+
+            existing_index = index_by_key.get(key)
+            if existing_index is not None:
+                existing = state.items[existing_index]
+                merged_aliases = list(
+                    dict.fromkeys([*(existing.aliases or []), *aliases])
+                )
+                if merged_aliases != (existing.aliases or []):
+                    state.items[existing_index] = existing.model_copy(
+                        update={"aliases": merged_aliases}
+                    )
+                    changed = True
                 continue
-        return _TagState(items=parsed)
+
+            state.items.append(TagItem.model_validate(payload))
+            index_by_key[key] = len(state.items) - 1
+            changed = True
+
+        if changed:
+            self._write_state_unlocked(state)
+        return state
 
     def _write_state_unlocked(self, state: _TagState) -> None:
         payload = {"items": [item.model_dump(mode="json") for item in state.items]}

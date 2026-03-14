@@ -56,16 +56,12 @@
     - [ ] 自用
     - [ ] 运营
 - [ ] tagger 体系的完善
-  - [ ] 导入、整理、合并已有的两个标签源 [https://filatex.cn/] [https://github.com/wttwins/wrong-notebook] 内容
+  - [x] 导入、整理、合并已有的两个标签源 [https://filatex.cn/] [https://github.com/wttwins/wrong-notebook] 内容
 - [ ] 科目扩展英语、生物
 - [ ] PWA 完善
   - [ ] 目录
   - [ ] 横屏边框
-- [ ] 选项自适应
-- [ ] 增量学习：将用户最终确认的标签作为 few-shot 示例缓存给 Agent
-- [ ] 多模态裁剪工具：在前端加入可视化框选，写回裁剪结果用于再训练
-- [ ] 协同模式：支持多人共享错题集，基于角色管理编辑/打标权限
-- [ ] 评测框架：构建自动化 benchmark（真实题图 + 标准答案 + 标签）来回归测试各 Agent
+- [x] 选项自适应
 
 ---
 
@@ -99,6 +95,12 @@
 | **💾 存储** | 本地文件 | 便于本地开发/回放；后续可替换为 DB/S3 |
 
 > ⚠️ **注意**：错误详情记录在 `storage/llm_errors.log`
+
+### 🏷️ 默认标签内置
+
+- 两个原始标签源 [_tmp/tag.json](_tmp/tag.json) 与 [_tmp/tag-data](_tmp/tag-data) 已整理并永久固化为 [backend/app/default_tags_builtin.json](backend/app/default_tags_builtin.json)。
+- 运行时会自动从该内置快照补齐缺失标签；如需完整重建 [backend/storage/settings/tags.json](backend/storage/settings/tags.json)，可执行 [backend/scripts/rebuild_default_tags.py](backend/scripts/rebuild_default_tags.py)。
+- 当前默认内置以 `knowledge` 维度为主，并补充少量通用 `error` / `meta` 默认标签。
 
 ## 📁 项目结构
 

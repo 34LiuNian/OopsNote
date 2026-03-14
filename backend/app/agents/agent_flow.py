@@ -7,6 +7,7 @@ import re
 from typing import Any, Callable, Iterable, Mapping, Sequence
 
 from ..clients import AIClient
+from ..config.subjects import SUBJECTS
 from ..models import ProblemBlock, SolutionBlock, TaggingResult, TaskCreateRequest
 from ..tags import TagDimension, tag_store
 from . import utils
@@ -20,6 +21,45 @@ _SKILL_DIR = Path(__file__).parent.parent / "skills"
 # Keep local regex for chemfig detection (domain-specific logic)
 _CHEMFIG_RE = re.compile(r"\\chemfig|chemfig", re.IGNORECASE)
 _CHEM_HINT_RE = re.compile(r"化学|有机|结构式|分子式|反应", re.IGNORECASE) # TODO: 优化识别方式
+
+
+def _tag_sort_key(item: Any) -> tuple[int, str]:
+    return (-int(getattr(item, "ref_count", 0) or 0), str(getattr(item, "value", "")))
+
+
+def _pick_tag_candidates(
+    dimension: TagDimension,
+    *,
+    subject: str | None = None,
+    limit: int = 200,
+) -> list[Any]:
+    items = tag_store.list(dimension=dimension, limit=max(limit * 12, 2000))
+    items.sort(key=_tag_sort_key)
+
+    if dimension != TagDimension.KNOWLEDGE:
+        return items[:limit]
+
+    subject_label = SUBJECTS.get(subject or "", "")
+    if not subject_label:
+        return items[:limit]
+
+    prefix = f"{subject_label}/"
+    subject_specific: list[Any] = []
+    generic: list[Any] = []
+    for item in items:
+        aliases = [str(alias).strip() for alias in (getattr(item, "aliases", []) or []) if str(alias).strip()]
+        if str(getattr(item, "value", "")).startswith(prefix) or any(
+            alias.startswith(prefix) for alias in aliases
+        ):
+            subject_specific.append(item)
+        else:
+            generic.append(item)
+
+    subject_quota = max(80, int(limit * 0.75))
+    selected = subject_specific[:subject_quota]
+    if len(selected) < limit:
+        selected.extend(generic[: limit - len(selected)])
+    return selected[:limit]
 
 
 @dataclass
@@ -205,11 +245,13 @@ class AgentOrchestrator:
         skills: list[str] = []
         if _needs_chemfig_skill(problem):
             skills.append("chemfig")
-        knowledge_candidates = tag_store.list(
-            dimension=TagDimension.KNOWLEDGE, limit=200
+        knowledge_candidates = _pick_tag_candidates(
+            TagDimension.KNOWLEDGE,
+            subject=payload.subject,
+            limit=200,
         )
-        error_candidates = tag_store.list(dimension=TagDimension.ERROR, limit=200)
-        meta_candidates = tag_store.list(dimension=TagDimension.META, limit=200)
+        error_candidates = _pick_tag_candidates(TagDimension.ERROR, limit=200)
+        meta_candidates = _pick_tag_candidates(TagDimension.META, limit=200)
 
         def _render_candidates(items: list[Any]) -> str:
             if not items:
