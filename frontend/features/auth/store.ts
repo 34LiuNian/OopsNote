@@ -10,8 +10,14 @@ export type AuthSession = {
   refreshToken: string;
   expiresAt: number;
   refreshExpiresAt: number;
+  sessionStartedAt: number;
+  lastActivityAt: number;
   user: UserPublic;
 };
+
+const EXPIRY_SKEW_MS = 5_000;
+const INACTIVITY_TIMEOUT_MS = 30 * 60 * 1000;
+const SESSION_MAX_AGE_MS = 2 * 24 * 60 * 60 * 1000;
 
 function parseSession(raw: string | null): AuthSession | null {
   if (!raw) return null;
@@ -28,7 +34,16 @@ function parseSession(raw: string | null): AuthSession | null {
     if (typeof parsed.expiresAt !== "number" || typeof parsed.refreshExpiresAt !== "number") {
       return null;
     }
-    return parsed;
+    const now = Date.now();
+    const sessionStartedAt =
+      typeof parsed.sessionStartedAt === "number" ? parsed.sessionStartedAt : now;
+    const lastActivityAt =
+      typeof parsed.lastActivityAt === "number" ? parsed.lastActivityAt : sessionStartedAt;
+    return {
+      ...parsed,
+      sessionStartedAt,
+      lastActivityAt,
+    };
   } catch {
     return null;
   }
@@ -52,27 +67,65 @@ export function getAuthSession(): AuthSession | null {
 
 export function isAuthSessionValid(session: AuthSession | null): boolean {
   if (!session) return false;
-  return session.expiresAt > Date.now() + 5_000;
+  return session.expiresAt > Date.now() + EXPIRY_SKEW_MS;
+}
+
+function isRefreshTokenValid(session: AuthSession | null): boolean {
+  if (!session) return false;
+  return session.refreshExpiresAt > Date.now() + EXPIRY_SKEW_MS;
+}
+
+function isSessionWithinPolicy(session: AuthSession | null): boolean {
+  if (!session) return false;
+  const now = Date.now();
+  if (now - session.lastActivityAt > INACTIVITY_TIMEOUT_MS) {
+    return false;
+  }
+  if (now - session.sessionStartedAt > SESSION_MAX_AGE_MS) {
+    return false;
+  }
+  return true;
+}
+
+function getSessionIfPolicyValid(): AuthSession | null {
+  const session = getAuthSession();
+  if (!session) {
+    return null;
+  }
+  if (!isSessionWithinPolicy(session)) {
+    silentClear();
+    return null;
+  }
+  return session;
 }
 
 export function getAccessToken(): string | null {
-  const session = getAuthSession();
-  if (!isAuthSessionValid(session)) {
-    // 用 silentClear 而非 clearAuthSession，避免触发事件→监听器→本函数的无限递归
-    silentClear();
+  const session = getSessionIfPolicyValid();
+  if (!session) {
     return null;
   }
-  return session?.accessToken ?? null;
+  if (!isAuthSessionValid(session)) {
+    // access token 过期时保留 refresh token，交给请求层自动续期
+    if (!isRefreshTokenValid(session)) {
+      // 仅当 refresh token 也失效时才清理
+      silentClear();
+    }
+    return null;
+  }
+  return session.accessToken;
 }
 
 export function getCurrentUser(): UserPublic | null {
-  const session = getAuthSession();
-  if (!isAuthSessionValid(session)) {
-    // 同上，静默清理，不广播事件
+  const session = getSessionIfPolicyValid();
+  if (!session) {
+    return null;
+  }
+  if (!isRefreshTokenValid(session)) {
+    // refresh token 已失效，判定为真正登出
     silentClear();
     return null;
   }
-  return session?.user ?? null;
+  return session.user;
 }
 
 export function saveAuthSession(payload: {
@@ -83,13 +136,16 @@ export function saveAuthSession(payload: {
   user: UserPublic;
 }): void {
   if (typeof window === "undefined") return;
-  const expiresAt = Date.now() + Math.max(1, payload.expiresIn) * 1000;
-  const refreshExpiresAt = Date.now() + Math.max(1, payload.refreshExpiresIn) * 1000;
+  const now = Date.now();
+  const expiresAt = now + Math.max(1, payload.expiresIn) * 1000;
+  const refreshExpiresAt = now + Math.max(1, payload.refreshExpiresIn) * 1000;
   const session: AuthSession = {
     accessToken: payload.accessToken,
     refreshToken: payload.refreshToken,
     expiresAt,
     refreshExpiresAt,
+    sessionStartedAt: now,
+    lastActivityAt: now,
     user: payload.user,
   };
   window.localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(session));
@@ -116,7 +172,7 @@ export function updateSessionUser(user: UserPublic): void {
 
 export function updateSessionTokens(accessToken: string, expiresIn: number): void {
   if (typeof window === "undefined") return;
-  const session = getAuthSession();
+  const session = getSessionIfPolicyValid();
   if (!session) return;
   const expiresAt = Date.now() + Math.max(1, expiresIn) * 1000;
   const next: AuthSession = {
@@ -129,13 +185,26 @@ export function updateSessionTokens(accessToken: string, expiresIn: number): voi
 }
 
 export function getRefreshToken(): string | null {
-  const session = getAuthSession();
+  const session = getSessionIfPolicyValid();
   if (!session) return null;
-  if (session.refreshExpiresAt <= Date.now()) {
+  if (!isRefreshTokenValid(session)) {
     silentClear();
     return null;
   }
   return session.refreshToken;
+}
+
+export function touchAuthActivity(): void {
+  if (typeof window === "undefined") return;
+  const session = getSessionIfPolicyValid();
+  if (!session) return;
+  const now = Date.now();
+  if (now - session.lastActivityAt < 1000) return;
+  const next: AuthSession = {
+    ...session,
+    lastActivityAt: now,
+  };
+  window.localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(next));
 }
 
 export function onAuthChanged(listener: () => void): () => void {

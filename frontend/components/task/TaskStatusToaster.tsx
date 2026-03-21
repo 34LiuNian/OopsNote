@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { sileo } from "sileo";
+import { notify } from "@/lib/notify";
 
 interface TaskStatusToasterProps {
   statusMessage: string;
@@ -16,13 +16,13 @@ export function TaskStatusToaster({ statusMessage, status }: TaskStatusToasterPr
     if (statusMessage === lastToastMessageRef.current) return;
 
     if (status === "completed") {
-      sileo.success({ title: "任务完成", position: "bottom-right" });
+      notify.success({ title: "任务完成", position: "bottom-right" });
     } else if (status === "failed") {
-      sileo.error({ title: statusMessage || "任务失败", position: "bottom-right" });
+      notify.error({ title: statusMessage || "任务失败", position: "bottom-right" });
     } else if (status === "cancelled") {
-      sileo.info({ title: "任务已作废", position: "bottom-right" });
+      notify.info({ title: "任务已作废", position: "bottom-right" });
     } else {
-      sileo.info({ title: statusMessage, position: "bottom-right" });
+      notify.info({ title: statusMessage, position: "bottom-right" });
     }
 
     lastToastMessageRef.current = statusMessage;

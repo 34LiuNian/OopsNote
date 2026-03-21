@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
-import { sileo } from "sileo";
+import { notify } from "@/lib/notify";
 
 type ErrorBannerProps = {
   message: string;
@@ -11,7 +11,7 @@ type ErrorBannerProps = {
 export function ErrorBanner({ message, marginBottom = 3 }: ErrorBannerProps) {
   useEffect(() => {
     if (message) {
-      sileo.error({ title: message });
+      notify.error({ title: message });
     }
   }, [message]);
 

@@ -64,6 +64,10 @@ class BuiltinTagRecord:
     dimension: str
     value: str
     aliases: tuple[str, ...] = ()
+    subject: str | None = None
+    grade: str | None = None
+    chapter: str | None = None
+    path: str | None = None
     id: str = ""
     ref_count: int = 0
 
@@ -73,6 +77,10 @@ class BuiltinTagRecord:
             "dimension": self.dimension,
             "value": self.value,
             "aliases": list(self.aliases),
+            "subject": self.subject,
+            "grade": self.grade,
+            "chapter": self.chapter,
+            "path": self.path,
             "ref_count": self.ref_count,
         }
 
@@ -387,10 +395,35 @@ def _build_knowledge_records() -> list[BuiltinTagRecord]:
         aliases = {alias for alias in entry.aliases if alias and alias != value}
         if needs_subject_prefix:
             aliases.add(leaf)
+
+        grade: str | None = None
+        chapter: str | None = None
+        path: str | None = None
+        subject_paths = [
+            alias for alias in sorted(aliases)
+            if alias.startswith(f"{subject_label}/")
+        ]
+        for alias in subject_paths:
+            parts = [part for part in alias.split("/") if part]
+            if len(parts) >= 4:
+                grade = grade or parts[1]
+                chapter = chapter or parts[2]
+                path = path or alias
+                break
+        if not path and subject_paths:
+            path = subject_paths[0]
+            parts = [part for part in path.split("/") if part]
+            if len(parts) >= 3:
+                chapter = chapter or parts[1]
+
         record = BuiltinTagRecord(
             dimension="knowledge",
             value=value,
             aliases=tuple(sorted(aliases)),
+            subject=subject_key,
+            grade=grade,
+            chapter=chapter,
+            path=path,
         )
         records.append((_SUBJECT_ORDER.get(subject_key, 999), value, record))
 

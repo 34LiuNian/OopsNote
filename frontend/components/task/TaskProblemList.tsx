@@ -7,7 +7,7 @@ import type { TagDimensionStyle } from "@/types/api";
 import { MarkdownRenderer } from "../renderers/MarkdownRenderer";
 import { ProblemCard } from "../ProblemCard";
 import { ProblemEditPanel } from "../ProblemEditPanel";
-import { deleteProblem } from "@/features/tasks";
+import { deleteProblem, rerenderProblemDiagram } from "@/features/tasks";
 
 type TaskProblemListProps = {
   taskId: string;
@@ -17,6 +17,13 @@ type TaskProblemListProps = {
     question_no?: string | null;
     question_type?: string | null;
     source?: string | null;
+    diagram_detected?: boolean;
+    diagram_kind?: string | null;
+    diagram_tikz_source?: string | null;
+    diagram_svg?: string | null;
+    diagram_render_status?: string | null;
+    diagram_error?: string | null;
+    diagram_needs_review?: boolean;
     problem_text: string;
     options?: Array<{ key: string; text: string }>;
     knowledge_tags?: string[];
@@ -63,6 +70,14 @@ export function TaskProblemList({
       lines.push(p.problem_text || "");
       lines.push("");
 
+      if (p.diagram_detected && p.diagram_tikz_source) {
+        lines.push("## 识别图 (TikZ)");
+        lines.push("```tikz");
+        lines.push(p.diagram_tikz_source);
+        lines.push("```");
+        lines.push("");
+      }
+
       const knowledgeTags = Array.isArray(p.knowledge_tags) ? p.knowledge_tags : [];
       const errorTags = Array.isArray(p.error_tags) ? p.error_tags : [];
       const userTags = Array.isArray(p.user_tags) ? p.user_tags : [];
@@ -101,6 +116,17 @@ export function TaskProblemList({
       await onSaved();
     } catch (err) {
       onError?.(err instanceof Error ? err.message : "删除失败");
+    }
+  };
+
+  const retryDiagram = async (problemId: string) => {
+    try {
+      onStatusMessage?.("开始重试自动识图...");
+      await rerenderProblemDiagram(taskId, problemId);
+      await onSaved();
+      onStatusMessage?.("自动识图重试完成");
+    } catch (err) {
+      onError?.(err instanceof Error ? err.message : "自动识图重试失败");
     }
   };
 
@@ -150,6 +176,7 @@ export function TaskProblemList({
                 onSaved={onSaved}
                 onCopy={copyMarkdown}
                 onRemove={removeProblem}
+                onRetryDiagram={retryDiagram}
               />
             );
           })}
@@ -174,6 +201,7 @@ function ProblemCardItem({
   onSaved,
   onCopy,
   onRemove,
+  onRetryDiagram,
 }: {
   idx: number;
   problem: TaskProblemListProps["problems"][0];
@@ -188,8 +216,20 @@ function ProblemCardItem({
   onSaved: () => Promise<void> | void;
   onCopy: (id: string) => void;
   onRemove: (id: string) => void;
+  onRetryDiagram: (id: string) => Promise<void>;
 }) {
   const [showAnswer, setShowAnswer] = useState(true);
+  const [isRetryingDiagram, setIsRetryingDiagram] = useState(false);
+
+  const handleRetryDiagram = async () => {
+    if (isRetryingDiagram) return;
+    setIsRetryingDiagram(true);
+    try {
+      await onRetryDiagram(problem.problem_id);
+    } finally {
+      setIsRetryingDiagram(false);
+    }
+  };
 
   return (
     <Box
@@ -259,6 +299,19 @@ function ProblemCardItem({
           source={null}
           problemText={problem.problem_text || ""}
           options={problem.options}
+          diagramDetected={problem.diagram_detected}
+          diagramKind={problem.diagram_kind}
+          diagramTikzSource={problem.diagram_tikz_source}
+          diagramSvg={problem.diagram_svg}
+          diagramRenderStatus={problem.diagram_render_status}
+          diagramError={problem.diagram_error}
+          diagramNeedsReview={problem.diagram_needs_review}
+          onRetryDiagram={
+            problem.diagram_render_status === "failed" || problem.diagram_needs_review
+              ? handleRetryDiagram
+              : undefined
+          }
+          isRetryingDiagram={isRetryingDiagram}
           itemKeyPrefix={problem.problem_id}
           fontSize={2}
           showMeta={false}

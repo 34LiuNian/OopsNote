@@ -15,7 +15,11 @@ from uuid import uuid4
 
 from pydantic import BaseModel, Field
 
+from .config.subjects import SUBJECTS
 from .default_tags_seed import load_builtin_tags
+
+
+_SUBJECT_LABEL_TO_KEY = {label: key for key, label in SUBJECTS.items()}
 
 
 class TagDimension(str, Enum):
@@ -46,6 +50,11 @@ class TagItem(BaseModel):
     dimension: TagDimension
     value: str
     aliases: List[str] = Field(default_factory=list)
+    subject: str | None = Field(default=None)
+    grade: str | None = Field(default=None)
+    chapter: str | None = Field(default=None)
+    path: str | None = Field(default=None)
+    path_depth: int = Field(default=0)
     created_at: datetime
     ref_count: int = Field(
         default=0,
@@ -68,6 +77,10 @@ class TagCreateRequest(BaseModel):
     dimension: TagDimension
     value: str
     aliases: List[str] = Field(default_factory=list)
+    subject: str | None = Field(default=None)
+    grade: str | None = Field(default=None)
+    chapter: str | None = Field(default=None)
+    path: str | None = Field(default=None)
 
 
 class TagsResponse(BaseModel):
@@ -150,6 +163,9 @@ class TagStore:
     def list(
         self,
         dimension: TagDimension | None = None,
+        subject: str | None = None,
+        grade: str | None = None,
+        chapter: str | None = None,
         limit: int = 2000,
     ) -> List[TagItem]:
         """List tags by dimension with a hard cap."""
@@ -157,6 +173,18 @@ class TagStore:
         items = state.items
         if dimension is not None:
             items = [t for t in items if t.dimension == dimension]
+        if subject or grade or chapter:
+            subject_norm = self._norm(subject)
+            grade_norm = self._norm(grade)
+            chapter_norm = self._norm(chapter)
+            items = [
+                t
+                for t in items
+                if t.dimension == TagDimension.KNOWLEDGE
+                and (not subject_norm or self._norm(t.subject) == subject_norm)
+                and (not grade_norm or self._norm(t.grade) == grade_norm)
+                and (not chapter_norm or self._norm(t.chapter) == chapter_norm)
+            ]
         items.sort(key=lambda t: t.value)
         return items[: max(1, int(limit))]
 
@@ -164,17 +192,38 @@ class TagStore:
         self,
         dimension: TagDimension | None = None,
         query: str | None = None,
+        subject: str | None = None,
+        grade: str | None = None,
+        chapter: str | None = None,
         limit: int = 50,
     ) -> List[TagItem]:
         """Search tags by value or alias."""
         query = (query or "").strip()
         if not query:
-            return self.list(dimension=dimension, limit=limit)
+            return self.list(
+                dimension=dimension,
+                subject=subject,
+                grade=grade,
+                chapter=chapter,
+                limit=limit,
+            )
 
         q = query.casefold()
         items = self._load_state().items
         if dimension is not None:
             items = [t for t in items if t.dimension == dimension]
+        if subject or grade or chapter:
+            subject_norm = self._norm(subject)
+            grade_norm = self._norm(grade)
+            chapter_norm = self._norm(chapter)
+            items = [
+                t
+                for t in items
+                if t.dimension == TagDimension.KNOWLEDGE
+                and (not subject_norm or self._norm(t.subject) == subject_norm)
+                and (not grade_norm or self._norm(t.grade) == grade_norm)
+                and (not chapter_norm or self._norm(t.chapter) == chapter_norm)
+            ]
 
         def score(item: TagItem) -> tuple[int, int, str]:
             value = item.value.casefold()
@@ -213,28 +262,47 @@ class TagStore:
         dimension: TagDimension,
         value: str,
         aliases: Optional[List[str]] = None,
+        *,
+        subject: str | None = None,
+        grade: str | None = None,
+        chapter: str | None = None,
+        path: str | None = None,
     ) -> tuple[TagItem, bool]:
         """Create or update a tag entry and return (tag, created)."""
         value = (value or "").strip()
         if not value:
             raise ValueError("tag value is required")
         aliases = [str(a).strip() for a in (aliases or []) if str(a).strip()]
+        knowledge_fields = self._build_knowledge_fields(
+            value,
+            aliases,
+            subject=subject,
+            grade=grade,
+            chapter=chapter,
+            path=path,
+        ) if dimension == TagDimension.KNOWLEDGE else {}
 
         with self._lock:
             state = self._load_state_unlocked()
             key = self._key(dimension, value)
             for item in state.items:
                 if self._key(item.dimension, item.value) == key:
-                    # Merge aliases best-effort.
-                    if aliases:
-                        merged = list(dict.fromkeys([*(item.aliases or []), *aliases]))
-                        if merged != (item.aliases or []):
-                            updated = item.model_copy(update={"aliases": merged})
-                            state.items = [
-                                updated if t.id == item.id else t for t in state.items
-                            ]
-                            self._write_state_unlocked(state)
-                            return updated, False
+                    merged = list(dict.fromkeys([*(item.aliases or []), *aliases]))
+                    updates: dict[str, object] = {}
+                    if merged != (item.aliases or []):
+                        updates["aliases"] = merged
+                    if knowledge_fields:
+                        for field_name, field_value in knowledge_fields.items():
+                            current_value = getattr(item, field_name, None)
+                            if current_value != field_value:
+                                updates[field_name] = field_value
+                    if updates:
+                        updated = item.model_copy(update=updates)
+                        state.items = [
+                            updated if t.id == item.id else t for t in state.items
+                        ]
+                        self._write_state_unlocked(state)
+                        return updated, False
                     return item, False
 
             now = datetime.now(timezone.utc)
@@ -243,6 +311,7 @@ class TagStore:
                 dimension=dimension,
                 value=value,
                 aliases=aliases,
+                **knowledge_fields,
                 created_at=now,
             )
             state.items.append(created)
@@ -591,6 +660,74 @@ class TagStore:
         return f"{dimension.value}::{value.casefold().strip()}"
 
     @staticmethod
+    def _norm(value: str | None) -> str:
+        return str(value or "").strip().casefold()
+
+    @staticmethod
+    def _clean_path(path: str | None) -> str:
+        parts = [str(part).strip() for part in str(path or "").split("/") if str(part).strip()]
+        return "/".join(parts)
+
+    def _infer_knowledge_from_aliases(
+        self,
+        aliases: Iterable[str],
+    ) -> tuple[str | None, str | None, str | None, str | None]:
+        for alias in aliases:
+            cleaned = self._clean_path(alias)
+            if not cleaned:
+                continue
+            parts = cleaned.split("/")
+            if not parts:
+                continue
+            subject_key = _SUBJECT_LABEL_TO_KEY.get(parts[0])
+            if not subject_key:
+                continue
+            grade = parts[1] if len(parts) >= 4 else None
+            chapter = parts[2] if len(parts) >= 3 else None
+            return subject_key, grade, chapter, cleaned
+        return None, None, None, None
+
+    def _build_knowledge_fields(
+        self,
+        value: str,
+        aliases: Iterable[str],
+        *,
+        subject: str | None,
+        grade: str | None,
+        chapter: str | None,
+        path: str | None,
+    ) -> dict[str, object]:
+        subject_key = str(subject or "").strip() or None
+        if subject_key not in SUBJECTS:
+            subject_key = None
+        grade_text = str(grade or "").strip() or None
+        chapter_text = str(chapter or "").strip() or None
+        path_text = self._clean_path(path)
+
+        inferred_subject, inferred_grade, inferred_chapter, inferred_path = self._infer_knowledge_from_aliases(aliases)
+        subject_key = subject_key or inferred_subject
+        grade_text = grade_text or inferred_grade
+        chapter_text = chapter_text or inferred_chapter
+        path_text = path_text or inferred_path or ""
+
+        if subject_key and not path_text:
+            parts = [SUBJECTS[subject_key]]
+            if grade_text:
+                parts.append(grade_text)
+            if chapter_text:
+                parts.append(chapter_text)
+            parts.append(str(value).strip())
+            path_text = self._clean_path("/".join(parts))
+
+        return {
+            "subject": subject_key,
+            "grade": grade_text,
+            "chapter": chapter_text,
+            "path": path_text or None,
+            "path_depth": len(path_text.split("/")) if path_text else 0,
+        }
+
+    @staticmethod
     def _default_dimensions() -> dict[str, TagDimensionStyle]:
         return {
             TagDimension.KNOWLEDGE.value: TagDimensionStyle(
@@ -631,12 +768,28 @@ class TagStore:
             raw = json.loads(self.tags_path.read_text(encoding="utf-8"))
             items = raw.get("items", []) if isinstance(raw, dict) else []
             parsed: List[TagItem] = []
+            normalized_changed = False
             for item in items or []:
                 try:
-                    parsed.append(TagItem.model_validate(item))
+                    current = TagItem.model_validate(item)
+                    if current.dimension == TagDimension.KNOWLEDGE:
+                        updates = self._build_knowledge_fields(
+                            current.value,
+                            current.aliases or [],
+                            subject=current.subject,
+                            grade=current.grade,
+                            chapter=current.chapter,
+                            path=current.path,
+                        )
+                        if any(getattr(current, key, None) != value for key, value in updates.items()):
+                            current = current.model_copy(update=updates)
+                            normalized_changed = True
+                    parsed.append(current)
                 except Exception:  # pylint: disable=broad-exception-caught
                     continue
             state = _TagState(items=parsed)
+            if normalized_changed:
+                self._write_state_unlocked(state)
 
         if not self._defaults_ensured:
             state = self._merge_builtin_defaults_unlocked(state)
@@ -660,6 +813,14 @@ class TagStore:
             dimension = TagDimension(str(payload["dimension"]))
             key = self._key(dimension, str(payload["value"]))
             aliases = [str(a).strip() for a in (payload.get("aliases") or []) if str(a).strip()]
+            knowledge_updates = self._build_knowledge_fields(
+                str(payload.get("value") or ""),
+                aliases,
+                subject=str(payload.get("subject") or "").strip() or None,
+                grade=str(payload.get("grade") or "").strip() or None,
+                chapter=str(payload.get("chapter") or "").strip() or None,
+                path=str(payload.get("path") or "").strip() or None,
+            ) if dimension == TagDimension.KNOWLEDGE else {}
 
             existing_index = index_by_key.get(key)
             if existing_index is not None:
@@ -667,13 +828,19 @@ class TagStore:
                 merged_aliases = list(
                     dict.fromkeys([*(existing.aliases or []), *aliases])
                 )
+                updates: dict[str, object] = {}
                 if merged_aliases != (existing.aliases or []):
-                    state.items[existing_index] = existing.model_copy(
-                        update={"aliases": merged_aliases}
-                    )
+                    updates["aliases"] = merged_aliases
+                for field_name, field_value in knowledge_updates.items():
+                    if field_value and getattr(existing, field_name, None) != field_value:
+                        updates[field_name] = field_value
+                if updates:
+                    state.items[existing_index] = existing.model_copy(update=updates)
                     changed = True
                 continue
 
+            if knowledge_updates:
+                payload = {**payload, **knowledge_updates}
             state.items.append(TagItem.model_validate(payload))
             index_by_key[key] = len(state.items) - 1
             changed = True

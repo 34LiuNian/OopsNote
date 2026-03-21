@@ -150,6 +150,7 @@ class LLMOcrExtractor:
             )
             # OCR should provide a normalized `question_type` when possible (e.g. 单选/多选/填空/解答)
             question_type = utils._coerce_str(payload_dict.get("question_type"), None)
+            ocr_has_diagram = bool(payload_dict.get("has_diagram", False))
             # Auto-detect subject from OCR
             subject = utils._coerce_str(payload_dict.get("subject"), fallback=None)
             # Validate subject value - if user selected 'auto' or LLM failed to detect, use default subject as fallback
@@ -193,6 +194,7 @@ class LLMOcrExtractor:
                     question_no=payload.question_no,
                     question_type=question_type,
                     problem_text=problem_text,
+                    ocr_has_diagram=ocr_has_diagram,
                     options=normalized_options,
                     crop_image_url=None,
                     crop_bbox=None,

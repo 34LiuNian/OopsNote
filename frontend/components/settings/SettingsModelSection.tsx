@@ -4,7 +4,7 @@ import { Box, Button, Heading, Spinner, Text } from "@primer/react";
 import { CpuIcon, SyncIcon } from "@primer/octicons-react";
 import { AgentSettingsRow } from "./AgentSettingsRow";
 import { ErrorBanner } from "../ui/ErrorBanner";
-import { sileo } from "sileo";
+import { notify } from "@/lib/notify";
 import { useEffect } from "react";
 
 type AgentDescriptor = {
@@ -89,19 +89,19 @@ export function SettingsModelSection({
   // 显示 Sileo 通知
   useEffect(() => {
     if (statusMessage) {
-      sileo.success({ title: statusMessage });
+      notify.success({ title: statusMessage });
     }
   }, [statusMessage]);
 
   useEffect(() => {
     if (enabledStatusMessage) {
-      sileo.success({ title: enabledStatusMessage });
+      notify.success({ title: enabledStatusMessage });
     }
   }, [enabledStatusMessage]);
 
   useEffect(() => {
     if (thinkingStatusMessage) {
-      sileo.success({ title: thinkingStatusMessage });
+      notify.success({ title: thinkingStatusMessage });
     }
   }, [thinkingStatusMessage]);
 

@@ -2,9 +2,9 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Box, Button, FormControl, Spinner, Text, TextInput, Textarea } from "@primer/react";
-import { sileo } from "sileo";
+import { notify } from "@/lib/notify";
 import type { TagDimensionStyle } from "../types/api";
-import { overrideProblem } from "../features/tasks";
+import { compileTikzToSvg, overrideProblem } from "../features/tasks";
 import { TagPicker } from "./TagPicker";
 
 type OptionDraft = {
@@ -20,6 +20,13 @@ type ProblemEditPanelProps = {
     question_no?: string | null;
     source?: string | null;
     problem_text: string;
+    diagram_detected?: boolean;
+    diagram_kind?: string | null;
+    diagram_tikz_source?: string | null;
+    diagram_svg?: string | null;
+    diagram_render_status?: string | null;
+    diagram_error?: string | null;
+    diagram_needs_review?: boolean;
     options?: Array<{ key: string; text: string } | null>;
     knowledge_tags?: string[];
     error_tags?: string[];
@@ -39,6 +46,11 @@ export function ProblemEditPanel({ taskId, problem, tagStyles, onClose, onSaved 
   const [knowledgeTags, setKnowledgeTags] = useState<string[]>([]);
   const [errorTags, setErrorTags] = useState<string[]>([]);
   const [userTags, setUserTags] = useState<string[]>([]);
+  const [diagramTikzSource, setDiagramTikzSource] = useState<string>("");
+  const [diagramSvg, setDiagramSvg] = useState<string | null>(null);
+  const [diagramRenderStatus, setDiagramRenderStatus] = useState<string | null>(null);
+  const [diagramCompileError, setDiagramCompileError] = useState<string>("");
+  const [isCompilingDiagram, setIsCompilingDiagram] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
 
   const optionIdRef = useRef(0);
@@ -78,7 +90,38 @@ export function ProblemEditPanel({ taskId, problem, tagStyles, onClose, onSaved 
     setKnowledgeTags(Array.isArray(problem.knowledge_tags) ? problem.knowledge_tags : []);
     setErrorTags(Array.isArray(problem.error_tags) ? problem.error_tags : []);
     setUserTags(Array.isArray(problem.user_tags) ? problem.user_tags : []);
+    setDiagramTikzSource((problem.diagram_tikz_source || "").toString());
+    setDiagramSvg(problem.diagram_svg || null);
+    setDiagramRenderStatus(problem.diagram_render_status || null);
+    setDiagramCompileError((problem.diagram_error || "").replace(/\\n/g, "\n"));
   }, [problem, nextOptionId]);
+
+  const compileDiagram = useCallback(async () => {
+    const source = diagramTikzSource.trim();
+    if (!source) {
+      setDiagramSvg(null);
+      setDiagramRenderStatus("skipped");
+      setDiagramCompileError("");
+      return;
+    }
+
+    setIsCompilingDiagram(true);
+    setDiagramCompileError("");
+    try {
+      const svg = await compileTikzToSvg(source);
+      setDiagramSvg(svg);
+      setDiagramRenderStatus("ready");
+      notify.success({ title: "图形编译成功" });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "图形编译失败";
+      setDiagramSvg(null);
+      setDiagramRenderStatus("failed");
+      setDiagramCompileError(message.replace(/\\n/g, "\n"));
+      notify.error({ title: "图形编译失败" });
+    } finally {
+      setIsCompilingDiagram(false);
+    }
+  }, [diagramTikzSource]);
 
   const save = useCallback(async () => {
     setIsSaving(true);
@@ -109,12 +152,19 @@ export function ProblemEditPanel({ taskId, problem, tagStyles, onClose, onSaved 
         knowledge_tags: knowledgeTags,
         error_tags: errorTags,
         user_tags: userTags,
+        diagram_detected: Boolean(diagramTikzSource.trim()),
+        diagram_kind: diagramTikzSource.trim() ? "tikz" : null,
+        diagram_tikz_source: diagramTikzSource.trim() || null,
+        diagram_svg: diagramSvg,
+        diagram_render_status: diagramRenderStatus,
+        diagram_error: diagramCompileError || null,
+        diagram_needs_review: diagramRenderStatus === "failed",
       });
-      sileo.success({ title: "已保存" });
+      notify.success({ title: "已保存" });
       await onSaved();
       onClose();
     } catch (err) {
-      sileo.error({
+      notify.error({
         title: "保存失败",
         description: err instanceof Error ? err.message : "请稍后重试",
       });
@@ -133,6 +183,10 @@ export function ProblemEditPanel({ taskId, problem, tagStyles, onClose, onSaved 
     sourceTags,
     taskId,
     userTags,
+    diagramTikzSource,
+    diagramSvg,
+    diagramRenderStatus,
+    diagramCompileError,
   ]);
 
   return (
@@ -243,6 +297,66 @@ export function ProblemEditPanel({ taskId, problem, tagStyles, onClose, onSaved 
             placeholder="输入后回车添加"
           />
         </Box>
+
+        <FormControl>
+          <FormControl.Label>识别图（TikZ，可手工编辑）</FormControl.Label>
+          <Textarea
+            value={diagramTikzSource}
+            onChange={(e) => setDiagramTikzSource(e.target.value)}
+            block
+            rows={10}
+            sx={{ resize: "vertical", fontFamily: "mono", fontSize: 1 }}
+            placeholder="粘贴或编辑 TikZ 源码..."
+          />
+          <Box sx={{ mt: 2, display: "flex", gap: 2, flexWrap: "wrap" }}>
+            <Button size="small" onClick={compileDiagram} disabled={isCompilingDiagram}>
+              {isCompilingDiagram ? (
+                <>
+                  <Spinner size="small" sx={{ mr: 1 }} />
+                  编译中...
+                </>
+              ) : (
+                "重编译预览"
+              )}
+            </Button>
+            <Button
+              size="small"
+              variant="invisible"
+              onClick={() => {
+                setDiagramTikzSource("");
+                setDiagramSvg(null);
+                setDiagramRenderStatus("skipped");
+                setDiagramCompileError("");
+              }}
+            >
+              清空图形
+            </Button>
+          </Box>
+
+          {diagramSvg ? (
+            <Box
+              sx={{
+                mt: 2,
+                p: 2,
+                border: "1px solid",
+                borderColor: "border.default",
+                borderRadius: 1,
+                bg: "canvas.subtle",
+                "& svg": { maxWidth: "100%", height: "auto" },
+              }}
+              dangerouslySetInnerHTML={{ __html: diagramSvg }}
+            />
+          ) : null}
+
+          {diagramCompileError ? (
+            <Box sx={{ mt: 2, p: 2, border: "1px solid", borderColor: "danger.emphasis", borderRadius: 1, bg: "danger.subtle" }}>
+              <Text sx={{ color: "danger.fg", fontSize: 1, fontWeight: 600 }}>编译错误</Text>
+              <Text sx={{ display: "block", mt: 1, color: "fg.default", fontSize: 0, whiteSpace: "pre-wrap" }}>
+                {diagramCompileError}
+              </Text>
+            </Box>
+          ) : null}
+        </FormControl>
 
         <Box sx={{ display: "flex", gap: 2, justifyContent: "flex-end", pt: 2, borderTop: "1px solid", borderColor: "border.muted", position: "sticky", bottom: 0, bg: "canvas.default", pb: 2, zIndex: 10 }}>
           <Button size="small" variant="invisible" onClick={onClose}>取消</Button>

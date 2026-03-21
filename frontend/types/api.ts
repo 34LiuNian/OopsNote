@@ -1,7 +1,9 @@
+export type TaskStatus = "pending" | "processing" | "completed" | "failed" | "cancelled";
+
 export interface TaskResponse {
   task: {
     id: string;
-    status: string;
+    status: TaskStatus;
     stage?: string | null;
     stage_message?: string | null;
     created_at: string;
@@ -22,6 +24,14 @@ export interface TaskResponse {
       question_no?: string | null;
       question_type?: string | null;
       source?: string | null;
+      diagram_detected?: boolean;
+      diagram_kind?: string | null;
+      diagram_tikz_source?: string | null;
+      diagram_svg?: string | null;
+      diagram_render_status?: string | null;
+      diagram_error?: string | null;
+      diagram_needs_review?: boolean;
+      diagram_confidence?: number | null;
       knowledge_tags?: string[];
       error_tags?: string[];
       user_tags?: string[];
@@ -45,7 +55,7 @@ export interface TaskResponse {
 
 export interface TaskSummary {
   id: string;
-  status: string;
+  status: TaskStatus;
   stage?: string | null;
   stage_message?: string | null;
   created_at: string;
@@ -192,6 +202,11 @@ export interface TagItem {
   dimension: TagDimension;
   value: string;
   aliases?: string[];
+  subject?: string | null;
+  grade?: string | null;
+  chapter?: string | null;
+  path?: string | null;
+  path_depth?: number;
   created_at: string;
   ref_count?: number;
 }

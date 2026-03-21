@@ -16,6 +16,15 @@ type ProblemCardProps = {
   source?: string | null;
   problemText: string;
   options?: ProblemOption[];
+  diagramDetected?: boolean;
+  diagramKind?: string | null;
+  diagramTikzSource?: string | null;
+  diagramSvg?: string | null;
+  diagramRenderStatus?: string | null;
+  diagramError?: string | null;
+  diagramNeedsReview?: boolean;
+  onRetryDiagram?: () => void;
+  isRetryingDiagram?: boolean;
   itemKeyPrefix?: string;
   fontSize?: number;
   showTitle?: boolean;
@@ -36,6 +45,15 @@ export const ProblemCard = memo(function ProblemCard({
   source,
   problemText,
   options,
+  diagramDetected,
+  diagramKind,
+  diagramTikzSource,
+  diagramSvg,
+  diagramRenderStatus,
+  diagramError,
+  diagramNeedsReview,
+  onRetryDiagram,
+  isRetryingDiagram,
   itemKeyPrefix,
   fontSize,
   showTitle = true,
@@ -61,6 +79,15 @@ export const ProblemCard = memo(function ProblemCard({
       <ProblemContent
         problemText={problemText}
         options={options}
+        diagramDetected={diagramDetected}
+        diagramKind={diagramKind}
+        diagramTikzSource={diagramTikzSource}
+        diagramSvg={diagramSvg}
+        diagramRenderStatus={diagramRenderStatus}
+        diagramError={diagramError}
+        diagramNeedsReview={diagramNeedsReview}
+        onRetryDiagram={onRetryDiagram}
+        isRetryingDiagram={isRetryingDiagram}
         itemKeyPrefix={itemKeyPrefix}
         fontSize={fontSize}
       />

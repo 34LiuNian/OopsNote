@@ -8,6 +8,7 @@ from .agents.extractor import LLMOcrExtractor, OcrExtractor, OcrRouter
 from .agents.pipeline import AgentPipeline, PipelineDependencies
 from .agents.stages import (
     Archiver,
+    DiagramReconstructor,
     HandwrittenExtractor,
     ProblemRebuilder,
     SolutionWriter,
@@ -174,6 +175,7 @@ def build_pipeline(
 
     rebuilder = ProblemRebuilder()
     extractor = HandwrittenExtractor(rebuilder=rebuilder)
+    diagram_reconstructor = DiagramReconstructor(ai_client)
     ocr_client = build_client_for_agent("OCR", ai_client, bundle=agent_config_bundle)
     ocr_extractor = OcrRouter(
         base_extractor=OcrExtractor(),
@@ -186,6 +188,7 @@ def build_pipeline(
             extractor=extractor,
             solution_writer=SolutionWriter(ai_client),
             tagger=TaggingProfiler(ai_client),
+            diagram_reconstructor=diagram_reconstructor,
             archiver=Archiver(),
             archive_store=archive_store,
             ocr_extractor=ocr_extractor,  # type: ignore[arg-type]

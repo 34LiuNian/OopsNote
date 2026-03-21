@@ -4,7 +4,7 @@ import { Box, Button, FormControl, Heading, Label, Text, TextInput, Spinner } fr
 import { CheckCircleFillIcon, PlugIcon, XCircleFillIcon, ZapIcon } from "@primer/octicons-react";
 import { ErrorBanner } from "../ui/ErrorBanner";
 import { useEffect } from "react";
-import { sileo } from "sileo";
+import { notify } from "@/lib/notify";
 import type { GatewaySettingsResponse, GatewayTestResponse } from "../../types/api";
 
 type GatewayDraft = {
@@ -47,7 +47,7 @@ export function SettingsGatewaySection({
 }: SettingsGatewaySectionProps) {
   useEffect(() => {
     if (statusMessage) {
-      sileo.success({ title: statusMessage });
+      notify.success({ title: statusMessage });
     }
   }, [statusMessage]);
 

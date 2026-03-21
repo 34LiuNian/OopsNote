@@ -41,25 +41,24 @@ def _pick_tag_candidates(
 
     subject_label = SUBJECTS.get(subject or "", "")
     if not subject_label:
-        return items[:limit]
+        return []
 
     prefix = f"{subject_label}/"
     subject_specific: list[Any] = []
-    generic: list[Any] = []
+
     for item in items:
+        item_subject = str(getattr(item, "subject", "") or "").strip()
+        if item_subject and item_subject == (subject or ""):
+            subject_specific.append(item)
+            continue
+
         aliases = [str(alias).strip() for alias in (getattr(item, "aliases", []) or []) if str(alias).strip()]
         if str(getattr(item, "value", "")).startswith(prefix) or any(
             alias.startswith(prefix) for alias in aliases
         ):
             subject_specific.append(item)
-        else:
-            generic.append(item)
 
-    subject_quota = max(80, int(limit * 0.75))
-    selected = subject_specific[:subject_quota]
-    if len(selected) < limit:
-        selected.extend(generic[: limit - len(selected)])
-    return selected[:limit]
+    return subject_specific[:limit]
 
 
 @dataclass
@@ -250,13 +249,22 @@ class AgentOrchestrator:
             subject=payload.subject,
             limit=200,
         )
+        if not knowledge_candidates:
+            knowledge_candidates = [
+                str(tag).strip()
+                for tag in (payload.knowledge_tags or [])
+                if str(tag).strip()
+            ]
         error_candidates = _pick_tag_candidates(TagDimension.ERROR, limit=200)
         meta_candidates = _pick_tag_candidates(TagDimension.META, limit=200)
 
         def _render_candidates(items: list[Any]) -> str:
             if not items:
                 return ""
-            return "\n".join(f"- {getattr(item, 'value', str(item))}" for item in items)
+            return "\n".join(
+                f"- {item if isinstance(item, str) else getattr(item, 'value', str(item))}"
+                for item in items
+            )
 
         return {
             "subject": payload.subject,

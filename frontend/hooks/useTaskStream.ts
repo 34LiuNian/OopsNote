@@ -28,12 +28,16 @@ type UseTaskStreamState = {
 export function useTaskStream({ taskId, status, onStatusMessage, onDone }: UseTaskStreamParams): UseTaskStreamState {
   const [progressLines, setProgressLines] = useState<string[]>([]);
   const lastStatusRef = useRef<string | null>(null);
+  const lastStageRef = useRef<string | null>(null);
+  const lastStageMessageRef = useRef<string | null>(null);
   const hasCalledOnDoneRef = useRef<boolean>(false);
   const queryClient = useQueryClient();
 
   const resetStream = useCallback(() => {
     setProgressLines([]);
     lastStatusRef.current = null;
+    lastStageRef.current = null;
+    lastStageMessageRef.current = null;
     hasCalledOnDoneRef.current = false;
   }, []);
 
@@ -60,14 +64,23 @@ export function useTaskStream({ taskId, status, onStatusMessage, onDone }: UseTa
 
     if (DEBUG) console.log('[useTaskStream] task status:', currentStatus, 'last status:', lastStatusRef.current);
 
-    // Check if status changed
-    if (currentStatus !== lastStatusRef.current) {
-      const message = task.stage_message || task.stage || currentStatus || "处理中";
+    const currentStage = task.stage || null;
+    const currentStageMessage = task.stage_message || null;
+    const statusChanged = currentStatus !== lastStatusRef.current;
+    const stageChanged = currentStage !== lastStageRef.current;
+    const stageMessageChanged = currentStageMessage !== lastStageMessageRef.current;
+
+    // Append progress line when status/stage/stage_message changes
+    if (statusChanged || stageChanged || stageMessageChanged) {
+      const message = currentStageMessage || currentStage || currentStatus || "处理中";
       onStatusMessage?.(message);
       setProgressLines((prev) => {
         if (prev.length > 0 && prev[prev.length - 1] === message) return prev;
         return [...prev, message];
       });
+    }
+
+    if (statusChanged) {
       lastStatusRef.current = currentStatus;
 
       // Check if task is done
@@ -77,6 +90,14 @@ export function useTaskStream({ taskId, status, onStatusMessage, onDone }: UseTa
           onDone?.();
         }
       }
+    }
+
+    if (stageChanged) {
+      lastStageRef.current = currentStage;
+    }
+
+    if (stageMessageChanged) {
+      lastStageMessageRef.current = currentStageMessage;
     }
   }, [data, onStatusMessage, onDone]);
 

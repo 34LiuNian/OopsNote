@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useState } from "react";
-import { sileo } from "sileo";
+import { notify } from "@/lib/notify";
 import { formatApiError, getErrorDetails } from "../lib/errorFormatter";
 
 /**
@@ -65,7 +65,7 @@ export function useApiError(options?: {
 
       // 自动显示 toast
       if (autoShowToast) {
-        sileo.error({
+        notify.error({
           title: options?.title ?? "操作失败",
           description: formattedError,
         });
@@ -140,7 +140,7 @@ export function useSimpleError() {
   const handleError = useCallback((err: unknown, fallback: string) => {
     const message = formatApiError(err, fallback);
     setError(message);
-    sileo.error({ title: fallback, description: message });
+    notify.error({ title: fallback, description: message });
   }, []);
 
   const clearError = useCallback(() => setError(null), []);

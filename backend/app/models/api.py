@@ -92,6 +92,13 @@ class OverrideProblemRequest(BaseModel):
     locked_tags: Optional[bool] = None
     crop_bbox: Optional[List[float]] = Field(default=None, min_length=4, max_length=4)
     crop_image_url: Optional[str] = None
+    diagram_detected: Optional[bool] = None
+    diagram_kind: Optional[str] = None
+    diagram_tikz_source: Optional[str] = None
+    diagram_svg: Optional[str] = None
+    diagram_render_status: Optional[str] = None
+    diagram_error: Optional[str] = None
+    diagram_needs_review: Optional[bool] = None
     retag: bool = Field(
         default=False, description="If true, run tagger again after override"
     )

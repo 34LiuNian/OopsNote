@@ -4,7 +4,7 @@ import { Box, Heading, Spinner, Text, ToggleSwitch } from "@primer/react";
 import { BugIcon } from "@primer/octicons-react";
 import { ErrorBanner } from "../ui/ErrorBanner";
 import { useEffect } from "react";
-import { sileo } from "sileo";
+import { notify } from "@/lib/notify";
 import type { DebugSettingsResponse } from "../../types/api";
 
 type SettingsDebugSectionProps = {
@@ -26,7 +26,7 @@ export function SettingsDebugSection({
 }: SettingsDebugSectionProps) {
   useEffect(() => {
     if (statusMessage) {
-      sileo.success({ title: statusMessage });
+      notify.success({ title: statusMessage });
     }
   }, [statusMessage]);
 

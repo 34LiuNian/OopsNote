@@ -1,10 +1,11 @@
 import { useMemo } from "react";
 
-export type ProgressStepKey = "queued" | "ocr" | "solving" | "tagging";
+export type ProgressStepKey = "queued" | "ocr" | "diagram" | "solving" | "tagging";
 
 export const PROGRESS_STEPS: Array<{ key: ProgressStepKey; title: string }> = [
   { key: "queued", title: "入队" },
   { key: "ocr", title: "OCR 识别" },
+  { key: "diagram", title: "图形重建" },
   { key: "solving", title: "题解" },
   { key: "tagging", title: "打标" },
 ];
@@ -37,6 +38,17 @@ export function inferStepFromText(text: string): ProgressStepKey | null {
     raw.includes("提取")
   ) {
     return "ocr";
+  }
+
+  // Diagram reconstruction stage
+  if (
+    lower === "diagramming" ||
+    lower === "diagram" ||
+    lower.includes("diagram") ||
+    raw.includes("图形重建") ||
+    raw.includes("重建图形")
+  ) {
+    return "diagram";
   }
 
   // Solving stage

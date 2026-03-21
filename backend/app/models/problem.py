@@ -60,6 +60,42 @@ class ProblemBlock(BaseModel):
         max_length=4,
         description="[x, y, width, height] normalized coordinates copied from CropRegion",
     )
+    ocr_has_diagram: bool = Field(
+        default=False,
+        description="Whether OCR model judged this problem needs diagram reconstruction",
+    )
+    diagram_detected: bool = Field(
+        default=False,
+        description="Whether a drawable diagram was detected from OCR text",
+    )
+    diagram_kind: Optional[str] = Field(
+        default=None,
+        description="Diagram kind, e.g. tikz",
+    )
+    diagram_tikz_source: Optional[str] = Field(
+        default=None,
+        description="Generated TikZ source for diagram reconstruction",
+    )
+    diagram_svg: Optional[str] = Field(
+        default=None,
+        description="Rendered SVG content for direct frontend preview",
+    )
+    diagram_render_status: Optional[str] = Field(
+        default=None,
+        description="Render status: ready/failed/skipped",
+    )
+    diagram_error: Optional[str] = Field(
+        default=None,
+        description="Render failure reason for manual intervention",
+    )
+    diagram_needs_review: bool = Field(
+        default=False,
+        description="Whether the diagram output requires manual review",
+    )
+    diagram_confidence: Optional[float] = Field(
+        default=None,
+        description="Model confidence (0-1) for diagram reconstruction",
+    )
 
 
 class SolutionBlock(BaseModel):

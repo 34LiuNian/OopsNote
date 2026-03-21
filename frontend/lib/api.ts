@@ -1,4 +1,10 @@
-import { clearAuthSession, getAccessToken, getRefreshToken, updateSessionTokens } from "../features/auth/store";
+import {
+  clearAuthSession,
+  getAccessToken,
+  getRefreshToken,
+  touchAuthActivity,
+  updateSessionTokens,
+} from "../features/auth/store";
 import { refreshAccessToken } from "../features/auth/api";
 
 // Use /api proxy to avoid CORS issues
@@ -38,6 +44,7 @@ function withAuthHeaders(headers: Headers, skipAuth: boolean | undefined): Heade
   if (skipAuth || typeof window === "undefined") {
     return headers;
   }
+  touchAuthActivity();
   const token = getAccessToken();
   if (token && !headers.has("Authorization")) {
     headers.set("Authorization", `Bearer ${token}`);

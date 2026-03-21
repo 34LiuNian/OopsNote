@@ -2,11 +2,11 @@
 
 import { useCallback, useState, useRef, useEffect } from "react";
 import { Box, Heading, Text } from "@primer/react";
-import { sileo } from "sileo";
 import { useTagDimensions } from "@/features/tags";
 import { useApiError } from "@/hooks/useApiError";
 import { createUploadTaskAndProcess } from "../api";
-import { ImagePreview } from "@/components/upload/ImagePreview";
+import { ImagePreview, type ImagePreviewHandle } from "@/components/upload/ImagePreview";
+import { notify } from "@/lib/notify";
 import { AnnotationForm } from "@/components/upload/AnnotationForm";
 import { UploadQueue } from "@/components/upload/UploadQueue";
 
@@ -29,6 +29,8 @@ export function UploadForm() {
   const [isLoading, setIsLoading] = useState(false);
   const [lastTaskId, setLastTaskId] = useState<string>("");
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [autoRecognize, setAutoRecognize] = useState(false);
+  const [autoRecognizedKey, setAutoRecognizedKey] = useState("");
   const { error, handleError, clearError } = useApiError({
     defaultFallback: "上传失败，请稍后重试",
   });
@@ -37,6 +39,7 @@ export function UploadForm() {
   const folderInputRef = useRef<HTMLInputElement>(null);
   const difficultyLeftRef = useRef<HTMLInputElement>(null);
   const difficultyRightRef = useRef<HTMLInputElement>(null);
+  const imagePreviewRef = useRef<ImagePreviewHandle | null>(null);
 
   const currentFile = files[index] ?? null;
   const remaining = files.length - index;
@@ -59,7 +62,7 @@ export function UploadForm() {
     setIndex(0);
     setLastTaskId("");
     if (images.length > 0) {
-      sileo.success({ title: `已导入 ${images.length} 张图片` });
+      notify.success({ title: `已导入 ${images.length} 张图片` });
     }
     clearError();
   }, [clearError]);
@@ -78,7 +81,7 @@ export function UploadForm() {
     e.target.value = "";
   }, [setPickedFiles]);
 
-  const convertFileToBase64 = useCallback(async (input: File): Promise<string> => {
+  const convertFileToBase64 = useCallback(async (input: Blob): Promise<string> => {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = () => {
@@ -95,13 +98,39 @@ export function UploadForm() {
     });
   }, []);
 
+  const optimizeImageBlob = useCallback(async (input: Blob): Promise<Blob> => {
+    const bitmap = await createImageBitmap(input);
+    try {
+      const maxSide = 2200;
+      const ratio = Math.min(1, maxSide / Math.max(bitmap.width, bitmap.height));
+      const targetWidth = Math.max(1, Math.round(bitmap.width * ratio));
+      const targetHeight = Math.max(1, Math.round(bitmap.height * ratio));
+
+      const canvas = document.createElement("canvas");
+      canvas.width = targetWidth;
+      canvas.height = targetHeight;
+      const context = canvas.getContext("2d");
+      if (!context) {
+        return input;
+      }
+      context.drawImage(bitmap, 0, 0, targetWidth, targetHeight);
+
+      const output = await new Promise<Blob | null>((resolve) => {
+        canvas.toBlob((blob) => resolve(blob), "image/jpeg", 0.86);
+      });
+      return output ?? input;
+    } finally {
+      bitmap.close();
+    }
+  }, []);
+
   const moveNext = useCallback(() => {
     setIndex((prev) => prev + 1);
   }, []);
 
   const handleSkip = useCallback(() => {
     if (!currentFile) return;
-    sileo.info({ title: "已跳过，进入下一张" });
+      notify.info({ title: "已跳过，进入下一张" });
     clearError();
     moveNext();
   }, [currentFile, moveNext, clearError]);
@@ -124,6 +153,11 @@ export function UploadForm() {
       }
       const difficultyValue = leftScore && rightScore ? `${leftScore}/${rightScore}` : undefined;
 
+      const edited = await imagePreviewRef.current?.exportImage();
+      const sourceBlob = edited?.blob ?? currentFile;
+      const optimizedBlob = await optimizeImageBlob(sourceBlob);
+      const imageBase64 = await convertFileToBase64(optimizedBlob);
+
       const payload = {
         subject,
         notes,
@@ -134,16 +168,16 @@ export function UploadForm() {
         knowledge_tags: knowledgeTags,
         error_tags: errorTags,
         user_tags: customTags,
-        image_base64: await convertFileToBase64(currentFile),
+        image_base64: imageBase64,
         filename: currentFile.name,
-        mime_type: currentFile.type || "image/png",
+        mime_type: optimizedBlob.type || currentFile.type || "image/png",
       };
 
       const data = await createUploadTaskAndProcess(payload);
       const id = data.task.id;
 
       setLastTaskId(id);
-      sileo.success({
+        notify.success({
         title: "已入队",
         description: "进入下一张",
         button: {
@@ -173,7 +207,20 @@ export function UploadForm() {
     questionType,
     sourceTags,
     subject,
+    optimizeImageBlob,
   ]);
+
+  useEffect(() => {
+    if (!autoRecognize || !currentFile || isLoading) {
+      return;
+    }
+    const key = `${currentFile.name}_${currentFile.size}_${index}`;
+    if (autoRecognizedKey === key) {
+      return;
+    }
+    setAutoRecognizedKey(key);
+    void handleSubmitAndQueue();
+  }, [autoRecognize, autoRecognizedKey, currentFile, handleSubmitAndQueue, index, isLoading]);
 
   return (
     <Box sx={{ display: 'flex', flexDirection: ['column', 'column', 'row'], gap: 0, height: '100%' }}>
@@ -198,12 +245,15 @@ export function UploadForm() {
           index={index}
           isLoading={isLoading}
           remaining={remaining}
+          autoRecognize={autoRecognize}
           singleInputRef={singleInputRef}
           folderInputRef={folderInputRef}
           onSinglePicked={onSinglePicked}
           onFolderPicked={onFolderPicked}
+          onFilesDropped={setPickedFiles}
           onFilesChange={setFiles}
           onIndexChange={setIndex}
+          onAutoRecognizeChange={setAutoRecognize}
         />
 
         <Box className="oops-card" sx={{ p: 3 }}>
@@ -281,7 +331,7 @@ export function UploadForm() {
           </Box>
         ) : (
           <Box className="oops-card" sx={{ overflow: "hidden", flex: 1 }}>
-            <ImagePreview file={currentFile} />
+            <ImagePreview ref={imagePreviewRef} file={currentFile} />
           </Box>
         )}
       </Box>

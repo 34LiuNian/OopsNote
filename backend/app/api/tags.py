@@ -23,6 +23,9 @@ router = APIRouter(dependencies=[Depends(require_user)])
 def list_tags(
     dimension: TagDimension | None = None,
     query: str | None = None,
+    subject: str | None = None,
+    grade: str | None = None,
+    chapter: str | None = None,
     limit: int = 50,
 ) -> TagsResponse:
     from ..tags import TagItemView
@@ -33,11 +36,24 @@ def list_tags(
     # Tags now have persistent ref_count stored in TagItem
     # No need to recalculate on every request
     if not q:
-        base = tag_store.list(dimension=dimension, limit=5000)
+        base = tag_store.list(
+            dimension=dimension,
+            subject=subject,
+            grade=grade,
+            chapter=chapter,
+            limit=5000,
+        )
         base.sort(key=lambda t: (-t.ref_count, t.value))
         items = base[:lim]
     else:
-        candidates = tag_store.search(dimension=dimension, query=q, limit=5000)
+        candidates = tag_store.search(
+            dimension=dimension,
+            query=q,
+            subject=subject,
+            grade=grade,
+            chapter=chapter,
+            limit=5000,
+        )
         qkey = q.casefold()
 
         def _tier(t) -> int:
@@ -72,7 +88,13 @@ def list_tags(
 def create_tag(payload: TagCreateRequest) -> TagsResponse:
     """Create a new tag."""
     item, _created = tag_store.upsert(
-        payload.dimension, payload.value, aliases=payload.aliases
+        payload.dimension,
+        payload.value,
+        aliases=payload.aliases,
+        subject=payload.subject,
+        grade=payload.grade,
+        chapter=payload.chapter,
+        path=payload.path,
     )
     from ..tags import TagItemView
 

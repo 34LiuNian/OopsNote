@@ -185,6 +185,14 @@ def retag_problem(
     return TaskResponse(task=task)
 
 
+@router.post(
+    "/tasks/{task_id}/problems/{problem_id}/diagram", response_model=TaskResponse
+)
+def rerender_diagram(request: Request, task_id: str, problem_id: str) -> TaskResponse:
+    task = _svc(request).rerender_diagram(task_id, problem_id)
+    return TaskResponse(task=task)
+
+
 @router.patch(
     "/tasks/{task_id}/problems/{problem_id}/override", response_model=TaskResponse
 )

@@ -355,6 +355,53 @@ class TasksService:
         updated = self.repository.patch_task(task_id, tags=task.tags)
         return updated
 
+    def rerender_diagram(self, task_id: str, problem_id: str):
+        """Re-run diagram reconstruction for a single problem."""
+        task = self.repository.get(task_id)
+        problem = self._get_problem(task, problem_id)
+
+        self._write_stream_event(
+            task_id,
+            "progress",
+            {
+                "stage": "diagramming",
+                "message": f"图形重建中（题号 {problem.question_no or problem.problem_id}）",
+            },
+        )
+
+        try:
+            updated_problem = self.pipeline.rerender_diagram_for_problem(
+                payload=task.payload,
+                problem=problem,
+            )
+        except Exception as exc:  # pylint: disable=broad-exception-caught
+            self._write_stream_event(
+                task_id,
+                "progress",
+                {
+                    "stage": "diagramming",
+                    "message": "图形重建失败，建议人工介入",
+                },
+            )
+            raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+        updated_problem.problem_id = problem.problem_id
+        updated_problem.region_id = problem.region_id
+        updated_problem.locked_tags = problem.locked_tags
+        self._update_problem(task, updated_problem)
+
+        updated = self.repository.patch_task(task_id, problems=task.problems)
+
+        msg = "图形重建完成"
+        if updated_problem.diagram_render_status == "failed":
+            msg = "图形重建失败，建议人工介入"
+        self._write_stream_event(
+            task_id,
+            "progress",
+            {"stage": "diagramming", "message": msg},
+        )
+        return updated
+
     def override_problem(self, task_id: str, problem_id: str, override):
         """Override problem fields and optionally retag."""
         task = self.repository.get(task_id)
@@ -409,6 +456,41 @@ class TasksService:
                     override.crop_image_url
                     if override.crop_image_url is not None
                     else problem.crop_image_url
+                ),
+                "diagram_detected": (
+                    override.diagram_detected
+                    if override.diagram_detected is not None
+                    else problem.diagram_detected
+                ),
+                "diagram_kind": (
+                    override.diagram_kind
+                    if override.diagram_kind is not None
+                    else problem.diagram_kind
+                ),
+                "diagram_tikz_source": (
+                    override.diagram_tikz_source
+                    if override.diagram_tikz_source is not None
+                    else problem.diagram_tikz_source
+                ),
+                "diagram_svg": (
+                    override.diagram_svg
+                    if override.diagram_svg is not None
+                    else problem.diagram_svg
+                ),
+                "diagram_render_status": (
+                    override.diagram_render_status
+                    if override.diagram_render_status is not None
+                    else problem.diagram_render_status
+                ),
+                "diagram_error": (
+                    override.diagram_error
+                    if override.diagram_error is not None
+                    else problem.diagram_error
+                ),
+                "diagram_needs_review": (
+                    override.diagram_needs_review
+                    if override.diagram_needs_review is not None
+                    else problem.diagram_needs_review
                 ),
             }
         )

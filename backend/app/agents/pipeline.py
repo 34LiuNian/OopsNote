@@ -32,11 +32,22 @@ class OcrExtractorLike(Protocol):
     ) -> list[ProblemBlock]: ...
 
 
+class DiagramReconstructorLike(Protocol):
+    def run(
+        self,
+        payload: TaskCreateRequest,
+        problems: list[ProblemBlock],
+        on_progress: Callable[[int, int, ProblemBlock], None] | None = None,
+        is_cancelled: Callable[[], bool] | None = None,
+    ) -> list[ProblemBlock]: ...
+
+
 @dataclass
 class PipelineDependencies:
     extractor: HandwrittenExtractor
     solution_writer: SolutionWriter
     tagger: TaggingProfiler
+    diagram_reconstructor: DiagramReconstructorLike | None
     archiver: Archiver
     archive_store: ArchiveStore
     ocr_extractor: OcrExtractorLike | None = None
@@ -79,6 +90,25 @@ class AgentPipeline:
         # Extract logical problems from the original sheet (handwritten or scanned).
         emit("extracting", "识别题目")
         detection, problems = self._extract(payload, asset, existing_problems)
+        if self.deps.diagram_reconstructor is not None and problems:
+            total = len(problems)
+            emit("diagramming", f"图形重建 0/{total}")
+            problems = self.deps.diagram_reconstructor.run(
+                payload,
+                problems,
+                on_progress=lambda i, n, _p: emit("diagramming", f"图形重建 {i}/{n}"),
+                is_cancelled=is_cancelled,
+            )
+            failed_count = sum(
+                1 for problem in problems if problem.diagram_render_status == "failed"
+            )
+            if failed_count > 0:
+                emit(
+                    "diagramming",
+                    f"图形重建完成（{total - failed_count}/{total}），{failed_count}题失败需人工介入",
+                )
+            else:
+                emit("diagramming", f"图形重建完成 {total}/{total}")
         if self.orchestrator:
             # Multi-agent orchestration runs as a batch.
             # 动态设置取消检查回调
@@ -208,6 +238,20 @@ class AgentPipeline:
         if not extracted:
             raise RuntimeError("OCR extractor returned empty result")
         return extracted[0]
+
+    def rerender_diagram_for_problem(
+        self,
+        *,
+        payload: TaskCreateRequest,
+        problem: ProblemBlock,
+    ) -> ProblemBlock:
+        """Re-run diagram reconstruction for one problem."""
+        if self.deps.diagram_reconstructor is None:
+            raise RuntimeError("Diagram reconstructor not configured")
+        updated = self.deps.diagram_reconstructor.run(payload, [problem])
+        if not updated:
+            raise RuntimeError("Diagram reconstructor returned empty result")
+        return updated[0]
 
     def retag_problem(
         self,

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import re
 from typing import Callable, Iterable, List, Tuple
 from uuid import uuid4
 
@@ -54,6 +55,176 @@ class ProblemRebuilder:
         raise RuntimeError(
             "ProblemRebuilder (placeholders) is disabled. Please provide an image for OCR."
         )
+
+
+class DiagramReconstructor:
+    def __init__(self, ai_client: AIClient | None = None) -> None:
+        self.ai_client = ai_client
+        self._template = _load_prompt("diagram")
+
+    @staticmethod
+    def _extract_tikz_source(problem_text: str) -> str | None:
+        text = (problem_text or "").strip()
+        if not text:
+            return None
+
+        fence_match = re.search(r"```tikz\s*(.*?)```", text, flags=re.DOTALL | re.IGNORECASE)
+        if fence_match:
+            source = (fence_match.group(1) or "").strip()
+            if source:
+                return source
+
+        env_match = re.search(
+            r"(\\begin\{tikzpicture\}.*?\\end\{tikzpicture\})",
+            text,
+            flags=re.DOTALL,
+        )
+        if env_match:
+            source = (env_match.group(1) or "").strip()
+            if source:
+                return source
+
+        return None
+
+    def run(
+        self,
+        payload: TaskCreateRequest,
+        problems: Iterable[ProblemBlock],
+        on_progress: Callable[[int, int, ProblemBlock], None] | None = None,
+        is_cancelled: Callable[[], bool] | None = None,
+    ) -> List[ProblemBlock]:
+        problems_list = list(problems)
+        updated: list[ProblemBlock] = []
+        total = len(problems_list)
+
+        for idx, problem in enumerate(problems_list, start=1):
+            if is_cancelled and is_cancelled():
+                from ..services.tasks_service import _TaskCancelled
+
+                raise _TaskCancelled("Task was cancelled by user")
+            if on_progress:
+                on_progress(idx, total, problem)
+
+            if not bool(getattr(problem, "ocr_has_diagram", False)):
+                updated.append(
+                    problem.model_copy(
+                        update={
+                            "diagram_detected": False,
+                            "diagram_kind": None,
+                            "diagram_tikz_source": None,
+                            "diagram_svg": None,
+                            "diagram_render_status": "skipped",
+                            "diagram_error": None,
+                            "diagram_needs_review": False,
+                            "diagram_confidence": None,
+                        }
+                    )
+                )
+                continue
+
+            tikz_source = self._extract_tikz_source(problem.problem_text)
+            try:
+                confidence = 1.0
+                if not tikz_source:
+                    if self.ai_client is None:
+                        raise RuntimeError("Diagram agent client is not configured")
+                    ctx = {
+                        "subject": problem.subject or payload.subject,
+                        "question_type": problem.question_type or "",
+                        "problem_text": problem.problem_text,
+                    }
+                    system_prompt, user_prompt = self._template.render(ctx)
+                    output = self.ai_client.structured_chat(system_prompt, user_prompt)
+                    has_diagram = bool(output.get("has_diagram"))
+                    if not has_diagram:
+                        updated.append(
+                            problem.model_copy(
+                                update={
+                                    "diagram_detected": False,
+                                    "diagram_kind": None,
+                                    "diagram_tikz_source": None,
+                                    "diagram_svg": None,
+                                    "diagram_render_status": "skipped",
+                                    "diagram_error": utils._coerce_str(
+                                        output.get("reason"), None
+                                    ),
+                                    "diagram_needs_review": False,
+                                    "diagram_confidence": None,
+                                }
+                            )
+                        )
+                        continue
+
+                    tikz_source = utils._coerce_str(output.get("tikz_source"), None)
+                    if not tikz_source:
+                        updated.append(
+                            problem.model_copy(
+                                update={
+                                    "diagram_detected": False,
+                                    "diagram_kind": None,
+                                    "diagram_tikz_source": None,
+                                    "diagram_svg": None,
+                                    "diagram_render_status": "failed",
+                                    "diagram_error": "diagram agent returned empty tikz_source",
+                                    "diagram_needs_review": True,
+                                    "diagram_confidence": None,
+                                }
+                            )
+                        )
+                        continue
+
+                    confidence_raw = output.get("confidence")
+                    if confidence_raw is not None:
+                        try:
+                            confidence = float(confidence_raw)
+                        except (TypeError, ValueError):
+                            confidence = 1.0
+
+                svg_text = None
+                render_status = "ready"
+                render_error = None
+                needs_review = False
+                try:
+                    from ..api.latex import render_tikz_svg_bytes
+
+                    svg_bytes = render_tikz_svg_bytes(tikz_source, inline=False)
+                    svg_text = svg_bytes.decode("utf-8", errors="replace")
+                except Exception as exc:  # pylint: disable=broad-exception-caught
+                    render_status = "failed"
+                    render_error = str(exc)
+                    needs_review = True
+
+                updated.append(
+                    problem.model_copy(
+                        update={
+                            "diagram_detected": True,
+                            "diagram_kind": "tikz",
+                            "diagram_tikz_source": tikz_source,
+                            "diagram_svg": svg_text,
+                            "diagram_render_status": render_status,
+                            "diagram_error": render_error,
+                            "diagram_needs_review": needs_review,
+                            "diagram_confidence": confidence,
+                        }
+                    )
+                )
+            except Exception as exc:  # pylint: disable=broad-exception-caught
+                updated.append(
+                    problem.model_copy(
+                        update={
+                            "diagram_detected": False,
+                            "diagram_kind": None,
+                            "diagram_tikz_source": None,
+                            "diagram_svg": None,
+                            "diagram_render_status": "failed",
+                            "diagram_error": str(exc),
+                            "diagram_needs_review": True,
+                            "diagram_confidence": None,
+                        }
+                    )
+                )
+
+        return updated
 
 
 class SolutionWriter:

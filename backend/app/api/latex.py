@@ -20,14 +20,24 @@ from ..models import ChemfigRenderRequest, LatexCompileRequest
 router = APIRouter(dependencies=[Depends(require_user)])
 
 CHEMFIG_CACHE_VERSION = "v1"
+TIKZ_CACHE_VERSION = "v1"
 
 
 def _chemfig_cache_dir() -> Path:
     return Path(__file__).resolve().parents[2] / "storage" / "chemfig_cache"
 
 
+def _tikz_cache_dir() -> Path:
+    return Path(__file__).resolve().parents[2] / "storage" / "tikz_cache"
+
+
 def _chemfig_cache_key(tex_content: str) -> str:
     payload = f"{CHEMFIG_CACHE_VERSION}\n{tex_content}".encode("utf-8")
+    return hashlib.sha256(payload).hexdigest()
+
+
+def _tikz_cache_key(tex_content: str) -> str:
+    payload = f"{TIKZ_CACHE_VERSION}\n{tex_content}".encode("utf-8")
     return hashlib.sha256(payload).hexdigest()
 
 
@@ -70,6 +80,199 @@ def _chemfig_template(content: str, inline: bool) -> str:
         "\\usepackage{amsmath,amssymb}\n"
         "\\begin{document}\n" + body + "\n\\end{document}\n"
     )
+
+
+def _tikz_template(content: str, inline: bool) -> str:
+    return _tikz_template_with_cjk(content, inline, use_cjk=False)
+
+
+def _tikz_template_with_cjk(content: str, inline: bool, *, use_cjk: bool) -> str:
+    body = content.strip()
+    if "\\begin{tikzpicture}" not in body:
+        body = "\\begin{tikzpicture}\n" + body + "\n\\end{tikzpicture}"
+    if inline:
+        body = f"\\({body}\\)"
+    cjk_packages = "\\usepackage{ctex}\n" if use_cjk else ""
+    return (
+        "\\documentclass[12pt]{standalone}\n"
+        + cjk_packages
+        +
+        "\\usepackage{tikz}\n"
+        "\\usetikzlibrary{arrows.meta,calc,positioning,decorations.pathmorphing}\n"
+        "\\usepackage{amsmath,amssymb}\n"
+        "\\begin{document}\n" + body + "\n\\end{document}\n"
+    )
+
+
+def render_tikz_svg_bytes(content: str, inline: bool = False) -> bytes:
+    """Render TikZ content to SVG bytes."""
+    latex_path = _find_latex()
+    xelatex_path = _find_xelatex()
+    if not latex_path and not xelatex_path:
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "message": "未找到 latex/xelatex，请先安装并加入 PATH 或设置 LATEX_PATH/XELATEX_PATH。",
+                "log": "",
+            },
+        )
+
+    dvisvgm_path = _find_dvisvgm()
+    if not dvisvgm_path:
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "message": "未找到 dvisvgm，请先安装并加入 PATH 或设置 DVISVGM_PATH。",
+                "log": "",
+            },
+        )
+
+    has_unicode_text = any(ord(char) > 127 for char in content)
+    if has_unicode_text and not xelatex_path:
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "message": "检测到 Unicode 文本（如中文）但未找到 xelatex，请安装 TeX Live xelatex 并加入 PATH。",
+                "log": "",
+            },
+        )
+
+    tex_content = _tikz_template_with_cjk(
+        content,
+        inline,
+        use_cjk=has_unicode_text,
+    )
+    cache_key = _tikz_cache_key(tex_content)
+    cache_dir = _tikz_cache_dir()
+    cache_path = cache_dir / f"{cache_key}.svg"
+    if cache_path.exists():
+        try:
+            return cache_path.read_bytes()
+        except Exception:
+            pass
+
+    with tempfile.TemporaryDirectory(prefix="oopsnote-tikz-") as tmp_dir:
+        workdir = Path(tmp_dir)
+        tex_path = workdir / "main.tex"
+        tex_path.write_text(tex_content, encoding="utf-8")
+
+        use_xelatex = has_unicode_text or (not latex_path)
+
+        if not use_xelatex and latex_path:
+            compile_args: list[str] = [
+                str(latex_path),
+                "-interaction=nonstopmode",
+                "-halt-on-error",
+                "-no-shell-escape",
+                str(tex_path.name),
+            ]
+        else:
+            compile_args = [
+                str(xelatex_path),
+                "-interaction=nonstopmode",
+                "-halt-on-error",
+                "-no-shell-escape",
+                "-no-pdf",
+                str(tex_path.name),
+            ]
+
+        result = subprocess.run(
+            compile_args,
+            cwd=workdir,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            check=False,
+        )
+
+        if result.returncode != 0:
+            log_tail = _read_log_tail(workdir / "main.log")
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "message": "TikZ 编译失败。",
+                    "log": log_tail,
+                    "exit_code": result.returncode,
+                },
+            )
+
+        dvi_path = workdir / "main.dvi"
+        xdv_path = workdir / "main.xdv"
+        pdf_path = workdir / "main.pdf"
+        if dvi_path.exists():
+            input_path = dvi_path
+        elif xdv_path.exists():
+            input_path = xdv_path
+        else:
+            input_path = pdf_path
+
+        if not input_path.exists():
+            raise HTTPException(
+                status_code=500,
+                detail={
+                    "message": "未生成 DVI/XDV/PDF 文件。",
+                    "log": "",
+                },
+            )
+
+        svg_path = workdir / "main.svg"
+        extra_args = os.getenv("DVISVGM_ARGS", "").strip().split()
+        dvisvgm_args = [
+            dvisvgm_path,
+            "--page=1",
+            "--no-fonts",
+            "-o",
+            svg_path.name,
+            input_path.name,
+            *extra_args,
+        ]
+        if input_path.suffix.lower() == ".pdf":
+            dvisvgm_args.insert(1, "--pdf")
+
+        svg_result = subprocess.run(
+            dvisvgm_args,
+            cwd=workdir,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            check=False,
+        )
+
+        if svg_result.returncode != 0 or not svg_path.exists():
+            log_tail = _read_log_tail(workdir / "main.log")
+            svg_stdout = _read_text_tail(svg_result.stdout or "")
+            svg_stderr = _read_text_tail(svg_result.stderr or "")
+            combined_log = "\n".join(
+                part
+                for part in [
+                    log_tail,
+                    "[dvisvgm stdout]",
+                    svg_stdout,
+                    "[dvisvgm stderr]",
+                    svg_stderr,
+                ]
+                if part
+            )
+            raise HTTPException(
+                status_code=500,
+                detail={
+                    "message": "TikZ SVG 生成失败。",
+                    "log": combined_log,
+                    "exit_code": svg_result.returncode,
+                },
+            )
+
+        svg_bytes = svg_path.read_bytes()
+        try:
+            cache_dir.mkdir(parents=True, exist_ok=True)
+            tmp_path = cache_dir / f"{cache_key}.tmp"
+            tmp_path.write_bytes(svg_bytes)
+            tmp_path.replace(cache_path)
+        except Exception:
+            pass
+        return svg_bytes
 
 
 def _find_xelatex() -> Optional[str]:
@@ -373,6 +576,24 @@ def render_chemfig(payload: ChemfigRenderRequest) -> Response:
             status_code=500,
             detail={
                 "message": f"Chemfig 渲染异常: {exc}",
+                "log": "",
+            },
+        ) from exc
+
+
+@router.post("/latex/tikz")
+def render_tikz(payload: ChemfigRenderRequest) -> Response:
+    """Render TikZ content to SVG."""
+    try:
+        svg_bytes = render_tikz_svg_bytes(payload.content, payload.inline)
+        return Response(content=svg_bytes, media_type="image/svg+xml")
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "message": f"TikZ 渲染异常: {exc}",
                 "log": "",
             },
         ) from exc

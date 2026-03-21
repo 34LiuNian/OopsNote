@@ -35,7 +35,7 @@ class SecurityConfig:
     jwt_secret: str
     jwt_algorithm: str = "HS256"
     jwt_access_token_expire_minutes: int = 30
-    jwt_refresh_token_expire_days: int = 7
+    jwt_refresh_token_expire_days: int = 2
 
     # Login protection
     max_login_attempts: int = 20
@@ -68,7 +68,7 @@ class SecurityConfig:
                 os.getenv("JWT_ACCESS_TOKEN_EXPIRE_MINUTES", "30")
             ),
             jwt_refresh_token_expire_days=int(
-                os.getenv("JWT_REFRESH_TOKEN_EXPIRE_DAYS", "7")
+                os.getenv("JWT_REFRESH_TOKEN_EXPIRE_DAYS", "2")
             ),
             max_login_attempts=int(os.getenv("MAX_LOGIN_ATTEMPTS", "20")),
             lockout_duration_minutes=int(os.getenv("LOCKOUT_DURATION_MINUTES", "10")),

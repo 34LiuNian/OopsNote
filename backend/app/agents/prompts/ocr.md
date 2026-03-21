@@ -15,7 +15,7 @@ USER:
   - 化学：化学反应、化学方程式、物质结构、有机化学等
 - 所有数学相关输出必须使用 LaTeX 格式，例如变量、符号、向量、公式等。行内公式使用 $ 包裹（例如 $x$），独行公式使用 $$ 包裹。
 - 化学式可以直接使用chemfig和mchm。
-- 数学、物理等题目若带图，你可以使用tikz绘图。
+<!-- - 数学、物理等题目若带图，你可以使用tikz绘图。 -->
 
 - 你需要找到最显眼的一道题目，一般位于图片中间，题号被标记者优先，未写者、被标记为错误的（打叉）者优先。
 - 图片边缘题目，尤其残缺的题目请不要录入。
@@ -32,12 +32,14 @@ USER:
    - 备选方案：若不使用 enumerate，请在小问之间**空一行**（即按两次回车）或使用 `\\\\` 强制换行。LaTeX 中直接按一次回车会被视为空格。
 
 - `options` 为**可选**字段：若为选择题请返回 `options`（数组）；若非选择题，可省略该字段或返回空数组。
+- **必须**包含字段 `has_diagram`（boolean）：表示此题是否需要启用图形重建 agent（仅判断是否需要，不要求你生成 tikz）。
 - **必须**包含字段 `question_type`，取值之一：`单选题`、`多选题`、`填空题`、`解答题`（务必使用中文标签）。
 - **必须**包含字段 `subject`，取值之一：`math`、`physics`、`chemistry`（使用英文标签）。
-- 只允许以下字段名（英文）：`subject`, `question_type`, `problem_text`, `options`（`options` 可选）。
+- 只允许以下字段名（英文）：`subject`, `has_diagram`, `question_type`, `problem_text`, `options`（`options` 可选）。
 - 严禁输出中文字段名（如"题干""选项"）。
 - 输出 JSON 结构（示例）：{
 	"subject": "math" | "physics" | "chemistry",
+	"has_diagram": boolean,
 	"question_type": "单选题" | "多选题" | "填空题" | "解答题",
 	"problem_text": str,
 	"options"?: [
