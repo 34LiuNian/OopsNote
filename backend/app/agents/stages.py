@@ -17,16 +17,16 @@ from ..models import (
 )
 from . import utils
 
-# Re-export PromptTemplate for backward compatibility
+# 重新导出 PromptTemplate，保持向后兼容
 from .agent_flow import PromptTemplate
 
 
 def _load_prompt(name: str) -> "PromptTemplate":
-    """Load a prompt template (legacy wrapper, use utils._load_prompt instead)."""
+    """加载提示词模板（兼容旧封装，推荐使用 utils._load_prompt）。"""
     return utils._load_prompt(name)
 
 
-# Note: Type coercion helpers moved to utils.py
+# 说明：类型规整辅助函数已迁移至 utils.py
 # - _coerce_list
 # - _coerce_str
 
@@ -53,7 +53,7 @@ class ProblemRebuilder:
         self, payload: TaskCreateRequest, detection: DetectionOutput
     ) -> List[ProblemBlock]:
         raise RuntimeError(
-            "ProblemRebuilder (placeholders) is disabled. Please provide an image for OCR."
+            "ProblemRebuilder（占位符回退）已禁用，请提供图片进行 OCR。"
         )
 
 
@@ -310,7 +310,7 @@ class TaggingProfiler:
                 "problem_text": problem.problem_text,
                 "explanation": solution.explanation if solution else "",
                 "answer": solution.answer if solution else "",
-                "manual_knowledge_tags": "",  # Current pipeline doesn't have a clean way to inject these here yet
+                "manual_knowledge_tags": "",  # 当前流水线尚无干净方式在此注入手动知识标签
                 "manual_error_tags": "",
                 "manual_source": "",
                 "meta_candidates": "",
@@ -321,7 +321,7 @@ class TaggingProfiler:
 
             output = self.ai_client.structured_chat(system_prompt, user_prompt)
 
-            # Ensure key fields exist
+            # 保证关键字段存在
             if not output.get("knowledge_points") or not output.get("question_type"):
                 raise RuntimeError(
                     f"Tagger failed: missing essential fields for problem {problem.problem_id}"

@@ -1,16 +1,15 @@
-"""
-Models package - re-exports all model classes for backward compatibility.
+"""模型包统一导出入口（兼容旧导入路径）。
 
-This module organizes models into logical submodules while maintaining
-a flat import structure for existing code.
+本模块将模型按逻辑拆分到子模块，同时保持扁平导入体验，
+便于现有代码平滑迁移。
 """
 
 from __future__ import annotations
 
-# Pydantic types (re-exported for convenience)
+# Pydantic 类型（便捷重导出）
 from pydantic import HttpUrl
 
-# Common types
+# 通用类型
 from .common import (
     TaskStatus,
     AssetSource,
@@ -19,7 +18,7 @@ from .common import (
     OptionItem,
 )
 
-# Problem and solution models
+# 题目与解答模型
 from .problem import (
     ProblemBlock,
     SolutionBlock,
@@ -27,7 +26,7 @@ from .problem import (
     ArchiveRecord,
 )
 
-# Task models
+# 任务模型
 from .task import (
     AssetMetadata,
     TaskCreateRequest,
@@ -37,19 +36,19 @@ from .task import (
     TasksResponse,
 )
 
-# Pipeline models
+# 流水线模型
 from .pipeline import (
     PipelineResult,
 )
 
-# Library models
+# 题库模型
 from .library import (
     ProblemSummary,
     ProblemsResponse,
     TaggingQuery,
 )
 
-# API models
+# API 模型
 from .api import (
     UploadRequest,
     LatexCompileRequest,
@@ -77,7 +76,7 @@ from .api import (
     SystemInfoResponse,
 )
 
-# Auth models
+# 认证模型
 from .auth import (
     UserRole,
     UserRecord,
@@ -90,27 +89,27 @@ from .auth import (
 __all__ = [
     # Pydantic
     "HttpUrl",
-    # Common
+    # 通用
     "TaskStatus",
     "AssetSource",
     "CropRegion",
     "DetectionOutput",
     "OptionItem",
-    # Problem
+    # 题目
     "ProblemBlock",
     "SolutionBlock",
     "TaggingResult",
     "ArchiveRecord",
-    # Task
+    # 任务
     "AssetMetadata",
     "TaskCreateRequest",
     "TaskRecord",
     "TaskResponse",
     "TaskSummary",
     "TasksResponse",
-    # Pipeline
+    # 流水线
     "PipelineResult",
-    # Library
+    # 题库
     "ProblemSummary",
     "ProblemsResponse",
     "TaggingQuery",
@@ -139,7 +138,7 @@ __all__ = [
     "DebugSettingsResponse",
     "DebugSettingsUpdateRequest",
     "SystemInfoResponse",
-    # Auth
+    # 认证
     "UserRole",
     "UserRecord",
     "UserPublic",

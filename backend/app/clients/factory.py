@@ -35,7 +35,7 @@ class AgentClientConfig:
 
 @dataclass(frozen=True)
 class AgentConfigBundle:
-    """Resolved runtime config loaded from a TOML file."""
+    """从 TOML 加载并解析后的运行时配置。"""
 
     default: AgentClientConfig | None = None
     agents: dict[str, AgentClientConfig] | None = None
@@ -51,16 +51,16 @@ def _float_env(value: str | None, default: float | None = None) -> float | None:
 
 
 def load_agent_client_config(agent_name: str) -> AgentClientConfig | None:
-    """Load per-agent config from env.
+    """从环境变量加载单个 Agent 配置。
 
-    Env naming:
-    AGENT_<NAME>_PROVIDER: openai | stub
-      AGENT_<NAME>_API_KEY
-      AGENT_<NAME>_BASE_URL   (openai only)
-      AGENT_<NAME>_MODEL
-      AGENT_<NAME>_TEMPERATURE
+        环境变量命名：
+        `AGENT_<NAME>_PROVIDER`: `openai | stub`
+            `AGENT_<NAME>_API_KEY`
+            `AGENT_<NAME>_BASE_URL`（仅 openai）
+            `AGENT_<NAME>_MODEL`
+            `AGENT_<NAME>_TEMPERATURE`
 
-    If PROVIDER is missing, returns None.
+    若 `PROVIDER` 缺失，则返回 `None`。
     """
 
     prefix = f"AGENT_{agent_name.upper()}_"
@@ -78,22 +78,22 @@ def load_agent_client_config(agent_name: str) -> AgentClientConfig | None:
 
 
 def load_agent_config_bundle(path: str | os.PathLike[str] | None) -> AgentConfigBundle:
-    """Load agent config from TOML.
+    """从 TOML 文件加载 Agent 配置。
 
-    TOML structure:
+    TOML 结构示例：
 
-      [default]
-    provider = "openai"|"stub"
-      api_key = "env:OPENAI_API_KEY"  # or literal
-      base_url = "https://.../v1"     # openai only
-      model = "gpt-4o-mini"
-      temperature = 0.2
+        [default]
+        provider = "openai"|"stub"
+        api_key = "env:OPENAI_API_KEY"  # 或字面量
+        base_url = "https://.../v1"     # 仅 openai
+        model = "gpt-4o-mini"
+        temperature = 0.2
 
-    [agents.SOLVER]
-      provider = "openai"
-      ...
+        [agents.SOLVER]
+        provider = "openai"
+        ...
 
-    Values can use env indirection: "env:VAR_NAME".
+    字段支持 `env:VAR_NAME` 形式的环境变量引用。
     """
 
     if not path:
@@ -180,13 +180,13 @@ def build_client_from_config(config: AgentClientConfig):
 def build_client_for_agent(
     agent_name: str, fallback_client, bundle: AgentConfigBundle | None = None
 ):
-    """Resolve client for agent.
+    """为指定 Agent 解析客户端实现。
 
-    Priority:
-            1) env AGENT_<NAME>_*
-            2) bundle.agents[AGENT]
-            3) bundle.default
-      4) fallback_client
+        优先级：
+            1) 环境变量 `AGENT_<NAME>_*`
+            2) `bundle.agents[AGENT]`
+            3) `bundle.default`
+            4) `fallback_client`
     """
 
     name = agent_name.upper()

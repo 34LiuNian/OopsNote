@@ -1,4 +1,4 @@
-"""Startup hooks and environment checks."""
+"""启动钩子与环境检查。"""
 
 from __future__ import annotations
 
@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 def check_ai_gateway(
     ai_gateway_status: dict[str, object], *, config: AppConfig
 ) -> None:
-    """Probe the configured OpenAI gateway endpoints at startup."""
+    """在启动阶段探测已配置的 OpenAI 网关端点。"""
     if config.running_under_pytest:
         ai_gateway_status.update({"checked": False, "skipped": "pytest"})
         return
@@ -61,7 +61,7 @@ def check_ai_gateway(
 
 
 def log_llm_payload_startup(config: AppConfig) -> None:
-    """Write a startup entry when LLM payload logging is enabled."""
+    """启用 LLM 载荷日志时写入一条启动记录。"""
     if not config.debug_llm_payload:
         return
     try:

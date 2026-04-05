@@ -1,6 +1,4 @@
-"""
-Pipeline and processing models.
-"""
+"""流水线处理相关模型。"""
 
 from __future__ import annotations
 
@@ -13,7 +11,7 @@ from .problem import ProblemBlock, SolutionBlock, TaggingResult, ArchiveRecord
 
 
 class PipelineResult(BaseModel):
-    """Result from AI pipeline execution."""
+    """AI 流水线执行结果。"""
 
     detection: DetectionOutput
     problems: List[ProblemBlock]

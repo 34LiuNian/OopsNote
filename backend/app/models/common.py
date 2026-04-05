@@ -1,6 +1,4 @@
-"""
-Common types and base classes for models module.
-"""
+"""models 模块的通用类型与基础类。"""
 
 from __future__ import annotations
 
@@ -11,7 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class TaskStatus(str, Enum):
-    """Task lifecycle status."""
+    """任务生命周期状态。"""
 
     PENDING = "pending"
     PROCESSING = "processing"
@@ -21,14 +19,14 @@ class TaskStatus(str, Enum):
 
 
 class AssetSource(str, Enum):
-    """Asset source type."""
+    """资源来源类型。"""
 
     UPLOAD = "upload"
     REMOTE = "remote"
 
 
 class CropRegion(BaseModel):
-    """Crop region with normalized bounding box."""
+    """带归一化边界框的裁剪区域。"""
 
     id: str
     bbox: List[float] = Field(
@@ -45,14 +43,14 @@ class CropRegion(BaseModel):
 
 
 class DetectionOutput(BaseModel):
-    """Multi-problem detection output."""
+    """多题检测输出。"""
 
     action: Literal["multi", "single", "single-noise"]
     regions: List[CropRegion] = Field(default_factory=list)
 
 
 class OptionItem(BaseModel):
-    """Multiple choice option item."""
+    """选择题选项条目。"""
 
     model_config = ConfigDict(extra="forbid")
 

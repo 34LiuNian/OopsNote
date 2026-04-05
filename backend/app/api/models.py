@@ -1,4 +1,4 @@
-"""Model management API endpoints."""
+"""模型管理相关 API 端点。"""
 
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ router = APIRouter(dependencies=[Depends(require_user)])
 
 
 def _service(request: Request):
-    """Resolve models service from shared API dependencies."""
+    """从通用 API 依赖中解析模型服务。"""
     return get_models_service(request)
 
 

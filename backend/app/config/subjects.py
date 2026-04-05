@@ -1,4 +1,4 @@
-"""Subject configurations."""
+"""学科配置。"""
 
 SUBJECTS = {
     "math": "数学",
@@ -10,5 +10,5 @@ SUBJECTS = {
 
 DEFAULT_SUBJECT = "math"
 
-# Valid subject keys (for validation)
+# 有效学科键（用于校验）
 VALID_SUBJECT_KEYS = tuple(SUBJECTS.keys())

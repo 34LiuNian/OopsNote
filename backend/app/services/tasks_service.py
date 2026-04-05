@@ -124,12 +124,12 @@ class TasksService:
             derived_url = str(upload.image_url)
 
         from pydantic import HttpUrl, ValidationError
-        
+
         try:
             http_url = HttpUrl(derived_url)
         except (ValidationError, ValueError):
-            http_url = HttpUrl("data:image/png;base64,placeholder")
-        
+            raise HTTPException(status_code=400, detail="Invalid image URL")
+
         payload = TaskCreateRequest(
             image_url=http_url,
             subject=upload.subject,
@@ -725,6 +725,11 @@ class TasksService:
                     if tag_result
                     else []
                 )
+                ai_error = (
+                    list(getattr(tag_result, "error_hypothesis", []))
+                    if tag_result
+                    else []
+                )
 
                 def _merge_unique(values: list[str]) -> list[str]:
                     out: list[str] = []
@@ -741,7 +746,7 @@ class TasksService:
                     return out
 
                 combined_knowledge = _merge_unique([*manual_knowledge, *ai_knowledge])
-                combined_error = _merge_unique([*manual_error, *ai_knowledge])
+                combined_error = _merge_unique([*manual_error, *ai_error])
 
                 # Apply filters
                 if tag is not None and tag not in combined_knowledge:
@@ -832,8 +837,6 @@ class TasksService:
                     stage="cancelled",
                     stage_message="用户取消任务",
                 )
-                # 写入流事件，通知前端
-                self._write_stream_event(task_id, "done", {"status": "cancelled"})
         except Exception:
             # 如果任务不存在或更新失败，至少保证取消标志已设置
             pass
@@ -958,8 +961,10 @@ class TasksService:
                 except Exception:
                     pass
 
+        done_status = "failed"
         try:
             if self._is_task_cancelled(task_id):
+                done_status = "cancelled"
                 return self._finalize_cancelled(task_id)
 
             self._mark_processing_started(task_id)
@@ -984,22 +989,35 @@ class TasksService:
                     tags=result.tags,
                 )
 
+                done_status = "completed"
                 return self._finalize_success(task_id, result)
             except _TaskCancelled:
+                done_status = "cancelled"
                 return self._finalize_cancelled(task_id)
             except HTTPException:
                 raise
             except Exception as exc:  # pylint: disable=broad-exception-caught
+                done_status = "failed"
                 self._finalize_failed(task_id, exc)
                 raise HTTPException(status_code=500, detail=str(exc)) from exc
         finally:
             # Write done event to stream file
             if task_id in self._task_cancelled:
                 self._write_stream_event(task_id, "done", {"status": "cancelled"})
-            elif task.status == TaskStatus.FAILED:
-                self._write_stream_event(task_id, "done", {"status": "failed"})
             else:
-                self._write_stream_event(task_id, "done", {"status": "completed"})
+                try:
+                    final_task = self.repository.get(task_id)
+                    if final_task.status == TaskStatus.CANCELLED:
+                        done_status = "cancelled"
+                    elif final_task.status == TaskStatus.FAILED:
+                        done_status = "failed"
+                    elif final_task.status == TaskStatus.COMPLETED:
+                        done_status = "completed"
+                except Exception:
+                    # Keep the best-effort status inferred from the run path.
+                    pass
+
+                self._write_stream_event(task_id, "done", {"status": done_status})
 
             with self._processing_lock:
                 self._processing_inflight.discard(task_id)

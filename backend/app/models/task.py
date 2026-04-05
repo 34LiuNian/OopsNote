@@ -1,6 +1,4 @@
-"""
-Task-related models.
-"""
+"""任务相关模型。"""
 
 from __future__ import annotations
 
@@ -14,9 +12,9 @@ from .problem import ProblemBlock, SolutionBlock, TaggingResult, ArchiveRecord
 
 
 class AssetMetadata(BaseModel):
-    """Asset metadata for uploaded images."""
+    """上传图片的资源元数据。"""
 
-    # Backward compatible with previously persisted tasks that may include extra keys.
+    # 兼容旧版持久化任务中可能存在的额外字段。
     model_config = ConfigDict(extra="ignore")
 
     asset_id: Optional[str] = None
@@ -29,61 +27,61 @@ class AssetMetadata(BaseModel):
 
 
 class TaskCreateRequest(BaseModel):
-    """Request to create a new task."""
+    """创建新任务请求。"""
 
     image_url: HttpUrl
     subject: str = Field(
         default="auto",
-        description="Subject tag for downstream agents ('auto' for auto-detection)",
+        description="下游 Agent 使用的学科标签（`auto` 表示自动识别）",
     )
     grade: Optional[str] = Field(
-        default=None, description="Grade or difficulty hint")
+        default=None, description="年级或难度提示")
     notes: Optional[str] = Field(
-        default=None, description="Free-form hints such as multi-problem cues"
+        default=None, description="自由文本提示，如多题线索"
     )
     question_no: Optional[str] = Field(
         default=None,
-        description="User-provided problem identifier (alphanumeric).",  # noqa: E501
+        description="用户提供的题号标识（可含字母数字）。",  # noqa: E501
     )
     question_type: Optional[str] = Field(
-        default=None, description="Optional manual question type label"
+        default=None, description="可选的手动题型标签"
     )
     mock_problem_count: Optional[int] = Field(
         default=None,
         ge=1,
         le=8,
-        description="For demos: override detector to emit specific count",
+        description="演示用途：覆盖检测器输出指定题目数量",
     )
     difficulty: Optional[str] = Field(
-        default=None, description="Score ratio a/b used for ordering"
+        default=None, description="用于排序的分数比例 a/b"
     )
     source: Optional[str] = Field(
-        default=None, description="Optional paper/exam source label"
+        default=None, description="可选：试卷/考试来源标签"
     )
     options: List[OptionItem] = Field(
-        default_factory=list, description="Optional manual choice items"
+        default_factory=list, description="可选：手动填写的选项"
     )
     knowledge_tags: List[str] = Field(
-        default_factory=list, description="Manual knowledge-system tags"
+        default_factory=list, description="手动知识体系标签"
     )
     error_tags: List[str] = Field(
-        default_factory=list, description="Manual error-attribution tags"
+        default_factory=list, description="手动错因归因标签"
     )
     user_tags: List[str] = Field(default_factory=list)
 
 
 class TaskRecord(BaseModel):
-    """Task record with full details."""
+    """包含完整信息的任务记录。"""
 
     id: str
     payload: TaskCreateRequest
     asset: Optional[AssetMetadata] = None
     status: TaskStatus = TaskStatus.PENDING
     stage: Optional[str] = Field(
-        default=None, description="Coarse progress stage identifier"
+        default=None, description="粗粒度进度阶段标识"
     )
     stage_message: Optional[str] = Field(
-        default=None, description="Human-readable progress message"
+        default=None, description="面向用户的进度文本"
     )
     created_at: datetime
     updated_at: datetime
@@ -96,13 +94,13 @@ class TaskRecord(BaseModel):
 
 
 class TaskResponse(BaseModel):
-    """Response with single task."""
+    """单任务响应。"""
 
     task: TaskRecord
 
 
 class TaskSummary(BaseModel):
-    """Summary view of a task for list views."""
+    """任务列表中的摘要视图。"""
 
     id: str
     status: TaskStatus
@@ -114,11 +112,11 @@ class TaskSummary(BaseModel):
     question_no: Optional[str] = None
     asset: Optional[dict] = Field(
         default=None,
-        description="Simplified asset info for thumbnail display (asset_id, path, mime_type)",
+        description="缩略图展示用简化资源信息（asset_id、path、mime_type）",
     )
 
 
 class TasksResponse(BaseModel):
-    """Response with task list."""
+    """任务列表响应。"""
 
     items: List[TaskSummary]

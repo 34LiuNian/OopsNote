@@ -14,10 +14,10 @@ from .config import AppConfig
 def probe_openai_gateway(
     base_url: str, timeout_seconds: float = 1.2
 ) -> tuple[bool, str]:
-    """Best-effort reachability probe.
+    """尽力探测网关可达性。
 
-    Treat any HTTP response (including 401/403/404) as "reachable".
-    Only connection/timeout errors count as unreachable.
+    任意 HTTP 响应（包括 401/403/404）均视为“可达”；
+    仅连接错误或超时视为“不可达”。
     """
 
     url = base_url.rstrip("/") + "/models"
@@ -36,9 +36,9 @@ def probe_openai_gateway(
 def collect_openai_gateway_urls(
     config: AppConfig, agent_config_bundle: Any
 ) -> list[tuple[str, str]]:
-    """Collect configured OpenAI-compatible base URLs from env + agent config.
+    """从环境变量与 Agent 配置中收集 OpenAI 兼容网关地址。
 
-    Returns a list of (label, base_url).
+    返回 `(label, base_url)` 列表。
     """
 
     candidates: list[tuple[str, str]] = []
@@ -86,11 +86,11 @@ def guess_openai_gateway_config(
     config: AppConfig,
     agent_config_bundle: Any,
 ) -> tuple[str | None, str | None, str | None, str]:
-    """Pick a base_url+api_key for OpenAI-compatible gateway model listing.
+    """为 OpenAI 兼容网关模型列表选择 `base_url+api_key`。
 
-    Priority:
-      1) agent TOML default if provider=openai
-      2) env OPENAI_BASE_URL + OPENAI_API_KEY
+        优先级：
+            1) agent TOML 默认项（provider=openai）
+            2) 环境变量 `OPENAI_BASE_URL + OPENAI_API_KEY`
     """
 
     base_url: str | None = None
@@ -129,17 +129,17 @@ def fetch_openai_models(
     auth_header_name: str = "Authorization",
     timeout_seconds: float = 5.0,
 ) -> list[dict[str, object]]:
-    """Fetch available models from OpenAI gateway.
+    """从 OpenAI 网关拉取可用模型列表。
 
     Args:
-        base_url: Gateway base URL
-        api_key: API key
-        authorization: Authorization header value
-        auth_header_name: Authorization header name
-        timeout_seconds: Request timeout
+        base_url: 网关基地址
+        api_key: API Key
+        authorization: Authorization 头的值
+        auth_header_name: Authorization 头名称
+        timeout_seconds: 请求超时时间
 
     Returns:
-        List of model dictionaries
+        模型字典列表
     """
     url = base_url.rstrip("/") + "/models"
 

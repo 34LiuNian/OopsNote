@@ -38,7 +38,7 @@ def login(payload: LoginRequest) -> AuthTokenResponse:
     config = load_app_config()
     security_config = SecurityConfig.from_env()
     
-    # Check if account is locked
+    # 检查账号是否处于锁定状态
     if login_attempt_store.is_locked(payload.username):
         remaining = login_attempt_store.get_lock_remaining(payload.username)
         raise HTTPException(
@@ -48,7 +48,7 @@ def login(payload: LoginRequest) -> AuthTokenResponse:
     
     user = user_store.authenticate(payload.username, payload.password)
     if user is None:
-        # Record failed attempt
+        # 记录本次登录失败
         login_attempt_store.record_failed_attempt(
             payload.username,
             max_attempts=security_config.max_login_attempts,
@@ -56,10 +56,10 @@ def login(payload: LoginRequest) -> AuthTokenResponse:
         )
         raise HTTPException(status_code=401, detail="用户名或密码错误")
 
-    # Clear failed attempts on success
+    # 登录成功后清空失败计数
     login_attempt_store.clear_attempts(payload.username)
     
-    # Create access token
+    # 签发访问令牌
     access_token, access_expires_in = create_access_token(
         subject=user.username,
         role=user.role,
@@ -68,7 +68,7 @@ def login(payload: LoginRequest) -> AuthTokenResponse:
         expires_minutes=config.jwt_access_token_expire_minutes,
     )
     
-    # Create refresh token
+    # 签发刷新令牌
     refresh_token, refresh_expires_in = create_refresh_token(
         subject=user.username,
         secret=config.jwt_secret,
@@ -88,7 +88,7 @@ def login(payload: LoginRequest) -> AuthTokenResponse:
 
 @router.post("/auth/refresh", response_model=RefreshTokenResponse)
 def refresh_token(payload: RefreshTokenRequest) -> RefreshTokenResponse:
-    """Refresh access token using refresh token."""
+    """使用刷新令牌换取新的访问令牌。"""
     config = load_app_config()
     
     try:
@@ -104,12 +104,12 @@ def refresh_token(payload: RefreshTokenRequest) -> RefreshTokenResponse:
     if not username:
         raise HTTPException(status_code=401, detail="无效的刷新凭证")
     
-    # Verify user still exists and is active
+    # 校验用户仍存在且处于启用状态
     user = user_store.get_user(username)
     if user is None or not user.is_active:
         raise HTTPException(status_code=401, detail="用户不存在或已禁用")
     
-    # Create new access token
+    # 签发新的访问令牌
     access_token, expires_in = create_access_token(
         subject=user.username,
         role=user.role,
@@ -144,7 +144,7 @@ def register(payload: RegisterRequest, request: Request) -> AuthTokenResponse:
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    # Create access token
+    # 签发访问令牌
     access_token, access_expires_in = create_access_token(
         subject=user.username,
         role=user.role,
@@ -153,7 +153,7 @@ def register(payload: RegisterRequest, request: Request) -> AuthTokenResponse:
         expires_minutes=config.jwt_access_token_expire_minutes,
     )
     
-    # Create refresh token
+    # 签发刷新令牌
     refresh_token, refresh_expires_in = create_refresh_token(
         subject=user.username,
         secret=config.jwt_secret,

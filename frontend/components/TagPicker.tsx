@@ -1,10 +1,11 @@
 "use client";
 
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Box, Button, Label, Spinner, Text, TextInput } from "@primer/react";
+import { Box, Label, Spinner, Text, TextInput } from "@primer/react";
 import { XIcon } from "@primer/octicons-react";
 import type { TagDimension, TagDimensionStyle, TagItem } from "@/types/api";
 import { searchTags } from "@/features/tags/api";
+import { sortTagItemsByQuery } from "@/features/tags/ranking";
 
 export type { TagDimension, TagDimensionStyle };
 
@@ -109,7 +110,8 @@ export const TagPicker = memo(function TagPicker({
       out.push({ type: "create", id: `create:${dimension}:${q}`, value: q, label: `新建：${q}` });
     }
 
-    for (const s of list.slice(0, maxSuggestions)) {
+    const rankedList = sortTagItemsByQuery(list, q);
+    for (const s of rankedList.slice(0, maxSuggestions)) {
       out.push({ type: "existing", id: s.id, value: s.value, ref_count: s.ref_count });
     }
     return out;
@@ -215,7 +217,7 @@ export const TagPicker = memo(function TagPicker({
       <Box sx={{ position: "relative", maxWidth: 560 }}>
         <TextInput
           value={input}
-          placeholder={placeholder || "输入后回车添加"}
+          placeholder={placeholder || "输入后回车，优先选中高亮项"}
           onChange={(e) => {
             setInput(e.target.value);
             setOpen(true);
@@ -290,6 +292,10 @@ export const TagPicker = memo(function TagPicker({
           block
         />
 
+        <Text sx={{ mt: 1, color: "fg.muted", fontSize: 0 }}>
+          回车会优先使用候选首项；退格可快速删除最后一个已选标签。
+        </Text>
+
         {enableRemoteSearch && open && (loading || filteredSuggestions.length > 0) ? (
           <Box
             ref={listRef}
@@ -360,6 +366,25 @@ export const TagPicker = memo(function TagPicker({
                 </Box>
               ))
             )}
+          </Box>
+        ) : null}
+
+        {enableRemoteSearch && open && !loading && filteredSuggestions.length === 0 && normalizeTag(input) ? (
+          <Box
+            sx={{
+              position: "absolute",
+              left: 0,
+              right: 0,
+              mt: 1,
+              border: "1px solid",
+              borderColor: "border.default",
+              borderRadius: 2,
+              bg: "canvas.default",
+              zIndex: 50,
+              p: 2,
+            }}
+          >
+            <Text sx={{ fontSize: 1, color: "fg.muted" }}>暂无匹配，按回车可直接创建并添加</Text>
           </Box>
         ) : null}
       </Box>

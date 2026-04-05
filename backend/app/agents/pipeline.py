@@ -74,7 +74,7 @@ class AgentPipeline:
                 try:
                     on_progress(stage, message)
                 except Exception:
-                    # Progress reporting must not break the pipeline.
+                    # 进度上报失败不应影响主流水线。
                     pass
 
         logger.info(
@@ -87,7 +87,7 @@ class AgentPipeline:
             bool(existing_problems),
         )
         emit("starting", "开始处理")
-        # Extract logical problems from the original sheet (handwritten or scanned).
+        # 从原始试题图（手写或扫描）中提取逻辑题目。
         emit("extracting", "识别题目")
         detection, problems = self._extract(payload, asset, existing_problems)
         if self.deps.diagram_reconstructor is not None and problems:
@@ -110,11 +110,12 @@ class AgentPipeline:
             else:
                 emit("diagramming", f"图形重建完成 {total}/{total}")
         if self.orchestrator:
-            # Multi-agent orchestration runs as a batch.
-            # 动态设置取消检查回调
-            self.orchestrator.is_cancelled = is_cancelled
+            # 多 Agent 编排按批次执行。
             solutions, tags = self.orchestrator.solve_and_tag(
-                payload, problems, on_progress=emit
+                payload,
+                problems,
+                is_cancelled=is_cancelled,
+                on_progress=emit,
             )
         else:
             total = len(problems)
@@ -162,7 +163,7 @@ class AgentPipeline:
         existing_problems: list[ProblemBlock] | None = None,
     ):
         if asset and self.deps.ocr_extractor:
-            # If retrying with existing problems, reuse their region_id
+            # 若基于已有题目重试，复用原 region_id
             if existing_problems:
                 region_id = (
                     existing_problems[0].region_id if existing_problems else uuid4().hex
@@ -195,7 +196,7 @@ class AgentPipeline:
                 asset,
             )
 
-            # Preserve original problem_id and region_id if retrying
+            # 重试场景下保留原 problem_id 与 region_id
             if existing_problems and problems:
                 for idx, problem in enumerate(problems):
                     if idx < len(existing_problems):
@@ -216,7 +217,7 @@ class AgentPipeline:
         crop_bbox: list[float] | None,
         on_llm_delta: Callable[[str, str, str], None] | None = None,
     ) -> ProblemBlock:
-        """Re-run OCR for one region and return a fresh single problem draft."""
+        """对单个区域重跑 OCR，并返回新的单题草稿。"""
         extractor = self.deps.ocr_extractor
         if extractor is None:
             raise RuntimeError("OCR extractor not configured")
@@ -245,7 +246,7 @@ class AgentPipeline:
         payload: TaskCreateRequest,
         problem: ProblemBlock,
     ) -> ProblemBlock:
-        """Re-run diagram reconstruction for one problem."""
+        """对单个题目重跑图形重建。"""
         if self.deps.diagram_reconstructor is None:
             raise RuntimeError("Diagram reconstructor not configured")
         updated = self.deps.diagram_reconstructor.run(payload, [problem])
@@ -260,7 +261,7 @@ class AgentPipeline:
         problem: ProblemBlock,
         solution: SolutionBlock | None,
     ) -> TaggingResult:
-        """Generate tags for a single problem with an optional existing solution."""
+        """为单题生成标签，可选传入已有解答。"""
         tags = self.deps.tagger.run(payload, [problem], [solution] if solution else [])
         if not tags:
             raise RuntimeError("Tagger returned empty result")
@@ -272,7 +273,7 @@ class AgentPipeline:
         payload: TaskCreateRequest,
         problem: ProblemBlock,
     ) -> tuple[SolutionBlock, TaggingResult]:
-        """Solve and tag one problem through orchestrator or fallback stage chain."""
+        """通过编排器或回退链路，对单题执行解题与打标。"""
         if self.orchestrator:
             solutions, tags = self.orchestrator.solve_and_tag(payload, [problem])
         else:
@@ -288,5 +289,5 @@ class AgentPipeline:
         payload: TaskCreateRequest,
         problem: ProblemBlock,
     ) -> TaggingResult:
-        """Classify one problem directly when manual override requests explicit tag recompute."""
+        """在人工覆盖要求重算标签时，直接对单题执行分类。"""
         return self.retag_problem(payload=payload, problem=problem, solution=None)

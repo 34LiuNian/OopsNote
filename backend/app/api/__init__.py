@@ -1,3 +1,3 @@
 from __future__ import annotations
 
-# Routers live in sibling modules.
+# 各路由定义位于同级模块中。

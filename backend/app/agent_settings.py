@@ -1,13 +1,12 @@
-"""Agent settings management - per-agent model, enable, thinking, temperature,
-gateway, and debug configuration.
+"""Agent 设置管理：按 Agent 维度管理模型、开关、思考模式、温度、网关与调试配置。
 
-This module provides persistent storage for agent-specific settings that control:
-- Model selection per agent
-- Enable/disable switches per agent
-- Thinking mode toggles per agent
-- Temperature overrides per agent
-- Gateway connection parameters (base_url, api_key, default model, temperature)
-- Debug switches (LLM payload logging, task persistence)
+本模块提供 Agent 级别配置的持久化存储，主要包括：
+- 各 Agent 的模型选择
+- 各 Agent 的启用/禁用开关
+- 各 Agent 的思考模式开关
+- 各 Agent 的温度覆盖
+- 网关连接参数（base_url、api_key、默认模型、temperature）
+- 调试开关（LLM 载荷日志、任务持久化）
 """
 
 from __future__ import annotations
@@ -21,20 +20,19 @@ from typing import Dict, Optional
 
 @dataclass(frozen=True)
 class AgentModelSettings:
-    """Immutable container for agent model settings.
+    """Agent 模型设置的不可变容器。
 
     Attributes:
-        models: Mapping of agent names (uppercase) to model identifiers
+        models: Agent 名称（大写）到模型标识的映射
     """
 
     models: Dict[str, str]
 
 
 class AgentModelSettingsStore:
-    """Persist per-agent model selection (non-secret) on disk.
+    """将各 Agent 的模型选择（非敏感）持久化到磁盘。
 
-    This is designed for UI-driven model switching without touching API
-    keys.
+    该存储用于支持 UI 侧切换模型，而无需改动 API Key。
     """
 
     def __init__(self, path: Path | None = None) -> None:
@@ -44,10 +42,10 @@ class AgentModelSettingsStore:
         self._lock = threading.Lock()
 
     def load(self) -> AgentModelSettings:
-        """Load agent model settings from disk.
+        """从磁盘加载 Agent 模型设置。
 
         Returns:
-            AgentModelSettings with current model mappings
+            当前模型映射对应的 AgentModelSettings
         """
         with self._lock:
             if not self.path.exists():
@@ -62,13 +60,13 @@ class AgentModelSettingsStore:
             return AgentModelSettings(models=normalized)
 
     def save(self, settings: AgentModelSettings) -> AgentModelSettings:
-        """Save agent model settings to disk.
+        """将 Agent 模型设置保存到磁盘。
 
         Args:
-            settings: Settings to persist
+            settings: 待持久化的设置
 
         Returns:
-            Saved settings
+            已保存的设置
         """
         with self._lock:
             payload = {"models": {k.upper(): v for k, v in settings.models.items()}}
@@ -78,14 +76,14 @@ class AgentModelSettingsStore:
             return settings
 
     def set_model(self, agent_name: str, model: str) -> AgentModelSettings:
-        """Set model for a specific agent.
+        """为指定 Agent 设置模型。
 
         Args:
-            agent_name: Agent identifier (case-insensitive)
-            model: Model name to use
+            agent_name: Agent 标识（不区分大小写）
+            model: 使用的模型名
 
         Returns:
-            Updated settings after save
+            保存后的最新设置
         """
         current = self.load()
         next_models = dict(current.models)
@@ -95,20 +93,19 @@ class AgentModelSettingsStore:
 
 @dataclass(frozen=True)
 class AgentEnableSettings:
-    """Immutable container for agent enable/disable settings.
+    """Agent 启用/禁用设置的不可变容器。
 
     Attributes:
-        enabled: Mapping of agent names (uppercase) to enable state
+        enabled: Agent 名称（大写）到启用状态的映射
     """
 
     enabled: Dict[str, bool]
 
 
 class AgentEnableSettingsStore:
-    """Persist per-agent enable switches (non-secret) on disk.
+    """将各 Agent 的启用开关（非敏感）持久化到磁盘。
 
-    Intended to control whether a given agent is executed / allowed to
-    use the model.
+    用于控制某个 Agent 是否执行、是否允许调用模型。
     """
 
     def __init__(self, path: Path | None = None) -> None:
@@ -118,10 +115,10 @@ class AgentEnableSettingsStore:
         self._lock = threading.Lock()
 
     def load(self) -> AgentEnableSettings:
-        """Load agent enable settings from disk.
+        """从磁盘加载 Agent 启用设置。
 
         Returns:
-            AgentEnableSettings with current enable states
+            当前启用状态对应的 AgentEnableSettings
         """
         with self._lock:
             if not self.path.exists():
@@ -139,13 +136,13 @@ class AgentEnableSettingsStore:
             return AgentEnableSettings(enabled=normalized)
 
     def save(self, settings: AgentEnableSettings) -> AgentEnableSettings:
-        """Save agent enable settings to disk.
+        """将 Agent 启用设置保存到磁盘。
 
         Args:
-            settings: Settings to persist
+            settings: 待持久化的设置
 
         Returns:
-            Saved settings
+            已保存的设置
         """
         with self._lock:
             payload = {
@@ -159,20 +156,20 @@ class AgentEnableSettingsStore:
 
 @dataclass(frozen=True)
 class AgentThinkingSettings:
-    """Immutable container for agent thinking mode settings.
+    """Agent 思考模式设置的不可变容器。
 
     Attributes:
-        thinking: Mapping of agent names (uppercase) to thinking mode state
+        thinking: Agent 名称（大写）到思考模式状态的映射
     """
 
     thinking: Dict[str, bool]
 
 
 class AgentThinkingSettingsStore:
-    """Persist per-agent thinking switches (non-secret) on disk.
+    """将各 Agent 的思考模式开关（非敏感）持久化到磁盘。
 
-    The meaning is intentionally lightweight: it influences prompt style.
-    Providers may ignore it if unsupported.
+    其语义刻意保持轻量：主要影响提示词风格。
+    若供应商不支持，可忽略该设置。
     """
 
     def __init__(self, path: Path | None = None) -> None:
@@ -182,10 +179,10 @@ class AgentThinkingSettingsStore:
         self._lock = threading.Lock()
 
     def load(self) -> AgentThinkingSettings:
-        """Load agent thinking mode settings from disk.
+        """从磁盘加载 Agent 思考模式设置。
 
         Returns:
-            AgentThinkingSettings with current thinking mode states
+            当前思考模式状态对应的 AgentThinkingSettings
         """
         with self._lock:
             if not self.path.exists():
@@ -203,13 +200,13 @@ class AgentThinkingSettingsStore:
             return AgentThinkingSettings(thinking=normalized)
 
     def save(self, settings: AgentThinkingSettings) -> AgentThinkingSettings:
-        """Save agent thinking mode settings to disk.
+        """将 Agent 思考模式设置保存到磁盘。
 
         Args:
-            settings: Settings to persist
+            settings: 待持久化的设置
 
         Returns:
-            Saved settings
+            已保存的设置
         """
         with self._lock:
             payload = {
@@ -222,23 +219,23 @@ class AgentThinkingSettingsStore:
 
 
 # ---------------------------------------------------------------------------
-# Agent Temperature Settings
+# Agent 温度设置
 # ---------------------------------------------------------------------------
 
 
 @dataclass(frozen=True)
 class AgentTemperatureSettings:
-    """Immutable container for per-agent temperature overrides.
+    """各 Agent 温度覆盖设置的不可变容器。
 
     Attributes:
-        temperature: Mapping of agent names (uppercase) to temperature values
+        temperature: Agent 名称（大写）到温度值的映射
     """
 
     temperature: Dict[str, float]
 
 
 class AgentTemperatureSettingsStore:
-    """Persist per-agent temperature overrides on disk."""
+    """将各 Agent 的温度覆盖配置持久化到磁盘。"""
 
     def __init__(self, path: Path | None = None) -> None:
         base = Path(__file__).resolve().parent.parent / "storage" / "settings"
@@ -278,21 +275,21 @@ class AgentTemperatureSettingsStore:
 
 
 # ---------------------------------------------------------------------------
-# Gateway Settings
+# 网关设置
 # ---------------------------------------------------------------------------
 
 
 @dataclass(frozen=True)
 class GatewaySettings:
-    """Immutable container for gateway connection parameters.
+    """网关连接参数的不可变容器。
 
-    These values override the corresponding environment variables when set.
+    当这些值存在时，会覆盖对应的环境变量。
 
     Attributes:
-        base_url: OpenAI-compatible gateway base URL
-        api_key: API key (stored in plaintext in local file)
-        default_model: Fallback model name
-        temperature: Default temperature
+        base_url: 兼容 OpenAI 的网关地址
+        api_key: API Key（本地文件明文存储）
+        default_model: 默认兜底模型名
+        temperature: 默认温度
     """
 
     base_url: Optional[str] = None
@@ -302,9 +299,9 @@ class GatewaySettings:
 
 
 class GatewaySettingsStore:
-    """Persist gateway connection parameters on disk.
+    """将网关连接参数持久化到磁盘。
 
-    Values stored here take priority over environment variables.
+    此处配置优先级高于环境变量。
     """
 
     def __init__(self, path: Path | None = None) -> None:
@@ -351,17 +348,17 @@ class GatewaySettingsStore:
 
 
 # ---------------------------------------------------------------------------
-# Debug Settings
+# 调试设置
 # ---------------------------------------------------------------------------
 
 
 @dataclass(frozen=True)
 class DebugSettings:
-    """Immutable container for debug switches.
+    """调试开关的不可变容器。
 
     Attributes:
-        debug_llm_payload: Whether to log LLM request/response payloads
-        persist_tasks: Whether to persist tasks to disk
+        debug_llm_payload: 是否记录 LLM 请求/响应载荷
+        persist_tasks: 是否将任务持久化到磁盘
     """
 
     debug_llm_payload: bool = False
@@ -369,7 +366,7 @@ class DebugSettings:
 
 
 class DebugSettingsStore:
-    """Persist debug switches on disk."""
+    """将调试开关持久化到磁盘。"""
 
     def __init__(self, path: Path | None = None) -> None:
         base = Path(__file__).resolve().parent.parent / "storage" / "settings"

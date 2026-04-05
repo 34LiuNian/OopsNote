@@ -25,13 +25,13 @@ from .tags import tag_store
 
 
 def build_repository(*, config: AppConfig):
-    """Build task repository based on configuration.
+    """根据配置构建任务仓储。
 
     Args:
-        config: Application configuration
+        config: 应用配置
 
     Returns:
-        Task repository instance (in-memory or file-based)
+        任务仓储实例（内存或文件实现）
     """
     if config.running_under_pytest or (not config.persist_tasks):
         return InMemoryTaskRepository()
@@ -41,10 +41,10 @@ def build_repository(*, config: AppConfig):
 
 
 def build_agent_settings_service() -> AgentSettingsService:
-    """Build agent settings service with all configuration stores.
+    """构建 Agent 设置服务，并装配全部配置存储。
 
     Returns:
-        Configured AgentSettingsService instance
+        配置完成的 AgentSettingsService 实例
     """
     from .agent_settings import (
         AgentEnableSettingsStore,
@@ -83,17 +83,17 @@ def build_ai_client(
     gateway_settings=None,
     debug_settings=None,
 ):
-    """Build AI client, applying gateway overrides when available.
+    """构建 AI 客户端，并在可用时应用网关覆盖配置。
 
-    Priority: gateway_settings (UI) > config (env vars) > defaults.
+    优先级：`gateway_settings`（UI）> `config`（环境变量）> 默认值。
 
     Args:
-        config: Application configuration
-        gateway_settings: Optional gateway settings from UI
-        debug_settings: Optional debug settings from UI
+        config: 应用配置
+        gateway_settings: 来自 UI 的可选网关设置
+        debug_settings: 来自 UI 的可选调试设置
 
     Returns:
-        Configured AI client instance
+        配置完成的 AI 客户端实例
     """
     api_key = config.openai_api_key
     base_url = config.openai_base_url
@@ -151,7 +151,7 @@ def build_pipeline(
             "solver",
             solver_client,
             _load_prompt("solver"),
-            ("answer", "explanation", "short_answer"),
+            ("answer", "explanation"),
             model_resolver=agent_settings_service.resolve_saved_model,
             temperature_resolver=agent_settings_service.resolve_temperature,
         ),

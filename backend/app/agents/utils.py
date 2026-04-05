@@ -1,10 +1,9 @@
-"""
-Common utilities for agents module.
+"""agents 模块通用工具集。
 
-This module provides shared utility functions used across agents/ directory:
-- Type coercion helpers (_coerce_*)
-- Prompt template loading (_load_prompt, _load_ocr_template)
-- Text normalization utilities
+本模块提供 agents/ 目录共享的辅助能力：
+- 类型规整工具（_coerce_*）
+- 提示词模板加载（_load_prompt、_load_ocr_template）
+- 文本归一化工具
 """
 
 from __future__ import annotations
@@ -13,30 +12,30 @@ import re
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-# Use TYPE_CHECKING to avoid circular import
+# 使用 TYPE_CHECKING 避免循环导入
 if TYPE_CHECKING:
     from .agent_flow import PromptTemplate
 
 
-# Precompiled regex for placeholder matching
+# 占位符匹配预编译正则
 _PLACEHOLDER_RE = re.compile(r"\{([a-zA-Z_][a-zA-Z0-9_]*)\}")
 
 
 # =============================================================================
-# Prompt Loading Utilities
+# 提示词加载工具
 # =============================================================================
 
 
 def _load_prompt(name: str) -> "PromptTemplate":
-    """Load a prompt template from the prompts directory.
+    """从 prompts 目录加载提示词模板。
 
     Args:
-        name: The prompt name (without extension), e.g., 'solver', 'tagger'
+        name: 提示词名称（不含扩展名），如 `solver`、`tagger`
 
     Returns:
-        PromptTemplate instance loaded from prompts/{name}.md
+        从 `prompts/{name}.md` 加载得到的 PromptTemplate
     """
-    # Lazy import to avoid circular dependency
+    # 延迟导入，避免循环依赖
     from .agent_flow import PromptTemplate
 
     path = Path(__file__).parent / "prompts" / f"{name}.md"
@@ -44,12 +43,12 @@ def _load_prompt(name: str) -> "PromptTemplate":
 
 
 def _load_ocr_template() -> "PromptTemplate":
-    """Load the OCR prompt template with caching.
+    """加载 OCR 提示词模板，并使用缓存。
 
     Returns:
-        PromptTemplate instance for OCR extraction
+        用于 OCR 提取的 PromptTemplate
     """
-    # Lazy import to avoid circular dependency
+    # 延迟导入，避免循环依赖
     from .agent_flow import PromptTemplate
 
     global _OCR_TEMPLATE
@@ -59,24 +58,24 @@ def _load_ocr_template() -> "PromptTemplate":
     return _OCR_TEMPLATE
 
 
-# Initialize OCR template cache
+# 初始化 OCR 模板缓存
 _OCR_TEMPLATE: PromptTemplate | None = None
 
 
 # =============================================================================
-# Type Coercion Helpers
+# 类型规整工具
 # =============================================================================
 
 
 def _coerce_str(value: Any, fallback: str | None = None) -> str | None:
-    """Coerce a value to string with optional fallback.
+    """将输入值规整为字符串，并支持兜底值。
 
     Args:
-        value: The value to coerce
-        fallback: Default value if input is None
+        value: 待规整的值
+        fallback: 当输入为 None 时的默认值
 
     Returns:
-        String representation or fallback
+        字符串结果或兜底值
     """
     if value is None:
         return fallback
@@ -86,13 +85,13 @@ def _coerce_str(value: Any, fallback: str | None = None) -> str | None:
 
 
 def _coerce_str_list(value: object) -> list[str]:
-    """Coerce a value to list of strings.
+    """将输入值规整为字符串列表。
 
     Args:
-        value: The value to coerce (can be str, list, or None)
+        value: 待规整的值（可为 str、list 或 None）
 
     Returns:
-        List of strings, empty list if input is None/empty
+        字符串列表；输入为空时返回空列表
     """
     if isinstance(value, list):
         out = []
@@ -107,14 +106,14 @@ def _coerce_str_list(value: object) -> list[str]:
 
 
 def _coerce_list(value: Any, default: list[str]) -> list[str]:
-    """Coerce a value to list with a default fallback.
+    """将输入值规整为列表，并支持默认回退。
 
     Args:
-        value: The value to coerce
-        default: Default list if input is None/empty
+        value: 待规整的值
+        default: 输入为空时的默认列表
 
     Returns:
-        List of strings or default
+        字符串列表或默认值
     """
     if isinstance(value, list) and value:
         return [str(item) for item in value]
@@ -124,16 +123,16 @@ def _coerce_list(value: Any, default: list[str]) -> list[str]:
 
 
 def _coerce_int(value: Any, default: int, lo: int, hi: int) -> int:
-    """Coerce a value to integer within bounds.
+    """将输入值规整为整数，并限制在给定区间。
 
     Args:
-        value: The value to coerce
-        default: Default value if conversion fails
-        lo: Minimum bound (inclusive)
-        hi: Maximum bound (inclusive)
+        value: 待规整的值
+        default: 转换失败时的默认值
+        lo: 最小边界（含）
+        hi: 最大边界（含）
 
     Returns:
-        Integer value clamped to [lo, hi]
+        落在 [lo, hi] 的整数值
     """
     try:
         number = int(value)
@@ -143,41 +142,41 @@ def _coerce_int(value: Any, default: int, lo: int, hi: int) -> int:
 
 
 # =============================================================================
-# Text Processing Utilities
+# 文本处理工具
 # =============================================================================
 
 
 def _normalize_linebreaks(text: str) -> str:
-    """Normalize line breaks to Unix-style (\\n).
+    """将换行符统一为 Unix 风格（\\n）。
 
     Args:
-        text: Input text with potential mixed line breaks
+        text: 可能混用多种换行符的输入文本
 
     Returns:
-        Text with all line breaks normalized to \\n
+        换行已统一后的文本
     """
     return text.replace("\r\n", "\n").replace("\r", "\n")
 
 
 def _contains_placeholder(text: str) -> bool:
-    """Check if text contains any {key} placeholders.
+    """检查文本中是否包含 `{key}` 占位符。
 
     Args:
-        text: The text to check
+        text: 待检查文本
 
     Returns:
-        True if placeholders are found, False otherwise
+        找到占位符返回 True，否则返回 False
     """
     return bool(_PLACEHOLDER_RE.search(text))
 
 
 def _extract_placeholders(text: str) -> list[str]:
-    """Extract all placeholder keys from text.
+    """提取文本中的全部占位符键名。
 
     Args:
-        text: The text to extract placeholders from
+        text: 待提取文本
 
     Returns:
-        List of placeholder keys (without braces)
+        占位符键名列表（不含花括号）
     """
     return _PLACEHOLDER_RE.findall(text)

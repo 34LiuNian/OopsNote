@@ -1,4 +1,4 @@
-"""Problem-level operations API endpoints."""
+"""题目级操作相关 API 端点。"""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ router = APIRouter(dependencies=[Depends(require_user)])
 
 
 def _service(request: Request):
-    """Resolve task service from shared API dependencies."""
+    """从通用 API 依赖中解析任务服务。"""
     return get_tasks_service(request)
 
 
@@ -22,26 +22,26 @@ def list_problems(
     subject: str | None = None,
     tag: str | None = None,
     source: str | None = Query(  # pylint: disable=unused-argument
-        None, description="Source filter (can be repeated for OR logic)"
+        None, description="来源筛选（可重复传参，按 OR 逻辑匹配）"
     ),
     knowledge_tag: str | None = Query(  # pylint: disable=unused-argument
-        None, description="Knowledge tag filter (can be repeated for OR logic)"
+        None, description="知识点标签筛选（可重复传参，按 OR 逻辑匹配）"
     ),
     error_tag: str | None = Query(  # pylint: disable=unused-argument
-        None, description="Error tag filter (can be repeated for OR logic)"
+        None, description="错因标签筛选（可重复传参，按 OR 逻辑匹配）"
     ),
     user_tag: str | None = Query(  # pylint: disable=unused-argument
-        None, description="Custom tag filter (can be repeated for OR logic)"
+        None, description="自定义标签筛选（可重复传参，按 OR 逻辑匹配）"
     ),
     created_after: str | None = Query(
-        None, description="Filter problems created after this date (ISO 8601 format)"
+        None, description="筛选在该日期之后创建的题目（ISO 8601 格式）"
     ),
     created_before: str | None = Query(
-        None, description="Filter problems created before this date (ISO 8601 format)"
+        None, description="筛选在该日期之前创建的题目（ISO 8601 格式）"
     ),
 ) -> ProblemsResponse:
-    # FastAPI automatically handles repeated query params as lists
-    # Access the raw query params to get all values
+    # FastAPI 会自动将重复查询参数聚合为列表
+    # 这里直接读取原始 query params，以拿到全部值
     query_params = request.query_params
     source_list = query_params.getlist("source") if "source" in query_params else None
     knowledge_tag_list = (

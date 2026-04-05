@@ -17,7 +17,7 @@ from .models import (
 
 
 class InMemoryTaskRepository:
-    """A simple in-memory store for demo and unit testing usage."""
+    """用于演示与单元测试的简易内存仓储。"""
 
     def __init__(self) -> None:
         self._tasks: Dict[str, TaskRecord] = {}
@@ -77,7 +77,7 @@ class InMemoryTaskRepository:
         return updated
 
     def mark_cancelled(self, task_id: str, reason: str = "cancelled") -> TaskRecord:
-        """Mark a task as cancelled and persist the terminal reason."""
+        """将任务标记为取消，并保存最终原因。"""
         record = self.get(task_id)
         now = datetime.now(timezone.utc)
         updated = record.model_copy(
@@ -117,7 +117,7 @@ class InMemoryTaskRepository:
 
 
 class ArchiveStore:
-    """Stub archive store — in production this would persist to Postgres/S3."""
+    """归档存储桩实现，生产环境可替换为 Postgres/S3。"""
 
     def __init__(self) -> None:
         self._archives: Dict[str, ArchiveRecord] = {}
@@ -131,9 +131,9 @@ class ArchiveStore:
 
 
 class FileTaskRepository:
-    """File-backed task repository.
+    """基于文件的任务仓储。
 
-    Persists each task record as a JSON file so tasks/problems survive process restarts.
+    每个任务记录落为 JSON 文件，使任务/题目在进程重启后仍可恢复。
     """
 
     def __init__(self, base_dir: Path | None = None) -> None:
@@ -163,7 +163,7 @@ class FileTaskRepository:
                 record = TaskRecord.model_validate(raw)
                 self._tasks[record.id] = record
             except Exception:
-                # Ignore corrupted/partial files; they can be repaired manually.
+                # 忽略损坏或半写入文件，允许后续人工修复。
                 continue
 
     def create(
@@ -224,7 +224,7 @@ class FileTaskRepository:
         return updated
 
     def mark_cancelled(self, task_id: str, reason: str = "cancelled") -> TaskRecord:
-        """Mark a task as cancelled and persist the terminal reason."""
+        """将任务标记为取消，并持久化最终原因。"""
         record = self.get(task_id)
         now = datetime.now(timezone.utc)
         updated = record.model_copy(

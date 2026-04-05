@@ -1,4 +1,4 @@
-"""Local file storage utilities for assets."""
+"""资源文件本地存储工具。"""
 
 from __future__ import annotations
 
@@ -16,7 +16,7 @@ DATA_URI_RE = re.compile(r"^data:(?P<mime>[^;]+);base64,(?P<data>.+)$")
 
 
 class LocalAssetStore:
-    """Persists uploaded assets onto disk and tracks metadata in-memory."""
+    """将上传资源持久化到磁盘，并在内存中跟踪元数据。"""
 
     def __init__(self, base_dir: Optional[Path] = None) -> None:
         self.base_dir = (
@@ -30,7 +30,7 @@ class LocalAssetStore:
         mime_type: Optional[str] = None,
         filename: Optional[str] = None,
     ) -> AssetMetadata:
-        """Persist a base64 payload and return its metadata."""
+        """保存 base64 载荷并返回其元数据。"""
         payload, resolved_mime = self._extract_payload(data, mime_type)
         asset_id = uuid4().hex
         extension = self._determine_extension(filename, resolved_mime)
@@ -39,7 +39,7 @@ class LocalAssetStore:
         path = self.base_dir / safe_name
         binary = base64.b64decode(payload)
         path.write_bytes(binary)
-        # Return relative path for API exposure
+        # 返回相对路径，供 API 对外暴露
         relative_path = f"/assets/{safe_name}"
         return AssetMetadata(
             asset_id=asset_id,
@@ -54,7 +54,7 @@ class LocalAssetStore:
     def register_remote(
         self, url: str, mime_type: Optional[str] = None
     ) -> AssetMetadata:
-        """Register a remote asset without downloading it."""
+        """注册远程资源（不执行下载）。"""
         return AssetMetadata(
             asset_id=uuid4().hex,
             source=AssetSource.REMOTE,

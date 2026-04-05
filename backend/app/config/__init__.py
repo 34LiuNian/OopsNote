@@ -1,8 +1,6 @@
-"""
-Configuration module for OopsNote backend.
-"""
+"""OopsNote 后端配置模块。"""
 
-# Re-export from app/config_main.py to avoid import conflicts
+# 从 app/config_main.py 重新导出，避免导入冲突
 from ..config_main import AppConfig, load_app_config
 from .app import AgentConfig, AppSettings, AuthConfig
 from .security import SecurityConfig

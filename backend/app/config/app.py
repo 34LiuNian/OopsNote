@@ -1,4 +1,4 @@
-"""Application configuration."""
+"""应用配置定义。"""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from .env import float_env
 
 @dataclass(frozen=True)
 class AppSettings:
-    """Core application settings."""
+    """应用核心设置。"""
 
     persist_tasks: bool
     tasks_dir: str | None
@@ -19,7 +19,7 @@ class AppSettings:
 
     @classmethod
     def from_env(cls) -> "AppSettings":
-        """Load application settings from environment."""
+        """从环境变量加载应用设置。"""
         running_under_pytest = ("pytest" in sys.modules) or (
             "PYTEST_CURRENT_TEST" in os.environ
         )
@@ -35,7 +35,7 @@ class AppSettings:
 
 @dataclass(frozen=True)
 class AgentConfig:
-    """LLM Agent configuration."""
+    """LLM Agent 配置。"""
 
     config_path: str | None
     openai_api_key: str | None
@@ -51,7 +51,7 @@ class AgentConfig:
 
     @classmethod
     def from_env(cls) -> "AgentConfig":
-        """Load agent configuration from environment."""
+        """从环境变量加载 Agent 配置。"""
         running_under_pytest = ("pytest" in sys.modules) or (
             "PYTEST_CURRENT_TEST" in os.environ
         )
@@ -92,7 +92,7 @@ class AgentConfig:
 
 @dataclass(frozen=True)
 class AuthConfig:
-    """Authentication configuration."""
+    """认证配置。"""
 
     enabled: bool
     admin_username: str
@@ -100,7 +100,7 @@ class AuthConfig:
 
     @classmethod
     def from_env(cls) -> "AuthConfig":
-        """Load auth configuration from environment."""
+        """从环境变量加载认证配置。"""
         return cls(
             enabled=os.getenv("AUTH_ENABLED", "true").lower() == "true",
             admin_username=os.getenv("AUTH_ADMIN_USERNAME", "admin"),

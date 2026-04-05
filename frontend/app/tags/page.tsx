@@ -16,6 +16,7 @@ import { KnowledgeTreeFilter } from "@/components/tags/KnowledgeTreeFilter";
 import { TagsResultList } from "@/components/tags/TagsResultList";
 import { TagsToolbar } from "@/components/tags/TagsToolbar";
 import { SUBJECT_OPTIONS } from "@/config/subjects";
+import { sortTagItemsByQuery } from "@/features/tags/ranking";
 import { notify } from "@/lib/notify";
 import type { TagDimension, TagItem } from "@/types/api";
 import { createTag, deleteTag, searchTags, updateTag } from "../../features/tags/api";
@@ -164,6 +165,11 @@ export default function TagsPage() {
     [deferredItems]
   );
 
+  const highFreqItems = useMemo(() => {
+    if (query) return [];
+    return sortTagItemsByQuery(deferredItems, "").slice(0, 10);
+  }, [deferredItems, query]);
+
   const getDimLabel = useCallback(
     (dim: string) =>
       effectiveDimensions[dim]?.label ||
@@ -251,8 +257,7 @@ export default function TagsPage() {
   ]);
 
   const onRename = useCallback(
-    async (item: TagItem) => {
-      const next = window.prompt("输入新的标签名称", item.value)?.trim();
+    async (item: TagItem, next: string) => {
       if (!next || next === item.value) return;
 
       try {
@@ -264,6 +269,7 @@ export default function TagsPage() {
           title: "更新失败",
           description: e instanceof Error ? e.message : "请稍后重试",
         });
+        throw e;
       }
     },
     [loadKnowledgeTree, loadTags]
@@ -271,8 +277,6 @@ export default function TagsPage() {
 
   const onDelete = useCallback(
     async (item: TagItem) => {
-      if (!window.confirm(`确认删除标签“${item.value}”？`)) return;
-
       try {
         await deleteTag(item.id);
         notify.success({ title: "标签已删除" });
@@ -282,6 +286,7 @@ export default function TagsPage() {
           title: "删除失败",
           description: e instanceof Error ? e.message : "请稍后重试",
         });
+        throw e;
       }
     },
     [loadKnowledgeTree, loadTags]
@@ -355,6 +360,32 @@ export default function TagsPage() {
           清空筛选
         </Button>
       </Box>
+
+      {highFreqItems.length > 0 ? (
+        <Box className="oops-card" sx={{ p: 3, display: "flex", flexDirection: "column", gap: 2 }}>
+          <Text sx={{ fontWeight: 600 }}>高频标签快捷入口</Text>
+          <Text sx={{ color: "fg.muted", fontSize: 1 }}>
+            下面是当前范围里最常用的标签，点一下即可快速定位。
+          </Text>
+          <Box sx={{ display: "flex", flexWrap: "wrap", gap: 2 }}>
+            {highFreqItems.map((item) => (
+              <Button
+                key={`hot-${item.id}`}
+                size="small"
+                onClick={() => {
+                  setQueryInput(item.value);
+                  setQuery(item.value);
+                }}
+              >
+                {item.value}
+                <Text as="span" sx={{ color: "fg.muted", ml: 1, fontSize: 0 }}>
+                  ×{item.ref_count || 0}
+                </Text>
+              </Button>
+            ))}
+          </Box>
+        </Box>
+      ) : null}
 
       {showCreate ? (
         <Box className="oops-card" sx={{ p: 3, display: "flex", flexDirection: "column", gap: 3 }}>
@@ -515,6 +546,16 @@ export default function TagsPage() {
             getDimLabel={getDimLabel}
             tagDimensions={TAG_DIMENSIONS}
             activePathParts={activePathParts}
+            onClearQuery={() => {
+              setQueryInput("");
+              setQuery("");
+            }}
+            onResetKnowledgeScope={() => {
+              setSubjectFilter("");
+              setGradeFilter("");
+              setChapterFilter("");
+              setDimFilter("knowledge");
+            }}
           />
 
           <TagsResultList
@@ -533,8 +574,8 @@ export default function TagsPage() {
             getKnowledgeContext={getKnowledgeContext}
             onPrevPage={() => setPage((p) => Math.max(1, p - 1))}
             onNextPage={() => setPage((p) => Math.min(pageCount, p + 1))}
-            onRename={(item) => {
-              void onRename(item);
+            onRename={(item, nextValue) => {
+              void onRename(item, nextValue);
             }}
             onDelete={(item) => {
               void onDelete(item);

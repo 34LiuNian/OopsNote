@@ -61,10 +61,10 @@ class OpenAIClient(AIClient):
         temperature: float | None = None,
         debug_payload: bool | None = None,
     ) -> None:
-        """Hot-reload connection parameters without server restart.
+        """热重载连接参数，无需重启服务。
 
-        Only rebuilds the internal ``openai.OpenAI`` instance when *base_url*
-        or *api_key* actually change.  Other fields are updated in-place.
+        仅在 `base_url` 或 `api_key` 实际变化时重建内部 `openai.OpenAI` 实例；
+        其他字段原地更新。
         """
         with self._reconfigure_lock:
             need_rebuild = False
@@ -142,8 +142,8 @@ class OpenAIClient(AIClient):
         thinking: bool | None = None,
     ) -> str:
         """调用 OpenAI chat.completions，仅支持非流式。"""
-        # Some models or gateways are picky about 'system' role in vision tasks.
-        # We also want to merge prompts into a single user message if desirable.
+        # 某些模型或网关对视觉任务中的 `system` 角色较敏感。
+        # 需要时可将系统提示词合并到单条 user 消息中。
         has_image = any(
             isinstance(m.get("content"), list)
             and any(c.get("type") == "image_url" for c in m["content"])
@@ -152,17 +152,17 @@ class OpenAIClient(AIClient):
 
         final_messages = messages
         if has_image:
-            # For vision models, some gateways/models (like GLM-V or older GPT-4V APIs)
-            # prefer system prompt merged into user prompt.
+            # 对视觉模型而言，部分网关/模型（如 GLM-V 或旧版 GPT-4V API）
+            # 更偏好将 system 提示词并入 user 提示词。
             system_msgs = [m for m in messages if m["role"] == "system"]
             user_msgs = [m for m in messages if m["role"] == "user"]
             if system_msgs and user_msgs:
                 system_content = "\n".join(
                     [str(m["content"]) for m in system_msgs])
-                # We assume the first user message is the one to prepend to.
+                # 约定将内容前置到第一条 user 消息。
                 user_content = user_msgs[0]["content"]
                 if isinstance(user_content, list):
-                    # For multi-modal content, find the first text block to prepend to
+                    # 对多模态内容，前置到首个文本块
                     text_found = False
                     for part in user_content:
                         if part.get("type") == "text":
@@ -175,7 +175,7 @@ class OpenAIClient(AIClient):
                 else:
                     user_msgs[0]["content"] = f"{system_content}\n\n{user_content}"
 
-                # Remove system messages
+                # 移除 system 消息
                 final_messages = [m for m in messages if m["role"] != "system"]
 
         kwargs: dict[str, Any] = {
@@ -185,7 +185,7 @@ class OpenAIClient(AIClient):
             "messages": final_messages,
         }
 
-        # JSON Mode support - be conservative
+        # JSON Mode 支持：保守启用
         if "gpt-4" in self.model or "gpt-3.5" in self.model:
             kwargs["response_format"] = {"type": "json_object"}
 
@@ -204,37 +204,8 @@ class OpenAIClient(AIClient):
                     thinking=thinking,
                 )
             return content
-        except Exception as e:
-            err_msg = str(e)
-            # Fallback for thinking mode if it fails
-            if "extra_body" in kwargs and (
-                "enable_thinking" in err_msg
-                or "extra_body" in err_msg
-                or "400" in err_msg
-            ):
-                logger.warning(
-                    "Model/Gateway failed with thinking mode, falling back to standard. err=%s",
-                    err_msg,
-                )
-                new_kwargs = {k: v for k,
-                              v in kwargs.items() if k != "extra_body"}
-                try:
-                    response = self._client.chat.completions.create(
-                        **new_kwargs)
-                    content = str(response.choices[0].message.content or "")
-                    finish_reason = response.choices[0].finish_reason
-                    usage = response.usage.model_dump() if response.usage else {}
-                    if self.debug_payload:
-                        self._write_payload_log(
-                            messages=final_messages,
-                            response_text=content,
-                            finish_reason=finish_reason,
-                            usage=usage,
-                            thinking=False,
-                        )
-                    return content
-                except Exception as retry_exc:
-                    err_msg = f"Standard mode also failed: {str(retry_exc)}"
+        except Exception as exc:
+            err_msg = str(exc)
 
             if self.debug_payload:
                 self._write_payload_log(
@@ -327,16 +298,6 @@ def _parse_json_block(text: str) -> dict[str, Any]:
                     return json.loads(snippet[: last_bracket + 1])
                 except json.JSONDecodeError:
                     continue
-
-    # 3. 极简提取方案：针对完全损坏的包裹（如 Markdown 代码块未闭合）
-    results = {}
-    pattern = r'"(\w+)":\s*"((?:\\.|[^"\\])*)"'
-    for match in re.finditer(pattern, text):
-        results[match.group(1)] = match.group(2)
-
-    if results:
-        logger.warning("Standard JSON parsing failed, used regex fallback.")
-        return results
 
     logger.debug("Failed candidate (last 500 chars): %s", text[-500:])
     raise ValueError("Final JSON parse attempt failed")

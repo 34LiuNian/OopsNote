@@ -1,11 +1,9 @@
-"""
-Protocol definitions for dependency injection and interface contracts.
+"""依赖注入与接口契约的 Protocol 定义。
 
-This module defines abstract interfaces (protocols) that implement the
-Interface Axiom from the good code principles:
-- Separation of Concerns: Interfaces expose only necessary functionality
-- Stability: Interfaces are stable and don't change frequently
-- Contract Based: Clear types, parameters, and return values
+本模块定义抽象接口（protocol），用于落实良好代码中的接口原则：
+- 职责分离：接口只暴露必要能力
+- 稳定性：接口保持稳定、低频变更
+- 契约化：类型、参数、返回值清晰
 """
 
 from __future__ import annotations
@@ -27,10 +25,9 @@ from .models import (
 
 @runtime_checkable
 class AIClient(Protocol):
-    """Protocol for AI/LLM client implementations.
+    """AI/LLM 客户端实现协议。
 
-    This interface allows swapping different LLM providers without
-    changing the business logic that depends on it.
+    该接口使业务逻辑可在不改动调用方的情况下切换不同 LLM 供应商。
     """
 
     model: str
@@ -41,7 +38,7 @@ class AIClient(Protocol):
         user_prompt: str,
         thinking: bool | None = None,
     ) -> dict[str, Any]:
-        """Execute a structured chat completion."""
+        """执行结构化对话补全。"""
 
     def structured_chat_with_image(
         self,
@@ -51,12 +48,12 @@ class AIClient(Protocol):
         mime_type: str,
         thinking: bool | None = None,
     ) -> dict[str, Any]:
-        """Execute a structured chat completion with image input."""
+        """执行带图片输入的结构化对话补全。"""
 
 
 @runtime_checkable
 class Extractor(Protocol):
-    """Protocol for problem extraction from images."""
+    """图片题目提取协议。"""
 
     def run(
         self,
@@ -64,24 +61,24 @@ class Extractor(Protocol):
         detection: DetectionOutput,
         asset: AssetMetadata | None = None,
     ) -> list[ProblemBlock]:
-        """Extract problems from uploaded image."""
+        """从上传图片中提取题目。"""
 
 
 @runtime_checkable
 class Solver(Protocol):
-    """Protocol for problem solving."""
+    """题目求解协议。"""
 
     def run(
         self,
         payload: TaskCreateRequest,
         problems: Iterable[ProblemBlock],
     ) -> list[SolutionBlock]:
-        """Generate solutions for extracted problems."""
+        """为已提取题目生成解答。"""
 
 
 @runtime_checkable
 class Tagger(Protocol):
-    """Protocol for problem tagging."""
+    """题目打标协议。"""
 
     def run(
         self,
@@ -89,44 +86,44 @@ class Tagger(Protocol):
         problems: Iterable[ProblemBlock],
         solutions: Iterable[SolutionBlock],
     ) -> list[TaggingResult]:
-        """Generate tags for solved problems."""
+        """为已解答题目生成标签。"""
 
 
 @runtime_checkable
 class Archiver(Protocol):
-    """Protocol for archiving processed problems."""
+    """题目处理归档协议。"""
 
     def run(
         self,
         task_id: str,
         problems: Iterable[ProblemBlock],
     ) -> ArchiveRecord:
-        """Archive processed problems."""
+        """归档已处理题目。"""
 
 
 @runtime_checkable
 class TasksServiceLike(Protocol):
-    """Protocol for task service."""
+    """任务服务协议。"""
 
     def process_task(self, task_id: str, background: bool = False) -> Any:
-        """Process a task through the AI pipeline."""
+        """通过 AI 流水线处理任务。"""
 
 
 @runtime_checkable
 class Repository(Protocol):
-    """Protocol for task persistence."""
+    """任务持久化协议。"""
 
     def create(self, payload: TaskCreateRequest, asset: AssetMetadata | None = None) -> TaskRecord:
-        """Create a new task record."""
+        """创建新任务记录。"""
 
     def get(self, task_id: str) -> TaskRecord:
-        """Retrieve a task by ID."""
+        """按 ID 获取任务。"""
 
     def update_task(self, task: TaskRecord) -> TaskRecord:
-        """Update an existing task."""
+        """更新已有任务。"""
 
     def list_all(self) -> dict[str, TaskRecord]:
-        """List all tasks."""
+        """列出全部任务。"""
 
     def list_tasks(
         self,
@@ -134,22 +131,22 @@ class Repository(Protocol):
         active_only: bool = False,
         subject: str | None = None,
     ) -> list[TaskRecord]:
-        """List tasks with optional filters."""
+        """按可选条件筛选任务列表。"""
 
     def get_task(self, task_id: str) -> TaskRecord:
-        """Retrieve a task by ID (legacy alias)."""
+        """按 ID 获取任务（旧别名）。"""
 
     def save_pipeline_result(
         self,
         task_id: str,
         result: PipelineResult,
     ) -> TaskRecord:
-        """Save pipeline processing result."""
+        """保存流水线处理结果。"""
 
 
 @runtime_checkable
 class EventBus(Protocol):
-    """Protocol for event publishing and subscription."""
+    """事件发布与订阅协议。"""
 
     def publish(
         self,
@@ -157,7 +154,7 @@ class EventBus(Protocol):
         event_type: str,
         data: dict[str, Any],
     ) -> None:
-        """Publish an event for a task."""
+        """发布任务事件。"""
 
     def subscribe(self, task_id: str) -> Iterable[dict[str, Any]]:
-        """Subscribe to events for a task."""
+        """订阅任务事件。"""

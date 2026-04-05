@@ -1,4 +1,4 @@
-"""LaTeX compilation and rendering API endpoints."""
+"""LaTeX 编译与渲染相关 API 端点。"""
 
 from __future__ import annotations
 
@@ -105,7 +105,7 @@ def _tikz_template_with_cjk(content: str, inline: bool, *, use_cjk: bool) -> str
 
 
 def render_tikz_svg_bytes(content: str, inline: bool = False) -> bytes:
-    """Render TikZ content to SVG bytes."""
+    """将 TikZ 内容渲染为 SVG 字节流。"""
     latex_path = _find_latex()
     xelatex_path = _find_xelatex()
     if not latex_path and not xelatex_path:
@@ -333,15 +333,15 @@ def _compile_pdf(
             if result.returncode != 0:
                 log_tail = _read_log_tail(workdir / "main.log")
 
-                # Save error artifacts if requested
+                # 按需保存错误产物
                 if save_error_artifacts and error_dir:
                     try:
                         error_dir.mkdir(parents=True, exist_ok=True)
                         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                        # Save tex file
+                        # 保存 tex 文件
                         tex_error_path = error_dir / f"error_{timestamp}.tex"
                         tex_error_path.write_text(tex_content, encoding="utf-8")
-                        # Save log file
+                        # 保存日志文件
                         log_path = workdir / "main.log"
                         if log_path.exists():
                             log_error_path = error_dir / f"error_{timestamp}.log"
@@ -377,7 +377,7 @@ def _compile_pdf(
 
 @router.post("/latex/compile")
 def compile_latex(payload: LatexCompileRequest) -> Response:
-    """Compile LaTeX to PDF."""
+    """编译 LaTeX 并返回 PDF。"""
     if "\\documentclass" in payload.content:
         tex_content = payload.content
     else:
@@ -414,7 +414,7 @@ def compile_latex(payload: LatexCompileRequest) -> Response:
 
 @router.post("/latex/chemfig")
 def render_chemfig(payload: ChemfigRenderRequest) -> Response:
-    """Render chemfig structure to SVG."""
+    """将 chemfig 结构渲染为 SVG。"""
     latex_path = _find_latex()
     xelatex_path = _find_xelatex()
     if not latex_path and not xelatex_path:
@@ -444,7 +444,7 @@ def render_chemfig(payload: ChemfigRenderRequest) -> Response:
         try:
             return Response(content=cache_path.read_bytes(), media_type="image/svg+xml")
         except Exception:
-            # Cache read failures fall back to rendering.
+            # 缓存读取失败时回退到实时渲染。
             pass
 
     try:
@@ -566,7 +566,7 @@ def render_chemfig(payload: ChemfigRenderRequest) -> Response:
                 tmp_path.write_bytes(svg_bytes)
                 tmp_path.replace(cache_path)
             except Exception:
-                # Cache write failures should not block the response.
+                # 缓存写入失败不应阻塞正常响应。
                 pass
             return Response(content=svg_bytes, media_type="image/svg+xml")
     except HTTPException:
@@ -583,7 +583,7 @@ def render_chemfig(payload: ChemfigRenderRequest) -> Response:
 
 @router.post("/latex/tikz")
 def render_tikz(payload: ChemfigRenderRequest) -> Response:
-    """Render TikZ content to SVG."""
+    """将 TikZ 内容渲染为 SVG。"""
     try:
         svg_bytes = render_tikz_svg_bytes(payload.content, payload.inline)
         return Response(content=svg_bytes, media_type="image/svg+xml")

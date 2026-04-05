@@ -35,12 +35,12 @@ _SENTINEL_UNCHANGED = "__UNCHANGED__"
 
 
 def _service(request: Request):
-    """Resolve agent-settings service from shared API dependencies."""
+    """从通用 API 依赖中解析 Agent 设置服务。"""
     return get_agent_settings_service(request)
 
 
 def _mask_api_key(key: str | None) -> str | None:
-    """Return a masked version of an API key for safe display."""
+    """返回脱敏后的 API Key，用于安全展示。"""
     if not key:
         return None
     if len(key) <= 8:
@@ -48,7 +48,7 @@ def _mask_api_key(key: str | None) -> str | None:
     return key[:3] + "****" + key[-4:]
 
 
-# ── Agent Models ──────────────────────────────────────────────────────────
+# ── Agent 模型配置 ─────────────────────────────────────────────────────────
 
 
 @router.get("/settings/agent-models", response_model=AgentModelsResponse)
@@ -61,21 +61,21 @@ def get_agent_models(request: Request) -> AgentModelsResponse:
 def update_agent_models(
     request: Request, payload: AgentModelsUpdateRequest
 ) -> AgentModelsResponse:
-    """Update agent model configuration.
+    """更新 Agent 模型配置。
 
     Args:
-        request: HTTP request
-        payload: Model update payload
+        request: HTTP 请求
+        payload: 模型更新载荷
 
     Returns:
-        Updated model configuration
+        更新后的模型配置
     """
     svc = _service(request)
     saved = svc.save_models(payload.models)
     return AgentModelsResponse(models=saved)
 
 
-# ── Agent Enabled ─────────────────────────────────────────────────────────
+# ── Agent 启用开关 ──────────────────────────────────────────────────────────
 
 
 @router.get("/settings/agent-enabled", response_model=AgentEnabledResponse)
@@ -93,7 +93,7 @@ def update_agent_enabled(
     return AgentEnabledResponse(enabled=saved)
 
 
-# ── Agent Thinking ────────────────────────────────────────────────────────
+# ── Agent 思考模式 ──────────────────────────────────────────────────────────
 
 
 @router.get("/settings/agent-thinking", response_model=AgentThinkingResponse)
@@ -111,7 +111,7 @@ def update_agent_thinking(
     return AgentThinkingResponse(thinking=saved)
 
 
-# ── Agent Temperature ─────────────────────────────────────────────────────
+# ── Agent 温度参数 ──────────────────────────────────────────────────────────
 
 
 @router.get("/settings/agent-temperature", response_model=AgentTemperatureResponse)
@@ -129,7 +129,7 @@ def update_agent_temperature(
     return AgentTemperatureResponse(temperature=saved)
 
 
-# ── Gateway Settings ──────────────────────────────────────────────────────
+# ── 网关设置 ────────────────────────────────────────────────────────────────
 
 
 @router.get("/settings/gateway", response_model=GatewaySettingsResponse)
@@ -157,7 +157,7 @@ def update_gateway_settings(
     svc = _service(request)
     current = svc.load_gateway()
 
-    # Handle API key sentinel value
+    # 处理 API Key 的哨兵值
     new_api_key = current.api_key
     if payload.api_key is not None:
         if payload.api_key == _SENTINEL_UNCHANGED:
@@ -179,7 +179,7 @@ def update_gateway_settings(
     )
     saved = svc.save_gateway(new_settings)
 
-    # Hot-reload all AI clients
+    # 热重载所有在线 AI 客户端
     _hot_reload_clients(request, saved)
 
     env_config = load_app_config()
@@ -197,7 +197,7 @@ def update_gateway_settings(
 
 
 def _hot_reload_clients(request: Request, gw: GatewaySettings) -> None:
-    """Apply gateway settings to all live OpenAIClient instances."""
+    """将网关设置应用到所有存活的 OpenAIClient 实例。"""
     try:
         from ..clients.openai_client import OpenAIClient as _OpenAIClient
 
@@ -209,7 +209,7 @@ def _hot_reload_clients(request: Request, gw: GatewaySettings) -> None:
         effective_model = gw.default_model or env_config.openai_model
         effective_temp = gw.temperature if gw.temperature is not None else env_config.openai_temperature
 
-        # Collect all OpenAIClient instances from the pipeline
+        # 从流水线中收集所有 OpenAIClient 实例
         clients: list[_OpenAIClient] = []
         pipeline = getattr(state.tasks, "_pipeline", None) or getattr(
             state.tasks, "pipeline", None
@@ -249,14 +249,14 @@ def _hot_reload_clients(request: Request, gw: GatewaySettings) -> None:
 
 @router.post("/settings/gateway/test", response_model=GatewayTestResponse)
 def test_gateway_connection(payload: GatewayTestRequest) -> GatewayTestResponse:
-    """Test gateway reachability and model listing."""
+    """测试网关连通性并尝试拉取模型列表。"""
     try:
         reachable, status = probe_openai_gateway(payload.base_url, timeout_seconds=5.0)
         if not reachable:
             return GatewayTestResponse(
                 success=False, message=f"无法连接: {status}", models_count=0
             )
-        # Try fetching models
+        # 尝试获取模型列表
         models = fetch_openai_models(
             payload.base_url,
             payload.api_key,
@@ -275,7 +275,7 @@ def test_gateway_connection(payload: GatewayTestRequest) -> GatewayTestResponse:
         )
 
 
-# ── Debug Settings ────────────────────────────────────────────────────────
+# ── 调试设置 ────────────────────────────────────────────────────────────────
 
 
 @router.get("/settings/debug", response_model=DebugSettingsResponse)
@@ -304,7 +304,7 @@ def update_debug_settings(
     )
     saved = svc.save_debug(new_settings)
 
-    # Apply debug_llm_payload to live clients
+    # 将 debug_llm_payload 配置应用到在线客户端
     _apply_debug_to_clients(request, saved.debug_llm_payload)
 
     return DebugSettingsResponse(
@@ -314,7 +314,7 @@ def update_debug_settings(
 
 
 def _apply_debug_to_clients(request: Request, debug_llm_payload: bool) -> None:
-    """Toggle debug_payload on all live OpenAIClient instances."""
+    """在所有存活的 OpenAIClient 上切换 debug_payload。"""
     try:
         from ..clients.openai_client import OpenAIClient as _OpenAIClient
 
@@ -336,7 +336,7 @@ def _apply_debug_to_clients(request: Request, debug_llm_payload: bool) -> None:
         logger.warning("Failed to apply debug setting: %s", exc)
 
 
-# ── System Info ───────────────────────────────────────────────────────────
+# ── 系统信息 ────────────────────────────────────────────────────────────────
 
 
 @router.get("/settings/system-info", response_model=SystemInfoResponse)
@@ -362,7 +362,7 @@ def get_system_info(request: Request) -> SystemInfoResponse:
         Path(__file__).resolve().parent.parent / "storage"
     )
 
-    # Count cached models
+    # 统计缓存中的模型数量
     state = get_backend_state(request)
     models_count = 0
     try:

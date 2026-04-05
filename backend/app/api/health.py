@@ -1,4 +1,4 @@
-"""Health check API endpoint."""
+"""健康检查 API 端点。"""
 
 from __future__ import annotations
 

@@ -18,7 +18,7 @@ router = APIRouter(dependencies=[Depends(require_user)])
 
 
 def _svc(request: Request):
-    """Resolve task service from shared API dependencies."""
+    """从通用 API 依赖中解析任务服务。"""
     return get_tasks_service(request)
 
 
@@ -26,15 +26,15 @@ def _svc(request: Request):
 def create_task(
     request: Request, payload: TaskCreateRequest, auto_process: bool = True
 ) -> TaskResponse:
-    """Create a new task.
+    """创建新任务。
 
     Args:
-        request: HTTP request
-        payload: Task creation payload
-        auto_process: Whether to start processing immediately
+        request: HTTP 请求
+        payload: 任务创建载荷
+        auto_process: 是否立即启动处理
 
     Returns:
-        Created task response
+        创建后的任务响应
     """
     task = _svc(request).create_task(payload, auto_process=auto_process)
     return TaskResponse(task=task)
@@ -44,7 +44,7 @@ def create_task(
 def list_tasks(
     request: Request,
     status: TaskStatus | None = None,
-    active_only: bool = True,  # Default to active-only to show in-progress tasks
+    active_only: bool = True,  # 默认仅返回活跃任务，用于展示进行中的任务
     subject: str | None = None,
 ) -> TasksResponse:
     return _svc(request).list_tasks(
@@ -72,85 +72,6 @@ def process_task(
 ) -> TaskResponse:
     task = _svc(request).process_task(task_id, background=background)
     return TaskResponse(task=task)
-
-
-@router.post("/tasks/{task_id}/simulate", response_model=TaskResponse)
-def simulate_processing(
-    request: Request, task_id: str, background: bool = True
-) -> TaskResponse:
-    """Simulate task processing with fake progress events for testing."""
-    import threading
-    import time
-
-    svc = _svc(request)
-
-    # Mark as processing
-    svc.repository.patch_task(task_id, stage="simulating", stage_message="模拟处理中")
-
-    def send_fake_progress():
-        """Send fake progress events to test SSE."""
-        import logging
-
-        logger = logging.getLogger(__name__)
-
-        try:
-            logger.info("Starting fake progress for task %s", task_id)
-            logger.info("svc type: %s", type(svc))
-            logger.info("svc has event_bus: %s", hasattr(svc, "event_bus"))
-            logger.info("svc.event_bus: %s", getattr(svc, "event_bus", "NOT_FOUND"))
-
-            stages = [
-                ("starting", "开始处理"),
-                ("ocr", "OCR 提取中..."),
-                ("solver", "解题中..."),
-                ("tagger", "打标中..."),
-                ("done", "处理完成"),
-            ]
-
-            for stage, message in stages:
-                time.sleep(8)  # Simulate work - 20 seconds per stage
-                # Write progress to stream file
-                svc._write_stream_event(  # pylint: disable=protected-access
-                    task_id, "progress", {"stage": stage, "message": message}
-                )
-
-            logger.info("Fake progress completed for task %s", task_id)
-
-        except Exception as e:
-            logger.error(
-                "Error in send_fake_progress for task %s: %s", task_id, e, exc_info=True
-            )
-            raise
-
-        # Mark as completed
-        svc.repository.patch_task(task_id, stage="done", stage_message="模拟完成")
-
-    if background:
-        # Start in background thread with better error handling
-        def run_with_error_handling():
-            try:
-                send_fake_progress()
-            except Exception as e:
-                import logging
-
-                logger = logging.getLogger(__name__)
-                logger.error(
-                    "Error in background simulate thread for task %s: %s",
-                    task_id,
-                    e,
-                    exc_info=True,
-                )
-
-        thread = threading.Thread(
-            target=run_with_error_handling,
-            name=f"simulate-{task_id}",
-            daemon=True,
-        )
-        thread.start()
-    else:
-        send_fake_progress()
-
-    return TaskResponse(task=svc.get_task(task_id))
 
 
 @router.post("/tasks/{task_id}/retry", response_model=TaskResponse)

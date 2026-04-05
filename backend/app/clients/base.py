@@ -2,9 +2,9 @@ from typing import Any, Protocol
 
 
 class AIClient(Protocol):
-    """Contract for low-level LLM chat capabilities.
+    """底层 LLM 对话能力协议。
 
-    Domain-specific solve/tag logic must stay outside infrastructure clients.
+    领域层的解题/打标逻辑必须留在客户端之外。
     """
 
     model: str
@@ -15,7 +15,7 @@ class AIClient(Protocol):
         user_prompt: str,
         thinking: bool | None = None,
     ) -> dict[str, Any]:
-        """Generic structured generation that returns a JSON-like dict."""
+        """通用结构化生成，返回 JSON 风格字典。"""
 
     def structured_chat_with_image(
         self,
@@ -25,4 +25,4 @@ class AIClient(Protocol):
         mime_type: str,
         thinking: bool | None = None,
     ) -> dict[str, Any]:
-        """Structured generation that can also consume a single image."""
+        """支持单图输入的结构化生成接口。"""

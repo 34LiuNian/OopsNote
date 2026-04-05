@@ -1,6 +1,4 @@
-"""
-Problem and solution models.
-"""
+"""题目与解答相关模型。"""
 
 from __future__ import annotations
 
@@ -14,105 +12,105 @@ from ..config.subjects import DEFAULT_SUBJECT, VALID_SUBJECT_KEYS
 
 
 class ProblemBlock(BaseModel):
-    """Extracted problem block from OCR."""
+    """OCR 提取后的题目块。"""
 
     problem_id: str
     region_id: str
     subject: str = Field(
         default=DEFAULT_SUBJECT,
-        description=f"Auto-detected subject: {', '.join(VALID_SUBJECT_KEYS)}",
+        description=f"自动识别学科：{', '.join(VALID_SUBJECT_KEYS)}",
     )
     question_no: Optional[str] = Field(
         default=None,
-        description="User-provided problem identifier (can be alphanumeric); used for display only",
+        description="用户提供的题号（可含字母数字）；仅用于展示",
     )
     question_type: Optional[str] = Field(
-        default=None, description="Optional manual question type label"
+        default=None, description="可选的手动题型标签"
     )
     problem_text: str
     crop_image_url: Optional[str] = Field(
-        default=None, description="URL or path of the cropped region"
+        default=None, description="裁剪区域的 URL 或路径"
     )
     locked_tags: bool = Field(
-        default=False, description="If true, skip auto-retag unless forced"
+        default=False, description="为 true 时跳过自动重打标（除非强制）"
     )
     media_notes: Optional[str] = None
     options: List[OptionItem] = Field(
-        default_factory=list, description="Optional choice items"
+        default_factory=list, description="可选的选择题选项"
     )
     source: Optional[str] = Field(
-        default=None, description="Paper/exam source, e.g. 2024-XX-mock-exam"
+        default=None, description="试卷/考试来源，如 2024-XX-模拟考"
     )
     knowledge_tags: List[str] = Field(
         default_factory=list,
-        description="Manual knowledge-system tags for this problem",
+        description="该题手动知识体系标签",
     )
     error_tags: List[str] = Field(
         default_factory=list,
-        description="Manual error-attribution tags for this problem",
+        description="该题手动错因归因标签",
     )
     user_tags: List[str] = Field(
-        default_factory=list, description="Manual custom tags for this problem"
+        default_factory=list, description="该题手动自定义标签"
     )
     crop_bbox: Optional[List[float]] = Field(
         default=None,
         min_length=4,
         max_length=4,
-        description="[x, y, width, height] normalized coordinates copied from CropRegion",
+        description="从 CropRegion 复制的 [x, y, width, height] 归一化坐标",
     )
     ocr_has_diagram: bool = Field(
         default=False,
-        description="Whether OCR model judged this problem needs diagram reconstruction",
+        description="OCR 是否判定该题需要图形重建",
     )
     diagram_detected: bool = Field(
         default=False,
-        description="Whether a drawable diagram was detected from OCR text",
+        description="是否从 OCR 文本检测到可绘制图形",
     )
     diagram_kind: Optional[str] = Field(
         default=None,
-        description="Diagram kind, e.g. tikz",
+        description="图形类型，如 tikz",
     )
     diagram_tikz_source: Optional[str] = Field(
         default=None,
-        description="Generated TikZ source for diagram reconstruction",
+        description="用于图形重建的 TikZ 源码",
     )
     diagram_svg: Optional[str] = Field(
         default=None,
-        description="Rendered SVG content for direct frontend preview",
+        description="渲染后的 SVG 内容，可供前端直接预览",
     )
     diagram_render_status: Optional[str] = Field(
         default=None,
-        description="Render status: ready/failed/skipped",
+        description="渲染状态：ready/failed/skipped",
     )
     diagram_error: Optional[str] = Field(
         default=None,
-        description="Render failure reason for manual intervention",
+        description="渲染失败原因，供人工介入",
     )
     diagram_needs_review: bool = Field(
         default=False,
-        description="Whether the diagram output requires manual review",
+        description="图形输出是否需要人工复核",
     )
     diagram_confidence: Optional[float] = Field(
         default=None,
-        description="Model confidence (0-1) for diagram reconstruction",
+        description="图形重建模型置信度（0-1）",
     )
 
 
 class SolutionBlock(BaseModel):
-    """Solution block for a problem."""
+    """单题解答块。"""
 
     problem_id: str
     answer: str
     explanation: str
     short_answer: Optional[str] = Field(
-        default=None, description="Optional short-form answer for summary views"
+        default=None, description="摘要视图可用的简答答案（可选）"
     )
 
 
 class TaggingResult(BaseModel):
-    """Tagging result from AI agent."""
+    """AI Agent 生成的打标结果。"""
 
-    # Backward compatible with previously persisted tasks that may include extra keys.
+    # 兼容旧版持久化任务中可能存在的额外字段。
     model_config = ConfigDict(extra="ignore")
 
     problem_id: str
@@ -124,7 +122,7 @@ class TaggingResult(BaseModel):
 
 
 class ArchiveRecord(BaseModel):
-    """Archive record for persisted problems."""
+    """题目持久化归档记录。"""
 
     task_id: str
     stored_problem_ids: List[str]

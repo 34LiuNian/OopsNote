@@ -1,6 +1,7 @@
 "use client";
 
-import { Box, Button, Flash, IconButton, Label, Spinner, Text } from "@primer/react";
+import { useEffect, useState } from "react";
+import { Box, Button, Flash, IconButton, Label, Spinner, Text, TextInput } from "@primer/react";
 import { PencilIcon, TrashIcon } from "@primer/octicons-react";
 import type { TagItem } from "@/types/api";
 
@@ -20,8 +21,8 @@ type TagsResultListProps = {
   getKnowledgeContext: (item: TagItem) => string;
   onPrevPage: () => void;
   onNextPage: () => void;
-  onRename: (item: TagItem) => void;
-  onDelete: (item: TagItem) => void;
+  onRename: (item: TagItem, nextValue: string) => Promise<void> | void;
+  onDelete: (item: TagItem) => Promise<void> | void;
 };
 
 export function TagsResultList({
@@ -43,6 +44,68 @@ export function TagsResultList({
   onRename,
   onDelete,
 }: TagsResultListProps) {
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingValue, setEditingValue] = useState("");
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const [pendingId, setPendingId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!editingId) return;
+    if (!pagedItems.some((item) => item.id === editingId)) {
+      setEditingId(null);
+      setEditingValue("");
+    }
+  }, [editingId, pagedItems]);
+
+  useEffect(() => {
+    if (!deleteConfirmId) return;
+    if (!pagedItems.some((item) => item.id === deleteConfirmId)) {
+      setDeleteConfirmId(null);
+    }
+  }, [deleteConfirmId, pagedItems]);
+
+  const startRename = (item: TagItem) => {
+    setDeleteConfirmId(null);
+    setEditingId(item.id);
+    setEditingValue(item.value);
+  };
+
+  const cancelRename = () => {
+    setEditingId(null);
+    setEditingValue("");
+  };
+
+  const submitRename = async (item: TagItem) => {
+    const next = editingValue.trim();
+    if (!next || next === item.value) {
+      cancelRename();
+      return;
+    }
+
+    setPendingId(item.id);
+    try {
+      await onRename(item, next);
+      cancelRename();
+    } finally {
+      setPendingId((current) => (current === item.id ? null : current));
+    }
+  };
+
+  const requestDelete = async (item: TagItem) => {
+    if (deleteConfirmId !== item.id) {
+      setDeleteConfirmId(item.id);
+      return;
+    }
+
+    setPendingId(item.id);
+    try {
+      await onDelete(item);
+      setDeleteConfirmId(null);
+    } finally {
+      setPendingId((current) => (current === item.id ? null : current));
+    }
+  };
+
   if (loading || isLoadingDims) {
     return (
       <Box sx={{ py: 6, display: "flex", justifyContent: "center" }}>
@@ -121,7 +184,33 @@ export function TagsResultList({
                     {shouldShowDimLabel ? (
                       <Label variant={getDimVariant(item.dimension)}>{getDimLabel(item.dimension)}</Label>
                     ) : null}
-                    <Text sx={{ fontWeight: 600, fontSize: 2, wordBreak: "break-word" }}>{item.value}</Text>
+                    {editingId === item.id ? (
+                      <Box sx={{ display: "flex", gap: 1, alignItems: "center", flexWrap: "wrap", minWidth: 0 }}>
+                        <TextInput
+                          value={editingValue}
+                          onChange={(e) => setEditingValue(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              e.preventDefault();
+                              void submitRename(item);
+                            }
+                            if (e.key === "Escape") {
+                              e.preventDefault();
+                              cancelRename();
+                            }
+                          }}
+                          sx={{ minWidth: 200 }}
+                        />
+                        <Button size="small" variant="primary" disabled={pendingId === item.id} onClick={() => void submitRename(item)}>
+                          保存
+                        </Button>
+                        <Button size="small" onClick={cancelRename} disabled={pendingId === item.id}>
+                          取消
+                        </Button>
+                      </Box>
+                    ) : (
+                      <Text sx={{ fontWeight: 600, fontSize: 2, wordBreak: "break-word" }}>{item.value}</Text>
+                    )}
                   </Box>
 
                   <Box sx={{ display: "flex", alignItems: "center", gap: 2, flexWrap: "wrap" }}>
@@ -146,15 +235,30 @@ export function TagsResultList({
                 </Box>
 
                 <Box sx={{ display: "flex", alignItems: "center", gap: 1, justifyContent: ["flex-start", "flex-end"] }}>
-                  <IconButton aria-label="重命名" icon={PencilIcon} size="small" onClick={() => onRename(item)} />
+                  <IconButton
+                    aria-label="重命名"
+                    icon={PencilIcon}
+                    size="small"
+                    disabled={pendingId === item.id}
+                    onClick={() => startRename(item)}
+                  />
                   <IconButton
                     aria-label="删除"
                     icon={TrashIcon}
                     size="small"
-                    variant="danger"
-                    onClick={() => onDelete(item)}
+                    variant={deleteConfirmId === item.id ? "danger" : "default"}
+                    disabled={pendingId === item.id}
+                    onClick={() => {
+                      void requestDelete(item);
+                    }}
                   />
                 </Box>
+
+                {deleteConfirmId === item.id ? (
+                  <Box sx={{ gridColumn: ["1", "1 / -1"] }}>
+                    <Text sx={{ color: "danger.fg", fontSize: 1 }}>再次点击删除按钮以确认删除该标签。</Text>
+                  </Box>
+                ) : null}
               </Box>
             );
           })}

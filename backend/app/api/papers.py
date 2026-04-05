@@ -1,4 +1,4 @@
-"""Paper building and compilation API endpoints."""
+"""组卷与编译相关 API 端点。"""
 
 from __future__ import annotations
 
@@ -21,7 +21,7 @@ router = APIRouter(dependencies=[Depends(require_user)])
 
 
 def _tasks_service(request: Request):
-    """Resolve task service from shared API dependencies."""
+    """从通用 API 依赖中解析任务服务。"""
     return get_tasks_service(request)
 
 
@@ -33,7 +33,7 @@ def _paper_assets_dir() -> Path:
     return Path(__file__).resolve().parents[2] / "storage" / "paper_assets"
 
 
-# Template file paths
+# 模板文件路径
 _TEMPLATE_DIR = Path(__file__).resolve().parents[1] / "templates"
 _PAPER_TEMPLATE_PATH = _TEMPLATE_DIR / "paper.tex"
 _SECTION_HEADERS_TEMPLATE_PATH = _TEMPLATE_DIR / "section_headers.tex"
@@ -50,16 +50,16 @@ def _load_template(path: Path) -> str:
 
 
 def _load_paper_template() -> str:
-    """Load main paper template with section_headers and question_formats inlined."""
+    """加载主试卷模板，并内联 section_headers 与 question_formats。"""
     template = _load_template(_PAPER_TEMPLATE_PATH)
 
-    # Read and inline section_headers.tex
+    # 读取并内联 section_headers.tex
     section_headers_content = _load_template(_SECTION_HEADERS_TEMPLATE_PATH)
 
-    # Read and inline question_formats.tex
+    # 读取并内联 question_formats.tex
     question_formats_content = _load_template(_QUESTION_FORMATS_TEMPLATE_PATH)
 
-    # Replace \input commands with actual content
+    # 将 \input 指令替换为实际内容
     template = template.replace(
         "\\input{section_headers.tex}",
         "% ========== section_headers.tex (inlined) ==========\n"
@@ -97,7 +97,7 @@ def _parse_difficulty(difficulty_str: Optional[str]) -> float:
     """解析难度分数字符串为浮点数。
 
     Args:
-        difficulty_str: 格式如 "11/12" 的字符串
+        difficulty_str: 形如 "11/12" 的字符串
 
     Returns:
         解析后的数值，格式无效时返回 0.0
@@ -119,7 +119,7 @@ def _normalize_text(raw: str) -> str:
     text = re.sub(r"\\n(?![a-zA-Z])", "\n", text)
     text = re.sub(r"\\r(?![a-zA-Z])", "\r", text)
     text = re.sub(r"\\t(?![a-zA-Z])", "\t", text)
-    # Fix common OCR misses for tabular blocks.
+    # 修复 OCR 在表格块中的常见漏写。
     text = text.replace("\nbegin{tabular}", "\n\\begin{tabular}")
     text = text.replace("\nend{tabular}", "\n\\end{tabular}")
 
@@ -214,7 +214,7 @@ def _convert_chemfig_markdown(text: str) -> str:
 
 
 def _build_question_block(text: str, options: Iterable[object] | None) -> str:
-    """Build question LaTeX block using template format."""
+    """按模板格式构建选择/填空题 LaTeX 片段。"""
     body = _normalize_text(text).strip() if text else ""
     if options:
         rendered_options = []
@@ -231,24 +231,24 @@ def _build_question_block(text: str, options: Iterable[object] | None) -> str:
             + "\n\t\\end{choices}\n"
             + "\\end{question}\n"
         )
-    # Fill-in question: no placeholder, just the question text
+    # 填空题无需选项占位，直接输出题干
     return "\\begin{question}\n\t" + body + "\n\\end{question}\n"
 
 
 def _build_problem_block(text: str, points: int = 15, is_last: bool = False) -> str:
-    """Build problem (long answer) LaTeX block with points and spacing."""
+    """构建解答题 LaTeX 片段，包含分值与留白控制。"""
     body = _normalize_text(text).strip() if text else ""
     env = "problemWithLargeSpace" if is_last else "problemWithPoints"
     return f"\\begin{{{env}}}{{{points}}}\n{body}\n\\end{{{env}}}\n"
 
 
 def _get_section_header(question_type: str, count: int, total_points: int = 0) -> str:
-    """Get section header command with dynamic parameters.
+    """根据动态参数生成章节头命令。
 
     Args:
-        question_type: Type of questions in this section
-        count: Number of questions
-        total_points: Total points for this section (used for 解答题)
+        question_type: 本章节题型
+        count: 题目数量
+        total_points: 本章节总分（用于解答题）
     """
     if question_type == "单选题":
         return f"\\sectionSingleChoice[{count}]"
@@ -264,13 +264,13 @@ def _get_section_header(question_type: str, count: int, total_points: int = 0) -
 def _render_section(
     question_type: str, blocks: list[str], count: int, total_points: int = 0
 ) -> str:
-    """Render a section with header and question blocks.
+    """渲染单个章节（含章节头与题目块）。
 
     Args:
-        question_type: Type of questions in this section
-        blocks: List of LaTeX question blocks
-        count: Number of questions
-        total_points: Total points for this section (used for 解答题)
+        question_type: 本章节题型
+        blocks: LaTeX 题目块列表
+        count: 题目数量
+        total_points: 本章节总分（用于解答题）
     """
     if not blocks:
         return ""
@@ -284,28 +284,28 @@ def _paper_template(
     show_answers: bool,
     sections: list[tuple[str, list[str]]],
 ) -> str:
-    """Build final LaTeX document using template system."""
+    """基于模板系统构建最终 LaTeX 文档。"""
     template = _load_paper_template()
 
-    # Build sections content (with headers included)
+    # 构建各章节内容（章节头已包含）
     sections_content = []
 
     for sec_title, blocks in sections:
         if blocks:
-            # Get count of questions in this section
+            # 获取当前章节题目数
             count = len(blocks)
-            # Calculate total points for 解答题 (default: 15 points per problem)
+            # 计算解答题总分（默认每题 15 分）
             total_points = 0
             if sec_title == "解答题":
-                # Default 15 points per problem, can be customized
+                # 默认每题 15 分，可按需扩展为可配置
                 total_points = count * 15
 
-            # Add section content (header is included in _render_section)
+            # 添加章节内容（_render_section 已包含章节头）
             sections_content.append(
                 _render_section(sec_title, blocks, count, total_points)
             )
 
-    # Join sections with proper spacing
+    # 以合适的空行拼接各章节
     sections_text = "\n\n".join(sections_content)
 
     return (
@@ -317,7 +317,7 @@ def _paper_template(
 
 @router.post("/papers/compile")
 def compile_paper(request: Request, payload: PaperCompileRequest) -> Response:
-    """Compile paper LaTeX to PDF."""
+    """编译试卷 LaTeX 并返回 PDF。"""
     svc = _tasks_service(request)
 
     if not payload.items:
@@ -333,7 +333,7 @@ def compile_paper(request: Request, payload: PaperCompileRequest) -> Response:
     tasks_by_id = {t.id: t for t in svc.iter_tasks()}
     print(f"[PAPER] 当前任务数：{len(tasks_by_id)}")
 
-    # First pass: collect all problems by type with their metadata
+    # 第一轮：按题型收集题目及其元数据
     problems_by_type: dict[str, list[dict]] = {
         "单选题": [],
         "多选题": [],
@@ -367,7 +367,7 @@ def compile_paper(request: Request, payload: PaperCompileRequest) -> Response:
         # 解析难度分数 (a/b 格式，如 "11/12" -> 0.917)
         difficulty_value = _parse_difficulty(task.payload.difficulty)
 
-        # Store problem data for second pass
+        # 保存题目数据，供第二轮渲染使用
         problems_by_type.setdefault(question_type, []).append(
             {
                 "problem_text": problem.problem_text or "",
@@ -377,7 +377,7 @@ def compile_paper(request: Request, payload: PaperCompileRequest) -> Response:
             }
         )
 
-    # Second pass: build LaTeX blocks with proper spacing
+    # 第二轮：按规则构建带留白的 LaTeX 题目块
     sections_map: dict[str, list[str]] = {}
     for qtype, problems in problems_by_type.items():
         if not problems:
@@ -397,7 +397,7 @@ def compile_paper(request: Request, payload: PaperCompileRequest) -> Response:
             if qtype in ("单选题", "多选题", "填空题"):
                 block = _build_question_block(prob["problem_text"], prob["options"])
             elif qtype == "解答题":
-                # Default 15 points, last problem gets larger spacing
+                # 默认 15 分，章节最后一题使用更大留白
                 block = _build_problem_block(
                     prob["problem_text"], points=15, is_last=is_last
                 )
@@ -441,7 +441,7 @@ def compile_paper(request: Request, payload: PaperCompileRequest) -> Response:
             },
         )
 
-    # Prepare error directory for saving artifacts on failure
+    # 准备失败产物目录，用于保存排错文件
     paper_error_dir = _paper_dir() / "errors"
 
     try:
@@ -452,7 +452,7 @@ def compile_paper(request: Request, payload: PaperCompileRequest) -> Response:
             error_dir=paper_error_dir,
         )
     except HTTPException as e:
-        # Re-raise with additional context
+        # 补充上下文后继续抛出异常
         if isinstance(e.detail, dict):
             e.detail["message"] = "组卷编译失败：" + e.detail.get("message", "")
         raise

@@ -23,12 +23,12 @@ from . import utils
 
 logger = logging.getLogger(__name__)
 
-# OCR template cache (use utils._load_ocr_template instead)
+# OCR 模板缓存（建议改用 utils._load_ocr_template）
 _OCR_TEMPLATE = None
 
 
 class OcrExtractor:
-    """Base interface for OCR extraction. Placeholders are intentionally disabled."""
+    """OCR 提取基类接口；有意禁用占位符回退。"""
 
     def run(
         self,
@@ -57,10 +57,10 @@ class LLMOcrExtractor:
         if not asset or not asset.path:
             raise RuntimeError("OCR failed: Asset path is missing.")
 
-        # Convert relative path (/assets/xxx.jpg) to absolute path
+        # 将相对路径（/assets/xxx.jpg）转换为绝对路径
         image_path = Path(asset.path)
         if not image_path.is_absolute():
-            # Relative path from storage module
+            # 存储模块中的相对路径
             image_path = (
                 Path(__file__).resolve().parent.parent.parent
                 / "storage"
@@ -94,7 +94,7 @@ class LLMOcrExtractor:
         for idx, region in enumerate(regions, start=1):
             started = time.perf_counter()
 
-            # Handle 'auto' subject - pass empty string to let LLM auto-detect
+            # 处理 `auto` 学科：传空字符串让 LLM 自动识别
             subject_for_prompt = "" if payload.subject == "auto" else payload.subject
 
             ctx = {
@@ -119,8 +119,8 @@ class LLMOcrExtractor:
             region_image_bytes, region_mime_type = image_bytes, mime_type
 
             try:
-                # Call AI without response_model for schema logic (business layer only).
-                # The client will return a plain dict based on the prompt's JSON instructions.
+                # 业务层按 schema 逻辑调用 AI，不传 response_model。
+                # 客户端将依据提示词 JSON 约束返回普通 dict。
                 payload_dict = self.client.structured_chat_with_image(
                     system_prompt,
                     user_prompt,
@@ -144,20 +144,20 @@ class LLMOcrExtractor:
                 elapsed_ms,
             )
 
-            # Business Layer Extraction (Plain Dict)
+            # 业务层字段提取（普通 dict）
             problem_text = utils._coerce_str(
                 payload_dict.get("problem_text"), fallback=""
             )
-            # OCR should provide a normalized `question_type` when possible (e.g. 单选/多选/填空/解答)
+            # OCR 应尽量输出规范化的 `question_type`（如单选/多选/填空/解答）
             question_type = utils._coerce_str(payload_dict.get("question_type"), None)
             ocr_has_diagram = bool(payload_dict.get("has_diagram", False))
-            # Auto-detect subject from OCR
+            # 根据 OCR 结果自动识别学科
             subject = utils._coerce_str(payload_dict.get("subject"), fallback=None)
-            # Validate subject value - if user selected 'auto' or LLM failed to detect, use default subject as fallback
+            # 校验学科值：若用户选了 auto 或 LLM 未识别成功，回退到默认学科
             if subject not in VALID_SUBJECT_KEYS:
                 subject = DEFAULT_SUBJECT if payload.subject == "auto" else payload.subject
 
-            # Some models spam trailing whitespace/newlines when hitting max tokens.
+            # 某些模型在接近 token 上限时会输出大量尾随空白/换行。
             rstrip_enabled = (
                 os.getenv("AI_OCR_RSTRIP_OUTPUT", "false").lower() == "true"
             )
@@ -207,7 +207,7 @@ class LLMOcrExtractor:
 
 @dataclass
 class OcrRouter:
-    """Select LLM OCR when a model override is configured, else fallback."""
+    """若存在模型覆盖则走 LLM OCR，否则走默认路径。"""
 
     base_extractor: OcrExtractor
     llm_extractor: LLMOcrExtractor
@@ -249,7 +249,7 @@ class OcrRouter:
         return self.llm_extractor.run(payload, detection, asset, thinking=thinking)
 
 
-# Note: Text processing helpers moved to utils.py
+# 说明：文本处理辅助函数已迁移至 utils.py
 # - _normalize_linebreaks
 # - _coerce_str
 # - _coerce_str_list

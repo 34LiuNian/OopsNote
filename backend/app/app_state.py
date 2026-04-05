@@ -1,4 +1,4 @@
-"""Backend module - auto-generated docstring."""
+"""后端应用状态与依赖协议定义。"""
 
 from __future__ import annotations
 
@@ -7,13 +7,13 @@ from typing import Any, Protocol
 
 
 class TaskRepositoryLike(Protocol):
-    """Protocol for task repository dependency injection."""
+    """任务仓储依赖注入协议。"""
 
     def list_all(self) -> dict[str, Any]: ...
 
 
 class AgentSettingsLike(Protocol):
-    """Protocol for agent settings service dependency injection."""
+    """Agent 设置服务依赖注入协议。"""
 
     def load_models(self) -> dict[str, str]: ...
 
@@ -43,7 +43,7 @@ class AgentSettingsLike(Protocol):
 
 
 class TasksServiceLike(Protocol):
-    """Protocol for tasks service dependency injection."""
+    """任务服务依赖注入协议。"""
 
     def ensure_workers_started(self) -> None: ...
     def process_task(self, task_id: str, *, background: bool = ..., existing_problems: Any = ...) -> Any: ...
@@ -59,7 +59,7 @@ class TasksServiceLike(Protocol):
 
 
 class ModelsServiceLike(Protocol):
-    """Protocol for models service dependency injection."""
+    """模型服务依赖注入协议。"""
 
     def prefetch_cache(self) -> None: ...
 
@@ -72,7 +72,7 @@ class AuthSettingsLike(Protocol):
 
 @dataclass
 class BackendState:
-    """Container for backend application state and services."""
+    """后端应用状态与服务容器。"""
 
     repository: TaskRepositoryLike
     ai_gateway_status: dict[str, object]

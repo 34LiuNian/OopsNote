@@ -1,4 +1,4 @@
-"""Tag management API endpoints."""
+"""标签管理相关 API 端点。"""
 
 from __future__ import annotations
 
@@ -33,8 +33,8 @@ def list_tags(
     q = (query or "").strip()
     lim = max(1, int(limit))
 
-    # Tags now have persistent ref_count stored in TagItem
-    # No need to recalculate on every request
+    # 标签的引用计数 ref_count 已持久化在 TagItem 中
+    # 无需在每次请求时重新计算
     if not q:
         base = tag_store.list(
             dimension=dimension,
@@ -86,7 +86,7 @@ def list_tags(
     dependencies=[Depends(require_admin)],
 )
 def create_tag(payload: TagCreateRequest) -> TagsResponse:
-    """Create a new tag."""
+    """创建新标签。"""
     item, _created = tag_store.upsert(
         payload.dimension,
         payload.value,
@@ -105,7 +105,7 @@ def create_tag(payload: TagCreateRequest) -> TagsResponse:
 
 @router.delete("/tags/{tag_id}", dependencies=[Depends(require_admin)])
 def delete_tag(tag_id: str) -> dict:
-    """Delete a tag by ID."""
+    """按 ID 删除标签。"""
     success = tag_store.delete(tag_id)
     if not success:
         from fastapi import HTTPException
@@ -120,7 +120,7 @@ def delete_tag(tag_id: str) -> dict:
     dependencies=[Depends(require_admin)],
 )
 def update_tag(tag_id: str, payload: dict) -> TagsResponse:
-    """Update a tag's value by ID."""
+    """按 ID 更新标签值。"""
     from fastapi import HTTPException
 
     value = payload.get("value", "").strip()
@@ -139,12 +139,12 @@ def update_tag(tag_id: str, payload: dict) -> TagsResponse:
 
 
 class TagMergeRequest(BaseModel):
-    """Request payload for merging tags."""
+    """合并标签请求体。"""
     target_id: str
 
 
 class TagMergeResponse(BaseModel):
-    """Response payload for merge result."""
+    """标签合并结果响应体。"""
     ok: bool
     tasks_modified: int
     fields_modified: int
@@ -156,7 +156,7 @@ class TagMergeResponse(BaseModel):
     dependencies=[Depends(require_admin)],
 )
 def merge_tag(source_id: str, payload: TagMergeRequest) -> TagMergeResponse:
-    """Merge source tag into target tag, replacing all references."""
+    """将源标签合并到目标标签，并替换所有引用。"""
     from fastapi import HTTPException
 
     try:

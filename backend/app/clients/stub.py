@@ -8,7 +8,7 @@ from pydantic import BaseModel
 
 
 class StubAIClient:
-    """Deterministic AI client used for local development without API keys."""
+    """用于本地无 API Key 开发场景的确定性 AI 客户端。"""
 
     model = "stub-local-v1"
 

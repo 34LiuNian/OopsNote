@@ -1,4 +1,4 @@
-"""Backend module - auto-generated docstring."""
+"""应用总配置聚合模块（兼容旧结构）。"""
 
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ from .env import float_env
 
 @dataclass(frozen=True)
 class AppConfig:  # pylint: disable=too-many-instance-attributes
-    """Application configuration container (legacy, use modular config)."""
+    """应用配置容器（兼容层，推荐使用模块化配置）。"""
 
     persist_tasks: bool
     tasks_dir: str | None
@@ -36,7 +36,7 @@ class AppConfig:  # pylint: disable=too-many-instance-attributes
     auth_admin_username: str
     auth_admin_password: str
     
-    # Modular config instances
+    # 模块化配置实例
     app_settings: AppSettings
     agent_config: AgentConfig
     auth_config: AuthConfig
@@ -44,8 +44,8 @@ class AppConfig:  # pylint: disable=too-many-instance-attributes
 
 
 def load_app_config() -> AppConfig:
-    """Load application configuration from environment variables."""
-    # Load modular configurations
+    """从环境变量加载应用配置。"""
+    # 加载模块化配置
     app_settings = AppSettings.from_env()
     agent_config = AgentConfig.from_env()
     auth_config = AuthConfig.from_env()

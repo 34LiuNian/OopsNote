@@ -1,4 +1,4 @@
-"""Backend module - auto-generated docstring."""
+"""环境变量解析辅助函数。"""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ import os
 
 
 def float_env(name: str, default: float) -> float:
-    """Parse environment variable as float."""
+    """将环境变量解析为浮点数。"""
     value = os.getenv(name)
     if value is None:
         return default
@@ -17,7 +17,7 @@ def float_env(name: str, default: float) -> float:
 
 
 def int_env(name: str, default: int) -> int:
-    """Parse environment variable as integer."""
+    """将环境变量解析为整数。"""
     value = os.getenv(name)
     if value is None:
         return default

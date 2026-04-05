@@ -14,11 +14,11 @@ from . import utils
 
 logger = logging.getLogger(__name__)
 
-# Skill cache and directory
+# Skill 缓存与目录
 _SKILL_CACHE: dict[str, str] = {}
 _SKILL_DIR = Path(__file__).parent.parent / "skills"
 
-# Keep local regex for chemfig detection (domain-specific logic)
+# 本地保留 chemfig 检测正则（领域特化逻辑）
 _CHEMFIG_RE = re.compile(r"\\chemfig|chemfig", re.IGNORECASE)
 _CHEM_HINT_RE = re.compile(r"化学|有机|结构式|分子式|反应", re.IGNORECASE) # TODO: 优化识别方式
 
@@ -81,10 +81,10 @@ class PromptTemplate:
         )
 
     def render(self, context: Mapping[str, Any]) -> tuple[str, str]:
-        """Render prompts by replacing `{key}` placeholders only.
+        """渲染提示词，仅替换 `{key}` 占位符。
 
-        We intentionally do NOT use `str.format` because prompt files include JSON examples
-        that contain `{`/`}` which would otherwise be interpreted as formatting braces.
+        这里有意不使用 `str.format`，因为提示词文件里包含 JSON 示例，
+        其中的 `{`/`}` 会被误判为格式化占位符。
         """
 
         def substitute(text: str) -> str:
@@ -106,7 +106,7 @@ class AgentResult:
 
 
 class LLMAgent:
-    """Lightweight agent wrapper that keeps prompts and parsing localized."""
+    """轻量 Agent 包装器，局部封装提示词与解析逻辑。"""
 
     def __init__(
         self,
@@ -134,7 +134,7 @@ class LLMAgent:
             if override:
                 self.client.model = override
 
-        # Apply per-agent temperature override if available
+        # 若存在配置，则应用 Agent 级温度覆盖
         if self.temperature_resolver:
             temp_override = self.temperature_resolver(self.name)
             if temp_override is not None:
@@ -155,9 +155,24 @@ class LLMAgent:
                     user_prompt,
                     thinking=thinking if isinstance(thinking, bool) else None,
                 )
-        except Exception as e:
-            logger.error(f"Agent {self.name} failed: {e}")
-            output = {}
+        except Exception as exc:
+            logger.exception("Agent %s failed", self.name)
+            raise RuntimeError(f"Agent {self.name} failed") from exc
+
+        if not isinstance(output, dict):
+            raise RuntimeError(
+                f"Agent {self.name} returned non-object output: {type(output).__name__}"
+            )
+
+        missing_required = [
+            key
+            for key in self.required_keys
+            if key not in output or output.get(key) in (None, "", [])
+        ]
+        if missing_required:
+            raise RuntimeError(
+                f"Agent {self.name} missing required fields: {', '.join(missing_required)}"
+            )
 
         return AgentResult(
             name=self.name,
@@ -167,7 +182,7 @@ class LLMAgent:
 
 
 class AgentOrchestrator:
-    """Sequential multi-agent flow: solver -> tagger."""
+    """顺序多 Agent 流程：solver -> tagger。"""
 
     def __init__(
         self,
@@ -187,17 +202,19 @@ class AgentOrchestrator:
         self,
         payload: TaskCreateRequest,
         problems: Iterable[ProblemBlock],
+        is_cancelled: Callable[[], bool] | None = None,
         on_progress: Callable[[str, str | None], None] | None = None,
     ) -> tuple[list[SolutionBlock], list[TaggingResult]]:
         solutions: list[SolutionBlock] = []
         tags: list[TaggingResult] = []
+        cancel_checker = is_cancelled or self.is_cancelled
 
         problems_list = list(problems)
         total = len(problems_list)
 
         for i, problem in enumerate(problems_list, 1):
             # 检查任务是否被取消
-            if self.is_cancelled and self.is_cancelled():
+            if cancel_checker and cancel_checker():
                 # 延迟导入避免循环依赖
                 from ..services.tasks_service import _TaskCancelled
 
@@ -328,6 +345,6 @@ def _needs_chemfig_skill(problem: ProblemBlock) -> bool:
     return False
 
 
-# Note: Type coercion helpers moved to utils.py
+# 说明：类型规整辅助函数已迁移至 utils.py
 # - _coerce_list
 # - _coerce_int

@@ -1,4 +1,4 @@
-"""Backend module - auto-generated docstring."""
+"""后端应用启动与装配入口。"""
 
 from __future__ import annotations
 
@@ -28,6 +28,7 @@ from .api.latex import router as latex_router
 from .api.papers import router as papers_router
 from .api.account import router as account_router
 from .api.users import router as users_router
+from .api.debug_tasks import router as debug_tasks_router
 from .services.models_service import ModelsService
 from .services.tasks_service import TasksService
 from .builders import (
@@ -46,21 +47,21 @@ _APP_CONFIG: AppConfig | None = None
 
 
 def configure_logging():
-    """Configure application logging based on environment variables."""
+    """基于环境变量配置应用日志。"""
     log_level = os.getenv("APP_LOG_LEVEL", "WARNING").upper()
     try:
         level = getattr(logging, log_level)
     except AttributeError:
         level = logging.WARNING
 
-    # Configure root logger
+    # 配置根日志器
     logging.basicConfig(
         level=level,
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-        force=True,  # This ensures the configuration is applied even if logging was already configured
+        force=True,  # 即便日志已初始化，也强制应用本次配置
     )
 
-    # Also configure uvicorn loggers to use the same level
+    # 同步设置 uvicorn 日志等级
     uvicorn_access_logger = logging.getLogger("uvicorn.access")
     uvicorn_error_logger = logging.getLogger("uvicorn.error")
     uvicorn_access_logger.setLevel(level)
@@ -68,31 +69,31 @@ def configure_logging():
 
 
 class HealthCheckFilter(logging.Filter):
-    """Filter out health check and polling logs to keep the terminal clean."""
+    """过滤健康检查与轮询日志，减少终端噪音。"""
 
     def filter(self, record: logging.LogRecord) -> bool:
         message = record.getMessage()
-        # Filter health checks
+        # 过滤健康检查请求
         if "/health" in message:
             return False
-        # Filter task polling requests (GET /tasks/{id} without body)
+        # 过滤任务轮询请求（GET /tasks/{id}）
         if "GET /tasks/" in message and 'HTTP/1.1" 200' in message:
             return False
         return True
 
 
-# Silence noisy health check and polling logs from uvicorn access log
+# 在 uvicorn access 日志中静默健康检查与轮询噪音
 logging.getLogger("uvicorn.access").addFilter(HealthCheckFilter())
 
 
 def create_app() -> FastAPI:
-    """Create and configure the FastAPI application."""
-    # Configure logging before creating the app
+    """创建并配置 FastAPI 应用。"""
+    # 在创建应用前先初始化日志
     configure_logging()
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):  # pylint: disable=unused-argument
-        # Recalculate tag reference counts on startup
+        # 启动时重算标签引用计数
         try:
             from app.tags import tag_store
 
@@ -102,7 +103,7 @@ def create_app() -> FastAPI:
             logger.warning(
                 "Failed to recalculate tag counts on startup: %s", exc)
 
-        # Prefetch models
+        # 预拉取模型列表
         try:
             models_service.prefetch_cache()
         except Exception:
@@ -111,7 +112,7 @@ def create_app() -> FastAPI:
 
     app = FastAPI(title="OopsNote Backend", lifespan=lifespan)
 
-    # Mount static files for asset access
+    # 挂载静态资源目录，供资产文件访问
     assets_dir = Path(__file__).resolve().parent.parent / "storage" / "assets"
     assets_dir.mkdir(parents=True, exist_ok=True)
     app.mount("/assets", StaticFiles(directory=str(assets_dir)), name="assets")
@@ -143,6 +144,7 @@ def create_app() -> FastAPI:
     app.include_router(papers_router)
     app.include_router(account_router)
     app.include_router(users_router)
+    app.include_router(debug_tasks_router)
 
     return app
 
@@ -162,7 +164,7 @@ def _build_state() -> (
     agent_settings_service = build_agent_settings_service()
     auth_settings_service = build_auth_settings_service()
 
-    # Apply gateway settings overrides (UI settings > env vars)
+    # 应用网关配置覆盖（UI 设置优先于环境变量）
     gateway_settings = agent_settings_service.load_gateway()
     debug_settings = agent_settings_service.load_debug()
 
@@ -177,7 +179,7 @@ def _build_state() -> (
     )
 
     models_service = ModelsService(
-        # Use dynamic lookups so tests can monkeypatch module-level helpers.
+        # 使用动态查找，便于测试中 monkeypatch 模块级辅助函数
         guess_config=lambda: _guess_openai_gateway_config(),
         fetch_models=lambda base_url, api_key, authorization, auth_header_name, timeout_seconds: (
             _fetch_openai_models(

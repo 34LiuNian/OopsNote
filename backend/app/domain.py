@@ -1,8 +1,7 @@
-﻿"""
-Domain services for OopsNote backend.
+﻿"""OopsNote 后端领域服务。
 
-This module contains the core business logic, organized by domain concerns.
-Following the Cohesion Axiom: each service focuses on a single responsibility.
+本模块按领域职责组织核心业务逻辑，遵循高内聚原则：
+每个服务聚焦单一职责。
 """
 
 from __future__ import annotations
@@ -36,12 +35,12 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class ProcessingContext:
-    """Context object for task processing pipeline.
+    """任务处理流水线的上下文对象。
 
-    This encapsulates all data needed during processing, making it easy to:
-    - Pass data between pipeline stages
-    - Add new context fields without changing function signatures
-    - Test individual stages in isolation
+    封装处理过程中的全部数据，便于：
+    - 在各阶段之间传递数据
+    - 新增上下文字段时不修改函数签名
+    - 对单个阶段做隔离测试
     """
 
     task_id: str
@@ -62,10 +61,9 @@ class ProcessingContext:
 
 
 class ExtractionService:
-    """Service for extracting problems from images.
+    """题目提取服务。
 
-    Single Responsibility: Handles all problem extraction logic,
-    including OCR and manual reconstruction.
+    单一职责：处理题目提取相关逻辑，包括 OCR 与手动重建。
     """
 
     def __init__(self, extractor: Extractor) -> None:
@@ -76,16 +74,16 @@ class ExtractionService:
         payload: TaskCreateRequest,
         asset: AssetMetadata | None = None,
     ) -> tuple[DetectionOutput, list[ProblemBlock]]:
-        """Extract problems from uploaded image.
+        """从上传图片中提取题目。
 
         Args:
-            payload: Task creation request with metadata
-            asset: Optional asset metadata
+            payload: 含元数据的任务创建请求
+            asset: 可选资源元数据
 
         Returns:
-            Tuple of (detection result, list of extracted problems)
+            （检测结果，提取出的题目列表）
         """
-        # Default detection for single-problem images
+        # 单题图片默认检测框
         from .models import CropRegion
         from uuid import uuid4
 
@@ -101,9 +99,9 @@ class ExtractionService:
 
 
 class SolvingService:
-    """Service for generating problem solutions.
+    """题目求解服务。
 
-    Single Responsibility: Handles all solution generation logic.
+    单一职责：处理解答生成相关逻辑。
     """
 
     def __init__(self, solver: Solver) -> None:
@@ -115,15 +113,15 @@ class SolvingService:
         problems: Iterable[ProblemBlock],
         on_progress: Callable[[int, int], None] | None = None,
     ) -> list[SolutionBlock]:
-        """Generate solutions for problems.
+        """为题目生成解答。
 
         Args:
-            payload: Task creation request
-            problems: Problems to solve
-            on_progress: Optional callback for progress updates
+            payload: 任务创建请求
+            problems: 待求解题目
+            on_progress: 可选进度回调
 
         Returns:
-            List of generated solutions
+            生成的解答列表
         """
         problems_list = list(problems)
         total = len(problems_list)
@@ -133,7 +131,7 @@ class SolvingService:
             if on_progress:
                 on_progress(idx, total)
 
-            # Generate solution for single problem
+            # 单题求解
             problem_solutions = self.solver.run(payload, [problem])
             solutions.extend(problem_solutions)
 
@@ -141,9 +139,9 @@ class SolvingService:
 
 
 class TaggingService:
-    """Service for tagging problems.
+    """题目打标服务。
 
-    Single Responsibility: Handles all tagging and categorization logic.
+    单一职责：处理标签与分类逻辑。
     """
 
     def __init__(self, tagger: Tagger) -> None:
@@ -155,23 +153,23 @@ class TaggingService:
         problems: Iterable[ProblemBlock],
         solutions: Iterable[SolutionBlock],
     ) -> list[TaggingResult]:
-        """Generate tags for solved problems.
+        """为已解答题目生成标签。
 
         Args:
-            payload: Task creation request
-            problems: Problems to tag
-            solutions: Corresponding solutions
+            payload: 任务创建请求
+            problems: 待打标签题目
+            solutions: 对应解答
 
         Returns:
-            List of tagging results
+            标签结果列表
         """
         return self.tagger.run(payload, problems, solutions)
 
 
 class ArchivingService:
-    """Service for archiving processed tasks.
+    """任务归档服务。
 
-    Single Responsibility: Handles all archiving logic.
+    单一职责：处理归档相关逻辑。
     """
 
     def __init__(self, archiver: Archiver) -> None:
@@ -182,27 +180,27 @@ class ArchivingService:
         task_id: str,
         problems: Iterable[ProblemBlock],
     ):
-        """Archive a processed task.
+        """归档已处理任务。
 
         Args:
-            task_id: Task identifier
-            problems: Problems to archive
+            task_id: 任务 ID
+            problems: 待归档题目
 
         Returns:
-            Archive record
+            归档记录
         """
         return self.archiver.run(task_id, problems)
 
 
 class TaskProcessingService:
-    """Orchestrator for complete task processing pipeline.
+    """完整任务处理流水线编排器。
 
-    Single Responsibility: Coordinates the extraction 鈫?solving 鈫?tagging
-    鈫?archiving pipeline without implementing the actual processing logic.
+    单一职责：协调“提取 -> 求解 -> 打标 -> 归档”流程，
+    自身不实现各阶段的具体处理逻辑。
 
-    This follows the Interface Axiom:
-    - Depends on abstractions (protocols), not concrete implementations
-    - Easy to swap components for testing or different configurations
+    遵循接口原则：
+    - 依赖抽象（protocol），而非具体实现
+    - 便于测试替换与多配置切换
     """
 
     def __init__(
@@ -227,20 +225,20 @@ class TaskProcessingService:
         payload: TaskCreateRequest,
         asset: AssetMetadata | None = None,
     ) -> ProcessingContext:
-        """Process a task through the complete pipeline.
+        """通过完整流水线处理任务。
 
         Args:
-            task_id: Task identifier
-            payload: Task creation request
-            asset: Optional asset metadata
+            task_id: 任务 ID
+            payload: 任务创建请求
+            asset: 可选资源元数据
 
         Returns:
-            Processing context with all results
+            包含全部结果的处理上下文
         """
         context = ProcessingContext(task_id=task_id, payload=payload, asset=asset)
 
         try:
-            # Update status
+            # 更新状态
             from .models import TaskStatus
             
             now = datetime.now(timezone.utc)
@@ -254,7 +252,7 @@ class TaskProcessingService:
                 )
             )
 
-            # Stage 1: Extraction
+            # 阶段 1：提取
             self.event_bus.publish(
                 task_id,
                 "progress",
@@ -264,7 +262,7 @@ class TaskProcessingService:
             context.detection = detection
             context.problems = problems
 
-            # Stage 2: Solving
+            # 阶段 2：求解
             self.event_bus.publish(
                 task_id, "progress", {"stage": "solving", "message": "姝ｅ湪瑙ｉ..."}
             )
@@ -279,14 +277,14 @@ class TaskProcessingService:
             )
             context.solutions = solutions
 
-            # Stage 3: Tagging
+            # 阶段 3：打标
             self.event_bus.publish(
                 task_id, "progress", {"stage": "tagging", "message": "姝ｅ湪鏍囨敞..."}
             )
             tags = self.tagging.generate_tags(payload, problems, solutions)
             context.tags = tags
 
-            # Stage 4: Archiving
+            # 阶段 4：归档
             self.event_bus.publish(
                 task_id,
                 "progress",
@@ -294,12 +292,12 @@ class TaskProcessingService:
             )
             self.archiving.archive_task(task_id, problems)
 
-            # Save results
+            # 保存结果
             self.repository.save_pipeline_result(task_id, None)  # type: ignore
 
-            # Mark as completed
+            # 标记完成
             self.event_bus.publish(
-                task_id, "progress", {"stage": "completed", "message": "澶勭悊瀹屾垚"}
+                task_id, "progress", {"stage": "completed", "message": "处理完成"}
             )
 
             return context

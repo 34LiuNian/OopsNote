@@ -1,4 +1,4 @@
-"""Security configuration."""
+"""安全配置定义。"""
 
 from __future__ import annotations
 
@@ -29,19 +29,19 @@ def _resolve_jwt_secret() -> str:
 
 @dataclass(frozen=True)
 class SecurityConfig:
-    """Security-related configuration."""
+    """安全相关配置。"""
 
-    # JWT settings
+    # JWT 配置
     jwt_secret: str
     jwt_algorithm: str = "HS256"
     jwt_access_token_expire_minutes: int = 30
     jwt_refresh_token_expire_days: int = 2
 
-    # Login protection
+    # 登录保护
     max_login_attempts: int = 20
     lockout_duration_minutes: int = 10
 
-    # Password policy
+    # 密码策略
     password_min_length: int = 8
     password_require_mixed_case: bool = False
     password_require_digit: bool = True
@@ -49,10 +49,10 @@ class SecurityConfig:
 
     @classmethod
     def from_env(cls) -> "SecurityConfig":
-        """Load security configuration from environment variables."""
+        """从环境变量加载安全配置。"""
         jwt_secret = _resolve_jwt_secret()
         
-        # Validate JWT secret length
+        # 校验 JWT 密钥长度
         if len(jwt_secret) < 32:
             import warnings
             warnings.warn(
