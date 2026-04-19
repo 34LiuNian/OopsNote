@@ -24,7 +24,6 @@ def list_tags(
     dimension: TagDimension | None = None,
     query: str | None = None,
     subject: str | None = None,
-    grade: str | None = None,
     chapter: str | None = None,
     limit: int = 50,
 ) -> TagsResponse:
@@ -39,7 +38,6 @@ def list_tags(
         base = tag_store.list(
             dimension=dimension,
             subject=subject,
-            grade=grade,
             chapter=chapter,
             limit=5000,
         )
@@ -50,7 +48,6 @@ def list_tags(
             dimension=dimension,
             query=q,
             subject=subject,
-            grade=grade,
             chapter=chapter,
             limit=5000,
         )
@@ -92,9 +89,7 @@ def create_tag(payload: TagCreateRequest) -> TagsResponse:
         payload.value,
         aliases=payload.aliases,
         subject=payload.subject,
-        grade=payload.grade,
         chapter=payload.chapter,
-        path=payload.path,
     )
     from ..tags import TagItemView
 
@@ -106,6 +101,12 @@ def create_tag(payload: TagCreateRequest) -> TagsResponse:
 @router.delete("/tags/{tag_id}", dependencies=[Depends(require_admin)])
 def delete_tag(tag_id: str) -> dict:
     """按 ID 删除标签。"""
+    tag = tag_store.get_by_id(tag_id)
+    if tag is not None and tag.source == "builtin":
+        from fastapi import HTTPException
+
+        raise HTTPException(status_code=400, detail="内置标签不可删除")
+
     success = tag_store.delete(tag_id)
     if not success:
         from fastapi import HTTPException
@@ -126,6 +127,10 @@ def update_tag(tag_id: str, payload: dict) -> TagsResponse:
     value = payload.get("value", "").strip()
     if not value:
         raise HTTPException(status_code=400, detail="标签内容不能为空")
+
+    current = tag_store.get_by_id(tag_id)
+    if current is not None and current.source == "builtin":
+        raise HTTPException(status_code=400, detail="内置标签不可直接改名")
 
     item = tag_store.update_value(tag_id, value)
     if item is None:
@@ -158,6 +163,13 @@ class TagMergeResponse(BaseModel):
 def merge_tag(source_id: str, payload: TagMergeRequest) -> TagMergeResponse:
     """将源标签合并到目标标签，并替换所有引用。"""
     from fastapi import HTTPException
+
+    source = tag_store.get_by_id(source_id)
+    target = tag_store.get_by_id(payload.target_id)
+    if source is not None and source.source == "builtin":
+        raise HTTPException(status_code=400, detail="内置标签不可作为合并来源")
+    if target is not None and target.source == "builtin":
+        raise HTTPException(status_code=400, detail="内置标签不可作为合并目标")
 
     try:
         stats = tag_store.merge_into(source_id, payload.target_id)

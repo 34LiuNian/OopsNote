@@ -23,7 +23,7 @@ import { createTag, deleteTag, searchTags, updateTag } from "../../features/tags
 import { TAG_DIMENSIONS, useTagDimensions } from "../../features/tags";
 
 type DimFilter = "all" | TagDimension;
-type SubjectTree = Record<string, Record<string, Record<string, number>>>;
+type ChapterTree = Record<string, Record<string, number>>;
 
 const PAGE_SIZE = 120;
 
@@ -35,8 +35,43 @@ function toLabel(subject: string): string {
   return SUBJECT_LABEL_MAP[subject] || subject || "未分类";
 }
 
+function chapterFromAlias(item: TagItem, alias: string): string | null {
+  const normalized = String(alias || "")
+    .split("/")
+    .map((part) => part.trim())
+    .filter(Boolean);
+  if (normalized.length < 3) return null;
+
+  const subjectLabel = item.subject ? toLabel(item.subject) : "";
+  if (subjectLabel && normalized[0] !== subjectLabel) return null;
+  return normalized[1] || null;
+}
+
+function inferChapter(item: TagItem): string {
+  const chapter = String(item.chapter || "").trim();
+  if (chapter) return chapter;
+  const aliases = Array.isArray(item.aliases) ? item.aliases : [];
+  for (const alias of aliases) {
+    const inferred = chapterFromAlias(item, alias);
+    if (inferred) return inferred;
+  }
+  return "未分章节";
+}
+
 function sortText(items: Iterable<string>) {
   return Array.from(items).sort((a, b) => a.localeCompare(b, "zh-CN"));
+}
+
+function sortChapters(items: Iterable<string>) {
+  return Array.from(items).sort((a, b) => {
+    if (a === "未分章节") return 1;
+    if (b === "未分章节") return -1;
+    return a.localeCompare(b, "zh-CN");
+  });
+}
+
+function sortKnowledgePoints(items: Iterable<string>) {
+  return sortText(items);
 }
 
 export default function TagsPage() {
@@ -50,11 +85,9 @@ export default function TagsPage() {
   const [query, setQuery] = useState("");
   const [dimFilter, setDimFilter] = useState<DimFilter>("knowledge");
 
-  const [subjectFilter, setSubjectFilter] = useState("");
-  const [gradeFilter, setGradeFilter] = useState("");
   const [chapterFilter, setChapterFilter] = useState("");
-  const [expandedSubjects, setExpandedSubjects] = useState<Record<string, boolean>>({});
-  const [expandedGrades, setExpandedGrades] = useState<Record<string, boolean>>({});
+  const [knowledgeFilter, setKnowledgeFilter] = useState("");
+  const [expandedChapters, setExpandedChapters] = useState<Record<string, boolean>>({});
 
   const [allKnowledgeItems, setAllKnowledgeItems] = useState<TagItem[]>([]);
   const [loadingKnowledgeTree, setLoadingKnowledgeTree] = useState(false);
@@ -64,7 +97,6 @@ export default function TagsPage() {
   const [newValue, setNewValue] = useState("");
   const [newAliases, setNewAliases] = useState("");
   const [newSubject, setNewSubject] = useState("");
-  const [newGrade, setNewGrade] = useState("");
   const [newChapter, setNewChapter] = useState("");
 
   const [page, setPage] = useState(1);
@@ -97,19 +129,30 @@ export default function TagsPage() {
       const data = await searchTags({
         dimension: dimFilter === "all" ? undefined : dimFilter,
         query: query || undefined,
-        subject: shouldUseKnowledgeFilter ? subjectFilter || undefined : undefined,
-        grade: shouldUseKnowledgeFilter ? gradeFilter || undefined : undefined,
         chapter: shouldUseKnowledgeFilter ? chapterFilter || undefined : undefined,
         limit: 2000,
       });
-      setItems(Array.isArray(data.items) ? data.items : []);
+
+      let nextItems = Array.isArray(data.items) ? data.items : [];
+      if (shouldUseKnowledgeFilter && chapterFilter) {
+        nextItems = nextItems.filter(
+          (item) => item.dimension === "knowledge" && inferChapter(item) === chapterFilter
+        );
+      }
+      if (shouldUseKnowledgeFilter && knowledgeFilter) {
+        nextItems = nextItems.filter(
+          (item) => item.dimension === "knowledge" && item.value === knowledgeFilter
+        );
+      }
+
+      setItems(nextItems);
       setPage(1);
     } catch (e) {
       setError(e instanceof Error ? e.message : "加载标签失败");
     } finally {
       setLoading(false);
     }
-  }, [chapterFilter, dimFilter, gradeFilter, query, subjectFilter]);
+  }, [chapterFilter, dimFilter, knowledgeFilter, query]);
 
   useEffect(() => {
     void loadKnowledgeTree();
@@ -119,28 +162,21 @@ export default function TagsPage() {
     void loadTags();
   }, [loadTags]);
 
-  const tree = useMemo<SubjectTree>(() => {
-    const result: SubjectTree = {};
+  const tree = useMemo<ChapterTree>(() => {
+    const result: ChapterTree = {};
     for (const item of allKnowledgeItems) {
-      const subject = String(item.subject || "").trim() || "unknown";
-      const grade = String(item.grade || "").trim() || "未分年级";
-      const chapter = String(item.chapter || "").trim() || "未分章节";
-      result[subject] = result[subject] || {};
-      result[subject][grade] = result[subject][grade] || {};
-      result[subject][grade][chapter] = (result[subject][grade][chapter] || 0) + 1;
+      const chapter = inferChapter(item);
+      const knowledge = String(item.value || "").trim() || "未命名知识点";
+      result[chapter] = result[chapter] || {};
+      result[chapter][knowledge] = (result[chapter][knowledge] || 0) + 1;
     }
     return result;
   }, [allKnowledgeItems]);
 
-  const subjects = useMemo(() => sortText(Object.keys(tree)), [tree]);
+  const chapters = useMemo(() => sortChapters(Object.keys(tree)), [tree]);
 
-  const getGradesBySubject = useCallback(
-    (subject: string) => sortText(Object.keys(tree[subject] || {})),
-    [tree]
-  );
-
-  const getChaptersByGrade = useCallback(
-    (subject: string, grade: string) => sortText(Object.keys(tree[subject]?.[grade] || {})),
+  const getKnowledgeByChapter = useCallback(
+    (chapter: string) => sortKnowledgePoints(Object.keys(tree[chapter] || {})),
     [tree]
   );
 
@@ -156,7 +192,10 @@ export default function TagsPage() {
   const dimCounts = useMemo(() => {
     const counts: Record<string, number> = { all: items.length };
     for (const d of TAG_DIMENSIONS) counts[d.key] = 0;
-    for (const item of items) counts[item.dimension] = (counts[item.dimension] || 0) + 1;
+    for (const item of items) {
+      const dim = (item.dimension || "knowledge") as TagDimension;
+      counts[dim] = (counts[dim] || 0) + 1;
+    }
     return counts;
   }, [items]);
 
@@ -189,28 +228,26 @@ export default function TagsPage() {
 
       const parts: string[] = [];
       if (item.subject) parts.push(toLabel(item.subject));
-      if (item.grade) parts.push(item.grade);
-      if (item.chapter) parts.push(item.chapter);
+      parts.push(inferChapter(item));
       return parts.join(" / ");
     },
     []
   );
 
   const activePathParts = useMemo(
-    () => [subjectFilter ? toLabel(subjectFilter) : "", gradeFilter, chapterFilter].filter(Boolean),
-    [chapterFilter, gradeFilter, subjectFilter]
+    () => [chapterFilter, knowledgeFilter].filter(Boolean),
+    [chapterFilter, knowledgeFilter]
   );
 
-  const activeScope = activePathParts.length > 0 ? activePathParts.join(" / ") : "全部知识点";
+  const activeScope = activePathParts.length > 0 ? activePathParts.join(" / ") : "全部章节 / 知识点";
   const activeDimensionLabel = getDimLabel(dimFilter === "all" ? "knowledge" : dimFilter);
 
   const resetCreateDraft = useCallback(() => {
     setNewValue("");
     setNewAliases("");
-    setNewSubject(subjectFilter || "");
-    setNewGrade(gradeFilter || "");
+    setNewSubject("");
     setNewChapter(chapterFilter || "");
-  }, [chapterFilter, gradeFilter, subjectFilter]);
+  }, [chapterFilter]);
 
   const onCreate = useCallback(async () => {
     const value = newValue.trim();
@@ -230,7 +267,6 @@ export default function TagsPage() {
         value,
         aliases,
         subject: newDim === "knowledge" ? newSubject || undefined : undefined,
-        grade: newDim === "knowledge" ? newGrade.trim() || undefined : undefined,
         chapter: newDim === "knowledge" ? newChapter.trim() || undefined : undefined,
       });
 
@@ -250,7 +286,6 @@ export default function TagsPage() {
     newAliases,
     newChapter,
     newDim,
-    newGrade,
     newSubject,
     newValue,
     resetCreateDraft,
@@ -293,9 +328,8 @@ export default function TagsPage() {
   );
 
   const clearAllFilters = useCallback(() => {
-    setSubjectFilter("");
-    setGradeFilter("");
     setChapterFilter("");
+    setKnowledgeFilter("");
     setDimFilter("knowledge");
     setQueryInput("");
     setQuery("");
@@ -350,7 +384,7 @@ export default function TagsPage() {
               总引用 {totalRefs}
             </Text>
             <Text sx={{ color: "fg.muted", fontSize: 1 }}>
-              学科目录 {subjects.length}
+              章节目录 {chapters.length}
             </Text>
             {query ? <Label>{`搜索：${query}`}</Label> : null}
           </Box>
@@ -394,11 +428,11 @@ export default function TagsPage() {
               新建标签
             </Heading>
             <Text sx={{ color: "fg.muted", fontSize: 1 }}>
-              如果当前已经选中了目录，知识点标签会自动沿用这个目录。
+              如果当前已经选中了章节或知识点，新标签会自动沿用对应章节。
             </Text>
           </Box>
 
-          <Box sx={{ display: "grid", gridTemplateColumns: ["1fr", "repeat(4, minmax(0, 1fr))"], gap: 2 }}>
+          <Box sx={{ display: "grid", gridTemplateColumns: ["1fr", "repeat(3, minmax(0, 1fr))"], gap: 2 }}>
             <FormControl>
               <FormControl.Label>维度</FormControl.Label>
               <Select value={newDim} onChange={(e) => setNewDim(e.target.value as TagDimension)}>
@@ -422,15 +456,6 @@ export default function TagsPage() {
                       </Select.Option>
                     ))}
                   </Select>
-                </FormControl>
-
-                <FormControl>
-                  <FormControl.Label>年级</FormControl.Label>
-                  <TextInput
-                    value={newGrade}
-                    onChange={(e) => setNewGrade(e.target.value)}
-                    placeholder="例如：八年级上"
-                  />
                 </FormControl>
 
                 <FormControl>
@@ -487,50 +512,31 @@ export default function TagsPage() {
         <Box className="oops-card" sx={{ p: 3 }}>
           <KnowledgeTreeFilter
             loading={loadingKnowledgeTree}
-            subjects={subjects}
+            chapters={chapters}
             tree={tree}
-            subjectFilter={subjectFilter}
-            gradeFilter={gradeFilter}
             chapterFilter={chapterFilter}
-            expandedSubjects={expandedSubjects}
-            expandedGrades={expandedGrades}
-            getGradesBySubject={getGradesBySubject}
-            getChaptersByGrade={getChaptersByGrade}
-            toLabel={toLabel}
+            knowledgeFilter={knowledgeFilter}
+            expandedChapters={expandedChapters}
+            getKnowledgeByChapter={getKnowledgeByChapter}
             onClearAll={() => {
-              setSubjectFilter("");
-              setGradeFilter("");
               setChapterFilter("");
+              setKnowledgeFilter("");
               setDimFilter("knowledge");
             }}
-            onPickSubject={(subject) => {
-              setSubjectFilter(subject);
-              setGradeFilter("");
-              setChapterFilter("");
-              setDimFilter("knowledge");
-            }}
-            onPickGrade={(subject, grade) => {
-              setSubjectFilter(subject);
-              setGradeFilter(grade);
-              setChapterFilter("");
-              setDimFilter("knowledge");
-            }}
-            onPickChapter={(subject, grade, chapter) => {
-              setSubjectFilter(subject);
-              setGradeFilter(grade);
+            onPickChapter={(chapter) => {
               setChapterFilter(chapter);
+              setKnowledgeFilter("");
               setDimFilter("knowledge");
             }}
-            onToggleSubjectExpand={(subject, defaultExpanded) => {
-              setExpandedSubjects((prev) => ({
-                ...prev,
-                [subject]: !(prev[subject] ?? defaultExpanded),
-              }));
+            onPickKnowledge={(chapter, knowledge) => {
+              setChapterFilter(chapter);
+              setKnowledgeFilter(knowledge);
+              setDimFilter("knowledge");
             }}
-            onToggleGradeExpand={(gradeKey, defaultExpanded) => {
-              setExpandedGrades((prev) => ({
+            onToggleChapterExpand={(chapter, defaultExpanded) => {
+              setExpandedChapters((prev) => ({
                 ...prev,
-                [gradeKey]: !(prev[gradeKey] ?? defaultExpanded),
+                [chapter]: !(prev[chapter] ?? defaultExpanded),
               }));
             }}
           />
@@ -551,9 +557,8 @@ export default function TagsPage() {
               setQuery("");
             }}
             onResetKnowledgeScope={() => {
-              setSubjectFilter("");
-              setGradeFilter("");
               setChapterFilter("");
+              setKnowledgeFilter("");
               setDimFilter("knowledge");
             }}
           />

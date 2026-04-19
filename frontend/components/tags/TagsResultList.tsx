@@ -216,7 +216,6 @@ export function TagsResultList({
                   <Box sx={{ display: "flex", alignItems: "center", gap: 2, flexWrap: "wrap" }}>
                     <Text sx={{ color: "fg.muted", fontSize: 1 }}>引用 {item.ref_count || 0}</Text>
                     {item.subject ? <Text sx={{ color: "fg.muted", fontSize: 1 }}>{toPlainSubject(item.subject)}</Text> : null}
-                    {item.grade ? <Text sx={{ color: "fg.muted", fontSize: 1 }}>{item.grade}</Text> : null}
                   </Box>
 
                   {knowledgeContext ? (

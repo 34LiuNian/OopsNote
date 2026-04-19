@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import List, Optional, Dict
 
 from pydantic import BaseModel, Field, HttpUrl, model_validator
@@ -38,6 +39,64 @@ class UploadRequest(BaseModel):
         if not self.image_url and not self.image_base64:
             raise ValueError("Upload requires either image_url or image_base64")
         return self
+
+
+class DebugMultiPageImageInput(BaseModel):
+    """多页 demo 上传中的单张图片输入。"""
+
+    image_base64: str = Field(description="Base64 编码图片（可带 data URI）")
+    filename: Optional[str] = None
+    mime_type: Optional[str] = Field(default="image/png")
+    page_index: Optional[int] = Field(default=None, ge=1)
+
+
+class DebugMultiPageUploadRequest(BaseModel):
+    """多页分割 demo 上传请求。"""
+
+    images: List[DebugMultiPageImageInput] = Field(min_length=1)
+    subject: str = Field(default=DEFAULT_SUBJECT)
+    grade: Optional[str] = None
+    notes: Optional[str] = None
+    source: Optional[str] = None
+    question_type: Optional[str] = None
+    difficulty: Optional[str] = None
+    knowledge_tags: List[str] = Field(default_factory=list)
+    error_tags: List[str] = Field(default_factory=list)
+    user_tags: List[str] = Field(default_factory=list)
+
+
+class DebugBatchCreateResponse(BaseModel):
+    """创建 demo 批次返回。"""
+
+    batch_id: str
+
+
+class DebugBatchTaskItem(BaseModel):
+    """demo 批次中的任务摘要。"""
+
+    task_id: str
+    page_index: int
+    region_index: int
+    status: str
+    stage: Optional[str] = None
+    stage_message: Optional[str] = None
+
+
+class DebugBatchDetailResponse(BaseModel):
+    """demo 批次详情。"""
+
+    batch_id: str
+    status: str
+    created_at: datetime
+    updated_at: datetime
+    total_images: int
+    total_regions: int
+    total_tasks: int
+    completed_tasks: int
+    failed_tasks: int
+    cancelled_tasks: int
+    tasks: List[DebugBatchTaskItem] = Field(default_factory=list)
+    warnings: List[str] = Field(default_factory=list)
 
 
 class LatexCompileRequest(BaseModel):

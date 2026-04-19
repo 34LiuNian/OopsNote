@@ -10,8 +10,8 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
-from typing import Iterable, List, Optional
-from uuid import uuid4
+from typing import Iterable, List, Literal, Optional
+from uuid import NAMESPACE_URL, uuid4, uuid5
 
 from pydantic import BaseModel, Field
 
@@ -47,19 +47,16 @@ class TagItem(BaseModel):
     """Stored tag metadata."""
 
     id: str
-    dimension: TagDimension
+    dimension: TagDimension = Field(default=TagDimension.KNOWLEDGE)
     value: str
     aliases: List[str] = Field(default_factory=list)
     subject: str | None = Field(default=None)
-    grade: str | None = Field(default=None)
     chapter: str | None = Field(default=None)
-    path: str | None = Field(default=None)
-    path_depth: int = Field(default=0)
-    created_at: datetime
     ref_count: int = Field(
         default=0,
         description="How many times this tag is referenced in tasks/problems",
     )
+    source: Literal["builtin", "user"] = Field(default="user")
 
 
 class TagItemView(TagItem):
@@ -78,9 +75,7 @@ class TagCreateRequest(BaseModel):
     value: str
     aliases: List[str] = Field(default_factory=list)
     subject: str | None = Field(default=None)
-    grade: str | None = Field(default=None)
     chapter: str | None = Field(default=None)
-    path: str | None = Field(default=None)
 
 
 class TagsResponse(BaseModel):
@@ -117,13 +112,16 @@ class TagStore:
         self,
         tags_path: Path | None = None,
         dims_path: Path | None = None,
+        builtin_path: Path | None = None,
     ) -> None:
         base = Path(__file__).resolve().parent.parent / "storage" / "settings"
         base.mkdir(parents=True, exist_ok=True)
-        self.tags_path = tags_path or (base / "tags.json")
+        self.user_tags_path = tags_path or (base / "tags_user.json")
+        self.builtin_tags_path = builtin_path or (base / "tags_builtin.json")
+        self.legacy_tags_path = base / "tags.json"
         self.dims_path = dims_path or (base / "tag_dimensions.json")
+        self.conflicts_path = base / "tag_conflicts.json"
         self._lock = threading.Lock()
-        self._defaults_ensured = False
 
     def load_dimensions(self) -> dict[str, TagDimensionStyle]:
         """Load or initialize tag dimension styles."""
@@ -164,7 +162,6 @@ class TagStore:
         self,
         dimension: TagDimension | None = None,
         subject: str | None = None,
-        grade: str | None = None,
         chapter: str | None = None,
         limit: int = 2000,
     ) -> List[TagItem]:
@@ -173,16 +170,14 @@ class TagStore:
         items = state.items
         if dimension is not None:
             items = [t for t in items if t.dimension == dimension]
-        if subject or grade or chapter:
+        if subject or chapter:
             subject_norm = self._norm(subject)
-            grade_norm = self._norm(grade)
             chapter_norm = self._norm(chapter)
             items = [
                 t
                 for t in items
                 if t.dimension == TagDimension.KNOWLEDGE
                 and (not subject_norm or self._norm(t.subject) == subject_norm)
-                and (not grade_norm or self._norm(t.grade) == grade_norm)
                 and (not chapter_norm or self._norm(t.chapter) == chapter_norm)
             ]
         items.sort(key=lambda t: t.value)
@@ -193,7 +188,6 @@ class TagStore:
         dimension: TagDimension | None = None,
         query: str | None = None,
         subject: str | None = None,
-        grade: str | None = None,
         chapter: str | None = None,
         limit: int = 50,
     ) -> List[TagItem]:
@@ -203,7 +197,6 @@ class TagStore:
             return self.list(
                 dimension=dimension,
                 subject=subject,
-                grade=grade,
                 chapter=chapter,
                 limit=limit,
             )
@@ -212,16 +205,14 @@ class TagStore:
         items = self._load_state().items
         if dimension is not None:
             items = [t for t in items if t.dimension == dimension]
-        if subject or grade or chapter:
+        if subject or chapter:
             subject_norm = self._norm(subject)
-            grade_norm = self._norm(grade)
             chapter_norm = self._norm(chapter)
             items = [
                 t
                 for t in items
                 if t.dimension == TagDimension.KNOWLEDGE
                 and (not subject_norm or self._norm(t.subject) == subject_norm)
-                and (not grade_norm or self._norm(t.grade) == grade_norm)
                 and (not chapter_norm or self._norm(t.chapter) == chapter_norm)
             ]
 
@@ -264,9 +255,7 @@ class TagStore:
         aliases: Optional[List[str]] = None,
         *,
         subject: str | None = None,
-        grade: str | None = None,
         chapter: str | None = None,
-        path: str | None = None,
     ) -> tuple[TagItem, bool]:
         """Create or update a tag entry and return (tag, created)."""
         value = (value or "").strip()
@@ -277,16 +266,17 @@ class TagStore:
             value,
             aliases,
             subject=subject,
-            grade=grade,
             chapter=chapter,
-            path=path,
         ) if dimension == TagDimension.KNOWLEDGE else {}
 
         with self._lock:
             state = self._load_state_unlocked()
+            user_state = self._load_user_state_unlocked()
             key = self._key(dimension, value)
             for item in state.items:
                 if self._key(item.dimension, item.value) == key:
+                    if item.source == "builtin":
+                        return item, False
                     merged = list(dict.fromkeys([*(item.aliases or []), *aliases]))
                     updates: dict[str, object] = {}
                     if merged != (item.aliases or []):
@@ -298,34 +288,33 @@ class TagStore:
                                 updates[field_name] = field_value
                     if updates:
                         updated = item.model_copy(update=updates)
-                        state.items = [
-                            updated if t.id == item.id else t for t in state.items
+                        user_state.items = [
+                            updated if t.id == item.id else t for t in user_state.items
                         ]
-                        self._write_state_unlocked(state)
+                        self._write_user_state_unlocked(user_state)
                         return updated, False
                     return item, False
 
-            now = datetime.now(timezone.utc)
             created = TagItem(
                 id=uuid4().hex,
                 dimension=dimension,
                 value=value,
                 aliases=aliases,
                 **knowledge_fields,
-                created_at=now,
+                source="user",
             )
-            state.items.append(created)
-            self._write_state_unlocked(state)
+            user_state.items.append(created)
+            self._write_user_state_unlocked(user_state)
             return created, True
 
     def delete(self, tag_id: str) -> bool:
         """Delete a tag by ID. Returns True if deleted, False if not found."""
         with self._lock:
-            state = self._load_state_unlocked()
-            original_count = len(state.items)
-            state.items = [t for t in state.items if t.id != tag_id]
-            if len(state.items) < original_count:
-                self._write_state_unlocked(state)
+            user_state = self._load_user_state_unlocked()
+            original_count = len(user_state.items)
+            user_state.items = [t for t in user_state.items if t.id != tag_id]
+            if len(user_state.items) < original_count:
+                self._write_user_state_unlocked(user_state)
                 return True
             return False
 
@@ -337,7 +326,8 @@ class TagStore:
 
         with self._lock:
             state = self._load_state_unlocked()
-            for item in state.items:
+            user_state = self._load_user_state_unlocked()
+            for item in user_state.items:
                 if item.id == tag_id:
                     # Check if the new value already exists for this dimension
                     key = self._key(item.dimension, new_value)
@@ -350,18 +340,18 @@ class TagStore:
 
                     # Update the value
                     updated = item.model_copy(update={"value": new_value})
-                    state.items = [
-                        updated if t.id == tag_id else t for t in state.items
+                    user_state.items = [
+                        updated if t.id == tag_id else t for t in user_state.items
                     ]
-                    self._write_state_unlocked(state)
+                    self._write_user_state_unlocked(user_state)
                     return updated
             return None
 
     def update_ref_count(self, tag_id: str, delta: int) -> bool:
         """Update a tag's reference count by delta. Returns True if updated, False if not found."""
         with self._lock:
-            state = self._load_state_unlocked()
-            for item in state.items:
+            user_state = self._load_user_state_unlocked()
+            for item in user_state.items:
                 if item.id == tag_id:
                     new_count = item.ref_count + delta
                     if new_count < 0:
@@ -370,10 +360,10 @@ class TagStore:
                         logger.warning(f"Tag {tag_id} would have negative ref_count: {item.ref_count} + {delta}")
                         new_count = 0
                     updated = item.model_copy(update={"ref_count": new_count})
-                    state.items = [
-                        updated if t.id == tag_id else t for t in state.items
+                    user_state.items = [
+                        updated if t.id == tag_id else t for t in user_state.items
                     ]
-                    self._write_state_unlocked(state)
+                    self._write_user_state_unlocked(user_state)
                     return True
             return False
 
@@ -389,21 +379,25 @@ class TagStore:
             return False
         key = self._key(dimension, value)
         with self._lock:
-            state = self._load_state_unlocked()
-            for item in state.items:
+            user_state = self._load_user_state_unlocked()
+            for item in user_state.items:
                 if self._key(item.dimension, item.value) == key:
                     new_count = item.ref_count + delta
                     if new_count < 0:
                         logger = __import__("logging").getLogger(__name__)
-                        logger.warning(f"Tag {
-                                dimension.value}::{value} would have negative ref_count: {
-                                item.ref_count} + {delta}")
+                        logger.warning(
+                            "Tag %s::%s would have negative ref_count: %s + %s",
+                            dimension.value,
+                            value,
+                            item.ref_count,
+                            delta,
+                        )
                         new_count = 0
                     updated = item.model_copy(update={"ref_count": new_count})
-                    state.items = [
-                        updated if t.id == item.id else t for t in state.items
+                    user_state.items = [
+                        updated if t.id == item.id else t for t in user_state.items
                     ]
-                    self._write_state_unlocked(state)
+                    self._write_user_state_unlocked(user_state)
                     return True
             return False
 
@@ -554,15 +548,15 @@ class TagStore:
         merged_aliases = [a for a in merged_aliases if a.casefold() != new_val.casefold()]
 
         with self._lock:
-            state = self._load_state_unlocked()
-            state.items = [
+            user_state = self._load_user_state_unlocked()
+            user_state.items = [
                 t.model_copy(update={"aliases": merged_aliases})
                 if t.id == target_id
                 else t
-                for t in state.items
+                for t in user_state.items
             ]
-            state.items = [t for t in state.items if t.id != source_id]
-            self._write_state_unlocked(state)
+            user_state.items = [t for t in user_state.items if t.id != source_id]
+            self._write_user_state_unlocked(user_state)
 
         # ── 3. Recalculate ref_count ──────────────────────────────
         self.recalculate_all_counts()
@@ -643,14 +637,30 @@ class TagStore:
 
         # Update all tags with new counts (count = number of unique problems)
         with self._lock:
-            state = self._load_state_unlocked()
-            for item in state.items:
-                key = self._key(item.dimension, item.value)
-                item.ref_count = len(tag_to_problems.get(key, set()))
-            self._write_state_unlocked(state)
+            user_state = self._load_user_state_unlocked()
+            builtin_state = self._load_builtin_state_unlocked()
 
-            stats = {"total_tags": len(state.items), "non_zero_counts": 0}
-            for item in state.items:
+            user_updated: List[TagItem] = []
+            for item in user_state.items:
+                key = self._key(item.dimension, item.value)
+                ref_count = len(tag_to_problems.get(key, set()))
+                user_updated.append(item.model_copy(update={"ref_count": ref_count}))
+
+            builtin_updated: List[TagItem] = []
+            for item in builtin_state.items:
+                key = self._key(item.dimension, item.value)
+                ref_count = len(tag_to_problems.get(key, set()))
+                builtin_updated.append(item.model_copy(update={"ref_count": ref_count}))
+
+            self._write_user_state_unlocked(_TagState(items=user_updated))
+            self._write_builtin_state_unlocked(_TagState(items=builtin_updated))
+
+            visible_items = self._compose_state_unlocked(
+                _TagState(items=user_updated),
+                _TagState(items=builtin_updated),
+            ).items
+            stats = {"total_tags": len(visible_items), "non_zero_counts": 0}
+            for item in visible_items:
                 if item.ref_count > 0:
                     stats["non_zero_counts"] += 1
             return stats
@@ -668,10 +678,20 @@ class TagStore:
         parts = [str(part).strip() for part in str(path or "").split("/") if str(part).strip()]
         return "/".join(parts)
 
+    @staticmethod
+    def _legacy_builtin_id(dimension: TagDimension, value: str) -> str:
+        return uuid5(NAMESPACE_URL, f"oopsnote:{dimension.value}:{value}").hex
+
+    def _looks_like_legacy_builtin(self, item: TagItem) -> bool:
+        if item.dimension != TagDimension.KNOWLEDGE:
+            return False
+        expected_id = self._legacy_builtin_id(item.dimension, item.value)
+        return item.id == expected_id
+
     def _infer_knowledge_from_aliases(
         self,
         aliases: Iterable[str],
-    ) -> tuple[str | None, str | None, str | None, str | None]:
+    ) -> tuple[str | None, str | None]:
         for alias in aliases:
             cleaned = self._clean_path(alias)
             if not cleaned:
@@ -682,10 +702,9 @@ class TagStore:
             subject_key = _SUBJECT_LABEL_TO_KEY.get(parts[0])
             if not subject_key:
                 continue
-            grade = parts[1] if len(parts) >= 4 else None
-            chapter = parts[2] if len(parts) >= 3 else None
-            return subject_key, grade, chapter, cleaned
-        return None, None, None, None
+            chapter = parts[1] if len(parts) >= 3 else None
+            return subject_key, chapter
+        return None, None
 
     def _build_knowledge_fields(
         self,
@@ -693,38 +712,35 @@ class TagStore:
         aliases: Iterable[str],
         *,
         subject: str | None,
-        grade: str | None,
         chapter: str | None,
-        path: str | None,
     ) -> dict[str, object]:
         subject_key = str(subject or "").strip() or None
         if subject_key not in SUBJECTS:
             subject_key = None
-        grade_text = str(grade or "").strip() or None
         chapter_text = str(chapter or "").strip() or None
-        path_text = self._clean_path(path)
 
-        inferred_subject, inferred_grade, inferred_chapter, inferred_path = self._infer_knowledge_from_aliases(aliases)
+        inferred_subject, inferred_chapter = self._infer_knowledge_from_aliases(aliases)
         subject_key = subject_key or inferred_subject
-        grade_text = grade_text or inferred_grade
         chapter_text = chapter_text or inferred_chapter
-        path_text = path_text or inferred_path or ""
 
-        if subject_key and not path_text:
-            parts = [SUBJECTS[subject_key]]
-            if grade_text:
-                parts.append(grade_text)
-            if chapter_text:
-                parts.append(chapter_text)
-            parts.append(str(value).strip())
-            path_text = self._clean_path("/".join(parts))
+        if subject_key and not chapter_text:
+            subject_label = SUBJECTS[subject_key]
+            value_text = str(value).strip()
+            for alias in aliases:
+                cleaned = self._clean_path(alias)
+                if not cleaned.startswith(f"{subject_label}/"):
+                    continue
+                parts = [part for part in cleaned.split("/") if part]
+                if len(parts) < 3:
+                    continue
+                if parts[-1] != value_text:
+                    continue
+                chapter_text = parts[-2]
+                break
 
         return {
             "subject": subject_key,
-            "grade": grade_text,
             "chapter": chapter_text,
-            "path": path_text or None,
-            "path_depth": len(path_text.split("/")) if path_text else 0,
         }
 
     @staticmethod
@@ -762,50 +778,147 @@ class TagStore:
             return self._load_state_unlocked()
 
     def _load_state_unlocked(self) -> _TagState:
-        if not self.tags_path.exists():
+        self._migrate_legacy_tags_unlocked()
+        user_state = self._load_user_state_unlocked()
+        builtin_state = self._load_builtin_state_unlocked()
+        builtin_state = self._merge_builtin_defaults_unlocked(builtin_state)
+        conflicts = self._collect_conflicts_unlocked(user_state, builtin_state)
+        self._write_conflicts_unlocked(conflicts)
+        return self._compose_state_unlocked(user_state, builtin_state)
+
+    def _migrate_legacy_tags_unlocked(self) -> None:
+        if self.user_tags_path.exists() or self.builtin_tags_path.exists():
+            return
+        if not self.legacy_tags_path.exists():
+            return
+
+        raw = json.loads(self.legacy_tags_path.read_text(encoding="utf-8"))
+        items = raw.get("items", []) if isinstance(raw, dict) else []
+
+        user_items: list[TagItem] = []
+        builtin_items: list[TagItem] = []
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            try:
+                parsed = TagItem.model_validate(item)
+            except Exception:  # pylint: disable=broad-exception-caught
+                continue
+
+            raw_source = str(item.get("source") or "").strip()
+            is_builtin = raw_source == "builtin" or (
+                not raw_source and self._looks_like_legacy_builtin(parsed)
+            )
+            if is_builtin:
+                builtin_items.append(
+                    parsed.model_copy(
+                        update={
+                            "source": "builtin",
+                        }
+                    )
+                )
+            else:
+                user_items.append(
+                    parsed.model_copy(update={"source": "user"})
+                )
+
+        self._write_user_state_unlocked(_TagState(items=user_items))
+        if builtin_items:
+            self._write_builtin_state_unlocked(_TagState(items=builtin_items))
+
+    def _load_user_state_unlocked(self) -> _TagState:
+        if not self.user_tags_path.exists():
             state = _TagState(items=[])
-        else:
-            raw = json.loads(self.tags_path.read_text(encoding="utf-8"))
-            items = raw.get("items", []) if isinstance(raw, dict) else []
-            parsed: List[TagItem] = []
-            normalized_changed = False
-            for item in items or []:
-                try:
-                    current = TagItem.model_validate(item)
-                    if current.dimension == TagDimension.KNOWLEDGE:
-                        updates = self._build_knowledge_fields(
-                            current.value,
-                            current.aliases or [],
-                            subject=current.subject,
-                            grade=current.grade,
-                            chapter=current.chapter,
-                            path=current.path,
-                        )
-                        if any(getattr(current, key, None) != value for key, value in updates.items()):
-                            current = current.model_copy(update=updates)
-                            normalized_changed = True
-                    parsed.append(current)
-                except Exception:  # pylint: disable=broad-exception-caught
-                    continue
-            state = _TagState(items=parsed)
-            if normalized_changed:
-                self._write_state_unlocked(state)
-
-        if not self._defaults_ensured:
-            state = self._merge_builtin_defaults_unlocked(state)
-            self._defaults_ensured = True
-
-        if not self.tags_path.exists():
-            self._write_state_unlocked(state)
+            self._write_user_state_unlocked(state)
             return state
 
+        state, changed = self._read_state_file_unlocked(
+            self.user_tags_path,
+            expected_source="user",
+        )
+        if changed:
+            self._write_user_state_unlocked(state)
         return state
 
-    def _merge_builtin_defaults_unlocked(self, state: _TagState) -> _TagState:
+    def _load_builtin_state_unlocked(self) -> _TagState:
+        if not self.builtin_tags_path.exists():
+            seeded = self._seed_builtin_state_from_bundle_unlocked()
+            self._write_builtin_state_unlocked(seeded)
+            return seeded
+
+        state, changed = self._read_state_file_unlocked(
+            self.builtin_tags_path,
+            expected_source="builtin",
+        )
+        if changed:
+            self._write_builtin_state_unlocked(state)
+        return state
+
+    def _seed_builtin_state_from_bundle_unlocked(self) -> _TagState:
+        items: list[TagItem] = []
+        for record in load_builtin_tags():
+            payload = record.as_dict()
+            payload["source"] = "builtin"
+            if str(payload.get("dimension") or "").strip() != "knowledge":
+                continue
+            try:
+                item = TagItem.model_validate(payload)
+            except Exception:  # pylint: disable=broad-exception-caught
+                continue
+            items.append(item)
+        return _TagState(items=items)
+
+    def _read_state_file_unlocked(
+        self,
+        path: Path,
+        *,
+        expected_source: Literal["builtin", "user"],
+    ) -> tuple[_TagState, bool]:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+        items = raw.get("items", []) if isinstance(raw, dict) else []
+        parsed: list[TagItem] = []
+        normalized_changed = False
+
+        for item in items or []:
+            if not isinstance(item, dict):
+                continue
+            try:
+                current = TagItem.model_validate(item)
+            except Exception:  # pylint: disable=broad-exception-caught
+                normalized_changed = True
+                continue
+
+            updates: dict[str, object] = {}
+            if expected_source == "builtin":
+                if current.source != "builtin":
+                    updates["source"] = "builtin"
+            else:
+                if current.source != "user":
+                    updates["source"] = "user"
+
+            if current.dimension == TagDimension.KNOWLEDGE:
+                fields = self._build_knowledge_fields(
+                    current.value,
+                    current.aliases or [],
+                    subject=current.subject,
+                    chapter=current.chapter,
+                )
+                for field_name, field_value in fields.items():
+                    if getattr(current, field_name, None) != field_value:
+                        updates[field_name] = field_value
+
+            if updates:
+                current = current.model_copy(update=updates)
+                normalized_changed = True
+            parsed.append(current)
+
+        return _TagState(items=parsed), normalized_changed
+
+    def _merge_builtin_defaults_unlocked(self, builtin_state: _TagState) -> _TagState:
         changed = False
         index_by_key = {
             self._key(item.dimension, item.value): idx
-            for idx, item in enumerate(state.items)
+            for idx, item in enumerate(builtin_state.items)
         }
 
         for record in load_builtin_tags():
@@ -817,14 +930,12 @@ class TagStore:
                 str(payload.get("value") or ""),
                 aliases,
                 subject=str(payload.get("subject") or "").strip() or None,
-                grade=str(payload.get("grade") or "").strip() or None,
                 chapter=str(payload.get("chapter") or "").strip() or None,
-                path=str(payload.get("path") or "").strip() or None,
             ) if dimension == TagDimension.KNOWLEDGE else {}
 
             existing_index = index_by_key.get(key)
             if existing_index is not None:
-                existing = state.items[existing_index]
+                existing = builtin_state.items[existing_index]
                 merged_aliases = list(
                     dict.fromkeys([*(existing.aliases or []), *aliases])
                 )
@@ -834,29 +945,116 @@ class TagStore:
                 for field_name, field_value in knowledge_updates.items():
                     if field_value and getattr(existing, field_name, None) != field_value:
                         updates[field_name] = field_value
+                if existing.source != "builtin":
+                    updates["source"] = "builtin"
                 if updates:
-                    state.items[existing_index] = existing.model_copy(update=updates)
+                    builtin_state.items[existing_index] = existing.model_copy(update=updates)
                     changed = True
                 continue
 
             if knowledge_updates:
                 payload = {**payload, **knowledge_updates}
-            state.items.append(TagItem.model_validate(payload))
-            index_by_key[key] = len(state.items) - 1
+            payload["source"] = "builtin"
+            builtin_state.items.append(TagItem.model_validate(payload))
+            index_by_key[key] = len(builtin_state.items) - 1
             changed = True
 
         if changed:
-            self._write_state_unlocked(state)
-        return state
+            self._write_builtin_state_unlocked(builtin_state)
+        return builtin_state
 
-    def _write_state_unlocked(self, state: _TagState) -> None:
-        payload = {"items": [item.model_dump(mode="json") for item in state.items]}
-        tmp = self.tags_path.with_suffix(".json.tmp")
+    def _compose_state_unlocked(
+        self,
+        user_state: _TagState,
+        builtin_state: _TagState,
+    ) -> _TagState:
+        merged: dict[str, TagItem] = {}
+        for item in builtin_state.items:
+            merged[self._key(item.dimension, item.value)] = item
+        for item in user_state.items:
+            merged[self._key(item.dimension, item.value)] = item
+        return _TagState(items=list(merged.values()))
+
+    def _collect_conflicts_unlocked(
+        self,
+        user_state: _TagState,
+        builtin_state: _TagState,
+    ) -> list[dict[str, object]]:
+        builtin_by_key = {
+            self._key(item.dimension, item.value): item
+            for item in builtin_state.items
+        }
+        conflicts: list[dict[str, object]] = []
+        for user_item in user_state.items:
+            key = self._key(user_item.dimension, user_item.value)
+            builtin_item = builtin_by_key.get(key)
+            if builtin_item is None:
+                continue
+
+            diff: dict[str, dict[str, object | None]] = {}
+            for field_name in ("subject", "chapter"):
+                user_value = getattr(user_item, field_name, None)
+                builtin_value = getattr(builtin_item, field_name, None)
+                if user_value and builtin_value and user_value != builtin_value:
+                    diff[field_name] = {
+                        "user": user_value,
+                        "builtin": builtin_value,
+                    }
+
+            user_aliases = list(dict.fromkeys([str(x).strip() for x in (user_item.aliases or []) if str(x).strip()]))
+            builtin_aliases = list(dict.fromkeys([str(x).strip() for x in (builtin_item.aliases or []) if str(x).strip()]))
+            if user_aliases and builtin_aliases and user_aliases != builtin_aliases:
+                diff["aliases"] = {
+                    "user": user_aliases,
+                    "builtin": builtin_aliases,
+                }
+
+            if diff:
+                conflicts.append(
+                    {
+                        "dimension": user_item.dimension.value,
+                        "value": user_item.value,
+                        "key": key,
+                        "conflicts": diff,
+                    }
+                )
+        return conflicts
+
+    def _write_conflicts_unlocked(self, conflicts: list[dict[str, object]]) -> None:
+        payload = {
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "count": len(conflicts),
+            "items": conflicts,
+        }
+        tmp = self.conflicts_path.with_suffix(".json.tmp")
         tmp.write_text(
             json.dumps(payload, ensure_ascii=False, indent=2),
             encoding="utf-8",
         )
-        tmp.replace(self.tags_path)
+        tmp.replace(self.conflicts_path)
+
+    def _write_user_state_unlocked(self, state: _TagState) -> None:
+        self._write_state_file_unlocked(self.user_tags_path, state)
+
+    def _write_builtin_state_unlocked(self, state: _TagState) -> None:
+        self._write_state_file_unlocked(self.builtin_tags_path, state)
+
+    def _write_state_file_unlocked(self, path: Path, state: _TagState) -> None:
+        serialized_items: list[dict[str, object]] = []
+        for item in state.items:
+            row = item.model_dump(mode="json")
+            # Keep non-knowledge dimensions explicit, but omit default knowledge
+            # to reduce storage redundancy in tag files.
+            if row.get("dimension") == TagDimension.KNOWLEDGE.value:
+                row.pop("dimension", None)
+            serialized_items.append(row)
+        payload = {"items": serialized_items}
+        tmp = path.with_suffix(".json.tmp")
+        tmp.write_text(
+            json.dumps(payload, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+        tmp.replace(path)
 
 
 # Default singleton used by the API and the agent prompt context.

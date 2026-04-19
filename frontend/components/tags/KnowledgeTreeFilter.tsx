@@ -1,49 +1,54 @@
 "use client";
 
-import { Box, Button, Spinner, Text } from "@primer/react";
+import { Box, Button, Label, Spinner, Text } from "@primer/react";
 import { ChevronDownIcon, ChevronRightIcon } from "@primer/octicons-react";
 
-type SubjectTree = Record<string, Record<string, Record<string, number>>>;
+type ChapterTree = Record<string, Record<string, number>>;
 
 type KnowledgeTreeFilterProps = {
   loading: boolean;
-  subjects: string[];
-  tree: SubjectTree;
-  subjectFilter: string;
-  gradeFilter: string;
+  chapters: string[];
+  tree: ChapterTree;
   chapterFilter: string;
-  expandedSubjects: Record<string, boolean>;
-  expandedGrades: Record<string, boolean>;
-  getGradesBySubject: (subject: string) => string[];
-  getChaptersByGrade: (subject: string, grade: string) => string[];
-  toLabel: (subject: string) => string;
+  knowledgeFilter: string;
+  expandedChapters: Record<string, boolean>;
+  getKnowledgeByChapter: (chapter: string) => string[];
   onClearAll: () => void;
-  onPickSubject: (subject: string) => void;
-  onPickGrade: (subject: string, grade: string) => void;
-  onPickChapter: (subject: string, grade: string, chapter: string) => void;
-  onToggleSubjectExpand: (subject: string, defaultExpanded: boolean) => void;
-  onToggleGradeExpand: (gradeKey: string, defaultExpanded: boolean) => void;
+  onPickChapter: (chapter: string) => void;
+  onPickKnowledge: (chapter: string, knowledge: string) => void;
+  onToggleChapterExpand: (chapter: string, defaultExpanded: boolean) => void;
 };
 
 export function KnowledgeTreeFilter({
   loading,
-  subjects,
+  chapters,
   tree,
-  subjectFilter,
-  gradeFilter,
   chapterFilter,
-  expandedSubjects,
-  expandedGrades,
-  getGradesBySubject,
-  getChaptersByGrade,
-  toLabel,
+  knowledgeFilter,
+  expandedChapters,
+  getKnowledgeByChapter,
   onClearAll,
-  onPickSubject,
-  onPickGrade,
   onPickChapter,
-  onToggleSubjectExpand,
-  onToggleGradeExpand,
+  onPickKnowledge,
+  onToggleChapterExpand,
 }: KnowledgeTreeFilterProps) {
+  const renderTitleWithCount = (title: string, count: number) => (
+    <Box sx={{ display: "inline-flex", alignItems: "center", gap: 2 }}>
+      <span>{title}</span>
+      <Label
+        size="small"
+        sx={{
+          minWidth: 22,
+          justifyContent: "center",
+          borderRadius: 999,
+          fontVariantNumeric: "tabular-nums",
+        }}
+      >
+        {count}
+      </Label>
+    </Box>
+  );
+
   return (
     <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
       <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
@@ -58,91 +63,55 @@ export function KnowledgeTreeFilter({
         block
         size="small"
         onClick={onClearAll}
-        variant={!subjectFilter && !gradeFilter && !chapterFilter ? "primary" : "default"}
+        variant={!chapterFilter && !knowledgeFilter ? "primary" : "default"}
       >
         全部知识点
       </Button>
 
       <Box sx={{ display: "flex", flexDirection: "column", gap: 1, maxHeight: 640, overflowY: "auto" }}>
-        {subjects.map((subject) => {
-          const isSubjectSelected = subjectFilter === subject;
-          const isSubjectExpanded = expandedSubjects[subject] ?? isSubjectSelected;
-          const gradeCount = Object.keys(tree[subject] || {}).length;
+        {chapters.map((chapter) => {
+          const isChapterSelected = chapterFilter === chapter && !knowledgeFilter;
+          const isChapterExpanded = expandedChapters[chapter] ?? (chapterFilter === chapter);
+          const knowledgeCount = Object.keys(tree[chapter] || {}).length;
 
           return (
-            <Box key={subject} sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
+            <Box key={chapter} sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
               <Box sx={{ display: "grid", gridTemplateColumns: "32px 1fr", gap: 1 }}>
                 <Button
                   size="small"
                   sx={{ px: 0 }}
-                  onClick={() => onToggleSubjectExpand(subject, isSubjectSelected)}
-                  aria-label={isSubjectExpanded ? "收起学科" : "展开学科"}
+                  onClick={() => onToggleChapterExpand(chapter, chapterFilter === chapter)}
+                  aria-label={isChapterExpanded ? "收起章节" : "展开章节"}
                 >
-                  {isSubjectExpanded ? <ChevronDownIcon size={14} /> : <ChevronRightIcon size={14} />}
+                  {isChapterExpanded ? <ChevronDownIcon size={14} /> : <ChevronRightIcon size={14} />}
                 </Button>
                 <Button
                   block
                   size="small"
-                  variant={isSubjectSelected ? "primary" : "default"}
-                  onClick={() => onPickSubject(subject)}
+                  variant={isChapterSelected ? "primary" : "default"}
+                  onClick={() => onPickChapter(chapter)}
                   sx={{ justifyContent: "space-between" }}
                 >
-                  <span>{toLabel(subject)}</span>
-                  <span>{gradeCount}</span>
+                  {renderTitleWithCount(chapter, knowledgeCount)}
                 </Button>
               </Box>
 
-              {isSubjectExpanded ? (
+              {isChapterExpanded ? (
                 <Box sx={{ pl: 2, display: "flex", flexDirection: "column", gap: 1 }}>
-                  {getGradesBySubject(subject).map((grade) => {
-                    const isGradeSelected = gradeFilter === grade;
-                    const gradeKey = `${subject}:${grade}`;
-                    const isGradeExpanded = expandedGrades[gradeKey] ?? isGradeSelected;
-                    const chapterCount = Object.keys(tree[subject]?.[grade] || {}).length;
-
-                    return (
-                      <Box key={gradeKey} sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
-                        <Box sx={{ display: "grid", gridTemplateColumns: "32px 1fr", gap: 1 }}>
-                          <Button
-                            size="small"
-                            sx={{ px: 0 }}
-                            onClick={() => onToggleGradeExpand(gradeKey, isGradeSelected)}
-                            aria-label={isGradeExpanded ? "收起年级" : "展开年级"}
-                          >
-                            {isGradeExpanded ? <ChevronDownIcon size={14} /> : <ChevronRightIcon size={14} />}
-                          </Button>
-                          <Button
-                            block
-                            size="small"
-                            variant={isGradeSelected ? "primary" : "default"}
-                            onClick={() => onPickGrade(subject, grade)}
-                            sx={{ justifyContent: "space-between" }}
-                          >
-                            <span>{grade}</span>
-                            <span>{chapterCount}</span>
-                          </Button>
-                        </Box>
-
-                        {isGradeExpanded ? (
-                          <Box sx={{ pl: 2, display: "flex", flexDirection: "column", gap: 1 }}>
-                            {getChaptersByGrade(subject, grade).map((chapter) => (
-                              <Button
-                                key={`${subject}:${grade}:${chapter}`}
-                                block
-                                size="small"
-                                variant={chapterFilter === chapter ? "primary" : "default"}
-                                onClick={() => onPickChapter(subject, grade, chapter)}
-                                sx={{ justifyContent: "space-between" }}
-                              >
-                                <span>{chapter}</span>
-                                <span>{tree[subject]?.[grade]?.[chapter] || 0}</span>
-                              </Button>
-                            ))}
-                          </Box>
-                        ) : null}
-                      </Box>
-                    );
-                  })}
+                  {getKnowledgeByChapter(chapter).map((knowledge) => (
+                    <Button
+                      key={`${chapter}:${knowledge}`}
+                      block
+                      size="small"
+                      variant={
+                        chapterFilter === chapter && knowledgeFilter === knowledge ? "primary" : "default"
+                      }
+                      onClick={() => onPickKnowledge(chapter, knowledge)}
+                      sx={{ justifyContent: "space-between" }}
+                    >
+                      {renderTitleWithCount(knowledge, tree[chapter]?.[knowledge] || 0)}
+                    </Button>
+                  ))}
                 </Box>
               ) : null}
             </Box>

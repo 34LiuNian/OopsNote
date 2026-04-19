@@ -1,23 +1,45 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { formatApiError } from "./errors";
 import { getAgentTemperature, updateAgentTemperature } from "./api";
 
 type UseAgentTemperatureSettingsState = {
   temperature: Record<string, number>;
+  draft: Record<string, string>;
   isLoading: boolean;
-  savingAgent: string | null;
+  isSaving: boolean;
+  isDirty: boolean;
   statusMessage: string;
   errorMessage: string;
   refresh: () => Promise<void>;
-  update: (agentKey: string, value: number | null) => Promise<void>;
+  setDraftValue: (agentKey: string, value: string) => void;
+  reset: () => void;
+  save: () => Promise<void>;
 };
+
+function toDraft(value: Record<string, number>): Record<string, string> {
+  return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, String(item)]));
+}
+
+function normalizeDraft(value: Record<string, string>): Record<string, number> {
+  const next: Record<string, number> = {};
+  for (const [key, rawValue] of Object.entries(value)) {
+    const trimmed = rawValue.trim();
+    if (!trimmed) continue;
+    const parsed = parseFloat(trimmed);
+    if (!Number.isNaN(parsed)) {
+      next[key] = parsed;
+    }
+  }
+  return next;
+}
 
 export function useAgentTemperatureSettings(): UseAgentTemperatureSettingsState {
   const [temperature, setTemperature] = useState<Record<string, number>>({});
+  const [draft, setDraft] = useState<Record<string, string>>({});
   const [isLoading, setIsLoading] = useState(false);
-  const [savingAgent, setSavingAgent] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
   const [statusMessage, setStatusMessage] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
 
@@ -26,47 +48,67 @@ export function useAgentTemperatureSettings(): UseAgentTemperatureSettingsState 
     setErrorMessage("");
     try {
       const data = await getAgentTemperature();
-      setTemperature(data.temperature ?? {});
+      const next = data.temperature ?? {};
+      setTemperature(next);
+      setDraft(toDraft(next));
     } catch (err) {
-      setErrorMessage(formatApiError(err, "加载温度设置失败"));
+      setErrorMessage(formatApiError(err, "Failed to load agent temperature settings"));
     } finally {
       setIsLoading(false);
     }
   }, []);
 
-  const update = useCallback(
-    async (agentKey: string, value: number | null) => {
-      setSavingAgent(agentKey);
-      setErrorMessage("");
-      setStatusMessage("");
-
-      const next = { ...temperature };
-      if (value === null) {
-        delete next[agentKey];
-      } else {
+  const setDraftValue = useCallback((agentKey: string, value: string) => {
+    setDraft((prev) => {
+      const next = { ...prev };
+      if (value.trim()) {
         next[agentKey] = value;
+      } else {
+        delete next[agentKey];
       }
+      return next;
+    });
+  }, []);
 
-      try {
-        const saved = await updateAgentTemperature({ temperature: next });
-        setTemperature(saved.temperature ?? {});
-        setStatusMessage("已更新温度设置。");
-      } catch (err) {
-        setErrorMessage(formatApiError(err, "更新温度失败"));
-      } finally {
-        setSavingAgent(null);
-      }
-    },
-    [temperature]
+  const reset = useCallback(() => {
+    setDraft(toDraft(temperature));
+    setStatusMessage("");
+    setErrorMessage("");
+  }, [temperature]);
+
+  const savedDraft = useMemo(() => toDraft(temperature), [temperature]);
+  const isDirty = Object.keys({ ...savedDraft, ...draft }).some(
+    (key) => (savedDraft[key] ?? "") !== (draft[key] ?? "")
   );
+
+  const save = useCallback(async () => {
+    setIsSaving(true);
+    setErrorMessage("");
+    setStatusMessage("");
+    try {
+      const saved = await updateAgentTemperature({ temperature: normalizeDraft(draft) });
+      const next = saved.temperature ?? {};
+      setTemperature(next);
+      setDraft(toDraft(next));
+      setStatusMessage("Agent temperature settings saved");
+    } catch (err) {
+      setErrorMessage(formatApiError(err, "Failed to save agent temperature settings"));
+    } finally {
+      setIsSaving(false);
+    }
+  }, [draft]);
 
   return {
     temperature,
+    draft,
     isLoading,
-    savingAgent,
+    isSaving,
+    isDirty,
     statusMessage,
     errorMessage,
     refresh,
-    update,
+    setDraftValue,
+    reset,
+    save,
   };
 }

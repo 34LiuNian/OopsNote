@@ -1,13 +1,21 @@
 from __future__ import annotations
 
+import base64
+import io
 import json
 import logging
 import os
 import threading
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
+from uuid import uuid4
 
 from fastapi import HTTPException
+from PIL import Image
+from pydantic import HttpUrl, ValidationError
+
+from ..agents import utils as agent_utils
 
 from ..models import (
     ProblemSummary,
@@ -18,7 +26,7 @@ from ..models import (
     TaskSummary,
     TasksResponse,
 )
-from ..tags import TagDimension, tag_store
+from .tag_sync_service import TagSyncService
 
 logger = logging.getLogger(__name__)
 
@@ -38,11 +46,22 @@ def _int_env(name: str, default: int) -> int:
 
 
 class TasksService:
-    def __init__(self, *, repository, pipeline, asset_store, tag_store) -> None:
+    def __init__(
+        self,
+        *,
+        repository,
+        pipeline,
+        asset_store,
+        tag_store,
+        tag_sync_service: TagSyncService | None = None,
+    ) -> None:
         self.repository = repository
         self.pipeline = pipeline
         self.asset_store = asset_store
         self.tag_store = tag_store
+        self.tag_sync_service = tag_sync_service or TagSyncService(
+            tag_store=self.tag_store
+        )
 
         self._task_cancel_lock = threading.Lock()
         self._task_cancelled: set[str] = set()
@@ -57,6 +76,9 @@ class TasksService:
             else Path("storage/task_streams")
         )
         self.streams_dir.mkdir(parents=True, exist_ok=True)
+        self.demo_batches_dir = self.streams_dir.parent / "demo_batches"
+        self.demo_batches_dir.mkdir(parents=True, exist_ok=True)
+        self._demo_batch_lock = threading.Lock()
 
     @staticmethod
     def _merge_unique_tags(prefix: list[str], tail: list[str]) -> list[str]:
@@ -72,6 +94,86 @@ class TasksService:
             seen.add(key)
             out.append(s)
         return out
+
+    def emit_stream_event(self, task_id: str, event: str, payload: dict[str, Any]) -> None:
+        """Emit a task stream event through the public service API."""
+        self._write_stream_event(task_id, event, payload)
+
+    def apply_runtime_settings(
+        self,
+        *,
+        base_url: str | None = None,
+        api_key: str | None = None,
+        model: str | None = None,
+        temperature: float | None = None,
+        debug_payload: bool | None = None,
+    ) -> dict[str, int]:
+        """Apply runtime settings to active pipeline clients.
+
+        The method is intentionally best-effort to avoid blocking settings APIs
+        when a single client instance fails to reconfigure.
+        """
+
+        collector = getattr(self.pipeline, "list_runtime_clients", None)
+        if not callable(collector):
+            logger.warning("Pipeline does not expose runtime client collector")
+            return {"clients_total": 0, "clients_updated": 0}
+
+        clients = list(collector() or [])
+        updated = 0
+
+        for client in clients:
+            reconfigure = getattr(client, "reconfigure", None)
+            kwargs: dict[str, Any] = {}
+            if base_url is not None:
+                kwargs["base_url"] = base_url
+            if api_key is not None:
+                kwargs["api_key"] = api_key
+            if model is not None:
+                kwargs["model"] = model
+            if temperature is not None:
+                kwargs["temperature"] = temperature
+            if debug_payload is not None:
+                kwargs["debug_payload"] = debug_payload
+
+            if callable(reconfigure):
+                if not kwargs:
+                    continue
+                try:
+                    reconfigure(**kwargs)
+                    updated += 1
+                    continue
+                except TypeError:
+                    # Backward compatibility: some clients may not accept
+                    # debug_payload in reconfigure.
+                    fallback_kwargs = dict(kwargs)
+                    fallback_kwargs.pop("debug_payload", None)
+                    try:
+                        if fallback_kwargs:
+                            reconfigure(**fallback_kwargs)
+                        if debug_payload is not None and hasattr(client, "debug_payload"):
+                            setattr(client, "debug_payload", debug_payload)
+                        updated += 1
+                    except Exception as exc:  # pylint: disable=broad-exception-caught
+                        logger.warning("Failed to reconfigure client: %s", exc)
+                except Exception as exc:  # pylint: disable=broad-exception-caught
+                    logger.warning("Failed to reconfigure client: %s", exc)
+                continue
+
+            changed = False
+            if debug_payload is not None and hasattr(client, "debug_payload"):
+                setattr(client, "debug_payload", debug_payload)
+                changed = True
+            if model is not None and hasattr(client, "model"):
+                setattr(client, "model", model)
+                changed = True
+            if temperature is not None and hasattr(client, "temperature"):
+                setattr(client, "temperature", temperature)
+                changed = True
+            if changed:
+                updated += 1
+
+        return {"clients_total": len(clients), "clients_updated": updated}
 
     # -------------------- workers --------------------
 
@@ -123,8 +225,6 @@ class TasksService:
             )
             derived_url = str(upload.image_url)
 
-        from pydantic import HttpUrl, ValidationError
-
         try:
             http_url = HttpUrl(derived_url)
         except (ValidationError, ValueError):
@@ -150,6 +250,357 @@ class TasksService:
         if auto_process:
             task = self.process_task_sync(task.id)
         return task
+
+    def run_debug_multipage_batch(self, upload, *, auto_process: bool = True) -> str:
+        """独立 demo：多图分割后自动创建任务，返回 batch_id。"""
+        batch_id = uuid4().hex
+        now = datetime.now(timezone.utc).isoformat()
+        batch: dict[str, Any] = {
+            "batch_id": batch_id,
+            "status": "processing",
+            "created_at": now,
+            "updated_at": now,
+            "total_images": len(upload.images),
+            "total_regions": 0,
+            "task_ids": [],
+            "task_items": [],
+            "warnings": [],
+        }
+        self._save_demo_batch(batch)
+
+        for index, image_input in enumerate(upload.images, start=1):
+            page_index = int(image_input.page_index or index)
+            try:
+                asset = self.asset_store.save_base64(
+                    image_input.image_base64,
+                    mime_type=image_input.mime_type,
+                    filename=image_input.filename,
+                )
+                image_bytes = self._read_asset_bytes(asset)
+                mime_type = asset.mime_type or image_input.mime_type or "image/png"
+
+                regions = self._segment_page_regions(
+                    image_bytes=image_bytes,
+                    mime_type=mime_type,
+                    subject=upload.subject,
+                    notes=upload.notes or "",
+                    page_index=page_index,
+                )
+                if not regions:
+                    regions = [{"bbox": [0.0, 0.0, 1.0, 1.0], "label": "full"}]
+                    batch["warnings"].append(
+                        f"第{page_index}页未识别到题块，已回退整页建任务"
+                    )
+
+                for region_index, region in enumerate(regions, start=1):
+                    crop_asset = self._create_crop_asset(
+                        image_bytes=image_bytes,
+                        mime_type=mime_type,
+                        bbox=region.get("bbox") or [0.0, 0.0, 1.0, 1.0],
+                        page_index=page_index,
+                        region_index=region_index,
+                    )
+                    task = self._create_demo_task_from_crop(
+                        upload=upload,
+                        crop_asset=crop_asset,
+                        page_index=page_index,
+                        region_index=region_index,
+                    )
+                    if auto_process:
+                        self.process_task(task.id, background=True)
+
+                    batch["task_ids"].append(task.id)
+                    batch["task_items"].append(
+                        {
+                            "task_id": task.id,
+                            "page_index": page_index,
+                            "region_index": region_index,
+                        }
+                    )
+                    batch["total_regions"] = int(batch["total_regions"]) + 1
+            except Exception as exc:  # pylint: disable=broad-exception-caught
+                batch["warnings"].append(f"第{page_index}页处理失败: {exc}")
+
+            batch["updated_at"] = datetime.now(timezone.utc).isoformat()
+            self._save_demo_batch(batch)
+
+        batch["status"] = "completed"
+        batch["updated_at"] = datetime.now(timezone.utc).isoformat()
+        self._save_demo_batch(batch)
+        return batch_id
+
+    def get_debug_multipage_batch(self, batch_id: str) -> dict[str, Any]:
+        """返回 demo 批次详情和任务状态聚合。"""
+        batch = self._load_demo_batch(batch_id)
+        items: list[dict[str, Any]] = []
+        completed = 0
+        failed = 0
+        cancelled = 0
+
+        for item in batch.get("task_items", []):
+            task_id = str(item.get("task_id") or "")
+            if not task_id:
+                continue
+            try:
+                task = self.repository.get(task_id)
+                status = str(task.status.value if hasattr(task.status, "value") else task.status)
+                if status == "completed":
+                    completed += 1
+                elif status == "failed":
+                    failed += 1
+                elif status == "cancelled":
+                    cancelled += 1
+                items.append(
+                    {
+                        "task_id": task_id,
+                        "page_index": int(item.get("page_index") or 0),
+                        "region_index": int(item.get("region_index") or 0),
+                        "status": status,
+                        "stage": getattr(task, "stage", None),
+                        "stage_message": getattr(task, "stage_message", None),
+                    }
+                )
+            except Exception:  # pylint: disable=broad-exception-caught
+                failed += 1
+                items.append(
+                    {
+                        "task_id": task_id,
+                        "page_index": int(item.get("page_index") or 0),
+                        "region_index": int(item.get("region_index") or 0),
+                        "status": "missing",
+                        "stage": None,
+                        "stage_message": "任务不存在或读取失败",
+                    }
+                )
+
+        total_tasks = len(items)
+        status = "processing"
+        if total_tasks == 0:
+            status = "empty"
+        elif completed + failed + cancelled >= total_tasks:
+            status = "completed"
+
+        return {
+            "batch_id": batch_id,
+            "status": status,
+            "created_at": batch.get("created_at"),
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+            "total_images": int(batch.get("total_images") or 0),
+            "total_regions": int(batch.get("total_regions") or 0),
+            "total_tasks": total_tasks,
+            "completed_tasks": completed,
+            "failed_tasks": failed,
+            "cancelled_tasks": cancelled,
+            "tasks": items,
+            "warnings": [str(x) for x in (batch.get("warnings") or [])],
+        }
+
+    def _segment_page_regions(
+        self,
+        *,
+        image_bytes: bytes,
+        mime_type: str,
+        subject: str,
+        notes: str,
+        page_index: int,
+    ) -> list[dict[str, Any]]:
+        template = agent_utils._load_prompt("segmenter")
+        system_prompt, user_prompt = template.render(
+            {
+                "subject": subject,
+                "notes": notes,
+                "page_index": page_index,
+            }
+        )
+
+        client = self._resolve_segmenter_client()
+        thinking = self._resolve_segmenter_thinking()
+        override_model = self._resolve_segmenter_model()
+        original_model = getattr(client, "model", None)
+
+        try:
+            if override_model:
+                client.model = str(override_model)
+            output = client.structured_chat_with_image(
+                system_prompt,
+                user_prompt,
+                image_bytes,
+                mime_type,
+                thinking=thinking,
+            )
+        finally:
+            if override_model and original_model is not None:
+                client.model = original_model
+
+        raw_regions = output.get("regions") if isinstance(output, dict) else None
+        if not isinstance(raw_regions, list):
+            return []
+
+        regions: list[dict[str, Any]] = []
+        for item in raw_regions:
+            if not isinstance(item, dict):
+                continue
+            bbox = item.get("bbox")
+            if not isinstance(bbox, list) or len(bbox) != 4:
+                continue
+            try:
+                x, y, w, h = [float(v) for v in bbox]
+            except (ValueError, TypeError):
+                continue
+
+            x = min(max(x, 0.0), 1.0)
+            y = min(max(y, 0.0), 1.0)
+            w = min(max(w, 0.01), 1.0 - x)
+            h = min(max(h, 0.01), 1.0 - y)
+            regions.append(
+                {
+                    "bbox": [x, y, w, h],
+                    "label": str(item.get("label") or "problem"),
+                }
+            )
+        return regions
+
+    def _resolve_segmenter_client(self):
+        resolver = getattr(self.pipeline, "get_segmenter_runtime_access", None)
+        if not callable(resolver):
+            raise RuntimeError("Pipeline does not expose segmenter runtime access")
+        runtime = resolver()
+        if runtime is None or runtime.client is None:
+            raise RuntimeError("Segmenter client is unavailable")
+        return runtime.client
+
+    def _resolve_segmenter_model(self) -> str | None:
+        runtime_resolver = getattr(self.pipeline, "get_segmenter_runtime_access", None)
+        if not callable(runtime_resolver):
+            return None
+        runtime = runtime_resolver()
+        resolver = runtime.model_resolver if runtime is not None else None
+        if resolver is None:
+            return None
+        try:
+            return resolver("SEGMENTER")
+        except Exception:
+            return None
+
+    def _resolve_segmenter_thinking(self) -> bool | None:
+        runtime_resolver = getattr(self.pipeline, "get_segmenter_runtime_access", None)
+        if not callable(runtime_resolver):
+            return None
+        runtime = runtime_resolver()
+        resolver = runtime.thinking_resolver if runtime is not None else None
+        if resolver is None:
+            return None
+        try:
+            return bool(resolver("SEGMENTER"))
+        except Exception:
+            return None
+
+    def _create_crop_asset(
+        self,
+        *,
+        image_bytes: bytes,
+        mime_type: str,
+        bbox: list[float],
+        page_index: int,
+        region_index: int,
+    ):
+        with Image.open(io.BytesIO(image_bytes)) as img:
+            width, height = img.size
+            x = int(max(0.0, min(1.0, float(bbox[0]))) * width)
+            y = int(max(0.0, min(1.0, float(bbox[1]))) * height)
+            w = int(max(1.0 / width, min(1.0, float(bbox[2]))) * width)
+            h = int(max(1.0 / height, min(1.0, float(bbox[3]))) * height)
+            x2 = min(width, x + w)
+            y2 = min(height, y + h)
+            crop = img.crop((x, y, x2, y2))
+
+            fmt = "PNG"
+            ext = "png"
+            if mime_type in {"image/jpeg", "image/jpg"}:
+                fmt = "JPEG"
+                ext = "jpg"
+
+            buffer = io.BytesIO()
+            crop.save(buffer, format=fmt)
+            encoded = base64.b64encode(buffer.getvalue()).decode("ascii")
+            return self.asset_store.save_base64(
+                encoded,
+                mime_type=mime_type,
+                filename=f"demo-p{page_index}-r{region_index}.{ext}",
+            )
+
+    def _create_demo_task_from_crop(
+        self,
+        *,
+        upload,
+        crop_asset,
+        page_index: int,
+        region_index: int,
+    ):
+        derived_url = f"https://assets.local/{crop_asset.asset_id}"
+        try:
+            http_url = HttpUrl(derived_url)
+        except (ValidationError, ValueError):
+            raise HTTPException(status_code=400, detail="Invalid cropped image URL")
+
+        notes_suffix = f"[demo page={page_index} region={region_index}]"
+        composed_notes = (
+            f"{upload.notes}\n{notes_suffix}" if upload.notes else notes_suffix
+        )
+
+        payload = TaskCreateRequest(
+            image_url=http_url,
+            subject=upload.subject,
+            grade=upload.grade,
+            notes=composed_notes,
+            question_no=None,
+            question_type=upload.question_type,
+            mock_problem_count=None,
+            difficulty=upload.difficulty,
+            source=upload.source,
+            options=[],
+            knowledge_tags=upload.knowledge_tags,
+            error_tags=upload.error_tags,
+            user_tags=upload.user_tags,
+        )
+        return self.repository.create(payload, asset=crop_asset)
+
+    def _demo_batch_path(self, batch_id: str) -> Path:
+        return self.demo_batches_dir / f"{batch_id}.json"
+
+    def _save_demo_batch(self, batch: dict[str, Any]) -> None:
+        batch_id = str(batch.get("batch_id") or "")
+        if not batch_id:
+            raise ValueError("demo batch missing batch_id")
+        path = self._demo_batch_path(batch_id)
+        tmp = path.with_suffix(".json.tmp")
+        with self._demo_batch_lock:
+            tmp.write_text(
+                json.dumps(batch, ensure_ascii=False, indent=2), encoding="utf-8"
+            )
+            tmp.replace(path)
+
+    def _load_demo_batch(self, batch_id: str) -> dict[str, Any]:
+        path = self._demo_batch_path(batch_id)
+        if not path.exists():
+            raise HTTPException(status_code=404, detail=f"Demo batch {batch_id} not found")
+        try:
+            return json.loads(path.read_text(encoding="utf-8"))
+        except Exception as exc:  # pylint: disable=broad-exception-caught
+            raise HTTPException(
+                status_code=500, detail=f"Failed to read demo batch: {exc}"
+            ) from exc
+
+    def _read_asset_bytes(self, asset) -> bytes:
+        raw_path = getattr(asset, "path", None)
+        if not raw_path:
+            raise RuntimeError("Asset path is missing")
+        path = Path(raw_path)
+        if not path.is_absolute():
+            path = Path(__file__).resolve().parents[2] / "storage" / "assets" / path.name
+        if not path.exists():
+            raise RuntimeError(f"Asset file not found: {path}")
+        return path.read_bytes()
 
     def list_tasks(
         self,
@@ -296,35 +747,17 @@ class TasksService:
         solutions = {s.problem_id: s for s in task.solutions}
         solution = solutions.get(problem.problem_id)
 
-        # Decrease counts for old tags before replacement
-        old_tags = [t for t in (task.tags or []) if t.problem_id == problem.problem_id]
-        for tag in old_tags:
-            dim_key = getattr(tag, "dimension", None)
-            value = getattr(tag, "value", None)
-            if dim_key and value:
-                try:
-                    dim = TagDimension(dim_key) if isinstance(dim_key, str) else dim_key
-                    tag_store.update_ref_count_by_value(dim, value, delta=-1)
-                except (ValueError, KeyError):
-                    continue
-
         tag = self.pipeline.retag_problem(
             payload=task.payload,
             problem=problem,
             solution=solution,
         )
 
-        # Increase count for new tag
-        dim_key = getattr(tag, "dimension", None)
-        value = getattr(tag, "value", None)
-        if dim_key and value:
-            try:
-                dim = TagDimension(dim_key) if isinstance(dim_key, str) else dim_key
-                tag_store.update_ref_count_by_value(dim, value, delta=1)
-            except (ValueError, KeyError):
-                pass
-
-        task.tags = [t for t in task.tags if t.problem_id != problem.problem_id] + [tag]
+        task.tags = self.tag_sync_service.replace_problem_tags(
+            task_tags=list(task.tags or []),
+            problem_id=problem.problem_id,
+            new_tags=[tag],
+        )
 
     def rerun_ocr(self, task_id: str, problem_id: str):
         """Re-run OCR for a single problem and retag."""
@@ -506,38 +939,14 @@ class TasksService:
                 override.recommended_actions,
             ]
         ):
-            # Decrease counts for old tags
-            old_tags = [t for t in (task.tags or []) if t.problem_id == problem_id]
-            for tag in old_tags:
-                dim_key = getattr(tag, "dimension", None)
-                value = getattr(tag, "value", None)
-                if dim_key and value:
-                    try:
-                        dim = (
-                            TagDimension(dim_key)
-                            if isinstance(dim_key, str)
-                            else dim_key
-                        )
-                        tag_store.update_ref_count_by_value(dim, value, delta=-1)
-                    except (ValueError, KeyError):
-                        continue
-
-            task.tags = [t for t in task.tags if t.problem_id != problem_id]
             new_tag = self.pipeline.classify_problem(
                 payload=task.payload, problem=updates
             )
-
-            # Increase count for new tag
-            dim_key = getattr(new_tag, "dimension", None)
-            value = getattr(new_tag, "value", None)
-            if dim_key and value:
-                try:
-                    dim = TagDimension(dim_key) if isinstance(dim_key, str) else dim_key
-                    tag_store.update_ref_count_by_value(dim, value, delta=1)
-                except (ValueError, KeyError):
-                    pass
-
-            task.tags.append(new_tag)
+            task.tags = self.tag_sync_service.replace_problem_tags(
+                task_tags=list(task.tags or []),
+                problem_id=problem_id,
+                new_tags=[new_tag],
+            )
         elif override.retag:
             self._retag_single(task, updates, force=True)
 
@@ -605,28 +1014,11 @@ class TasksService:
 
     def _sync_tag_counts_after_problem_deletion(self, task, problem_id: str):
         """Decrease tag reference counts after deleting a problem."""
-        problem_tags = [t for t in (task.tags or []) if t.problem_id == problem_id]
-        for tag in problem_tags:
-            dim_key = getattr(tag, "dimension", None)
-            value = getattr(tag, "value", None)
-            if dim_key and value:
-                try:
-                    dim = TagDimension(dim_key) if isinstance(dim_key, str) else dim_key
-                    tag_store.update_ref_count_by_value(dim, value, delta=-1)
-                except (ValueError, KeyError):
-                    continue
+        self.tag_sync_service.sync_after_problem_deletion(task, problem_id)
 
     def _sync_tag_counts_after_task_deletion(self, task):
         """Decrease tag reference counts after deleting a task."""
-        for tag in task.tags or []:
-            dim_key = getattr(tag, "dimension", None)
-            value = getattr(tag, "value", None)
-            if dim_key and value:
-                try:
-                    dim = TagDimension(dim_key) if isinstance(dim_key, str) else dim_key
-                    tag_store.update_ref_count_by_value(dim, value, delta=-1)
-                except (ValueError, KeyError):
-                    continue
+        self.tag_sync_service.sync_after_task_deletion(task)
 
     # -------------------- library view --------------------
 
@@ -792,6 +1184,15 @@ class TasksService:
                     )
                 )
 
+        items.sort(
+            key=lambda item: (
+                item.created_at,
+                item.task_id,
+                item.problem_id,
+            ),
+            reverse=True,
+        )
+
         return ProblemsResponse(items=items)
 
     # -------------------- pipeline execution --------------------
@@ -874,65 +1275,13 @@ class TasksService:
         manual_source: str,
         tags: list[TaggingResult],
     ) -> None:
-        """Update the global tag store with tags from the pipeline run and update ref_counts.
-
-        Important: Tags that appear in both manual_knowledge and AI tags should only be counted once.
-        Manual tags take priority - they are upserted and counted first.
-        AI tags that are NOT already in manual tags are then upserted and counted.
-        """
-        # Create normalized sets for deduplication (case-insensitive)
-        manual_knowledge_normalized = {
-            str(v).strip().casefold() for v in manual_knowledge if str(v).strip()
-        }
-        manual_error_normalized = {
-            str(v).strip().casefold() for v in manual_error if str(v).strip()
-        }
-
-        if manual_knowledge or manual_error or manual_source:
-            logger.info(
-                f"Syncing manual tags: knowledge={len(manual_knowledge)}, error={len(manual_error)}, "
-                f"source={'yes' if manual_source else 'no'}"
-            )
-
-        # Upsert and count manual tags first
-        for val in manual_knowledge:
-            self.tag_store.upsert(TagDimension.KNOWLEDGE, val)
-            self.tag_store.update_ref_count_by_value(
-                TagDimension.KNOWLEDGE, val, delta=1
-            )
-            logger.debug(f"Manual knowledge tag upserted: {val}")
-        for val in manual_error:
-            self.tag_store.upsert(TagDimension.ERROR, val)
-            self.tag_store.update_ref_count_by_value(TagDimension.ERROR, val, delta=1)
-            logger.debug(f"Manual error tag upserted: {val}")
-        if manual_source:
-            self.tag_store.upsert(TagDimension.META, manual_source)
-            self.tag_store.update_ref_count_by_value(
-                TagDimension.META, manual_source, delta=1
-            )
-            logger.debug(f"Manual source tag upserted: {manual_source}")
-
-        # Upsert and count AI tags, but skip those already in manual tags
-        ai_tags_counted = 0
-        ai_tags_skipped = 0
-        for tag_res in tags:
-            for val in tag_res.knowledge_points:
-                # Skip if this tag was already manually selected
-                if str(val).strip().casefold() in manual_knowledge_normalized:
-                    logger.debug(f"AI tag skipped (already in manual): {val}")
-                    ai_tags_skipped += 1
-                    continue
-                self.tag_store.upsert(TagDimension.KNOWLEDGE, val)
-                self.tag_store.update_ref_count_by_value(
-                    TagDimension.KNOWLEDGE, val, delta=1
-                )
-                logger.debug(f"AI knowledge tag upserted: {val}")
-                ai_tags_counted += 1
-
-        if ai_tags_counted > 0 or ai_tags_skipped > 0:
-            logger.info(
-                f"AI tags processed: counted={ai_tags_counted}, skipped={ai_tags_skipped}"
-            )
+        """Update tag store ref_counts after pipeline run."""
+        self.tag_sync_service.sync_after_pipeline(
+            manual_knowledge=manual_knowledge,
+            manual_error=manual_error,
+            manual_source=manual_source,
+            tags=tags,
+        )
 
     def process_task_sync(
         self,

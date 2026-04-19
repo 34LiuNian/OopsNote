@@ -13,9 +13,107 @@ from __future__ import annotations
 
 import json
 import threading
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Any, Dict, Optional
+
+
+_AGENT_SETTINGS_FILENAME = "agent_settings.json"
+_AGENT_SETTINGS_SHARED_LOCK = threading.Lock()
+_AGENT_SETTINGS_SECTIONS = ("models", "enabled", "thinking", "temperature")
+_LEGACY_AGENT_SETTINGS_FILES = {
+    "models": "agent_models.json",
+    "enabled": "agent_enabled.json",
+    "thinking": "agent_thinking.json",
+    "temperature": "agent_temperature.json",
+}
+
+
+def _normalize_models(raw: Any) -> Dict[str, str]:
+    if not isinstance(raw, dict):
+        return {}
+    return {
+        str(k).upper(): str(v)
+        for k, v in raw.items()
+        if (k is not None) and (v is not None)
+    }
+
+
+def _normalize_bool_map(raw: Any) -> Dict[str, bool]:
+    normalized: Dict[str, bool] = {}
+    if not isinstance(raw, dict):
+        return normalized
+    for k, v in raw.items():
+        if k is None:
+            continue
+        normalized[str(k).upper()] = bool(v)
+    return normalized
+
+
+def _normalize_float_map(raw: Any) -> Dict[str, float]:
+    normalized: Dict[str, float] = {}
+    if not isinstance(raw, dict):
+        return normalized
+    for k, v in raw.items():
+        if k is None:
+            continue
+        try:
+            normalized[str(k).upper()] = float(v)
+        except (ValueError, TypeError):
+            continue
+    return normalized
+
+
+def _read_json_dict(path: Path) -> Dict[str, Any]:
+    if not path.exists():
+        return {}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, TypeError, ValueError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _normalize_agent_bundle(raw: Any) -> Dict[str, Dict[str, Any]]:
+    data = raw if isinstance(raw, dict) else {}
+    return {
+        "models": _normalize_models(data.get("models")),
+        "enabled": _normalize_bool_map(data.get("enabled")),
+        "thinking": _normalize_bool_map(data.get("thinking")),
+        "temperature": _normalize_float_map(data.get("temperature")),
+    }
+
+
+def _read_legacy_agent_bundle(base_dir: Path) -> Dict[str, Dict[str, Any]]:
+    legacy = _normalize_agent_bundle({})
+    for section in _AGENT_SETTINGS_SECTIONS:
+        filename = _LEGACY_AGENT_SETTINGS_FILES[section]
+        data = _read_json_dict(base_dir / filename)
+        if section == "models":
+            legacy[section] = _normalize_models(data.get(section))
+        elif section in {"enabled", "thinking"}:
+            legacy[section] = _normalize_bool_map(data.get(section))
+        else:
+            legacy[section] = _normalize_float_map(data.get(section))
+    return legacy
+
+
+def _load_agent_bundle(path: Path) -> Dict[str, Dict[str, Any]]:
+    exists = path.exists()
+    bundle = _normalize_agent_bundle(_read_json_dict(path))
+    if exists:
+        return bundle
+
+    legacy = _read_legacy_agent_bundle(path.parent)
+    for section in _AGENT_SETTINGS_SECTIONS:
+        if legacy.get(section):
+            bundle[section] = legacy[section]
+    return bundle
+
+
+def _save_agent_bundle(path: Path, bundle: Dict[str, Dict[str, Any]]) -> None:
+    payload = _normalize_agent_bundle(bundle)
+    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
 @dataclass(frozen=True)
@@ -38,8 +136,8 @@ class AgentModelSettingsStore:
     def __init__(self, path: Path | None = None) -> None:
         base = Path(__file__).resolve().parent.parent / "storage" / "settings"
         base.mkdir(parents=True, exist_ok=True)
-        self.path = path or (base / "agent_models.json")
-        self._lock = threading.Lock()
+        self.path = path or (base / _AGENT_SETTINGS_FILENAME)
+        self._lock = _AGENT_SETTINGS_SHARED_LOCK
 
     def load(self) -> AgentModelSettings:
         """从磁盘加载 Agent 模型设置。
@@ -48,16 +146,8 @@ class AgentModelSettingsStore:
             当前模型映射对应的 AgentModelSettings
         """
         with self._lock:
-            if not self.path.exists():
-                return AgentModelSettings(models={})
-            data = json.loads(self.path.read_text(encoding="utf-8"))
-            models = data.get("models", {}) if isinstance(data, dict) else {}
-            if not isinstance(models, dict):
-                models = {}
-            normalized = {
-                str(k).upper(): str(v) for k, v in models.items() if v is not None
-            }
-            return AgentModelSettings(models=normalized)
+            bundle = _load_agent_bundle(self.path)
+            return AgentModelSettings(models=bundle["models"])
 
     def save(self, settings: AgentModelSettings) -> AgentModelSettings:
         """将 Agent 模型设置保存到磁盘。
@@ -69,11 +159,10 @@ class AgentModelSettingsStore:
             已保存的设置
         """
         with self._lock:
-            payload = {"models": {k.upper(): v for k, v in settings.models.items()}}
-            self.path.write_text(
-                json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8"
-            )
-            return settings
+            bundle = _load_agent_bundle(self.path)
+            bundle["models"] = _normalize_models(settings.models)
+            _save_agent_bundle(self.path, bundle)
+            return AgentModelSettings(models=bundle["models"])
 
     def set_model(self, agent_name: str, model: str) -> AgentModelSettings:
         """为指定 Agent 设置模型。
@@ -111,8 +200,8 @@ class AgentEnableSettingsStore:
     def __init__(self, path: Path | None = None) -> None:
         base = Path(__file__).resolve().parent.parent / "storage" / "settings"
         base.mkdir(parents=True, exist_ok=True)
-        self.path = path or (base / "agent_enabled.json")
-        self._lock = threading.Lock()
+        self.path = path or (base / _AGENT_SETTINGS_FILENAME)
+        self._lock = _AGENT_SETTINGS_SHARED_LOCK
 
     def load(self) -> AgentEnableSettings:
         """从磁盘加载 Agent 启用设置。
@@ -121,19 +210,8 @@ class AgentEnableSettingsStore:
             当前启用状态对应的 AgentEnableSettings
         """
         with self._lock:
-            if not self.path.exists():
-                return AgentEnableSettings(enabled={})
-            data = json.loads(self.path.read_text(encoding="utf-8"))
-            enabled = data.get("enabled", {}) if isinstance(data, dict) else {}
-            if not isinstance(enabled, dict):
-                enabled = {}
-
-            normalized: Dict[str, bool] = {}
-            for k, v in enabled.items():
-                if k is None:
-                    continue
-                normalized[str(k).upper()] = bool(v)
-            return AgentEnableSettings(enabled=normalized)
+            bundle = _load_agent_bundle(self.path)
+            return AgentEnableSettings(enabled=bundle["enabled"])
 
     def save(self, settings: AgentEnableSettings) -> AgentEnableSettings:
         """将 Agent 启用设置保存到磁盘。
@@ -145,13 +223,10 @@ class AgentEnableSettingsStore:
             已保存的设置
         """
         with self._lock:
-            payload = {
-                "enabled": {k.upper(): bool(v) for k, v in settings.enabled.items()}
-            }
-            self.path.write_text(
-                json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8"
-            )
-            return settings
+            bundle = _load_agent_bundle(self.path)
+            bundle["enabled"] = _normalize_bool_map(settings.enabled)
+            _save_agent_bundle(self.path, bundle)
+            return AgentEnableSettings(enabled=bundle["enabled"])
 
 
 @dataclass(frozen=True)
@@ -175,8 +250,8 @@ class AgentThinkingSettingsStore:
     def __init__(self, path: Path | None = None) -> None:
         base = Path(__file__).resolve().parent.parent / "storage" / "settings"
         base.mkdir(parents=True, exist_ok=True)
-        self.path = path or (base / "agent_thinking.json")
-        self._lock = threading.Lock()
+        self.path = path or (base / _AGENT_SETTINGS_FILENAME)
+        self._lock = _AGENT_SETTINGS_SHARED_LOCK
 
     def load(self) -> AgentThinkingSettings:
         """从磁盘加载 Agent 思考模式设置。
@@ -185,19 +260,8 @@ class AgentThinkingSettingsStore:
             当前思考模式状态对应的 AgentThinkingSettings
         """
         with self._lock:
-            if not self.path.exists():
-                return AgentThinkingSettings(thinking={})
-            data = json.loads(self.path.read_text(encoding="utf-8"))
-            thinking = data.get("thinking", {}) if isinstance(data, dict) else {}
-            if not isinstance(thinking, dict):
-                thinking = {}
-
-            normalized: Dict[str, bool] = {}
-            for k, v in thinking.items():
-                if k is None:
-                    continue
-                normalized[str(k).upper()] = bool(v)
-            return AgentThinkingSettings(thinking=normalized)
+            bundle = _load_agent_bundle(self.path)
+            return AgentThinkingSettings(thinking=bundle["thinking"])
 
     def save(self, settings: AgentThinkingSettings) -> AgentThinkingSettings:
         """将 Agent 思考模式设置保存到磁盘。
@@ -209,13 +273,10 @@ class AgentThinkingSettingsStore:
             已保存的设置
         """
         with self._lock:
-            payload = {
-                "thinking": {k.upper(): bool(v) for k, v in settings.thinking.items()}
-            }
-            self.path.write_text(
-                json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8"
-            )
-            return settings
+            bundle = _load_agent_bundle(self.path)
+            bundle["thinking"] = _normalize_bool_map(settings.thinking)
+            _save_agent_bundle(self.path, bundle)
+            return AgentThinkingSettings(thinking=bundle["thinking"])
 
 
 # ---------------------------------------------------------------------------
@@ -240,38 +301,20 @@ class AgentTemperatureSettingsStore:
     def __init__(self, path: Path | None = None) -> None:
         base = Path(__file__).resolve().parent.parent / "storage" / "settings"
         base.mkdir(parents=True, exist_ok=True)
-        self.path = path or (base / "agent_temperature.json")
-        self._lock = threading.Lock()
+        self.path = path or (base / _AGENT_SETTINGS_FILENAME)
+        self._lock = _AGENT_SETTINGS_SHARED_LOCK
 
     def load(self) -> AgentTemperatureSettings:
         with self._lock:
-            if not self.path.exists():
-                return AgentTemperatureSettings(temperature={})
-            data = json.loads(self.path.read_text(encoding="utf-8"))
-            raw = data.get("temperature", {}) if isinstance(data, dict) else {}
-            if not isinstance(raw, dict):
-                raw = {}
-            normalized: Dict[str, float] = {}
-            for k, v in raw.items():
-                if k is None:
-                    continue
-                try:
-                    normalized[str(k).upper()] = float(v)
-                except (ValueError, TypeError):
-                    continue
-            return AgentTemperatureSettings(temperature=normalized)
+            bundle = _load_agent_bundle(self.path)
+            return AgentTemperatureSettings(temperature=bundle["temperature"])
 
     def save(self, settings: AgentTemperatureSettings) -> AgentTemperatureSettings:
         with self._lock:
-            payload = {
-                "temperature": {
-                    k.upper(): float(v) for k, v in settings.temperature.items()
-                }
-            }
-            self.path.write_text(
-                json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8"
-            )
-            return settings
+            bundle = _load_agent_bundle(self.path)
+            bundle["temperature"] = _normalize_float_map(settings.temperature)
+            _save_agent_bundle(self.path, bundle)
+            return AgentTemperatureSettings(temperature=bundle["temperature"])
 
 
 # ---------------------------------------------------------------------------

@@ -25,7 +25,7 @@ class _FakeService:
         self.repository = _FakeRepository()
         self._task = task
 
-    def _write_stream_event(self, task_id, event, payload) -> None:
+    def emit_stream_event(self, task_id, event, payload) -> None:
         return None
 
     def get_task(self, task_id: str) -> TaskRecord:

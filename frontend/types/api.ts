@@ -203,11 +203,8 @@ export interface TagItem {
   value: string;
   aliases?: string[];
   subject?: string | null;
-  grade?: string | null;
   chapter?: string | null;
-  path?: string | null;
-  path_depth?: number;
-  created_at: string;
+  source?: "builtin" | "user";
   ref_count?: number;
 }
 

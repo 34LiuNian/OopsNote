@@ -1,6 +1,6 @@
 "use client";
 
-import { Box, FormControl, Select, Spinner, Text, TextInput, ToggleSwitch } from "@primer/react";
+import { Box, FormControl, Select, Text, TextInput, ToggleSwitch } from "@primer/react";
 
 type AgentDescriptor = {
   key: string;
@@ -23,16 +23,11 @@ type AgentSettingsRowProps = {
   locked: boolean;
   enabled: boolean;
   thinkingEnabled: boolean;
-  isThisSaving: boolean;
-  isThisThinkingSaving: boolean;
-  isEnabledBusy: boolean;
-  isThinkingBusy: boolean;
-  temperature?: number | undefined;
-  isTemperatureSaving?: boolean;
+  temperature: string;
   onChangeModel: (agentKey: string, value: string) => void;
   onToggleEnabled: (agentKey: string, nextValue: boolean) => void;
   onToggleThinking: (agentKey: string, nextValue: boolean) => void;
-  onChangeTemperature?: (agentKey: string, value: number | null) => void;
+  onChangeTemperature?: (agentKey: string, value: string) => void;
 };
 
 export function AgentSettingsRow({
@@ -46,12 +41,7 @@ export function AgentSettingsRow({
   locked,
   enabled,
   thinkingEnabled,
-  isThisSaving,
-  isThisThinkingSaving,
-  isEnabledBusy,
-  isThinkingBusy,
   temperature,
-  isTemperatureSaving,
   onChangeModel,
   onToggleEnabled,
   onToggleThinking,
@@ -78,18 +68,18 @@ export function AgentSettingsRow({
 
       <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
         <FormControl>
-          <FormControl.Label visuallyHidden>模型</FormControl.Label>
+          <FormControl.Label visuallyHidden>Model</FormControl.Label>
           <Select
             value={currentValue}
             onChange={(e) => onChangeModel(agent.key, e.target.value)}
             disabled={isLoadingSettings || isSaving || isLoadingModels}
             block
           >
-            <Select.Option value="">默认（不覆盖）</Select.Option>
-            {!hasCurrentInList && <Select.Option value={currentValue}>{currentValue}（当前）</Select.Option>}
+            <Select.Option value="">Default (no override)</Select.Option>
+            {!hasCurrentInList && <Select.Option value={currentValue}>{currentValue} (current)</Select.Option>}
             {sortedModels.length === 0 && (
               <Select.Option value="" disabled>
-                {isLoadingModels ? "模型列表加载中..." : "模型列表为空（请先配置网关）"}
+                {isLoadingModels ? "Loading model list..." : "Model list is empty (configure gateway first)"}
               </Select.Option>
             )}
             {sortedModels.map((m) => (
@@ -102,28 +92,19 @@ export function AgentSettingsRow({
 
         {onChangeTemperature && (
           <FormControl>
-            <FormControl.Label visuallyHidden>温度</FormControl.Label>
+            <FormControl.Label visuallyHidden>Temperature</FormControl.Label>
             <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
-              <Text sx={{ fontSize: 1, color: "fg.muted", whiteSpace: "nowrap" }}>温度</Text>
+              <Text sx={{ fontSize: 1, color: "fg.muted", whiteSpace: "nowrap" }}>Temperature</Text>
               <TextInput
                 type="number"
-                value={temperature != null ? String(temperature) : ""}
-                onChange={(e) => {
-                  const val = e.target.value;
-                  if (val === "") {
-                    onChangeTemperature(agent.key, null);
-                  } else {
-                    const num = parseFloat(val);
-                    if (!isNaN(num)) onChangeTemperature(agent.key, num);
-                  }
-                }}
-                placeholder="默认"
+                value={temperature}
+                onChange={(e) => onChangeTemperature(agent.key, e.target.value)}
+                placeholder="Default"
                 sx={{ width: "80px" }}
                 min={0}
                 max={2}
                 step={0.1}
               />
-              {isTemperatureSaving && <Spinner size="small" />}
             </Box>
           </FormControl>
         )}
@@ -132,12 +113,12 @@ export function AgentSettingsRow({
       <Box sx={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 3, pt: [0, 1] }}>
         <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
           <Text sx={{ fontSize: 0, color: locked ? "fg.muted" : "fg.default", whiteSpace: "nowrap" }}>
-            {locked ? "必开" : "启用"}
+            {locked ? "Required" : "Enabled"}
           </Text>
           <ToggleSwitch
             size="small"
             checked={enabled}
-            disabled={locked || isEnabledBusy}
+            disabled={locked || isSaving}
             sx={{
               "& > span[aria-hidden=\"true\"]": { display: "none" },
               "& button svg": { display: "none" },
@@ -147,17 +128,16 @@ export function AgentSettingsRow({
               if (locked) return;
               onToggleEnabled(agent.key, !enabled);
             }}
-            aria-label={`${agent.label} 启用`}
+            aria-label={`${agent.label} enabled`}
           />
-          {isThisSaving && <Spinner size="small" />}
         </Box>
 
         <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
-          <Text sx={{ fontSize: 0, color: "fg.default", whiteSpace: "nowrap" }}>思考</Text>
+          <Text sx={{ fontSize: 0, color: "fg.default", whiteSpace: "nowrap" }}>Thinking</Text>
           <ToggleSwitch
             size="small"
             checked={thinkingEnabled}
-            disabled={isThinkingBusy}
+            disabled={isSaving}
             sx={{
               "& > span[aria-hidden=\"true\"]": { display: "none" },
               "& button svg": { display: "none" },
@@ -166,9 +146,8 @@ export function AgentSettingsRow({
               event.preventDefault();
               onToggleThinking(agent.key, !thinkingEnabled);
             }}
-            aria-label={`${agent.label} 思考`}
+            aria-label={`${agent.label} thinking`}
           />
-          {isThisThinkingSaving && <Spinner size="small" />}
         </Box>
       </Box>
     </Box>

@@ -6,24 +6,40 @@ import { getAgentEnabled, updateAgentEnabled } from "./api";
 
 type UseAgentEnabledSettingsState = {
   enabled: Record<string, boolean>;
+  draft: Record<string, boolean>;
   isLoading: boolean;
-  savingAgent: string | null;
+  isSaving: boolean;
+  isDirty: boolean;
   statusMessage: string;
   errorMessage: string;
   refresh: () => Promise<void>;
-  update: (agentKey: string, nextValue: boolean) => Promise<void>;
+  setDraftValue: (agentKey: string, nextValue: boolean) => void;
+  reset: () => void;
+  save: () => Promise<void>;
 };
 
 type UseAgentEnabledSettingsOptions = {
   lockedKeys?: Set<string>;
 };
 
+function applyLockedKeys(
+  value: Record<string, boolean>,
+  lockedKeys: Set<string>
+): Record<string, boolean> {
+  const next = { ...value };
+  for (const key of lockedKeys) {
+    next[key] = true;
+  }
+  return next;
+}
+
 export function useAgentEnabledSettings(
   options: UseAgentEnabledSettingsOptions = {}
 ): UseAgentEnabledSettingsState {
   const [enabled, setEnabled] = useState<Record<string, boolean>>({});
+  const [draft, setDraft] = useState<Record<string, boolean>>({});
   const [isLoading, setIsLoading] = useState(false);
-  const [savingAgent, setSavingAgent] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
   const [statusMessage, setStatusMessage] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
   const lockedKeys = options.lockedKeys ?? new Set<string>();
@@ -33,47 +49,61 @@ export function useAgentEnabledSettings(
     setErrorMessage("");
     try {
       const data = await getAgentEnabled();
-      setEnabled(data.enabled ?? {});
+      const next = applyLockedKeys(data.enabled ?? {}, lockedKeys);
+      setEnabled(next);
+      setDraft(next);
     } catch (err) {
-      setErrorMessage(formatApiError(err, "加载 agent 开关失败"));
+      setErrorMessage(formatApiError(err, "Failed to load agent enabled settings"));
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [lockedKeys]);
 
-  const update = useCallback(
-    async (agentKey: string, nextValue: boolean) => {
-      if ((enabled[agentKey] ?? true) === nextValue) return;
-
-      setSavingAgent(agentKey);
-      setErrorMessage("");
-      setStatusMessage("");
-
-      const next = { ...enabled, [agentKey]: nextValue };
-      for (const key of lockedKeys) {
-        next[key] = true;
-      }
-
-      try {
-        const saved = await updateAgentEnabled({ enabled: next });
-        setEnabled(saved.enabled ?? {});
-        setStatusMessage("已更新 agent 开关。 ");
-      } catch (err) {
-        setErrorMessage(formatApiError(err, "更新失败"));
-      } finally {
-        setSavingAgent(null);
-      }
+  const setDraftValue = useCallback(
+    (agentKey: string, nextValue: boolean) => {
+      setDraft((prev) => applyLockedKeys({ ...prev, [agentKey]: nextValue }, lockedKeys));
     },
-    [enabled, lockedKeys]
+    [lockedKeys]
   );
+
+  const reset = useCallback(() => {
+    setDraft(enabled);
+    setStatusMessage("");
+    setErrorMessage("");
+  }, [enabled]);
+
+  const isDirty = Object.keys({ ...enabled, ...draft }).some(
+    (key) => Boolean(enabled[key] ?? true) !== Boolean(draft[key] ?? true)
+  );
+
+  const save = useCallback(async () => {
+    setIsSaving(true);
+    setErrorMessage("");
+    setStatusMessage("");
+    try {
+      const saved = await updateAgentEnabled({ enabled: applyLockedKeys(draft, lockedKeys) });
+      const next = applyLockedKeys(saved.enabled ?? {}, lockedKeys);
+      setEnabled(next);
+      setDraft(next);
+      setStatusMessage("Agent enabled settings saved");
+    } catch (err) {
+      setErrorMessage(formatApiError(err, "Failed to save agent enabled settings"));
+    } finally {
+      setIsSaving(false);
+    }
+  }, [draft, lockedKeys]);
 
   return {
     enabled,
+    draft,
     isLoading,
-    savingAgent,
+    isSaving,
+    isDirty,
     statusMessage,
     errorMessage,
     refresh,
-    update,
+    setDraftValue,
+    reset,
+    save,
   };
 }

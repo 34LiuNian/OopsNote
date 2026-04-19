@@ -22,7 +22,8 @@ All data is stored under `backend/storage/` for local-first usage:
 - `storage/task_streams/{task_id}.txt` accumulated LLM stream text (used by stream replay)
 - `storage/traces/*.jsonl` structured trace events
 - `storage/llm_errors.log` structured LLM error details (parse/validation/transport failures)
-- `storage/settings/tags.json` tag registry
+- `storage/settings/tags_builtin.json` builtin tag registry
+- `storage/settings/tags_user.json` user tag registry
 - `storage/settings/tag_dimensions.json` per-dimension label + Primer label variant
 
 ## Development

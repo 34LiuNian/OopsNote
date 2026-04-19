@@ -34,6 +34,7 @@ from .task import (
     TaskResponse,
     TaskSummary,
     TasksResponse,
+    DemoBatchSummary,
 )
 
 # 流水线模型
@@ -51,6 +52,11 @@ from .library import (
 # API 模型
 from .api import (
     UploadRequest,
+    DebugMultiPageImageInput,
+    DebugMultiPageUploadRequest,
+    DebugBatchCreateResponse,
+    DebugBatchTaskItem,
+    DebugBatchDetailResponse,
     LatexCompileRequest,
     PaperItemRequest,
     PaperCompileRequest,
@@ -107,6 +113,7 @@ __all__ = [
     "TaskResponse",
     "TaskSummary",
     "TasksResponse",
+    "DemoBatchSummary",
     # 流水线
     "PipelineResult",
     # 题库
@@ -115,6 +122,11 @@ __all__ = [
     "TaggingQuery",
     # API
     "UploadRequest",
+    "DebugMultiPageImageInput",
+    "DebugMultiPageUploadRequest",
+    "DebugBatchCreateResponse",
+    "DebugBatchTaskItem",
+    "DebugBatchDetailResponse",
     "LatexCompileRequest",
     "PaperItemRequest",
     "PaperCompileRequest",

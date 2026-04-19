@@ -58,3 +58,4 @@ _tmp/
 
 docs/archive/
 backend/scripts/
+backend/storage/tikz_cache/

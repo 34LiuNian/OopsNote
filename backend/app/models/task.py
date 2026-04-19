@@ -120,3 +120,16 @@ class TasksResponse(BaseModel):
     """任务列表响应。"""
 
     items: List[TaskSummary]
+
+
+class DemoBatchSummary(BaseModel):
+    """调试态多页分割批次摘要。"""
+
+    batch_id: str
+    status: str
+    total_tasks: int = 0
+    completed_tasks: int = 0
+    failed_tasks: int = 0
+    cancelled_tasks: int = 0
+    created_at: datetime
+    updated_at: datetime

@@ -1,7 +1,0 @@
-{
-  "enabled": {
-    "OCR": true,
-    "SOLVER": true,
-    "TAGGER": true
-  }
-}

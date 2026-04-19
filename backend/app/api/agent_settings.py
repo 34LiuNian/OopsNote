@@ -26,7 +26,7 @@ from ..models import (
     GatewayTestResponse,
     SystemInfoResponse,
 )
-from .deps import get_agent_settings_service, get_backend_state
+from .deps import get_agent_settings_service, get_backend_state, get_tasks_service
 
 router = APIRouter(dependencies=[Depends(require_admin)])
 logger = logging.getLogger(__name__)
@@ -178,11 +178,30 @@ def update_gateway_settings(
         else current.temperature,
     )
     saved = svc.save_gateway(new_settings)
-
-    # 热重载所有在线 AI 客户端
-    _hot_reload_clients(request, saved)
-
     env_config = load_app_config()
+
+    # 通过任务服务公开端口应用运行时配置，避免跨层访问 pipeline 内部对象。
+    tasks_svc = get_tasks_service(request)
+    effective_base_url = saved.base_url or env_config.openai_base_url
+    effective_api_key = saved.api_key or env_config.openai_api_key
+    effective_model = saved.default_model or env_config.openai_model
+    effective_temp = (
+        saved.temperature
+        if saved.temperature is not None
+        else env_config.openai_temperature
+    )
+    apply_stats = tasks_svc.apply_runtime_settings(
+        base_url=effective_base_url,
+        api_key=effective_api_key,
+        model=effective_model,
+        temperature=effective_temp,
+    )
+    logger.info(
+        "Gateway runtime settings applied: updated=%s total=%s",
+        apply_stats.get("clients_updated", 0),
+        apply_stats.get("clients_total", 0),
+    )
+
     return GatewaySettingsResponse(
         base_url=saved.base_url,
         api_key_masked=_mask_api_key(saved.api_key),
@@ -194,57 +213,6 @@ def update_gateway_settings(
         env_default_model=env_config.openai_model,
         env_temperature=env_config.openai_temperature,
     )
-
-
-def _hot_reload_clients(request: Request, gw: GatewaySettings) -> None:
-    """将网关设置应用到所有存活的 OpenAIClient 实例。"""
-    try:
-        from ..clients.openai_client import OpenAIClient as _OpenAIClient
-
-        state = get_backend_state(request)
-        env_config = load_app_config()
-
-        effective_base_url = gw.base_url or env_config.openai_base_url
-        effective_api_key = gw.api_key or env_config.openai_api_key
-        effective_model = gw.default_model or env_config.openai_model
-        effective_temp = gw.temperature if gw.temperature is not None else env_config.openai_temperature
-
-        # 从流水线中收集所有 OpenAIClient 实例
-        clients: list[_OpenAIClient] = []
-        pipeline = getattr(state.tasks, "_pipeline", None) or getattr(
-            state.tasks, "pipeline", None
-        )
-        if pipeline:
-            orch = getattr(pipeline, "orchestrator", None)
-            if orch:
-                for agent in [
-                    getattr(orch, "solver", None),
-                    getattr(orch, "tagger", None),
-                ]:
-                    if agent and isinstance(getattr(agent, "client", None), _OpenAIClient):
-                        clients.append(agent.client)
-            deps = getattr(pipeline, "deps", None)
-            if deps:
-                ocr_ext = getattr(deps, "ocr_extractor", None)
-                if ocr_ext:
-                    llm_ext = getattr(ocr_ext, "_llm_extractor", None) or getattr(
-                        ocr_ext, "llm_extractor", None
-                    )
-                    if llm_ext and isinstance(
-                        getattr(llm_ext, "client", None), _OpenAIClient
-                    ):
-                        clients.append(llm_ext.client)
-
-        for client in clients:
-            client.reconfigure(
-                base_url=effective_base_url,
-                api_key=effective_api_key,
-                model=effective_model,
-                temperature=effective_temp,
-            )
-        logger.info("Hot-reloaded %d AI client(s)", len(clients))
-    except Exception as exc:
-        logger.warning("Failed to hot-reload AI clients: %s", exc)
 
 
 @router.post("/settings/gateway/test", response_model=GatewayTestResponse)
@@ -304,36 +272,21 @@ def update_debug_settings(
     )
     saved = svc.save_debug(new_settings)
 
-    # 将 debug_llm_payload 配置应用到在线客户端
-    _apply_debug_to_clients(request, saved.debug_llm_payload)
+    # 通过任务服务公开端口应用 debug 配置，避免跨层访问 pipeline 内部对象。
+    tasks_svc = get_tasks_service(request)
+    apply_stats = tasks_svc.apply_runtime_settings(
+        debug_payload=saved.debug_llm_payload
+    )
+    logger.info(
+        "Debug runtime settings applied: updated=%s total=%s",
+        apply_stats.get("clients_updated", 0),
+        apply_stats.get("clients_total", 0),
+    )
 
     return DebugSettingsResponse(
         debug_llm_payload=saved.debug_llm_payload,
         persist_tasks=saved.persist_tasks,
     )
-
-
-def _apply_debug_to_clients(request: Request, debug_llm_payload: bool) -> None:
-    """在所有存活的 OpenAIClient 上切换 debug_payload。"""
-    try:
-        from ..clients.openai_client import OpenAIClient as _OpenAIClient
-
-        state = get_backend_state(request)
-        pipeline = getattr(state.tasks, "_pipeline", None) or getattr(
-            state.tasks, "pipeline", None
-        )
-        if not pipeline:
-            return
-        orch = getattr(pipeline, "orchestrator", None)
-        if orch:
-            for agent in [
-                getattr(orch, "solver", None),
-                getattr(orch, "tagger", None),
-            ]:
-                if agent and isinstance(getattr(agent, "client", None), _OpenAIClient):
-                    agent.client.debug_payload = debug_llm_payload
-    except Exception as exc:
-        logger.warning("Failed to apply debug setting: %s", exc)
 
 
 # ── 系统信息 ────────────────────────────────────────────────────────────────

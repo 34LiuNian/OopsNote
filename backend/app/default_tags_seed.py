@@ -9,7 +9,6 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
@@ -17,7 +16,6 @@ from uuid import NAMESPACE_URL, uuid5
 
 from .config.subjects import SUBJECTS
 
-_DEFAULT_CREATED_AT = datetime(2026, 3, 9, tzinfo=timezone.utc)
 _BUNDLED_JSON_PATH = Path(__file__).with_name("default_tags_builtin.json")
 _SUPPORTED_SUBJECTS = ("math", "physics", "chemistry", "english", "biology")
 _SUBJECT_ORDER = {key: index for index, key in enumerate(_SUPPORTED_SUBJECTS)}
@@ -65,11 +63,10 @@ class BuiltinTagRecord:
     value: str
     aliases: tuple[str, ...] = ()
     subject: str | None = None
-    grade: str | None = None
     chapter: str | None = None
-    path: str | None = None
     id: str = ""
     ref_count: int = 0
+    source: str = "builtin"
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -78,10 +75,9 @@ class BuiltinTagRecord:
             "value": self.value,
             "aliases": list(self.aliases),
             "subject": self.subject,
-            "grade": self.grade,
             "chapter": self.chapter,
-            "path": self.path,
             "ref_count": self.ref_count,
+            "source": self.source,
         }
 
 
@@ -259,16 +255,20 @@ def _extract_assignment_literal(text: str, export_name: str) -> Any:
     return parser.parse()
 
 
-def _build_path_aliases(subject_label: str, grade: str | None, *parts: str) -> set[str]:
+def _build_path_aliases(subject_label: str, *parts: str) -> set[str]:
     normalized_parts = [_normalize_label(p) for p in parts if _normalize_label(p)]
     aliases: set[str] = set()
     if not normalized_parts:
         return aliases
-    if grade:
-        normalized_grade = _normalize_label(grade)
-        aliases.add("/".join([subject_label, normalized_grade, *normalized_parts]))
     aliases.add("/".join([subject_label, *normalized_parts]))
     return aliases
+
+
+def _extract_chapter_from_alias(alias: str) -> str | None:
+    parts = [part for part in _normalize_label(alias).split("/") if part]
+    if len(parts) >= 3:
+        return parts[1]
+    return None
 
 
 def _iter_filatex_entries() -> list[_KnowledgeEntry]:
@@ -287,7 +287,7 @@ def _iter_filatex_entries() -> list[_KnowledgeEntry]:
         if name not in _SKIP_EXACT_LABELS:
             key = ("math", name)
             entry = entries.setdefault(key, _KnowledgeEntry(subject_key="math", leaf=name))
-            entry.aliases.update(_build_path_aliases(SUBJECTS["math"], None, *current_path))
+            entry.aliases.update(_build_path_aliases(SUBJECTS["math"], *current_path))
         for child in node.get("children", []) or []:
             if isinstance(child, dict):
                 walk(child, current_path)
@@ -320,8 +320,7 @@ def _iter_curriculum_entries() -> list[_KnowledgeEntry]:
         if not isinstance(curriculum, dict):
             continue
         subject_label = SUBJECTS[subject_key]
-        for grade, chapters in curriculum.items():
-            normalized_grade = _normalize_label(grade)
+        for chapters in curriculum.values():
             if not isinstance(chapters, list):
                 continue
             for chapter in chapters:
@@ -333,7 +332,7 @@ def _iter_curriculum_entries() -> list[_KnowledgeEntry]:
                 add_entry(
                     subject_key,
                     chapter_name,
-                    _build_path_aliases(subject_label, normalized_grade, chapter_name),
+                    _build_path_aliases(subject_label, chapter_name),
                 )
                 sections = chapter.get("sections")
                 if isinstance(sections, list):
@@ -346,7 +345,7 @@ def _iter_curriculum_entries() -> list[_KnowledgeEntry]:
                         add_entry(
                             subject_key,
                             section_name,
-                            _build_path_aliases(subject_label, normalized_grade, chapter_name, section_name),
+                            _build_path_aliases(subject_label, chapter_name, section_name),
                         )
                         for tag in section.get("tags", []) or []:
                             tag_name = _normalize_label(tag)
@@ -357,7 +356,6 @@ def _iter_curriculum_entries() -> list[_KnowledgeEntry]:
                                 tag_name,
                                 _build_path_aliases(
                                     subject_label,
-                                    normalized_grade,
                                     chapter_name,
                                     section_name,
                                     tag_name,
@@ -371,7 +369,7 @@ def _iter_curriculum_entries() -> list[_KnowledgeEntry]:
                     add_entry(
                         subject_key,
                         tag_name,
-                        _build_path_aliases(subject_label, normalized_grade, chapter_name, tag_name),
+                        _build_path_aliases(subject_label, chapter_name, tag_name),
                     )
     return list(entries.values())
 
@@ -396,34 +394,22 @@ def _build_knowledge_records() -> list[BuiltinTagRecord]:
         if needs_subject_prefix:
             aliases.add(leaf)
 
-        grade: str | None = None
         chapter: str | None = None
-        path: str | None = None
         subject_paths = [
             alias for alias in sorted(aliases)
             if alias.startswith(f"{subject_label}/")
         ]
         for alias in subject_paths:
-            parts = [part for part in alias.split("/") if part]
-            if len(parts) >= 4:
-                grade = grade or parts[1]
-                chapter = chapter or parts[2]
-                path = path or alias
+            chapter = chapter or _extract_chapter_from_alias(alias)
+            if chapter:
                 break
-        if not path and subject_paths:
-            path = subject_paths[0]
-            parts = [part for part in path.split("/") if part]
-            if len(parts) >= 3:
-                chapter = chapter or parts[1]
 
         record = BuiltinTagRecord(
             dimension="knowledge",
             value=value,
             aliases=tuple(sorted(aliases)),
             subject=subject_key,
-            grade=grade,
             chapter=chapter,
-            path=path,
         )
         records.append((_SUBJECT_ORDER.get(subject_key, 999), value, record))
 
@@ -468,10 +454,36 @@ def load_builtin_tags() -> tuple[BuiltinTagRecord, ...]:
         payload = json.loads(_BUNDLED_JSON_PATH.read_text(encoding="utf-8"))
 
     items = payload.get("items", []) if isinstance(payload, dict) else []
-    return tuple(BuiltinTagRecord(**item) for item in items)
+    records: list[BuiltinTagRecord] = []
+    allowed_fields = set(BuiltinTagRecord.__dataclass_fields__.keys())
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        if str(item.get("dimension") or "").strip() != "knowledge":
+            continue
+        normalized = {key: item[key] for key in item.keys() if key in allowed_fields}
+        records.append(BuiltinTagRecord(**normalized))
+    return tuple(records)
 
 
 def build_default_tag_payload() -> dict[str, Any]:
     """Serialize bundled defaults to the on-disk TagStore payload shape."""
 
     return {"items": [record.as_dict() for record in load_builtin_tags()]}
+
+
+def rebuild_builtin_snapshot() -> dict[str, Any]:
+    """Rebuild builtin snapshot from temporary source files.
+
+    This intentionally keeps only knowledge dimension in builtin snapshot.
+    """
+
+    payload = build_default_tag_payload_from_sources()
+    items = payload.get("items", []) if isinstance(payload, dict) else []
+    filtered = [
+        item
+        for item in items
+        if isinstance(item, dict)
+        and str(item.get("dimension") or "").strip() == "knowledge"
+    ]
+    return {"items": filtered}

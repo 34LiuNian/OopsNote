@@ -23,7 +23,6 @@ export async function searchTags(params: {
   dimension?: TagDimension;
   query?: string;
   subject?: string;
-  grade?: string;
   chapter?: string;
   limit?: number;
 }): Promise<TagsResponse> {
@@ -31,7 +30,6 @@ export async function searchTags(params: {
   if (params.dimension) sp.set("dimension", params.dimension);
   if (params.query && params.query.trim()) sp.set("query", params.query.trim());
   if (params.subject && params.subject.trim()) sp.set("subject", params.subject.trim());
-  if (params.grade && params.grade.trim()) sp.set("grade", params.grade.trim());
   if (params.chapter && params.chapter.trim()) sp.set("chapter", params.chapter.trim());
   sp.set("limit", String(params.limit ?? 100));
   return fetchJson<TagsResponse>(`/tags?${sp.toString()}`);
@@ -42,9 +40,7 @@ export async function createTag(payload: {
   value: string;
   aliases?: string[];
   subject?: string;
-  grade?: string;
   chapter?: string;
-  path?: string;
 }): Promise<TagsResponse> {
   return fetchJson<TagsResponse>("/tags", {
     method: "POST",
@@ -53,9 +49,7 @@ export async function createTag(payload: {
       value: payload.value,
       aliases: Array.isArray(payload.aliases) ? payload.aliases : [],
       subject: payload.subject,
-      grade: payload.grade,
       chapter: payload.chapter,
-      path: payload.path,
     }),
   });
 }

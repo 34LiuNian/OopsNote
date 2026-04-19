@@ -1,0 +1,22 @@
+{
+  "models": {
+    "SOLVER": "Qwen/Qwen3-235B-A22B-Thinking-2507",
+    "TAGGER": "Qwen/Qwen3-235B-A22B-Instruct-2507",
+    "OCR": "Qwen/Qwen3-VL-235B-A22B-Instruct"
+  },
+  "enabled": {
+    "OCR": true,
+    "SOLVER": true,
+    "TAGGER": true
+  },
+  "thinking": {
+    "SOLVER": false,
+    "TAGGER": false,
+    "OCR": false
+  },
+  "temperature": {
+    "SOLVER": 0.2,
+    "TAGGER": 0.1,
+    "OCR": 0.1
+  }
+}

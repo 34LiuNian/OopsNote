@@ -1,7 +1,0 @@
-{
-  "temperature": {
-    "SOLVER": 0.2,
-    "TAGGER": 0.1,
-    "OCR": 0.1
-  }
-}

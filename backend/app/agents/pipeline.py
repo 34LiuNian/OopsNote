@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import logging
-from typing import Callable, Protocol
+from typing import Any, Callable, Protocol
 from uuid import uuid4
 
 from ..models import (
@@ -53,12 +53,75 @@ class PipelineDependencies:
     ocr_extractor: OcrExtractorLike | None = None
 
 
+@dataclass
+class SegmenterRuntimeAccess:
+    """Stable runtime access for the OCR segmenter dependencies."""
+
+    client: Any
+    model_resolver: Callable[[str], str | None] | None
+    thinking_resolver: Callable[[str], bool | None] | None
+
+
 class AgentPipeline:
     def __init__(
         self, deps: PipelineDependencies, orchestrator: AgentOrchestrator | None = None
     ) -> None:
         self.deps = deps
         self.orchestrator = orchestrator
+
+    def get_segmenter_runtime_access(self) -> SegmenterRuntimeAccess | None:
+        """Return stable accessors for segmenter runtime config, if available."""
+        ocr_router = self.deps.ocr_extractor
+        if ocr_router is None:
+            return None
+        llm_extractor = getattr(ocr_router, "llm_extractor", None) or getattr(
+            ocr_router, "_llm_extractor", None
+        )
+        client = getattr(llm_extractor, "client", None)
+        if client is None:
+            return None
+
+        model_resolver = getattr(ocr_router, "model_resolver", None)
+        if not callable(model_resolver):
+            model_resolver = None
+
+        thinking_resolver = getattr(ocr_router, "thinking_resolver", None)
+        if not callable(thinking_resolver):
+            thinking_resolver = None
+
+        return SegmenterRuntimeAccess(
+            client=client,
+            model_resolver=model_resolver,
+            thinking_resolver=thinking_resolver,
+        )
+
+    def list_runtime_clients(self) -> list[Any]:
+        """Collect active runtime clients exposed by the pipeline."""
+        clients: list[Any] = []
+
+        if self.orchestrator is not None:
+            for agent in (
+                getattr(self.orchestrator, "solver", None),
+                getattr(self.orchestrator, "tagger", None),
+            ):
+                client = getattr(agent, "client", None)
+                if client is not None:
+                    clients.append(client)
+
+        segmenter_runtime = self.get_segmenter_runtime_access()
+        if segmenter_runtime is not None and segmenter_runtime.client is not None:
+            clients.append(segmenter_runtime.client)
+
+        # De-duplicate by object identity to avoid repeated reconfigure on shared clients.
+        deduped: list[Any] = []
+        seen: set[int] = set()
+        for client in clients:
+            marker = id(client)
+            if marker in seen:
+                continue
+            seen.add(marker)
+            deduped.append(client)
+        return deduped
 
     def run(
         self,

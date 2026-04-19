@@ -292,10 +292,6 @@ export const TagPicker = memo(function TagPicker({
           block
         />
 
-        <Text sx={{ mt: 1, color: "fg.muted", fontSize: 0 }}>
-          回车会优先使用候选首项；退格可快速删除最后一个已选标签。
-        </Text>
-
         {enableRemoteSearch && open && (loading || filteredSuggestions.length > 0) ? (
           <Box
             ref={listRef}

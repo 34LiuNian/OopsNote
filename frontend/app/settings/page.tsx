@@ -22,9 +22,9 @@ import {
 import { getRegistrationSettings, updateRegistrationSettings } from "../../features/auth/api";
 
 const AGENTS: Array<{ key: string; label: string; description: string }> = [
-  { key: "SOLVER", label: "Solver", description: "主解题与结构化输出" },
-  { key: "TAGGER", label: "Tagger", description: "标签/知识点归类" },
-  { key: "OCR", label: "OCR", description: "图片 OCR 与结构化题面提取" },
+  { key: "SOLVER", label: "Solver", description: "Problem solving and structured output" },
+  { key: "TAGGER", label: "Tagger", description: "Tags and knowledge point classification" },
+  { key: "OCR", label: "OCR", description: "OCR and structured problem extraction" },
 ];
 
 const LOCKED_ENABLED = new Set(["OCR", "SOLVER", "TAGGER"]);
@@ -33,14 +33,13 @@ export default function SettingsPage() {
   const { preference, resolvedTheme, setPreference } = useTheme();
   const didInitialLoadRef = useRef(false);
 
-  // --- Agent Models ---
   const {
     agentModels,
     draft,
     isLoading: isLoadingSettings,
-    isSaving,
-    isDirty,
-    statusMessage,
+    isSaving: isSavingModels,
+    isDirty: isModelsDirty,
+    statusMessage: agentModelsStatusMessage,
     errorMessage: agentModelsErrorMessage,
     refresh: refreshAgentModels,
     setDraftValue,
@@ -48,40 +47,45 @@ export default function SettingsPage() {
     save: saveAgentModels,
   } = useAgentModelsSettings();
 
-  // --- Agent Enabled ---
   const {
-    enabled: agentEnabled,
+    draft: agentEnabledDraft,
     isLoading: isLoadingEnabled,
-    savingAgent: savingEnabledAgent,
+    isSaving: isSavingEnabled,
+    isDirty: isEnabledDirty,
     statusMessage: enabledStatusMessage,
     errorMessage: enabledErrorMessage,
     refresh: refreshAgentEnabled,
-    update: updateAgentEnabled,
+    setDraftValue: setAgentEnabledDraftValue,
+    reset: resetAgentEnabled,
+    save: saveAgentEnabled,
   } = useAgentEnabledSettings({ lockedKeys: LOCKED_ENABLED });
 
-  // --- Agent Thinking ---
   const {
-    thinking: agentThinking,
+    draft: agentThinkingDraft,
     isLoading: isLoadingThinking,
-    savingAgent: savingThinkingAgent,
+    isSaving: isSavingThinking,
+    isDirty: isThinkingDirty,
     statusMessage: thinkingStatusMessage,
     errorMessage: thinkingErrorMessage,
     refresh: refreshAgentThinking,
-    update: updateAgentThinking,
+    setDraftValue: setAgentThinkingDraftValue,
+    reset: resetAgentThinking,
+    save: saveAgentThinking,
   } = useAgentThinkingSettings();
 
-  // --- Agent Temperature ---
   const {
-    temperature: agentTemperature,
+    draft: agentTemperatureDraft,
     isLoading: isLoadingTemperature,
-    savingAgent: savingTemperatureAgent,
+    isSaving: isSavingTemperature,
+    isDirty: isTemperatureDirty,
     statusMessage: temperatureStatusMessage,
     errorMessage: temperatureErrorMessage,
     refresh: refreshAgentTemperature,
-    update: updateAgentTemperature,
+    setDraftValue: setAgentTemperatureDraftValue,
+    reset: resetAgentTemperature,
+    save: saveAgentTemperature,
   } = useAgentTemperatureSettings();
 
-  // --- Model List ---
   const {
     items: models,
     isLoading: isLoadingModels,
@@ -89,15 +93,12 @@ export default function SettingsPage() {
     refresh: refreshModels,
   } = useModelList();
 
-  // --- Gateway ---
   const gateway = useGatewaySettings();
-
-  // --- Debug ---
   const debug = useDebugSettings();
-
-  // --- System Info ---
   const systemInfo = useSystemInfo();
+
   const [registrationEnabled, setRegistrationEnabled] = useState(false);
+  const [savedRegistrationEnabled, setSavedRegistrationEnabled] = useState(false);
   const [registrationLoaded, setRegistrationLoaded] = useState(false);
   const [registrationSaving, setRegistrationSaving] = useState(false);
   const [registrationError, setRegistrationError] = useState("");
@@ -106,6 +107,18 @@ export default function SettingsPage() {
   const sortedModels = useMemo(() => {
     return [...models].filter((m) => m?.id).sort((a, b) => a.id.localeCompare(b.id));
   }, [models]);
+
+  const modelSectionStatusMessage =
+    temperatureStatusMessage || thinkingStatusMessage || enabledStatusMessage || agentModelsStatusMessage;
+
+  const isModelSectionDirty =
+    isModelsDirty || isEnabledDirty || isThinkingDirty || isTemperatureDirty;
+  const isModelSectionSaving =
+    isSavingModels || isSavingEnabled || isSavingThinking || isSavingTemperature;
+  const isModelSectionLoading =
+    isLoadingSettings || isLoadingEnabled || isLoadingThinking || isLoadingTemperature;
+
+  const isRegistrationDirty = registrationEnabled !== savedRegistrationEnabled;
 
   useEffect(() => {
     if (didInitialLoadRef.current) return;
@@ -121,10 +134,12 @@ export default function SettingsPage() {
     void systemInfo.refresh();
     void getRegistrationSettings()
       .then((value) => {
-        setRegistrationEnabled(Boolean(value.enabled));
+        const next = Boolean(value.enabled);
+        setRegistrationEnabled(next);
+        setSavedRegistrationEnabled(next);
       })
       .catch((err) => {
-        setRegistrationError(err instanceof Error ? err.message : "加载注册设置失败");
+        setRegistrationError(err instanceof Error ? err.message : "Failed to load registration settings");
       })
       .finally(() => {
         setRegistrationLoaded(true);
@@ -140,77 +155,78 @@ export default function SettingsPage() {
     systemInfo.refresh,
   ]);
 
+  const handleResetRegistration = useCallback(() => {
+    setRegistrationEnabled(savedRegistrationEnabled);
+    setRegistrationError("");
+    setRegistrationStatus("");
+  }, [savedRegistrationEnabled]);
+
   const handleSaveRegistration = useCallback(async () => {
     setRegistrationError("");
     setRegistrationStatus("");
     setRegistrationSaving(true);
     try {
       const next = await updateRegistrationSettings({ enabled: registrationEnabled });
-      setRegistrationEnabled(Boolean(next.enabled));
-      setRegistrationStatus("注册开关已更新");
+      const savedValue = Boolean(next.enabled);
+      setRegistrationEnabled(savedValue);
+      setSavedRegistrationEnabled(savedValue);
+      setRegistrationStatus("Registration settings saved");
     } catch (err) {
-      setRegistrationError(err instanceof Error ? err.message : "保存注册设置失败");
+      setRegistrationError(err instanceof Error ? err.message : "Failed to save registration settings");
     } finally {
       setRegistrationSaving(false);
     }
   }, [registrationEnabled]);
 
-  const handleEnabledChange = useCallback(
-    async (agentKey: string, nextValue: boolean) => {
-      if ((agentEnabled[agentKey] ?? true) === nextValue) return;
-      await updateAgentEnabled(agentKey, nextValue);
-    },
-    [updateAgentEnabled]
-  );
+  const handleSaveModelSection = useCallback(async () => {
+    if (isModelsDirty) {
+      await saveAgentModels();
+    }
+    if (isEnabledDirty) {
+      await saveAgentEnabled();
+    }
+    if (isThinkingDirty) {
+      await saveAgentThinking();
+    }
+    if (isTemperatureDirty) {
+      await saveAgentTemperature();
+    }
+  }, [
+    isModelsDirty,
+    isEnabledDirty,
+    isThinkingDirty,
+    isTemperatureDirty,
+    saveAgentModels,
+    saveAgentEnabled,
+    saveAgentThinking,
+    saveAgentTemperature,
+  ]);
 
-  const handleThinkingChange = useCallback(
-    async (agentKey: string, nextValue: boolean) => {
-      if ((agentThinking[agentKey] ?? true) === nextValue) return;
-      await updateAgentThinking(agentKey, nextValue);
-    },
-    [updateAgentThinking]
-  );
-
-  const handleTemperatureChange = useCallback(
-    async (agentKey: string, value: number | null) => {
-      await updateAgentTemperature(agentKey, value);
-    },
-    [updateAgentTemperature]
-  );
-
-  const handleChange = (agentKey: string, value: string) => {
-    setDraftValue(agentKey, value);
-  };
-
-  const handleReset = useCallback(() => {
+  const handleResetModelSection = useCallback(() => {
     resetAgentModels();
-  }, [resetAgentModels]);
-
-  const handleSave = useCallback(async () => {
-    await saveAgentModels();
-  }, [saveAgentModels]);
+    resetAgentEnabled();
+    resetAgentThinking();
+    resetAgentTemperature();
+  }, [resetAgentEnabled, resetAgentModels, resetAgentTemperature, resetAgentThinking]);
 
   return (
-    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-      {/* Page header */}
+    <Box sx={{ display: "flex", flexDirection: "column", gap: 4 }}>
       <Box className="oops-section-header" sx={{ border: "none !important", mb: 0, pb: 2 }}>
         <GearIcon size={20} />
         <Box sx={{ flex: 1 }}>
           <Text className="oops-section-subtitle">Settings</Text>
           <Heading as="h2" className="oops-section-title" sx={{ m: 0 }}>
-            设置
+            Settings
           </Heading>
         </Box>
       </Box>
 
-      {/* 1. Appearance */}
       <SettingsAppearanceSection
         preference={preference}
         resolvedTheme={resolvedTheme}
         onChangePreference={setPreference}
       />
 
-      {/* 2. Gateway / Connection */}
       <SettingsGatewaySection
         saved={gateway.saved}
         draft={gateway.draft}
@@ -227,79 +243,87 @@ export default function SettingsPage() {
         onTest={gateway.test}
       />
 
-      <Box className="oops-card" sx={{ p: 3, display: "grid", gap: 3 }}>
-        <Box>
-          <Heading as="h3" sx={{ fontSize: 2, mb: 1 }}>
-            账号注册
-          </Heading>
-          <Text sx={{ color: "fg.muted", fontSize: 1 }}>
-            控制登录页是否允许用户自助注册。
-          </Text>
-        </Box>
-        {!registrationLoaded ? <Text sx={{ color: "fg.muted" }}>加载中...</Text> : null}
-        <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
-          <Checkbox
-            checked={registrationEnabled}
-            onChange={(event) => setRegistrationEnabled(event.target.checked)}
-          />
-          <Text>开放自助注册</Text>
-        </Box>
-        {registrationError ? <Flash variant="danger">{registrationError}</Flash> : null}
-        {registrationStatus ? <Flash variant="success">{registrationStatus}</Flash> : null}
-        <Box>
-          <Button variant="primary" onClick={() => void handleSaveRegistration()} disabled={registrationSaving}>
-            {registrationSaving ? "保存中..." : "保存注册设置"}
-          </Button>
-        </Box>
-      </Box>
-
-      {/* 3. Model Settings */}
       <SettingsModelSection
         agents={AGENTS}
         sortedModels={sortedModels}
         draft={draft}
         agentModels={agentModels}
         lockedEnabled={LOCKED_ENABLED}
-        agentEnabled={agentEnabled}
-        agentThinking={agentThinking}
-        agentTemperature={agentTemperature}
-        isDirty={isDirty}
-        isSaving={isSaving}
-        isLoadingSettings={isLoadingSettings}
+        agentEnabled={agentEnabledDraft}
+        agentThinking={agentThinkingDraft}
+        agentTemperature={agentTemperatureDraft}
+        isDirty={isModelSectionDirty}
+        isSaving={isModelSectionSaving}
+        isLoadingSettings={isModelSectionLoading}
         isLoadingModels={isLoadingModels}
-        isLoadingEnabled={isLoadingEnabled}
-        isLoadingThinking={isLoadingThinking}
-        savingEnabledAgent={savingEnabledAgent}
-        savingThinkingAgent={savingThinkingAgent}
-        savingTemperatureAgent={savingTemperatureAgent}
-        statusMessage={statusMessage}
+        statusMessage={modelSectionStatusMessage}
         agentModelsErrorMessage={agentModelsErrorMessage}
         modelsErrorMessage={modelsErrorMessage}
-        enabledStatusMessage={enabledStatusMessage}
         enabledErrorMessage={enabledErrorMessage}
-        thinkingStatusMessage={thinkingStatusMessage}
         thinkingErrorMessage={thinkingErrorMessage}
         temperatureErrorMessage={temperatureErrorMessage}
         onRefreshModels={refreshModels}
-        onReset={handleReset}
-        onSave={handleSave}
-        onChangeModel={handleChange}
-        onToggleEnabled={handleEnabledChange}
-        onToggleThinking={handleThinkingChange}
-        onChangeTemperature={handleTemperatureChange}
+        onReset={handleResetModelSection}
+        onSave={handleSaveModelSection}
+        onChangeModel={setDraftValue}
+        onToggleEnabled={setAgentEnabledDraftValue}
+        onToggleThinking={setAgentThinkingDraftValue}
+        onChangeTemperature={setAgentTemperatureDraftValue}
       />
 
-      {/* 4. Debug */}
+      <Box className="oops-card" sx={{ p: 3, display: "grid", gap: 3 }}>
+        <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 3 }}>
+          <Box>
+            <Heading as="h3" sx={{ fontSize: 2, mb: 1 }}>
+              Registration
+            </Heading>
+            <Text sx={{ color: "fg.muted", fontSize: 1 }}>
+              Control whether self-service registration is available on the login page.
+            </Text>
+          </Box>
+          <Box sx={{ display: "flex", gap: 2 }}>
+            <Button onClick={handleResetRegistration} disabled={!isRegistrationDirty || registrationSaving || !registrationLoaded}>
+              Reset
+            </Button>
+            <Button
+              variant="primary"
+              onClick={() => void handleSaveRegistration()}
+              disabled={!isRegistrationDirty || registrationSaving || !registrationLoaded}
+            >
+              {registrationSaving ? "Saving..." : "Save"}
+            </Button>
+          </Box>
+        </Box>
+
+        {isRegistrationDirty && !registrationSaving && registrationLoaded && (
+          <Box className="oops-badge oops-badge-warning">Unsaved changes</Box>
+        )}
+        {!registrationLoaded ? <Text sx={{ color: "fg.muted" }}>Loading...</Text> : null}
+        <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
+          <Checkbox
+            checked={registrationEnabled}
+            onChange={(event) => setRegistrationEnabled(event.target.checked)}
+            disabled={!registrationLoaded || registrationSaving}
+          />
+          <Text>Allow self-service registration</Text>
+        </Box>
+        {registrationError ? <Flash variant="danger">{registrationError}</Flash> : null}
+        {registrationStatus ? <Flash variant="success">{registrationStatus}</Flash> : null}
+      </Box>
+
       <SettingsDebugSection
         settings={debug.settings}
+        draft={debug.draft}
         isLoading={debug.isLoading}
         isSaving={debug.isSaving}
+        isDirty={debug.isDirty}
         statusMessage={debug.statusMessage}
         errorMessage={debug.errorMessage}
-        onToggle={debug.toggle}
+        onToggle={debug.setDraftValue}
+        onReset={debug.reset}
+        onSave={debug.save}
       />
 
-      {/* 5. System Info */}
       <SettingsSystemInfoSection
         info={systemInfo.info}
         isLoading={systemInfo.isLoading}

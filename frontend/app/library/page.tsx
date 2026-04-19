@@ -7,6 +7,7 @@ import {
   Heading,
   Text,
   Label,
+  Checkbox,
   Select,
   TextInput,
   FormControl,
@@ -73,7 +74,7 @@ export default function LibraryPage() {
   const [selectedIds, setSelectedIds] = useState<Record<string, boolean>>({});
   const visibleTaskItems = taskStripTab === "active" ? activeTaskItems : failedTaskItems;
   const isLoadingTaskStrip = taskStripTab === "active" ? isLoadingActive : isLoadingFailed;
-  const selectedFailedCount = Object.values(selectedFailedTaskIds).filter(Boolean).length;
+  const selectedFailedCount = failedTaskItems.filter((task) => selectedFailedTaskIds[task.id]).length;
 
 
 
@@ -98,9 +99,9 @@ export default function LibraryPage() {
   }, [failedTaskItems]);
 
   const retrySelectedFailedTasks = useCallback(async () => {
-    const targetIds = Object.entries(selectedFailedTaskIds)
-      .filter(([, checked]) => checked)
-      .map(([taskId]) => taskId);
+    const targetIds = failedTaskItems
+      .filter((task) => selectedFailedTaskIds[task.id])
+      .map((task) => task.id);
 
     if (targetIds.length === 0 || isBatchRetrying) return;
 
@@ -125,7 +126,7 @@ export default function LibraryPage() {
     } finally {
       setIsBatchRetrying(false);
     }
-  }, [isBatchRetrying, refreshActiveTasks, refreshFailedTasks, selectedFailedTaskIds]);
+  }, [failedTaskItems, isBatchRetrying, refreshActiveTasks, refreshFailedTasks, selectedFailedTaskIds]);
 
   // 显示错误通知
   useEffect(() => {
@@ -203,54 +204,82 @@ export default function LibraryPage() {
               {visibleTaskItems.length > 0 ? (
                 <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
                 {visibleTaskItems.map((t) => (
-                  <Link key={t.id} href={`/tasks/${t.id}`} style={{ textDecoration: 'none', color: 'inherit' }}>
+                  taskStripTab === "failed" ? (
                     <Box
+                      key={t.id}
                       sx={{
                         position: "relative",
-                        cursor: 'pointer',
                         borderRadius: "var(--oops-radius-sm)",
-                        overflow: 'hidden',
+                        overflow: "hidden",
                         border: "1px solid",
-                        borderColor:
-                          taskStripTab === "failed" && selectedFailedTaskIds[t.id]
-                            ? "accent.fg"
-                            : "border.default",
+                        borderColor: selectedFailedTaskIds[t.id] ? "accent.fg" : "border.default",
                         transition: "all var(--oops-transition-fast)",
-                        '&:hover': { boxShadow: "var(--oops-shadow-md)", transform: "scale(1.05)" },
+                        bg: "canvas.default",
                       }}
                     >
-                      {taskStripTab === "failed" && (
-                        <Box
-                          sx={{
-                            position: "absolute",
-                            top: 6,
-                            left: 6,
-                            zIndex: 2,
-                            bg: "canvas.default",
-                            borderRadius: 4,
-                            px: 1,
-                            py: "2px",
-                            border: "1px solid",
-                            borderColor: "border.default",
-                          }}
+                      <TaskThumbnail asset={t.asset} size="medium" />
+                      <Box
+                        sx={{
+                          position: "absolute",
+                          right: 6,
+                          bottom: 6,
+                          zIndex: 2,
+                          bg: "canvas.default",
+                          borderRadius: 6,
+                          px: 2,
+                          py: 1,
+                          border: "1px solid",
+                          borderColor: "border.default",
+                          boxShadow: "shadow.small",
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 2,
+                        }}
+                      >
+                        <Label
+                          sx={{ display: "flex", alignItems: "center", gap: 1, m: 0, cursor: "pointer" }}
                           onClick={(e) => {
                             e.preventDefault();
                             e.stopPropagation();
                           }}
                         >
-                          <Label sx={{ display: "flex", alignItems: "center", gap: 1, m: 0, cursor: "pointer" }}>
-                            <input
-                              type="checkbox"
-                              checked={!!selectedFailedTaskIds[t.id]}
-                              onChange={() => toggleFailedTaskSelected(t.id)}
-                            />
-                            选中
-                          </Label>
-                        </Box>
-                      )}
-                      <TaskThumbnail asset={t.asset} size="medium" />
+                          <Checkbox
+                            checked={!!selectedFailedTaskIds[t.id]}
+                            onChange={() => toggleFailedTaskSelected(t.id)}
+                          />
+                          <Text sx={{ fontSize: 0 }}>选中</Text>
+                        </Label>
+                        <Link href={`/tasks/${t.id}`} style={{ textDecoration: "none", color: "inherit" }}>
+                          <Button
+                            size="small"
+                            variant="invisible"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                            }}
+                          >
+                            查看
+                          </Button>
+                        </Link>
+                      </Box>
                     </Box>
-                  </Link>
+                  ) : (
+                    <Link key={t.id} href={`/tasks/${t.id}`} style={{ textDecoration: 'none', color: 'inherit' }}>
+                      <Box
+                        sx={{
+                          position: "relative",
+                          cursor: 'pointer',
+                          borderRadius: "var(--oops-radius-sm)",
+                          overflow: 'hidden',
+                          border: "1px solid",
+                          borderColor: "border.default",
+                          transition: "all var(--oops-transition-fast)",
+                          '&:hover': { boxShadow: "var(--oops-shadow-md)", transform: "scale(1.05)" },
+                        }}
+                      >
+                        <TaskThumbnail asset={t.asset} size="medium" />
+                      </Box>
+                    </Link>
+                  )
                 ))}
                 </Box>
               ) : isLoadingTaskStrip ? (
