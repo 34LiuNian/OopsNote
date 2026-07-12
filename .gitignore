@@ -23,39 +23,30 @@ build/
 dist/
 *.egg-info/
 
-# Runtime storage (contains user data)
-# Exclude logs and cache, but keep settings and tasks
-backend/storage/llm_errors.log
-backend/storage/llm_payloads.log
-backend/storage/llm_payloads.json
-backend/storage/traces/
-backend/storage/task_streams/
-backend/storage/tasks/
-backend/storage/assets/
-backend/storage/chemfig_cache/
-backend/storage/paper_assets/
-backend/storage/papers/
+# Coverage
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
 
-# Keep settings and tags
-!backend/storage/settings/
-!backend/storage/tags.json
-!backend/storage/tag_dimensions.json
+# Runtime storage (user data — not versioned)
+oopsnote/storage/tasks/
+oopsnote/storage/assets/
+oopsnote/storage/settings/tags_user.json
 
-# VSCode pulgins
-.VSCodeCounter/
+# Obsidian vault (user-generated, not committed)
+oopsnote/vaults/
+
+# IDE
+.idea/
+.vscode/
 
 # Misc
 .DS_Store
 Thumbs.db
-
-# IDE
-.idea/
-
-# Temporary files
 _tmp/
 *.tmp
 *.bak
 
-docs/archive/
-backend/scripts/
-backend/storage/tikz_cache/
+# Deps lock (generated)
+uv.lock
