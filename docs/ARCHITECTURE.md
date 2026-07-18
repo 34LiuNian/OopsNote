@@ -1,7 +1,7 @@
 # OopsNote — 完整产品设计书
 
 > 用户：34LiuNian，高中学生（2024级2班）
-> 版本：V2 重构
+> 版本：V3 — 分割瓶颈响应（手工分割替代自动分割）
 
 ---
 
@@ -53,23 +53,44 @@ AI 不做"你应该复习这个"的决定。AI 做的是：
 
 ### 3.1 输入
 
-| 方式 | 场景 | 格式 |
-|------|------|------|
-| 批量扫描 | 整本作业/整张试卷 | PDF（默认） |
-| 随手拍 | 单道错题 | 图片 |
-| 手动录入 | 纯文本题目 | Markdown |
+| 方式 | 场景 | 格式 | 当前状态 |
+|------|------|------|:--------:|
+| 随手拍 | 单道错题 | 图片 | 当前主入口 ✅ |
+| 手动录入 | 纯文本题目 | Markdown | 当前次入口 ✅ |
+| 批量扫描（手动分割） | 整页/整张试卷，人工框选错题 | PDF → Web 裁剪 | Phase 4 🚧 |
+| 批量扫描（自动分割） | 全自动页面切题 | PDF | 未来预留 🔮 |
+
+**当前聚焦随手拍和手动录入。** 批量分割依赖 Web 端的交互式裁剪工具，全自动分割在有可靠方案前不做。Core 的 pipeline 设计预留接口，未来可无缝接入。`
 
 ### 3.2 处理流水线
 
+**两条流水线，共用解题和打标阶段：**
+
 ```
-输入 → [页面分割 + AI审计] → [并发 OCR] → [并发解题] → [并发打标] → 存储
+随手拍（单题图片）──→ [OCR 提取] ──→ [解题] ──→ [打标] ──→ 存储
+手动录入（纯文本） ────→ [解题] ──→ [打标] ──→ 存储
+                                         ↑ 共用 skill
+                                    delegate_task 并行
 ```
 
-每一步都走 Hermes Agent（skill + delegation）：
-- **分割**：segmenter skill 识别题目区域，AI 审计复核
-- **OCR**：vision 模型提取题目文本 + LaTeX + 选项，按题目块独立识别学科
+**手动批量分割**（Phase 4）：
+
+用户 Web 裁剪后的流程同随手拍，只是从一张图变成批量提交：
+
+```
+Web 框选 N 道错题 ──→ Core 建 Task ──→ 对每道题跑 随手拍 流程 ──→ 汇总存储
+                        ↑ 阶段复用，Core 无改动
+```
+
+每步走 Hermes Agent（skill + delegation）：
+- **OCR**（只有随手拍/批量流程有）：vision 模型提取题目文本 + LaTeX + 选项，按题目块独立识别学科
 - **解题**：solver skill 生成答案 + 解析（Markdown + LaTeX）
 - **打标**：tagger skill 标注知识点 + 错因 + 来源
+
+> **注意**：分段（segment）环节已从产品流水线中移除。自动页面分割经验证不可靠（7 种方案失败），当前策略：
+> - 随手拍：用户自己拍单题，天然无需分割
+> - 手动批量分割（Phase 4）：用户在 Web 端框选错题，AI 不做分割决策
+> - 全自动分割：留接口，未来有可靠方案再接入
 
 ### 3.3 存储
 
@@ -158,7 +179,34 @@ aliases: ["二次函数与方程", "一元二次函数"]
 - 不需要纠结"放哪个文件夹"
 - GitHub 可直接做文件管理 + 版本控制
 
-### 3.5 复习与出卷
+### 3.5 手动批量分割（Phase 4）
+
+批量扫描的核心瓶颈是**页面分割**——从整页中自动切出单道错题。确认七种方案均不可靠后，V3 将分割环节**从 AI 移交给用户**。
+
+**工作流：**
+
+```
+用户上传 PDF/整页图片
+        ↓
+选择「批量分割」模式
+        ↓
+Web 端展示图片，用户用鼠标框选每道错题区域
+   (可选：AI 预分割作为初始框，用户微调)
+        ↓
+点击「开始处理」
+        ↓
+Core 创建 Task，对每道框选区域跑完全流水线（OCR→解题→打标）
+        ↓
+结果汇总展示
+```
+
+**设计要点：**
+- **模式选择在上传前** — 随手拍 vs 批量分割，决定上传后的交互行为
+- **一次性提交** — 用户框完所有题后一键提交，不要求逐题点击
+- **AI 预分割可选** — 未来自动分割方案就绪后作为"辅助框选"嵌入，不改变流程
+- **Core 无感知** — 发送到 Core 时已经是单题图片，和随手拍别无二致
+
+### 3.6 复习与出卷
 
 薄弱点分析暂由人工触发（自动分析的阈值和频率太难把握）。
 
@@ -176,39 +224,53 @@ AI 辅助从题库中按知识点选题 → LaTeX 编译 → PDF。
 
 ### 入口一：Hermes（主入口）
 
-```
+**当前支持：**
+- 随手拍：「拍一下这道物理题」
+- 手动录入：「录入一道三角函数题」
+- 搜题、查标签等数据操作
+
+**未来支持（批量分割走 Web，Hermes 只做入口之一）：**
+- 搜题：「帮我找二次函数相关的错题」
+- 出卷：「出 10 道三角函数的练习卷」
+
+```bash
 hermes --profile oopsnote
-
-> 扫一下这本练透数学选必一
-> 帮我找二次函数相关的错题
-> 出 10 道三角函数的练习卷
-> 上周错了哪些题
+> 拍一下这道物理错题
+> 帮我录入：已知 f(x) = x^2...
+> 找最值问题相关的题
 ```
 
-用自然语言操作。底层调 oopsnote-pipeline skill → MCP → OopsNote Core。
+底层调 oopsnote-orchestrator skill → MCP → OopsNote Core。
 
 ### 入口二：Web 前端（主入口 + 主出口）
 
-| 页面 | 功能 |
-|------|------|
-| 首页 | 上传区（拖拽/粘贴）+ 最近任务列表 |
-| 题目详情 | 题目查看 + 标签编辑 + 答案/解析展示 |
-| 题库浏览 | 按学科/标签/时间浏览所有题目 |
-| 调试面板 | 空壳即可，相关组件按需加 |
-| 外观设置 | 主题/字体（代办） |
+| 页面 | 功能 | 状态 |
+|------|------|:----:|
+| 首页 | 上传区（拖拽/粘贴）+ 模式选择（随手拍/批量分割）+ 最近任务列表 | Phase 4 |
+| 批量分割页 | 图片展示 + 框选工具 + 确认提交 | Phase 4 |
+| 题目详情 | 题目查看 + 标签编辑 + 答案/解析展示 | Phase 4 |
+| 题库浏览 | 按学科/标签/时间浏览所有题目 | Phase 4 |
+| 调试面板 | 空壳即可，相关组件按需加 | Phase 4 |
+| 外观设置 | 主题/字体（代办） | 代办 |
+
+**手动批量分割是 Web 端的核心差异化功能，优先于随手拍上传。**
 
 不做：登录、注册、账户、模型配置。
 
 ### 入口三：CLI（调试/开发用）
 
 ```bash
-oopsnote scan ./练透数学选必一.pdf --subject 数学
 oopsnote search --tags "二次函数,最值"
 oopsnote paper --knowledge "三角函数" --count 10 --output 练习.pdf
 oopsnote sync
 ```
 
-做得简单，调试够用就行，不面向日常使用。
+```bash
+# ⚠ 实验性 — 保留给未来批量扫描
+oopsnote scan ./练透数学选必一.pdf --subject 数学
+```
+
+做得简单，调试够用就行，不面向日常使用。scan 命令保留但标记为实验性，等待自动分割方案就绪。
 
 ### 出口：Obsidian（主出口）
 
@@ -220,7 +282,7 @@ oopsnote sync
 
 ```
                         hermes --profile oopsnote
-                        "扫一下这本" "找二次函数"
+                         "拍一下这道" "录入一道题"
                         (主入口 · 自然语言)
                                  │
                            MCP (stdio)
@@ -229,22 +291,22 @@ oopsnote sync
   │   CLI    │──────────┐
   │(调试/开发)│         │
   │ oopsnote │          │
-  │ scan …  │           ▼
+  │ search … │           ▼
   └──────────┘  ┌───────────────────────────────────────┐
                 │            OopsNote Core              │
                 │            (Python 库)                 │
                 │                                       │
                 │  ┌────────────┐   ┌──────────────┐    │
-                │  │ MCP Server │   │   REST API   │◄───┼──── POST /tasks (触发扫描)
-                │  │ (→Hermes)  │   │ (→Web 前端)  │───►├──── GET (返回结果)
+                │  │ MCP Server │   │   REST API   │◄───┼──── POST /tasks
+                │  │ (→Hermes)  │   │ (→Web 前端)  │───►├──── GET (结果)
                 │  └─────┬──────┘   └──────┬───────┘    │
                 │        │                 │            │
                 │  ┌─────▼─────────────────▼───────┐    │
                 │  │          Core 层              │    │
                 │  │                               │    │
                 │  │  models · store · tags        │    │
-                │  │  search · obsidian/sync       │    │
-                │  │  paper  · assets              │    │
+                │  │  search · assets              │    │
+                │  │  paper  · obsidian/(sync)     │    │
                 │  └─────────────┬─────────────────┘    │
                 │                │                      │
                 │  ┌─────────────▼─────────────────┐    │
@@ -254,18 +316,19 @@ oopsnote sync
                 │  └───────────────────────────────┘    │    (主出口)
                 └───────────────────────────────────────┘    图谱·浏览
 
-                                                               Git → GitHub
+                                                 Git → GitHub
 
                 ┌───────────────────────────────────────┐
-                │            Web 前端                    │
+                │            Web 前端 ← Phase 4          │
                 │       (主入口 + 主出口)                │
                 │                                       │
-                │  入口：拖拽/粘贴/拍照 PDF ──POST──────► Core
-                │  出口：浏览·翻看·编辑标签 ◄──GET──── Core
+                │ 随手拍：拖拽/粘贴图片 ──POST───► Core  │
+                │ 批量分割：PDF → 框选 → 提交 ─► Core   │
+                │ 浏览·编辑标签 ◄──GET──── Core         │
                 └───────────────────────────────────────┘
 
 图例：
-────  MCP (stdio)    ····  REST    ────  Python函数调用    ────  文件读写
+────  MCP (stdio)    ····  REST/Core调用  ────  文件读写
 ```
 
 ### 三条通信路径
@@ -278,24 +341,25 @@ Hermes  ──MCP────────────►  Core
 Obsidian◄──文件写入─────────  Core
 ```
 
-### 两条触发路径（汇合于 Core）
+### 两条触发路径
 
 ```
 路径 A：Hermes 入口（当前会话接着跑）
-  Hermes ──MCP──► Core create_task() ──► 同会话加载 skill ──► 干活
+  Hermes ──MCP──► Core create_problem()/update_task() ──► 同会话加载 skill ──► 干活
 
-路径 B：Web / CLI 入口（Core spawn Hermes）
-  前端/CLI ──► Core 创建 Task ──► spawn hermes --profile oopsnote ──► 干活
+路径 B：Web 入口（Core spawn Hermes）
+  前端 ──REST──► Core 创建 Task ──► spawn hermes --profile oopsnote ──► 干活
+    (Web 上传随手拍 / 提交批量分割 → 统一走此路径)
 
-两条路径用的同一个 full-pipeline skill，只是谁起 Hermes 不同。
+两条路径用的同一个 oopsnote-orchestrator skill，只是谁起 Hermes 不同。
 ```
 
 ### 入口/出口职责
 
 | | 角色 | 干什么 | 怎么通信 |
 |---|---|---|---|
-| **Hermes** | 主入口 | 扫描、搜题、出卷（自然语言） | MCP → Core |
-| **Web 前端** | 主入口 + 主出口 | 上传触发 / 浏览翻看编辑 | REST ↔ Core |
+| **Hermes** | 主入口 | 随手拍、手动录题、搜题、出卷（自然语言） | MCP → Core |
+| **Web 前端** | 主入口 + 主出口 | 随手拍上传 / 批量分割框选 / 浏览翻看编辑 | REST ↔ Core |
 | **Obsidian** | 主出口 | 知识图谱、深度浏览、阅读 | ← Core 写文件 |
 | **CLI** | 调试/开发 | 快速验证、脚本自动化 | Python → Core |
 
@@ -357,32 +421,32 @@ oopsnote/
 
 每个 skill 一个标准目录（`SKILL.md` + 可选 `references/`）。
 
-#### 数据流
+### 数据流
 
 **Hermes 入口：当前会话接着跑**
 
 ```
-你: "扫一下这本练透数学"
+你: "拍一下这道物理错题"
     │
 Hermes (当前会话):
-    ├── MCP: create_task()              ← 建交接单
-    ├── 加载 oopsnote-full-pipeline skill
-    ├── vision_analyze → OCR            ← 同一个会话继续
-    ├── delegation: 并发解题/打标
+    ├── MCP: create_task()              ← 建交接单，存图片
+    ├── 加载 oopsnote-orchestrator skill
+    ├── 模式选择：随手拍（单张图片）或手动录入（纯文本）
+    ├── delegation: 并发 OCR+解题+打标  ← 随手拍三条，手动录入两条
     ├── MCP: 逐题写回 + sync_obsidian
-    └── "完成，共 12 道题"
+    └── "完成：共收录 1 道题"
 ```
 
-**Web 入口：Core spawn Hermes**
+**Web 入口（随手拍 / 批量分割）：Core spawn Hermes**
 
 ```
-前端 POST /tasks
+前端 POST /tasks（含图片/框选数据）
     │
 Core: 创建 Task ──► 起 MCP Server ──► spawn hermes --profile oopsnote
     │
 Hermes (新会话):
     ├── MCP: 读 Task
-    ├── 加载 oopsnote-full-pipeline
+    ├── 加载 oopsnote-orchestrator
     ├── 干活 → 写回
     └── 退出
     │
@@ -414,13 +478,13 @@ Core: 更新 Task 状态 ──► 前端轮询拿到结果
 │        Hermes Agent                 │
 │        (profile: oopsnote)          │
 │                                     │
-│  skills/                            │
-│  ├── oopsnote-segment/SKILL.md      │
-│  ├── oopsnote-ocr-extract/SKILL.md  │
-│  ├── oopsnote-solve-problem/SKILL.md│
-│  ├── oopsnote-tag-problem/SKILL.md  │
-│  ├── oopsnote-full-pipeline/SKILL.md│
-│  └── oopsnote-knowledge/SKILL.md    │
+|  skills/                            │
+│  ├── oopsnote-orchestrator/SKILL.md│  ← 编排：随手拍/手动录入/单题更新
+│  ├── oopsnote-ocr-extract/SKILL.md │  ← OCR 提取结构化题面
+│  ├── oopsnote-solve-problem/SKILL.md│ ← 解题+解析
+│  ├── oopsnote-tag-problem/SKILL.md │  ← 多维度打标
+│  ├── oopsnote-knowledge/SKILL.md   │  ← 学科知识引用
+│  └── oopsnote-segment/SKILL.md     │  ← [闲置] 未来自动分割实验用
 │                                     │
 │  memory/   ← 标签偏好、prompt 经验  │
 │  SOUL.md   ← "错题处理专用 AI"      │
@@ -446,10 +510,15 @@ hermes profile create oopsnote
 ```bash
 # Hermes 入口（主）：当前会话直接干活，不需要 spawn
 hermes --profile oopsnote
-> 扫一下这本练透数学选必一
+> 拍一下这道物理错题
+> 录入一道三角函数题
+> 找最值问题相关的题
 
-# Web / CLI 底层：Core spawn Hermes 新会话
-hermes --profile oopsnote chat -q "处理任务 task_id=abc123" -s oopsnote-pipeline
+# Web 底层：Core spawn Hermes 新会话
+hermes --profile oopsnote chat -q "处理随手拍 task_id=abc123" -s oopsnote-orchestrator
+
+# CLI 调试（实验性）
+hermes --profile oopsnote chat -q "处理任务 task_id=abc123" -s oopsnote-orchestrator
 ```
 
 ### MCP 工具
@@ -533,43 +602,54 @@ OopsNote 改存储格式、换 LaTeX 引擎 —— Hermes skill 不受影响。
 
 ## 九、实施计划
 
-### Phase 1 — 清理 + 骨架（立即）
+### Phase 1 — 清理 + 骨架 ✅ 已完成
 
-- [ ] 执行删除清单（砍掉 auth/agents/clients/settings）
-- [ ] 搭建 OopsNote Core 目录结构
-- [ ] 数据模型设计（充分考虑格式独立性 + 可迁移性 + JSON uuid ↔ 文件名映射）
-- [ ] JSON 存储层 + 资产存储
-- [ ] 标签库管理
-- [ ] 搜索引擎（core/search.py，内存过滤即可）
-- [ ] REST API 桩（`/health`、`/tasks` 空路由，前端后续接）
-- [ ] CLI 骨架（调试用，简单够用即可）
+- [x] 执行删除清单（砍掉 auth/agents/clients/settings）
+- [x] 搭建 OopsNote Core 目录结构
+- [x] 数据模型设计
+- [x] JSON 存储层 + 资产存储
+- [x] 标签库管理（18K 内置标签）
+- [x] 搜索引擎（core/search.py，内存过滤）
+- [x] REST API 桩（`/health`、`/tasks` 空路由）
+- [x] CLI 骨架
 
-### Phase 2 — Hermes 集成
+### Phase 2 — Hermes 集成（当前）
 
 - [ ] 创建 oopsnote profile（`hermes profile create oopsnote`）
-- [ ] 创建 oopsnote skills（segment / ocr / solve / tag / pipeline）
+- [ ] OopsNote Core MCP Server（FastMCP stdio）
+  - create_problem / update_task / get_task
+  - list_tags / create_tag
+  - get_asset_bytes
+  - sync_to_obsidian
 - [ ] 配置 SOUL.md + memory
-- [ ] segmenter 加强 + AI 审计
-- [ ] OopsNote Core MCP Server（stdio JSON-RPC）
+- [ ] 随手拍 pipeline（Hermes 入口）
+  - orchestrator skill 编排：OCR → solve → tag
+  - leaf skills（ocr-extract / solve-problem / tag-problem）细化 prompt
+- [ ] 手动录入 pipeline（Hermes 入口）
+  - 无 OCR 阶段，直接 solve → tag
 - [ ] `hermes mcp add oopsnote` 连接
-- [ ] 端到端：PDF → 完整结果（Hermes 主入口测试）
+- [ ] 端到端：拍照 → OCR → 解题 → 打标 → 存储（Hermes 主入口）
 
 ### Phase 3 — Obsidian + 搜索
 
 - [ ] Obsidian .md 格式生成（极简 frontmatter + wikilink）
 - [ ] Tag 索引文件自动生成（Core 从数据模型导出）
 - [ ] JSON → Obsidian 单向同步
-- [ ] 搜索 API 完善（tags + 时间 + 正则，暴露给 MCP + REST）
-- [ ] 云端同步（GitHub 私有仓库，含 Obsidian vault）
+- [ ] 搜索 API 完善，暴露给 MCP + REST
+- [ ] oopsnote-knowledge 学科知识填充
 
 ### Phase 4 — 前端
 
 - [ ] REST API 补全（对接前端页面需求）
-- [ ] 首页 + 详情 + 题库 + 调试面板（空壳）+ 外观设置（代办）
+- [ ] 首页 + 模式选择（随手拍 / 批量分割）
+- [ ] 批量分割页：图片展示 + 框选工具 + 提交
+- [ ] 题目详情 + 标签编辑 + 答案/解析
+- [ ] 题库浏览
+- [ ] 调试面板（空壳）
 
-### Phase 5 — 知识体系 + 智能（持续 / 远期）
+### Phase 5 — 知识体系 + 智能（远期）
 
-- [ ] 学科应试知识体系整理（数学/物理/化学）
+- [ ] 全自动分割（AI 预分割作为辅助框选）
 - [ ] JSON ↔ Obsidian 双向同步 + 冲突合并
 - [ ] 通知推送（QQ/Telegram/桌面）
 - [ ] AI 薄弱点分析（人工触发 → 自动周期）
