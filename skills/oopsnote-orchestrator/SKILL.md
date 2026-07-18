@@ -17,7 +17,7 @@ metadata:
 
 | 模式 | 触发词 | 流程 |
 |------|--------|------|
-| **批量扫描** | "扫一下" / "处理这本" | 逐页分割 → 每页题目 delegation 并行 → 汇总写入 |
+| **批量扫描** | "扫一下" / "处理这本" | 逐页找错题 → 只 OCR 错题 → delegation 并行 solve+tag → 汇总 |
 | **随手拍** | "拍一下" / 单张图 | 直接 delegation（一道题）→ 写入 |
 | **单题更新** | "重做第3,5题" | 取已有 task → 指定题号重跑指定阶段 |
 
@@ -25,14 +25,16 @@ metadata:
 
 ## 模式一：批量扫描
 
-**核心思路：一边 OCR，一边派活，不等。**
+**核心思路：一页一页找错题，找到就派活，不等。**
 
 ```
 父 agent:
   for each page:
-    vision_analyze 查看 → 加载 oopsnote-segment 分割题目
-    for each 题目 in 本页:
-      delegate_task(goal="处理这道题：{题面}", skills=["oopsnote-ocr-extract", "oopsnote-solve-problem", "oopsnote-tag-problem"])
+    vision_analyze + oopsnote-segment → 找出本页所有错题
+    if 本页没错题: 跳过
+    for each 错题:
+      delegate_task(goal="OCR+solve+tag 这道错题",
+        skills=["oopsnote-ocr-extract", "oopsnote-solve-problem", "oopsnote-tag-problem"])
     # 不等子 agent，继续下一页
   # 最后等所有子 agent 完成，汇总写入
 ```

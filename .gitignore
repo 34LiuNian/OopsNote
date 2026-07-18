@@ -3,3 +3,9 @@
 
 # Temp files
 /_tmp/
+
+# Python
+__pycache__/
+*.pyc
+*.egg-info/
+.coverage
