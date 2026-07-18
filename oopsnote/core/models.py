@@ -60,11 +60,11 @@ class Problem(BaseModel):
 # ── 任务 ──────────────────────────────────────────────
 
 class TaskCreateRequest(BaseModel):
-    """前端/CLI 创建任务时的请求体。"""
+    """前端/CLI/MCP 创建任务时的请求体。"""
 
     subject: str = ""
     asset_base64: Optional[str] = None          # 图片 base64
-    asset_path: Optional[str] = None            # 本地 PDF 路径
+    asset_path: Optional[str] = None            # 本地 PDF/图片路径
     tags: list[str] = Field(default_factory=list)
 
 
