@@ -1,5 +1,6 @@
 # Runtime data
 /storage/
+oopsnote/storage/
 
 # Temp files
 /_tmp/
