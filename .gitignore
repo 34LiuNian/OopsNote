@@ -1,52 +1,5 @@
-# Frontend
-node_modules/
-.next/
-out/
-*.tsbuildinfo
+# Runtime data
+/storage/
 
-# Env files
-.env
-.env.*
-!.env.example
-
-# Python
-__pycache__/
-*.py[cod]
-.pytest_cache/
-.mypy_cache/
-.ruff_cache/
-.venv/
-venv/
-
-# Build / packaging
-build/
-dist/
-*.egg-info/
-
-# Coverage
-.coverage
-.coverage.*
-htmlcov/
-coverage.xml
-
-# Runtime storage (user data — not versioned)
-oopsnote/storage/tasks/
-oopsnote/storage/assets/
-oopsnote/storage/settings/tags_user.json
-
-# Obsidian vault (user-generated, not committed)
-oopsnote/vaults/
-
-# IDE
-.idea/
-.vscode/
-
-# Misc
-.DS_Store
-Thumbs.db
-_tmp/
-*.tmp
-*.bak
-
-# Deps lock (generated)
-uv.lock
+# Temp files
+/_tmp/
