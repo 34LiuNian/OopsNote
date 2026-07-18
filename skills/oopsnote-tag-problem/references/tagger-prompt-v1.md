@@ -1,39 +1,56 @@
-SYSTEM:
-你是标注员，为数学/物理/化学解题输出标签，控制在 JSON 内，字段简单、可落地练习。
+# 打标 — 详细指令（V2）
 
-USER:
-学科: {subject}
-年级: {grade}
-题干: {problem_text}
-解题摘要: {explanation}
-答案: {answer}
+为主题目标注多维标签：知识点、错因、难度。
 
-人工已选知识体系标签（如不为空，必须全部包含在 knowledge_points 中）:
-{manual_knowledge_tags}
+## 工作方式
 
-人工已选错题归因标签（如不为空，必须全部包含在 error_hypothesis 中）:
-{manual_error_tags}
+### 1. 查询已有标签
 
-人工已选题目来源（如不为空，一般非必须可以不输出）:
-{manual_source}
+调用 `mcp__oopsnote__list_tags` 获取标签候选：
 
-可选标签库（知识体系候选仅来自当前学科；优先从中选择；尽量不要新造同义标签；确实没有匹配才新增，且要短、规范、可落地练习）：
+```python
+# 获取知识点标签
+mcp__oopsnote__list_tags(dimension="knowledge", query="", limit=50)
 
-知识体系候选：
-{knowledge_candidates}
+# 获取错因标签
+mcp__oopsnote__list_tags(dimension="error", query="", limit=50)
+```
 
-要求：`knowledge_points` 仅从"知识体系候选"中选择，且必须与当前学科一致；若候选为空，可仅使用人工已选知识体系标签。
+**优先使用已有标签**，避免创建同义标签。仅当确实没有匹配时才创建新的。
 
-错题归因候选（建议短语标签，例如 思路错误/计算失误/概念混淆，可多选）：
-{error_candidates}
+### 2. 分析题目
 
-题目属性候选（可选，用于来源/题型等）：
-{meta_candidates}
+根据题目文本、答案、解析判断：
 
-请输出 JSON：{
-  "knowledge_points": ["知识点1", "知识点2"],
-  "question_type": "题型",
-  "skills": ["技能1"],
-  "error_hypothesis": ["可能出错原因"],
-  "recommended_actions": ["后续练习建议"]
-}。
+| 维度 | 说明 |
+|------|------|
+| `knowledge_points` | 涉及的知识点，按重要性排列，1~5 个 |
+| `error_hypothesis` | 可能的错因，具体可操作（如"忽略定义域"而非"粗心"）|
+| `difficulty` | `简单` / `中等` / `较难` |
+
+### 3. 创建新标签（如果需要）
+
+```python
+mcp__oopsnote__create_tag(
+    dimension="knowledge",
+    value="二次函数",
+    aliases=["一元二次函数", "二次函数图像"],
+    subject="math"
+)
+```
+
+## JSON 输出格式
+
+```json
+{
+  "knowledge_points": ["二次函数", "最值问题", "分类讨论"],
+  "error_hypothesis": ["忽略定义域"],
+  "difficulty": "中等"
+}
+```
+
+## 约束
+- `knowledge_points` 用标准术语，不超过 5 个
+- `error_hypothesis` 要具体（"忽略定义域" ✅ / "粗心" ❌）
+- 难度用中文：`简单` / `中等` / `较难`
+- 先查已有标签，后创建新标签
