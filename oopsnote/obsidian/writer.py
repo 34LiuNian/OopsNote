@@ -60,17 +60,6 @@ def render_problem(problem: Problem) -> str:
     lines.append("---")
     lines.append("")
 
-    # wikilink 关联（知识点 + 错因）
-    wiki_links: list[str] = []
-    for kp in problem.knowledge_points:
-        wiki_links.append(f"[[{kp}]]")
-    for eh in problem.error_hypothesis:
-        wiki_links.append(f"[[{eh}]]")
-    if wiki_links:
-        lines.append("# 关联")
-        lines.append("  ".join(wiki_links))
-        lines.append("")
-
     # 题目
     lines.append("# 题目")
     lines.append(problem.problem_text)
@@ -94,7 +83,18 @@ def render_problem(problem: Problem) -> str:
         lines.append(problem.explanation)
         lines.append("")
 
-    # 错因（从 error_hypothesis 生成正文内容）
+    # wikilink 关联（知识点 + 错因）
+    wiki_links: list[str] = []
+    for kp in problem.knowledge_points:
+        wiki_links.append(f"[[{kp}]]")
+    for eh in problem.error_hypothesis:
+        wiki_links.append(f"[[{eh}]]")
+    if wiki_links:
+        lines.append("# 关联")
+        lines.append("  ".join(wiki_links))
+        lines.append("")
+
+    # 错因
     if problem.error_hypothesis:
         lines.append("# 错因")
         for eh in problem.error_hypothesis:
