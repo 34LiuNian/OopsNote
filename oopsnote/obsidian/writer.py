@@ -33,17 +33,23 @@ def subject_dir(subject: str) -> str:
 # ── 文件名生成 ──────────────────────────────────────
 
 def problem_filename(problem: Problem, idx: Optional[int] = None) -> str:
-    """生成日期-序号.md 文件名。
-
-    Problem.id → 取前 6 位作为序号。
-    如果提供了 idx（同一天内的顺序），覆盖 uuid 前缀。
-    """
+    """生成日期-序号.md 文件名。"""
     date_str = problem.created_at.strftime("%Y-%m-%d")
     seq = problem.id[:6]
     return f"{date_str}-{seq}.md"
 
 
 # ── .md 内容生成 ────────────────────────────────────
+
+def _section(lines: list[str], heading: str, content_lines: list[str]) -> None:
+    """追加一个带 heading 的区块，heading 与内容之间隔一个空行。"""
+    if not content_lines:
+        return
+    lines.append(f"# {heading}")
+    lines.append("")
+    lines.extend(content_lines)
+    lines.append("")
+
 
 def render_problem(problem: Problem) -> str:
     """将单道 Problem 渲染为 Obsidian .md 内容。"""
@@ -60,27 +66,20 @@ def render_problem(problem: Problem) -> str:
     lines.append("---")
 
     # 题目
-    lines.append("# 题目")
-    lines.append(problem.problem_text)
-    lines.append("")
+    _section(lines, "题目", [problem.problem_text])
 
     # 选项
     if problem.options:
-        for opt in problem.options:
-            lines.append(f"- {opt}")
-        lines.append("")
+        opts: list[str] = [f"- {opt}" for opt in problem.options]
+        _section(lines, "选项", opts)
 
     # 答案
     if problem.answer:
-        lines.append("# 答案")
-        lines.append(problem.answer)
-        lines.append("")
+        _section(lines, "答案", [problem.answer])
 
     # 解析
     if problem.explanation:
-        lines.append("# 解析")
-        lines.append(problem.explanation)
-        lines.append("")
+        _section(lines, "解析", [problem.explanation])
 
     # wikilink 关联（知识点 + 错因）
     wiki_links: list[str] = []
@@ -89,16 +88,11 @@ def render_problem(problem: Problem) -> str:
     for eh in problem.error_hypothesis:
         wiki_links.append(f"[[{eh}]]")
     if wiki_links:
-        lines.append("# 关联")
-        lines.append("  ".join(wiki_links))
-        lines.append("")
+        _section(lines, "关联", ["  ".join(wiki_links)])
 
     # 错因
     if problem.error_hypothesis:
-        lines.append("# 错因")
-        for eh in problem.error_hypothesis:
-            lines.append(f"- {eh}")
-        lines.append("")
+        _section(lines, "错因", [f"- {eh}" for eh in problem.error_hypothesis])
 
     return "\n".join(lines)
 
@@ -126,7 +120,7 @@ def write_problem(
 
 def render_tag_index(
     tag_name: str,
-    problem_refs: list[tuple[str, str]],  # [(display_name_or_filename, problem_text_preview)]
+    problem_refs: list[tuple[str, str]],
     aliases: Optional[list[str]] = None,
 ) -> str:
     """渲染标签索引页（如 二次函数.md）。"""
@@ -166,7 +160,6 @@ def write_tag_index(
     indexes_dir = vault_root / subject_dir_name / "indexes"
     indexes_dir.mkdir(parents=True, exist_ok=True)
 
-    # 标签名中的特殊字符处理
     safe_name = tag_name.replace("/", "／").replace("\\", "／")
     path = indexes_dir / f"{safe_name}.md"
     path.write_text(
