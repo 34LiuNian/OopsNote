@@ -25,6 +25,7 @@ from oopsnote.core import (
     TaskStatus,
     TaskStore,
 )
+from oopsnote.obsidian.syncer import ObsidianSyncer
 
 # ── Server ───────────────────────────────────────────
 
@@ -206,6 +207,30 @@ def search_problems(
     )
     searcher = Searcher(TASK_STORE.list_all())
     return searcher.search(query)
+
+
+# ═════════════════════════════════════════════════════
+# Obsidian 同步
+# ═════════════════════════════════════════════════════
+
+
+@mcp.tool()
+def sync_to_obsidian(subject: Optional[str] = None) -> str:
+    """同步 JSON 数据到 Obsidian vault。
+
+    生成 .md 文件和标签索引。
+    不传 subject 则同步全部学科，传则只同步指定学科。
+    """
+    syncer = ObsidianSyncer(
+        task_store=TASK_STORE,
+        tag_store=TAG_STORE,
+        vault_root=STORAGE_DIR.parent / "vaults",
+    )
+    if subject:
+        report = syncer.sync_for_subject(subject)
+    else:
+        report = syncer.sync()
+    return str(report)
 
 
 # ═════════════════════════════════════════════════════
