@@ -15,9 +15,13 @@ oopsnote/
 │   ├── assets.py          # 图片/PDF 资产落盘
 │   ├── tags.py            # 标签库（内置 + 用户，按 ref_count 排序）
 │   └── search.py          # 内存多维度搜索（tags/时间/正则）
-├── api/main.py            # FastAPI REST 桩（/health, /tasks）
+├── obsidian/              # Obsidian .md 同步（writer + indexer + syncer）
+│   ├── writer.py          # Problem → .md 文件，标签索引
+│   ├── indexer.py         # 标签索引自动生成
+│   └── syncer.py          # JSON→Obsidian 单向同步
+├── api/main.py            # FastAPI REST 桩（/health, /search, /tags, /sync, /tasks）
 ├── cli/main.py            # CLI 调试入口（search/paper/sync，scan 实验性）
-├── mcp/                   # MCP Server（→ Hermes）— Phase 2 实现中
+├── mcp/                   # MCP Server（→ Hermes）— 12 个工具
 ├── skills/                # Hermes skill 源文件（同步到 profile）
 │   ├── oopsnote-orchestrator/
 │   ├── oopsnote-ocr-extract/
@@ -25,7 +29,6 @@ oopsnote/
 │   ├── oopsnote-tag-problem/
 │   ├── oopsnote-knowledge/
 │   └── oopsnote-segment/    # [闲置] 未来自动分割用
-├── obsidian/              # Obsidian .md 同步 — Phase 3
 ├── paper/templates/       # LaTeX 试卷模板
 ├── storage/               # 运行时数据
 │   ├── {task_id}.json
@@ -33,7 +36,7 @@ oopsnote/
 │   └── settings/
 │       ├── tags_builtin.json   ← 18299 条内置标签
 │       └── tags_user.json
-└── vaults/                # Obsidian vault（各学科 .md 文件）— Phase 3
+└── vaults/                # Obsidian vault（各学科 .md 文件）
 ```
 
 ---
@@ -80,7 +83,7 @@ Hermes (随手拍/手动录入)     Web 前端 (主入口+出口)     Obsidian (
 | Phase | 状态 |
 |-------|------|
 | 1 — 清理 + 骨架 | ✅ 完成 |
-| 2 — Hermes 集成（MCP Server + 随手拍/手动录入） | 🔄 进行中 |
-| 3 — Obsidian + 搜索 | ⏳ 待开始 |
+| 2 — Hermes 集成（MCP Server + 随手拍/手动录入） | ✅ 完成 |
+| 3 — Obsidian + 搜索（.md 同步 + 标签索引 + REST API） | ✅ 完成 |
 | 4 — 前端（含手动批量分割） | ⏳ 待开始 |
 | 5 — 知识体系 + 智能出卷 | 📅 远期 |
