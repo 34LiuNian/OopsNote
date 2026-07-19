@@ -58,7 +58,6 @@ def render_problem(problem: Problem) -> str:
     date_str = problem.created_at.strftime("%Y-%m-%d")
     lines.append(f"date: {date_str}")
     lines.append("---")
-    lines.append("")
 
     # 题目
     lines.append("# 题目")
