@@ -24,11 +24,11 @@ import {
   FolderOpen,
   ImageIcon as LucideImageIcon,
   Info,
+  LibraryBig,
   ListChecks,
   Menu,
   MoreHorizontal,
   Minus,
-  NotebookTabs,
   PanelLeftClose,
   PanelLeftOpen,
   Paintbrush,
@@ -49,7 +49,7 @@ import {
 } from "lucide-react";
 
 export const PlusIcon = Plus;
-export const RepoIcon = NotebookTabs;
+export const RepoIcon = LibraryBig;
 export const TagIcon = Tag;
 export const GearIcon = Settings;
 export const PersonIcon = UserRound;
