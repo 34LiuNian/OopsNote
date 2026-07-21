@@ -10,9 +10,8 @@ const withPWA = withPWAInit({
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
-  compiler: {
-    styledComponents: true,
-  },
+  distDir: process.env.NEXT_DIST_DIR || '.next',
+  allowedDevOrigins: ['127.0.0.1', 'localhost'],
   // Enable standalone output for production deployment
   output: 'standalone',
   async rewrites() {

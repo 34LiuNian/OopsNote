@@ -4,7 +4,6 @@ import { useCallback, useState } from "react";
 import Link from "next/link";
 import {
   Box,
-  Heading,
   Text,
   Label,
   Checkbox,
@@ -13,7 +12,7 @@ import {
   FormControl,
   Spinner,
   Button,
-} from "@primer/react";
+} from "@/components/ui/primitives";
 import { notify } from "@/lib/notify";
 import { useEffect } from "react";
 import { retryTask, useActiveTaskList, useProblemList, useTaskList } from "../../features/tasks";
@@ -23,6 +22,7 @@ import { TagSelectorRow } from "../../components/TagSelectorRow";
 import { ListSkeleton } from "../../components/ui/LoadingStates";
 import { useTagDimensions } from "../../features/tags";
 import { SUBJECT_OPTIONS } from "../../config/subjects";
+import { PageHeader } from "@/components/layout/PageHeader";
 
 const LIBRARY_SUBJECT_OPTIONS = [
   { value: "", label: "全部学科" },
@@ -138,13 +138,11 @@ export default function LibraryPage() {
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
       {/* Page header */}
-      <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        <Box>
-          <Heading as="h1" sx={{ fontSize: 4, m: 0 }}>题库</Heading>
-          <Text sx={{ color: "fg.muted", fontSize: 1 }}>浏览、搜索和管理你的错题集</Text>
-        </Box>
-        {isLoading && <Spinner size="small" />}
-      </Box>
+      <PageHeader
+        title="题库"
+        description="浏览、搜索和管理你的错题集"
+        action={isLoading ? <Spinner size="small" /> : undefined}
+      />
 
       {/* Active Tasks - compact strip */}
       {(activeTaskItems.length > 0 || failedTaskItems.length > 0 || isLoadingActive || isLoadingFailed) && (

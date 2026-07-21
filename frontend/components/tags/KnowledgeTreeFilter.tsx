@@ -1,7 +1,7 @@
 "use client";
 
-import { Box, Button, Label, Spinner, Text } from "@primer/react";
-import { ChevronDownIcon, ChevronRightIcon } from "@primer/octicons-react";
+import { Box, Button, Label, Spinner, Text } from "@/components/ui/primitives";
+import { ChevronDownIcon, ChevronRightIcon } from "@/components/ui/icons";
 
 type ChapterTree = Record<string, Record<string, number>>;
 

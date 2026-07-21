@@ -1,7 +1,7 @@
 "use client";
 
-import { Box, Button, Heading, Text } from "@primer/react";
-import { CpuIcon, SyncIcon } from "@primer/octicons-react";
+import { Box, Button, Heading, Text } from "@/components/ui/primitives";
+import { CpuIcon, SyncIcon } from "@/components/ui/icons";
 import { AgentSettingsRow } from "./AgentSettingsRow";
 import { ErrorBanner } from "../ui/ErrorBanner";
 import { notify } from "@/lib/notify";

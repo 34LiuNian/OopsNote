@@ -5,7 +5,11 @@
 
 from .assets import AssetStore
 from .models import (
+    BatchSegment,
+    BatchSessionRecord,
+    BatchSessionUpdateRequest,
     Problem,
+    QuestionType,
     SearchQuery,
     TagCreateRequest,
     TagDimension,
@@ -16,12 +20,17 @@ from .models import (
     TaskStatus,
 )
 from .search import Searcher
-from .store import TaskStore
+from .store import BatchSessionStore, TaskStore
 from .tags import TagStore
 
 __all__ = [
     "AssetStore",
+    "BatchSegment",
+    "BatchSessionRecord",
+    "BatchSessionStore",
+    "BatchSessionUpdateRequest",
     "Problem",
+    "QuestionType",
     "Searcher",
     "SearchQuery",
     "TagCreateRequest",

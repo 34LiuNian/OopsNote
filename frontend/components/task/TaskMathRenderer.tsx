@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef } from "react";
-import { Box, Spinner, Text } from "@primer/react";
+import { Box, Spinner, Text } from "@/components/ui/primitives";
 import type { TaskResponse } from "@/types/api";
 
 interface TaskMathRendererProps {

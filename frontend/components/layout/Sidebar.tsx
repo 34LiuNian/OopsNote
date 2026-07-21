@@ -1,50 +1,33 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { usePathname } from "next/navigation";
-import { Box, NavList, Text, IconButton } from "@primer/react";
+import { Text } from "@/components/ui/primitives";
 import {
   PlusIcon,
   RepoIcon,
-  TagIcon,
-  GearIcon,
-  PersonIcon,
   BookIcon,
   ChecklistIcon,
-  ThreeBarsIcon,
+  ScanIcon,
   SidebarCollapseIcon,
   SidebarExpandIcon,
-} from "@primer/octicons-react";
+} from "@/components/ui/icons";
 import Link from "next/link";
-import { getCurrentUser, onAuthChanged } from "../../features/auth/store";
 
 const NAV_ITEMS = [
   { href: "/", label: "新建题目", icon: PlusIcon, section: "main" },
+  { href: "/batch-segment", label: "批量扫描", icon: ScanIcon, section: "main" },
   { href: "/library", label: "题库", icon: RepoIcon, section: "main" },
   { href: "/paper-builder", label: "组卷", icon: ChecklistIcon, section: "main" },
-  { href: "/account", label: "账号设置", icon: PersonIcon, section: "main" },
-  { href: "/users", label: "账号管理", icon: PersonIcon, section: "manage" },
-  { href: "/tags", label: "标签管理", icon: TagIcon, section: "manage" },
-  { href: "/settings", label: "设置", icon: GearIcon, section: "manage" },
-  { href: "/debug", label: "Debug", icon: BookIcon, section: "manage" },
+  { href: "/debug", label: "渲染调试", icon: BookIcon, section: "tools" },
 ];
 
 export function Sidebar() {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
-  const [isAdmin, setIsAdmin] = useState(false);
-
-  useEffect(() => {
-    const syncRole = () => {
-      setIsAdmin(getCurrentUser()?.role === "admin");
-    };
-    syncRole();
-    return onAuthChanged(syncRole);
-  }, []);
 
   const mainItems = NAV_ITEMS.filter((i) => i.section === "main");
-  const manageItems = NAV_ITEMS.filter((i) => i.section === "manage");
-  const visibleManageItems = isAdmin ? manageItems : [];
+  const toolItems = NAV_ITEMS.filter((i) => i.section === "tools");
 
   const isActive = (href: string) => {
     if (href === "/") return pathname === "/";
@@ -52,170 +35,46 @@ export function Sidebar() {
   };
 
   return (
-    <Box
-      as="aside"
-      sx={{
-        width: collapsed ? ["100%", 56] : ["100%", 220],
-        bg: "canvas.subtle",
-        borderRight: ["none", "1px solid"],
-        borderRightColor: ["border.muted", "border.muted"],
-        borderBottom: ["1px solid", "none"],
-        borderBottomColor: ["border.muted", "none"],
-        display: ["none", "flex"],
-        flexDirection: "column",
-        flexShrink: 0,
-        position: ["relative", "sticky"],
-        top: 0,
-        height: ["auto", "100vh"],
-        overflowY: ["visible", "auto"],
-        overflowX: "hidden",
-        transition: "width var(--oops-transition-normal)",
-      }}
-    >
-      {/* Logo area */}
-      <Box
+    <aside className={`app-sidebar oops-desktop-sidebar${collapsed ? " is-collapsed" : ""}`}>
+      <button
+        className="app-sidebar__brand"
+        type="button"
         onClick={() => setCollapsed(!collapsed)}
-        sx={{
-          px: collapsed ? 0 : 3,
-          py: 3,
-          display: "flex",
-          alignItems: "center",
-          gap: 2,
-          textDecoration: "none",
-          color: "fg.default",
-          height: 50,
-          cursor: "pointer",
-          justifyContent: collapsed ? "center" : "flex-start",
-          borderBottom: "1px solid",
-          borderColor: "border.muted",
-        }}
+        aria-label={collapsed ? "展开侧栏" : "收起侧栏"}
       >
-        <Box sx={{ display: "flex", alignItems: "center", height: 32 }}>
-          {collapsed ? <ThreeBarsIcon size={28} /> : <RepoIcon size={28} />}
-        </Box>
-        {!collapsed && (
-          <Text sx={{ fontWeight: "bold", fontSize: 5, lineHeight: 1, height: 32, display: "flex", alignItems: "center", fontFamily: "'OopsNoteFont', 'Inter', 'HarmonyOS Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" }}>OopsNote</Text>
-        )}
-      </Box>
+        <span className="app-sidebar__mark" aria-hidden="true" />
+        {!collapsed && <Text>OopsNote</Text>}
+      </button>
 
-      {/* Main nav */}
-      <Box sx={{ flex: 1, py: 2 }}>
-        {collapsed ? (
-          <Box sx={{ display: "flex", flexDirection: "column", gap: "2px", px: 1 }}>
-            {[...mainItems, ...visibleManageItems].map((item) => {
-              const active = isActive(item.href);
-              return (
-                <Box key={item.href} sx={{ display: "flex", justifyContent: "center" }}>
-                  <IconButton
-                    as={Link}
-                    href={item.href}
-                    icon={item.icon}
-                    aria-label={item.label}
-                    variant={active ? "default" : "invisible"}
-                    sx={{ borderRadius: "var(--oops-radius-sm)" }}
-                  />
-                </Box>
-              );
-            })}
-          </Box>
-        ) : (
-          <>
-            <NavList sx={{ px: "6px" }}>
-              {mainItems.map((item) => {
-                const active = isActive(item.href);
-                return (
-                  <Box key={item.href} sx={{ my: "1px" }}>
-                    <NavList.Item
-                      href={item.href}
-                      aria-current={active ? "page" : undefined}
-                      as={Link}
-                      sx={{
-                        whiteSpace: "nowrap",
-                        borderRadius: "var(--oops-radius-sm)",
-                        transition: "background-color var(--oops-transition-fast)",
-                        px: 2,
-                      }}
-                    >
-                      <NavList.LeadingVisual>
-                        <item.icon />
-                      </NavList.LeadingVisual>
-                      {item.label}
-                    </NavList.Item>
-                  </Box>
-                );
-              })}
-            </NavList>
+      <nav className="app-sidebar__nav" aria-label="主导航">
+        {mainItems.map((item) => {
+          const active = isActive(item.href);
+          return (
+            <Link key={item.href} href={item.href} className={`app-sidebar__link${active ? " is-active" : ""}`} aria-current={active ? "page" : undefined} title={collapsed ? item.label : undefined}>
+              <item.icon size={17} strokeWidth={1.9} />
+              {!collapsed && <span>{item.label}</span>}
+            </Link>
+          );
+        })}
 
-            {/* Divider */}
-            <Box sx={{ mx: 3, my: 2, borderTop: "1px solid", borderColor: "border.muted" }} />
+        <div className="app-sidebar__divider" />
+        {!collapsed && <span className="app-sidebar__label">工具</span>}
 
-            {visibleManageItems.length > 0 ? (
-              <>
-                <Text
-                  sx={{
-                    fontSize: "11px",
-                    fontWeight: 600,
-                    color: "fg.muted",
-                    textTransform: "uppercase",
-                    letterSpacing: "0.05em",
-                    px: 3,
-                    mb: 1,
-                    display: "block",
-                  }}
-                >
-                  管理
-                </Text>
+        {toolItems.map((item) => {
+          const active = isActive(item.href);
+          return (
+            <Link key={item.href} href={item.href} className={`app-sidebar__link${active ? " is-active" : ""}`} aria-current={active ? "page" : undefined} title={collapsed ? item.label : undefined}>
+              <item.icon size={17} strokeWidth={1.9} />
+              {!collapsed && <span>{item.label}</span>}
+            </Link>
+          );
+        })}
+      </nav>
 
-                <NavList sx={{ px: "6px" }}>
-                  {visibleManageItems.map((item) => {
-                    const active = isActive(item.href);
-                    return (
-                      <Box key={item.href} sx={{ my: "1px" }}>
-                        <NavList.Item
-                          href={item.href}
-                          aria-current={active ? "page" : undefined}
-                          as={Link}
-                          sx={{
-                            whiteSpace: "nowrap",
-                            borderRadius: "var(--oops-radius-sm)",
-                            transition: "background-color var(--oops-transition-fast)",
-                            px: 2,
-                          }}
-                        >
-                          <NavList.LeadingVisual>
-                            <item.icon />
-                          </NavList.LeadingVisual>
-                          {item.label}
-                        </NavList.Item>
-                      </Box>
-                    );
-                  })}
-                </NavList>
-              </>
-            ) : null}
-          </>
-        )}
-      </Box>
-
-      {/* Collapse toggle at bottom */}
-      <Box
-        onClick={() => setCollapsed(!collapsed)}
-        sx={{
-          px: collapsed ? 0 : 3,
-          py: 2,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: collapsed ? "center" : "flex-end",
-          cursor: "pointer",
-          color: "fg.muted",
-          borderTop: "1px solid",
-          borderColor: "border.muted",
-          "&:hover": { color: "fg.default" },
-          transition: "color var(--oops-transition-fast)",
-        }}
-      >
+      <button className="app-sidebar__collapse" type="button" onClick={() => setCollapsed(!collapsed)} aria-label={collapsed ? "展开侧栏" : "收起侧栏"}>
         {collapsed ? <SidebarExpandIcon size={16} /> : <SidebarCollapseIcon size={16} />}
-      </Box>
-    </Box>
+        {!collapsed && <span>收起侧栏</span>}
+      </button>
+    </aside>
   );
 }

@@ -32,7 +32,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/License-AGPL--3.0-blue" alt="License" />
-  <img src="https://img.shields.io/badge/Phase-1_Complete-green" alt="Phase 1" />
+  <img src="https://img.shields.io/badge/Phase-4_In_Progress-teal" alt="Phase 4 in progress" />
   <img src="https://img.shields.io/github/stars/34LiuNian/OopsNote?logo=github" alt="GitHub Stars" />
 </p>
 
@@ -90,6 +90,15 @@ uv sync
 uv run pytest -v
 ```
 
+### 题目渲染格式
+
+- Markdown：GitHub Flavored Markdown，支持表格、列表、链接和代码块。
+- 数学与化学方程式：KaTeX，化学方程式使用 `\ce{...}`（mhchem）。
+- 分子结构：使用 ```` ```molecule ```` 代码块输入 SMILES 或 MolBlock，由 RDKit.js 渲染；旧的 ```` ```smiles ```` 仍作为兼容别名。
+- TikZ 图形：使用 ```` ```tikz ```` 代码块；浏览器端 TikZJax Worker 优先渲染，超时、中文或不兼容内容回退后端 SVG。
+
+前端依赖安装后会自动运行 `npm run renderers:sync`，把锁定版本的 RDKit、TikZJax Worker、TeX 资源和字体同步到 `frontend/public/vendor/`。不再支持 `chemfig` 代码块。
+
 ### CLI（调试用）
 
 ```bash
@@ -119,8 +128,8 @@ Hermes 配置见 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) 第六章。
 |-------|------|------|
 | 1 | Core 骨架（数据模型/存储/标签/搜索） | ✅ |
 | 2 | Hermes 集成（MCP Server + Skills） | ✅ |
-| 3 | Obsidian 同步 + 搜索 API | 待开始 |
-| 4 | 前端简化 | 待开始 |
+| 3 | Obsidian 同步 + 搜索 API | ✅ |
+| 4 | 前端（含手动批量分割） | 进行中 |
 | 5 | 知识体系 + 智能出卷 | 远期 |
 
 ---
@@ -132,7 +141,9 @@ AGPL-3.0
 ## 🙏 致谢
 
 - [**Hermes Agent**](https://github.com/NousResearch/hermes-agent) — AI 引擎
-- [**Primer**](https://primer.style/) — UI 框架
+- [**Mantine**](https://mantine.dev/) — React 组件与主题系统
+- [**shadcn/ui**](https://ui.shadcn.com/) — 前端视觉语言参考
+- [**Lucide**](https://lucide.dev/) — 图标系统
 - [**imsyy/home**](https://github.com/imsyy/home) — Loading 页参考
 - 标签数据来源：[filatex.cn](https://filatex.cn/) · [wrong-notebook](https://github.com/wttwins/wrong-notebook)
 

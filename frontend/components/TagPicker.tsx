@@ -1,8 +1,8 @@
 "use client";
 
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Box, Label, Spinner, Text, TextInput } from "@primer/react";
-import { XIcon } from "@primer/octicons-react";
+import { Box, Label, Spinner, Text, TextInput } from "@/components/ui/primitives";
+import { XIcon } from "@/components/ui/icons";
 import type { TagDimension, TagDimensionStyle, TagItem } from "@/types/api";
 import { searchTags } from "@/features/tags/api";
 import { sortTagItemsByQuery } from "@/features/tags/ranking";

@@ -1,6 +1,6 @@
 "use client";
 
-import { Box, Text } from "@primer/react";
+import { Box, Text } from "@/components/ui/primitives";
 import { useEffect, useId, useState } from "react";
 
 export function Mermaid({ code }: { code: string }) {

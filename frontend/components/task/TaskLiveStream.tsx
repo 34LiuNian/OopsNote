@@ -1,8 +1,8 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { Box, IconButton, Text } from "@primer/react";
-import { XIcon, PulseIcon } from "@primer/octicons-react";
+import { Box, IconButton, Text } from "@/components/ui/primitives";
+import { XIcon, PulseIcon } from "@/components/ui/icons";
 
 interface TaskLiveStreamProps {
   streamProgress: string[];

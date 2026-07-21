@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { memo } from "react";
-import { Box } from "@primer/react";
+import { Box } from "@/components/ui/primitives";
 import type { ProblemSummary } from "../types/api";
 import { ProblemCard } from "./ProblemCard";
 
@@ -41,8 +41,7 @@ export const ProblemListItem = memo(function ProblemListItem(props: {
       sx={{
         cursor: "pointer",
         borderRadius: 2,
-        outline: selected ? "1px solid" : "none",
-        outlineColor: "accent.fg",
+        outline: selected ? "1px solid var(--fgColor-accent)" : "none",
         backgroundColor: selected ? "accent.subtle" : "transparent",
         transition: "background-color 0.2s ease-in-out",
         "&:hover": {

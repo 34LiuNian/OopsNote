@@ -2,12 +2,14 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
+import { Modal } from "@mantine/core";
 import {
   Box,
+  Button,
   Heading,
   Text,
   Spinner,
-} from "@primer/react";
+} from "@/components/ui/primitives";
 import { fetchJson } from "@/lib/api";
 import type { TaskResponse } from "@/types/api";
 import { TaskActions } from "./task/TaskActions";
@@ -57,6 +59,7 @@ export function TaskLiveView({ taskId }: { taskId: string }) {
   const [isRetrying, setIsRetrying] = useState(false);
   const { effectiveDimensions: tagStyles } = useTagDimensions();
   const [editingKey, setEditingKey] = useState<string>("");
+  const [isScreenshotOpen, setIsScreenshotOpen] = useState(false);
 
   const loadOnce = useCallback(async () => {
     setIsLoading(true);
@@ -234,7 +237,34 @@ export function TaskLiveView({ taskId }: { taskId: string }) {
             onDelete={removeTask}
           />
         </Box>
+        {data?.task.trace && (
+          <Box sx={{ display: "flex", alignItems: "center", gap: 2, flexWrap: "wrap", mt: 3, pt: 3, borderTop: "1px solid", borderColor: "border.muted", color: "fg.muted" }}>
+          <Text sx={{ fontSize: 0, fontWeight: 600 }}>来源</Text>
+          {data.task.trace.kind === "batch_segment" && (
+            <Text sx={{ fontSize: 0 }}>
+              {data.task.trace.source_file_name} · 第 {(data.task.trace.page_index ?? 0) + 1} 页 · 题目 {data.task.trace.question_no}
+            </Text>
+          )}
+          {data.task.trace.kind === "batch_segment" && data.task.trace.source_file_hash && (
+            <Link
+              href={`/batch-segment?session=${encodeURIComponent(data.task.trace.source_file_hash)}&page=${(data.task.trace.page_index ?? 0) + 1}`}
+              className="task-trace-link"
+            >
+              定位到批量扫描
+            </Link>
+          )}
+          <Button size="small" variant="invisible" onClick={() => setIsScreenshotOpen(true)}>
+            {data.task.trace.kind === "batch_segment" ? "查看选框截图" : "查看原图"}
+          </Button>
+          </Box>
+        )}
       </Box>
+
+      {data?.task.trace && (
+        <Modal opened={isScreenshotOpen} onClose={() => setIsScreenshotOpen(false)} title={data.task.trace.kind === "batch_segment" ? "选框截图" : "原图"} centered size="lg">
+          <img className="task-trace-image" src={`/api${data.task.trace.screenshot_path}`} alt={data.task.trace.screenshot_filename ?? "题目图片"} />
+        </Modal>
+      )}
 
       {/* Progress bar */}
       <TaskProgressBar

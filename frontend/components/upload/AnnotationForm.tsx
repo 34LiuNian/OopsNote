@@ -1,6 +1,5 @@
 "use client";
 
-import { useRef, useEffect } from "react";
 import {
     Box,
     Button,
@@ -8,7 +7,7 @@ import {
     TextInput,
     Select,
     Spinner,
-} from "@primer/react";
+} from "@/components/ui/primitives";
 import { TagSelectorRow } from "@/components/TagSelectorRow";
 import type { TagDimensionStyle } from "@/types/api";
 import { SUBJECT_OPTIONS } from "@/config/subjects";
@@ -28,8 +27,8 @@ type AnnotationFormProps = {
     hasFile: boolean;
     showAdvanced: boolean;
     tagStyles?: Record<string, TagDimensionStyle>;
-    difficultyLeftRef?: React.RefObject<HTMLInputElement>;
-    difficultyRightRef?: React.RefObject<HTMLInputElement>;
+    difficultyLeftRef?: React.RefObject<HTMLInputElement | null>;
+    difficultyRightRef?: React.RefObject<HTMLInputElement | null>;
     onSubjectChange: (value: string) => void;
     onQuestionNoChange: (value: string) => void;
     onNotesChange: (value: string) => void;
@@ -44,8 +43,6 @@ type AnnotationFormProps = {
     onSubmit: () => void;
     onSkip: () => void;
 };
-
-const DEFAULT_SUBJECT = "math";
 
 export function AnnotationForm({
     subject,
@@ -78,19 +75,11 @@ export function AnnotationForm({
     onSubmit,
     onSkip,
 }: AnnotationFormProps) {
-    // 调试：监控 ref attach 状态
-    useEffect(() => {
-        console.log('[AnnotationForm] difficultyLeftRef 已 attach:', !!difficultyLeftRef?.current);
-        if (difficultyLeftRef?.current) {
-            console.log('[AnnotationForm] input 元素:', difficultyLeftRef.current);
-        }
-    }, [difficultyLeftRef]);
-
     return (
-        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-            <Box sx={{ display: 'grid', gridTemplateColumns: ['1fr', '1fr 1fr'], gap: 3 }}>
+        <Box className="capture-annotation" sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+            <Box className="capture-annotation__details" sx={{ display: 'grid', gridTemplateColumns: ['1fr', '1fr 1fr'], gap: 3 }}>
                 <FormControl>
-                    <FormControl.Label>难度</FormControl.Label>
+                    <FormControl.Label>分值</FormControl.Label>
                     <Box
                         sx={{
                             display: 'flex',
@@ -109,7 +98,7 @@ export function AnnotationForm({
                         }}
                     >
                         <TextInput
-                            placeholder="题号"
+                            placeholder="得分"
                             value={difficultyLeft}
                             ref={(el) => {
                                 if (el && difficultyLeftRef) {
@@ -162,7 +151,7 @@ export function AnnotationForm({
                             /
                         </Box>
                         <TextInput
-                            placeholder="总题数"
+                            placeholder="总分"
                             value={difficultyRight}
                             onChange={(e) => onDifficultyRightChange(e.target.value)}
                             ref={(el) => {

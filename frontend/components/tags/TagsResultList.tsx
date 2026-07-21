@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Box, Button, Flash, IconButton, Label, Spinner, Text, TextInput } from "@primer/react";
-import { PencilIcon, TrashIcon } from "@primer/octicons-react";
+import { Box, Button, Flash, IconButton, Label, Spinner, Text, TextInput } from "@/components/ui/primitives";
+import { PencilIcon, TrashIcon } from "@/components/ui/icons";
 import type { TagItem } from "@/types/api";
 
 type TagsResultListProps = {

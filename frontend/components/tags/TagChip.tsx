@@ -1,8 +1,8 @@
 "use client";
 
 import { memo } from "react";
-import { Box, Text } from "@primer/react";
-import { XIcon } from "@primer/octicons-react";
+import { Box, Text } from "@/components/ui/primitives";
+import { XIcon } from "@/components/ui/icons";
 import type { TagDimensionStyle } from "../../types/api";
 
 type TagChipProps = {

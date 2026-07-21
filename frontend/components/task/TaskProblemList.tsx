@@ -1,8 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { Box, Button, Heading, IconButton, Label, Text, Tooltip } from "@primer/react";
-import { PencilIcon, CopyIcon, TrashIcon, ChevronDownIcon, ChevronUpIcon } from "@primer/octicons-react";
+import { Box, Button, Heading, IconButton, Label, Text, Tooltip } from "@/components/ui/primitives";
+import { PencilIcon, CopyIcon, TrashIcon, ChevronDownIcon, ChevronUpIcon } from "@/components/ui/icons";
 import type { TagDimensionStyle } from "@/types/api";
 import { MarkdownRenderer } from "../renderers/MarkdownRenderer";
 import { ProblemCard } from "../ProblemCard";
@@ -158,7 +158,9 @@ export function TaskProblemList({
             const errorTagsList = Array.isArray(problem.error_tags) ? problem.error_tags : [];
             const userTagsList = Array.isArray(problem.user_tags) ? problem.user_tags : [];
             const aiKnowledge = tag?.knowledge_points || [];
-            const allTags = [...knowledgeTags, ...errorTagsList, ...userTagsList, ...aiKnowledge];
+            const allTags = Array.from(
+              new Set([...knowledgeTags, ...errorTagsList, ...userTagsList, ...aiKnowledge]),
+            );
 
             return (
               <ProblemCardItem

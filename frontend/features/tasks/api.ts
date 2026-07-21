@@ -5,7 +5,6 @@ import type {
   TaskStatus,
   TasksResponse,
 } from "../../types/api";
-import { API_BASE } from "../../lib/api";
 import { fetchApi } from "../../lib/api";
 
 export type ListTasksParams = {
@@ -34,10 +33,40 @@ function toSearchParams(params?: Record<string, unknown>) {
   return sp;
 }
 
+type CoreTaskSummary = {
+  id: string;
+  status: TaskStatus;
+  subject: string;
+  created_at: string;
+  updated_at?: string;
+  stage?: string | null;
+  stage_message?: string | null;
+  question_no?: string | null;
+  asset?: TasksResponse["items"][number]["asset"];
+};
+
+function normalizeTaskSummary(task: CoreTaskSummary): TasksResponse["items"][number] {
+  return {
+    ...task,
+    updated_at: task.updated_at ?? task.created_at,
+    asset: task.asset ?? null,
+  };
+}
+
 export async function listTasks(params?: ListTasksParams): Promise<TasksResponse> {
   const sp = toSearchParams(params);
   const query = sp.toString();
-  return fetchJson<TasksResponse>(query ? `/tasks?${query}` : "/tasks");
+  const payload = await fetchJson<TasksResponse | CoreTaskSummary[]>(
+    query ? `/tasks?${query}` : "/tasks",
+  );
+
+  // Phase 3 Core returns a bare list; keep the UI contract stable while the
+  // REST surface evolves toward the richer paginated response.
+  if (Array.isArray(payload)) {
+    return { items: payload.map(normalizeTaskSummary) };
+  }
+
+  return { items: Array.isArray(payload.items) ? payload.items : [] };
 }
 
 export async function getTask(taskId: string): Promise<TaskResponse> {

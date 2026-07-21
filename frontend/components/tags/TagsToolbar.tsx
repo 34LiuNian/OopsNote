@@ -1,7 +1,7 @@
 "use client";
 
-import { Box, Button, Label, Select, TextInput } from "@primer/react";
-import { SearchIcon } from "@primer/octicons-react";
+import { Box, Button, Label, Select, TextInput } from "@/components/ui/primitives";
+import { SearchIcon } from "@/components/ui/icons";
 import type { TagDimension } from "@/types/api";
 
 type DimFilter = "all" | TagDimension;

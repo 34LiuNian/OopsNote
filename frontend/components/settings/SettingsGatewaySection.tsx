@@ -1,7 +1,7 @@
 "use client";
 
-import { Box, Button, FormControl, Heading, Label, Text, TextInput, Spinner } from "@primer/react";
-import { CheckCircleFillIcon, PlugIcon, XCircleFillIcon, ZapIcon } from "@primer/octicons-react";
+import { Box, Button, FormControl, Heading, Label, Text, TextInput, Spinner } from "@/components/ui/primitives";
+import { CheckCircleFillIcon, PlugIcon, XCircleFillIcon, ZapIcon } from "@/components/ui/icons";
 import { ErrorBanner } from "../ui/ErrorBanner";
 import { useEffect } from "react";
 import { notify } from "@/lib/notify";

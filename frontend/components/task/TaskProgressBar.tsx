@@ -1,8 +1,8 @@
 "use client";
 
 import { Fragment } from "react";
-import { Box, Text, Spinner, Octicon } from "@primer/react";
-import { CheckIcon, XIcon, SkipIcon } from "@primer/octicons-react";
+import { Box, Text, Spinner, Octicon } from "@/components/ui/primitives";
+import { CheckIcon, XIcon, SkipIcon } from "@/components/ui/icons";
 import { PROGRESS_STEPS, UseTaskProgressResult } from "@/hooks/useTaskProgress";
 
 interface TaskProgressBarProps {

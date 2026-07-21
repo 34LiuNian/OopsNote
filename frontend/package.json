@@ -3,38 +3,44 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev --webpack -H 0.0.0.0",
+    "dev": "next dev --turbopack -H 0.0.0.0",
     "build": "next build --webpack",
     "start": "next start",
-    "lint": "eslint . --ext .ts,.tsx"
+    "lint": "eslint . --ext .ts,.tsx",
+    "test:e2e": "playwright test",
+    "renderers:sync": "node scripts/sync-renderer-assets.mjs",
+    "postinstall": "npm run renderers:sync"
   },
   "dependencies": {
     "@ducanh2912/next-pwa": "^10.2.9",
-    "@emotion/is-prop-valid": "^1.4.0",
-    "@primer/octicons-react": "^19.21.1",
-    "@primer/react": "^36.0.0",
+    "@mantine/core": "^9.4.1",
+    "@mantine/hooks": "^9.4.1",
+    "@rdkit/rdkit": "^2025.3.4-1.0.0",
     "@tanstack/react-query": "^5.90.21",
+    "buffer": "^6.0.3",
+    "esbuild": "^0.28.1",
+    "isomorphic-tikzjax": "^0.1.1",
     "katex": "^0.16.22",
+    "lucide-react": "^0.468.0",
     "mermaid": "^10.9.3",
     "next": "^16.1.6",
-    "react": "18.2.0",
-    "react-dom": "18.2.0",
-    "react-is": "^19.2.4",
+    "pdfjs-dist": "^4.10.38",
+    "prop-types": "^15.8.1",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
     "react-katex": "^3.1.0",
     "react-markdown": "^10.1.0",
     "rehype-katex": "^7.0.1",
     "remark-breaks": "^4.0.0",
     "remark-gfm": "^4.0.1",
     "remark-math": "^6.0.0",
-    "sileo": "^0.1.3",
-    "smiles-drawer": "^2.1.1",
-    "styled-components": "^5.3.11"
+    "sileo": "^0.1.3"
   },
   "devDependencies": {
+    "@playwright/test": "^1.61.1",
     "@types/node": "24.10.1",
-    "@types/react": "18.3.12",
-    "@types/react-dom": "18.3.5",
-    "@types/styled-components": "^5.1.36",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
     "typescript": "5.6.3"
   }
 }

@@ -1,8 +1,8 @@
 "use client";
 
 import { memo } from "react";
-import { Box, Button, IconButton, Tooltip } from "@primer/react";
-import { SyncIcon, TrashIcon, XCircleIcon } from "@primer/octicons-react";
+import { Box, Button, IconButton, Tooltip } from "@/components/ui/primitives";
+import { SyncIcon, TrashIcon, XCircleIcon } from "@/components/ui/icons";
 
 type TaskActionsProps = {
   status?: string | null;

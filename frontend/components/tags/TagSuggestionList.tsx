@@ -1,7 +1,7 @@
 "use client";
 
 import { memo, useRef, useEffect } from "react";
-import { Box, Text, Spinner } from "@primer/react";
+import { Box, Text, Spinner } from "@/components/ui/primitives";
 import type { TagDimensionStyle } from "@/types/api";
 
 type SuggestionItem =

@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Box, Text, ButtonGroup, Button } from "@primer/react";
-import { CodeIcon, EyeIcon } from "@primer/octicons-react";
+import { Box, Text, ButtonGroup, Button } from "@/components/ui/primitives";
+import { CodeIcon, EyeIcon } from "@/components/ui/icons";
 import { MarkdownRenderer } from "./MarkdownRenderer";
 
 function useThrottledValue<T>(value: T, delayMs: number): T {

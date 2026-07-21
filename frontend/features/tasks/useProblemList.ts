@@ -35,10 +35,5 @@ export function useProblemList(params?: ListProblemsParams): UseProblemListState
     void refresh();
   }, [refresh, paramsKey]);
 
-  return {
-    items,
-    isLoading,
-    error,
-    refresh,
-  };
+  return { items, isLoading, error, refresh };
 }

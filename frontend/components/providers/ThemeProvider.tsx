@@ -9,7 +9,8 @@ import React, {
   useRef,
   useState,
 } from "react";
-import { ThemeProvider as PrimerThemeProvider, BaseStyles } from "@primer/react";
+import { MantineProvider } from "@mantine/core";
+import { oopsTheme } from "@/theme";
 
 export type ThemePreference = "system" | "light" | "dark";
 export type ResolvedTheme = "light" | "dark";
@@ -25,26 +26,10 @@ type ThemeContextValue = {
 const ThemeContext = createContext<ThemeContextValue | null>(null);
 
 function getSystemTheme(): ResolvedTheme {
-  if (typeof window === "undefined") return "dark";
+  if (typeof window === "undefined") return "light";
   return window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches
     ? "dark"
     : "light";
-}
-
-function readStoredPreference(): ThemePreference {
-  if (typeof window === "undefined") return "system";
-  const raw = window.localStorage.getItem(STORAGE_KEY);
-  if (raw === "light" || raw === "dark" || raw === "system") return raw;
-  return "system";
-}
-
-function readCookiePreference(): ThemePreference {
-  if (typeof document === "undefined") return "system";
-  const escaped = STORAGE_KEY.replace(/[-.$?*|{}()\[\]\\/+^]/g, "\\$&");
-  const m = document.cookie.match(new RegExp(`(?:^|;\\s*)${escaped}=([^;]*)`));
-  const raw = m ? decodeURIComponent(m[1]) : null;
-  if (raw === "light" || raw === "dark" || raw === "system") return raw;
-  return "system";
 }
 
 function writePreferenceCookie(value: ThemePreference) {
@@ -56,15 +41,7 @@ function writePreferenceCookie(value: ThemePreference) {
 function applyDocumentColorScheme(resolved: ResolvedTheme) {
   if (typeof document === "undefined") return;
   const root = document.documentElement;
-  
-  // Force remove any existing color scheme first to ensure clean transition
-  root.removeAttribute('data-oopsnote-color-scheme');
-  root.style.removeProperty('color-scheme');
-  
-  // Force reflow to ensure the removal is applied
-  void root.offsetHeight;
-  
-  // Then apply the new color scheme
+  root.dataset.mantineColorScheme = resolved;
   root.dataset.oopsnoteColorScheme = resolved;
   root.style.colorScheme = resolved;
 }
@@ -76,13 +53,8 @@ export function ThemeProvider({
   children: React.ReactNode;
   initialPreference?: ThemePreference;
 }) {
-  const [preference, setPreferenceState] = useState<ThemePreference>(() => initialPreference ?? "system");
-  const [resolvedTheme, setResolvedTheme] = useState<ResolvedTheme>(() => {
-    // Initialize based on initialPreference to match SSR
-    if (initialPreference === "light") return "light";
-    if (initialPreference === "dark") return "dark";
-    return "dark"; // Default fallback
-  });
+  const [preference] = useState<ThemePreference>("system");
+  const [resolvedTheme, setResolvedTheme] = useState<ResolvedTheme>(getSystemTheme);
 
   const mqlRef = useRef<MediaQueryList | null>(null);
   const preferenceRef = useRef<ThemePreference>("system");
@@ -98,18 +70,13 @@ export function ThemeProvider({
   );
 
   useEffect(() => {
-    const stored = readStoredPreference();
-    const cookiePref = readCookiePreference();
-    const effective = stored !== "system" ? stored : cookiePref;
-
     if (typeof window !== "undefined") {
-      window.localStorage.setItem(STORAGE_KEY, effective);
+      window.localStorage.removeItem(STORAGE_KEY);
     }
-    writePreferenceCookie(effective);
+    writePreferenceCookie("system");
 
-    setPreferenceState(effective);
-    preferenceRef.current = effective;
-    sync(effective);
+    preferenceRef.current = "system";
+    sync("system");
     isInitialMountRef.current = false;
 
     if (typeof window === "undefined" || !window.matchMedia) return;
@@ -133,14 +100,13 @@ export function ThemeProvider({
   }, [sync]);
 
   const setPreference = useCallback(
-    (value: ThemePreference) => {
-      setPreferenceState(value);
-      preferenceRef.current = value;
+    (_value: ThemePreference) => {
+      preferenceRef.current = "system";
       if (typeof window !== "undefined") {
-        window.localStorage.setItem(STORAGE_KEY, value);
+        window.localStorage.removeItem(STORAGE_KEY);
       }
-      writePreferenceCookie(value);
-      sync(value);
+      writePreferenceCookie("system");
+      sync("system");
     },
     [sync]
   );
@@ -150,23 +116,11 @@ export function ThemeProvider({
     [preference, resolvedTheme, setPreference]
   );
 
-  // Use resolvedTheme for Primer colorMode to ensure consistency
-  // When preference is "system", use "auto" to let Primer follow system
-  // When preference is "light" or "dark", use the resolved theme directly
-  const primerColorMode = useMemo(() => {
-    if (preference === "system") {
-      return "auto";
-    }
-    return resolvedTheme === "light" ? "day" : "night";
-  }, [preference, resolvedTheme]);
-
   return (
     <ThemeContext.Provider value={value}>
-      <PrimerThemeProvider colorMode={primerColorMode} preventSSRMismatch>
-        <BaseStyles style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
-          {children}
-        </BaseStyles>
-      </PrimerThemeProvider>
+      <MantineProvider theme={oopsTheme} forceColorScheme={resolvedTheme} withCssVariables withGlobalClasses>
+        {children}
+      </MantineProvider>
     </ThemeContext.Provider>
   );
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import { memo, useState, useCallback } from "react";
-import { Box, TextInput } from "@primer/react";
+import { Box, TextInput } from "@/components/ui/primitives";
 import { TagSuggestionList } from "./TagSuggestionList";
 
 type SuggestionItem =

@@ -1,5 +1,17 @@
 export type TaskStatus = "pending" | "processing" | "completed" | "failed" | "cancelled";
 
+export interface SourceTrace {
+  kind: "single_image" | "batch_segment";
+  screenshot_path: string;
+  screenshot_filename?: string;
+  source_file_hash?: string;
+  source_file_name?: string;
+  source_file_path?: string;
+  page_index?: number;
+  question_no?: number;
+  segment_id?: string;
+}
+
 export interface TaskResponse {
   task: {
     id: string;
@@ -19,6 +31,7 @@ export interface TaskResponse {
     payload?: {
       difficulty?: string | null;
     } | null;
+    trace?: SourceTrace | null;
     problems: Array<{
       problem_id: string;
       question_no?: string | null;
@@ -35,6 +48,7 @@ export interface TaskResponse {
       knowledge_tags?: string[];
       error_tags?: string[];
       user_tags?: string[];
+      trace?: SourceTrace | null;
       problem_text: string;
       options?: Array<{
         key: string;
@@ -90,6 +104,7 @@ export interface ProblemSummary {
   knowledge_tags?: string[];
   error_tags?: string[];
   user_tags?: string[];
+  trace?: SourceTrace | null;
   created_at: string;
 }
 
@@ -223,81 +238,4 @@ export interface TagDimensionsResponse {
 
 export interface TagDimensionsUpdateRequest {
   dimensions: Record<string, TagDimensionStyle>;
-}
-
-export type UserRole = "admin" | "member";
-
-export interface UserPublic {
-  username: string;
-  role: UserRole;
-  nickname?: string | null;
-  avatar_url?: string | null;
-  is_active?: boolean;
-}
-
-export interface LoginRequest {
-  username: string;
-  password: string;
-}
-
-export interface RegisterRequest {
-  username: string;
-  password: string;
-  nickname?: string;
-  avatar_url?: string;
-}
-
-export interface UserProfileUpdateRequest {
-  username?: string;
-  nickname?: string;
-  avatar_url?: string;
-}
-
-export interface PasswordUpdateRequest {
-  current_password: string;
-  new_password: string;
-}
-
-export interface AdminPasswordResetRequest {
-  new_password: string;
-}
-
-export interface AdminUserUpdateRequest {
-  role?: UserRole;
-  is_active?: boolean;
-}
-
-export interface AuthTokenResponse {
-  access_token: string;
-  refresh_token: string;
-  token_type: string;
-  expires_in: number;
-  refresh_expires_in: number;
-  user: UserPublic;
-}
-
-export interface RefreshTokenRequest {
-  refresh_token: string;
-}
-
-export interface RefreshTokenResponse {
-  access_token: string;
-  token_type: string;
-  expires_in: number;
-}
-
-export interface AuthMeResponse {
-  user: UserPublic;
-}
-
-export interface UserListResponse {
-  items: UserPublic[];
-}
-
-export interface RegistrationSettingsResponse {
-  enabled: boolean;
-}
-
-export interface RegistrationSettingsUpdateRequest {
-  enabled: boolean;
 }

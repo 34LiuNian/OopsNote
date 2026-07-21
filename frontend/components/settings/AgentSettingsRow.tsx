@@ -1,6 +1,6 @@
 "use client";
 
-import { Box, FormControl, Select, Text, TextInput, ToggleSwitch } from "@primer/react";
+import { Box, FormControl, Select, Text, TextInput, ToggleSwitch } from "@/components/ui/primitives";
 
 type AgentDescriptor = {
   key: string;

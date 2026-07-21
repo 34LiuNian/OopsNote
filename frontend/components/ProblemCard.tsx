@@ -1,7 +1,7 @@
 "use client";
 
 import { memo } from "react";
-import { Box, Text } from "@primer/react";
+import { Box, Text } from "@/components/ui/primitives";
 import { ProblemContent } from "./ProblemContent";
 
 type ProblemOption = {

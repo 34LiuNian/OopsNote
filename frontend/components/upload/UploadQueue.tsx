@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Box, Button, Checkbox, Label, Text } from "@primer/react";
+import { Box, Button, Text } from "@/components/ui/primitives";
+import { FolderOpenIcon, ImageIcon, UploadIcon } from "@/components/ui/icons";
 
 type UploadQueueProps = {
   files: File[];
@@ -9,8 +10,8 @@ type UploadQueueProps = {
   isLoading: boolean;
   remaining?: number;
   autoRecognize: boolean;
-  singleInputRef: React.RefObject<HTMLInputElement>;
-  folderInputRef: React.RefObject<HTMLInputElement>;
+  singleInputRef: React.RefObject<HTMLInputElement | null>;
+  folderInputRef: React.RefObject<HTMLInputElement | null>;
   onSinglePicked: (e: React.ChangeEvent<HTMLInputElement>) => void;
   onFolderPicked: (e: React.ChangeEvent<HTMLInputElement>) => void;
   onFilesDropped: (files: File[]) => void;
@@ -70,18 +71,7 @@ export function UploadQueue({
 
   return (
     <Box
-      sx={{
-        display: 'flex',
-        gap: 2,
-        alignItems: 'center',
-        flexWrap: 'wrap',
-        p: 2,
-        border: '1px dashed',
-        borderColor: isDragOver ? 'accent.fg' : 'border.default',
-        borderRadius: "var(--oops-radius-sm)",
-        bg: isDragOver ? 'accent.subtle' : 'canvas.default',
-        transition: 'all var(--oops-transition-fast)',
-      }}
+      className={`capture-dropzone${isDragOver ? " is-dragging" : ""}`}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
@@ -101,35 +91,43 @@ export function UploadQueue({
         onChange={onFolderPicked}
         style={{ display: 'none' }}
       />
-      <Button
-        variant="primary"
-        onClick={() => singleInputRef.current?.click()}
-        disabled={isLoading}
-      >
-        拍照 / 选择图片
-      </Button>
-      <Button
-        onClick={() => folderInputRef.current?.click()}
-        disabled={isLoading}
-        variant="invisible"
-      >
-        导入文件夹
-      </Button>
-      {files.length > 0 && (
-        <Box className="oops-badge oops-badge-accent">
-          剩余 {remainingCount} / {files.length}
-        </Box>
-      )}
-      <Label sx={{ color: 'fg.muted', fontWeight: 400 }}>
-        或拖拽图片到这里
-      </Label>
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, ml: ['0', 'auto'] }}>
-        <Checkbox
+      <Box className="capture-dropzone__icon" aria-hidden="true">
+        <ImageIcon size={20} />
+      </Box>
+      <Box className="capture-dropzone__body">
+        <Text className="capture-dropzone__title">导入题目图片</Text>
+        <Text className="capture-dropzone__hint">支持多选、拖放或相册拍照</Text>
+      </Box>
+      <Box className="capture-dropzone__actions">
+        <Button variant="primary" onClick={() => singleInputRef.current?.click()} disabled={isLoading}>
+          <UploadIcon size={16} />
+          选择图片
+        </Button>
+        <Button onClick={() => folderInputRef.current?.click()} disabled={isLoading} variant="invisible">
+          <FolderOpenIcon size={16} />
+          文件夹
+        </Button>
+      </Box>
+      <Box className="capture-dropzone__footer">
+        {files.length > 1 ? (
+          <Box className="capture-file-navigation">
+            <button type="button" onClick={() => onIndexChange(Math.max(0, index - 1))} disabled={isLoading || index === 0}>上一张</button>
+            <Text>{index + 1} / {files.length}</Text>
+            <button type="button" onClick={() => onIndexChange(Math.min(files.length - 1, index + 1))} disabled={isLoading || index === files.length - 1}>下一张</button>
+          </Box>
+        ) : files.length > 0 ? (
+          <Box className="oops-badge oops-badge-muted">待处理 {remainingCount} / {files.length}</Box>
+        ) : <span />}
+        <label className="capture-auto-recognize">
+          <input
+            className="capture-auto-recognize__input"
+            type="checkbox"
           checked={autoRecognize}
           onChange={(event) => onAutoRecognizeChange(event.target.checked)}
           disabled={isLoading}
-        />
-        <Text sx={{ fontSize: 1, color: 'fg.muted' }}>导入后自动识别并入队</Text>
+          />
+          <Text>导入后自动入队</Text>
+        </label>
       </Box>
     </Box>
   );

@@ -1,11 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Box, Button, FormControl, Spinner, Text, TextInput, Textarea } from "@primer/react";
+import { Box, Button, FormControl, Spinner, Text, TextInput, Textarea } from "@/components/ui/primitives";
 import { notify } from "@/lib/notify";
 import type { TagDimensionStyle } from "../types/api";
 import { compileTikzToSvg, overrideProblem } from "../features/tasks";
 import { TagPicker } from "./TagPicker";
+import { SvgMarkup } from "./renderers/SvgMarkup";
 
 type OptionDraft = {
   id: string;
@@ -344,8 +345,9 @@ export function ProblemEditPanel({ taskId, problem, tagStyles, onClose, onSaved 
                 bg: "canvas.subtle",
                 "& svg": { maxWidth: "100%", height: "auto" },
               }}
-              dangerouslySetInnerHTML={{ __html: diagramSvg }}
-            />
+            >
+              <SvgMarkup svg={diagramSvg} label="TikZ 预览" />
+            </Box>
           ) : null}
 
           {diagramCompileError ? (

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Box, Text } from "@primer/react";
+import { Box, Text } from "@/components/ui/primitives";
 
 export type OptionItem = {
   key: string;
@@ -11,7 +11,7 @@ export type OptionItem = {
 export function OptionsList(props: {
   options: OptionItem[];
   itemKeyPrefix: string;
-  renderOptionText: (opt: OptionItem, forceWrap: boolean) => JSX.Element;
+  renderOptionText: (opt: OptionItem, forceWrap: boolean) => React.ReactElement;
 }) {
   const { options, itemKeyPrefix, renderOptionText } = props;
   const containerRef = useRef<HTMLDivElement | null>(null);

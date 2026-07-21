@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Optional
+from typing import Any, Optional
 from uuid import uuid4
 
 from pydantic import BaseModel, Field
@@ -66,6 +66,7 @@ class TaskCreateRequest(BaseModel):
     asset_base64: Optional[str] = None          # 图片 base64
     asset_path: Optional[str] = None            # 本地 PDF/图片路径
     tags: list[str] = Field(default_factory=list)
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 class TaskRecord(BaseModel):
@@ -76,9 +77,52 @@ class TaskRecord(BaseModel):
     status: TaskStatus = TaskStatus.PENDING
     problems: list[Problem] = Field(default_factory=list)
     asset_path: Optional[str] = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     last_error: Optional[str] = None
+
+
+# ── 批量扫描会话 ────────────────────────────────────────
+
+class BatchSegment(BaseModel):
+    """手动框选区域。坐标相对于单页图片的宽高，范围为 0 到 1。"""
+
+    id: str = Field(default_factory=lambda: uuid4().hex)
+    page_index: int = Field(ge=0)
+    x: float = Field(ge=0, le=1)
+    y: float = Field(ge=0, le=1)
+    width: float = Field(gt=0, le=1)
+    height: float = Field(gt=0, le=1)
+    question_no: Optional[int] = Field(default=None, ge=1)
+    status: str = "pending"
+    task_id: Optional[str] = None
+    problem_ids: list[str] = Field(default_factory=list)
+    error: Optional[str] = None
+
+
+class BatchSessionRecord(BaseModel):
+    """按原始文件 SHA-256 去重的 Web 手动分割会话。"""
+
+    file_hash: str
+    filename: str
+    mime_type: str = "application/pdf"
+    asset_path: str
+    page_count: int = 0
+    subject: str = "auto"
+    notes: str = ""
+    active_page: int = 0
+    segments: list[BatchSegment] = Field(default_factory=list)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class BatchSessionUpdateRequest(BaseModel):
+    page_count: Optional[int] = Field(default=None, ge=0)
+    subject: Optional[str] = None
+    notes: Optional[str] = None
+    active_page: Optional[int] = Field(default=None, ge=0)
+    segments: Optional[list[BatchSegment]] = None
 
 
 # ── 标签 ──────────────────────────────────────────────

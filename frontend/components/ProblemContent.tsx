@@ -1,11 +1,12 @@
 "use client";
 
-import { Box } from "@primer/react";
-import { Button, Spinner } from "@primer/react";
-import { Text } from "@primer/react";
+import { Box } from "@/components/ui/primitives";
+import { Button, Spinner } from "@/components/ui/primitives";
+import { Text } from "@/components/ui/primitives";
 import { InlineMath } from "react-katex";
 import { MarkdownRenderer } from "./renderers/MarkdownRenderer";
-import { LatexAssetRenderer } from "./renderers/LatexAssetRenderer";
+import { SvgMarkup } from "./renderers/SvgMarkup";
+import { TikzRenderer } from "./renderers/TikzRenderer";
 import { OptionsList } from "./ui/OptionsList";
 
 type ProblemOption = {
@@ -87,15 +88,11 @@ export function ProblemContent({
                 bg: "canvas.subtle",
                 "& svg": { maxWidth: "100%", height: "auto" },
               }}
-              dangerouslySetInnerHTML={{ __html: diagramSvg }}
-            />
+            >
+              <SvgMarkup svg={diagramSvg} label="题目图形" />
+            </Box>
           ) : diagramKind === "tikz" && diagramTikzSource ? (
-            <LatexAssetRenderer
-              kind="tikz"
-              content={diagramTikzSource}
-              loadingLabel="图形渲染中..."
-              errorLabel="图形渲染失败"
-            />
+            <TikzRenderer code={diagramTikzSource} />
           ) : null}
 
           {(diagramRenderStatus === "failed" || diagramNeedsReview) && (

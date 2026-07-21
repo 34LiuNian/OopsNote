@@ -1,6 +1,6 @@
 "use client";
 
-import { Box, Spinner, Text } from "@primer/react";
+import { Box, Spinner, Text } from "@/components/ui/primitives";
 
 /**
  * 统一的加载动画组件

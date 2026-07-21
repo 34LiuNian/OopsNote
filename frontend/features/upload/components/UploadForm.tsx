@@ -1,14 +1,15 @@
 "use client";
 
 import { useCallback, useState, useRef, useEffect } from "react";
-import { Box, Heading, Text } from "@primer/react";
+import { Box, Text } from "@/components/ui/primitives";
 import { useTagDimensions } from "@/features/tags";
 import { useApiError } from "@/hooks/useApiError";
 import { createUploadTaskAndProcess } from "../api";
-import { ImagePreview, type ImagePreviewHandle } from "@/components/upload/ImagePreview";
+import { ImagePreview } from "@/components/upload/ImagePreview";
 import { notify } from "@/lib/notify";
 import { AnnotationForm } from "@/components/upload/AnnotationForm";
 import { UploadQueue } from "@/components/upload/UploadQueue";
+import { PageHeader } from "@/components/layout/PageHeader";
 
 const DEFAULT_SUBJECT = "auto";
 
@@ -39,18 +40,13 @@ export function UploadForm() {
   const folderInputRef = useRef<HTMLInputElement>(null);
   const difficultyLeftRef = useRef<HTMLInputElement>(null);
   const difficultyRightRef = useRef<HTMLInputElement>(null);
-  const imagePreviewRef = useRef<ImagePreviewHandle | null>(null);
 
   const currentFile = files[index] ?? null;
   const remaining = files.length - index;
-
   useEffect(() => {
-    console.log('[UploadForm] index 变化:', { index, filesLength: files.length, hasRef: !!difficultyLeftRef.current });
     if (files.length > 0 && index < files.length) {
       const timer = setTimeout(() => {
-        console.log('[UploadForm] 尝试聚焦难度输入框，ref 存在:', !!difficultyLeftRef.current);
         difficultyLeftRef.current?.focus();
-        console.log('[UploadForm] 聚焦完成，当前 activeElement:', document.activeElement?.tagName);
       }, 50);
       return () => clearTimeout(timer);
     }
@@ -153,9 +149,7 @@ export function UploadForm() {
       }
       const difficultyValue = leftScore && rightScore ? `${leftScore}/${rightScore}` : undefined;
 
-      const edited = await imagePreviewRef.current?.exportImage();
-      const sourceBlob = edited?.blob ?? currentFile;
-      const optimizedBlob = await optimizeImageBlob(sourceBlob);
+      const optimizedBlob = await optimizeImageBlob(currentFile);
       const imageBase64 = await convertFileToBase64(optimizedBlob);
 
       const payload = {
@@ -223,22 +217,13 @@ export function UploadForm() {
   }, [autoRecognize, autoRecognizedKey, currentFile, handleSubmitAndQueue, index, isLoading]);
 
   return (
-    <Box sx={{ display: 'flex', flexDirection: ['column', 'column', 'row'], gap: 0, height: '100%' }}>
-      <Box
-        sx={{
-          flex: '1 1 0',
-          minWidth: 0,
-          pr: [0, 0, 4],
-          pb: [4, 4, 0],
-          gap: 3,
-          display: 'flex',
-          flexDirection: 'column',
-        }}
-      >
-        <Box>
-          <Heading as="h1" sx={{ fontSize: 4, m: 0 }}>新建题目</Heading>
-          <Text sx={{ color: "fg.muted", fontSize: 1 }}>上传手稿图片，AI 自动识别并解答</Text>
-        </Box>
+    <Box className="capture-page">
+      <Box className="capture-workbench">
+        <PageHeader
+          title="新建题目"
+          description="导入单题图片，补充必要信息后提交处理"
+          action={lastTaskId ? <Box className="oops-badge oops-badge-success">已加入队列</Box> : undefined}
+        />
 
         <UploadQueue
           files={files}
@@ -256,7 +241,13 @@ export function UploadForm() {
           onAutoRecognizeChange={setAutoRecognize}
         />
 
-        <Box className="oops-card" sx={{ p: 3 }}>
+        <Box className="capture-metadata">
+          <Box className="capture-section-heading">
+            <Box>
+              <Text className="capture-section-title">题目信息</Text>
+              <Text className="capture-section-caption">未填写的项目将由识别结果补全</Text>
+            </Box>
+          </Box>
           <AnnotationForm
             subject={subject}
             onSubjectChange={setSubject}
@@ -289,25 +280,15 @@ export function UploadForm() {
             hasFile={!!currentFile}
           />
         </Box>
+        {error && <Text className="capture-error" role="alert">{error}</Text>}
       </Box>
 
-      <Box
-        sx={{
-          flex: '0 0 50%',
-          width: '50%',
-          pl: [0, 0, 4],
-          pt: [4, 4, 2],
-          pb: [0, 0, 2],
-          display: ['none', 'none', 'flex'],
-          flexDirection: 'column',
-          position: "sticky",
-          top: "50px",
-          height: 'calc(100vh - 100px)',
-          alignSelf: "flex-start",
-        }}
-      >
-        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
-          <Text sx={{ fontWeight: 600, fontSize: 2 }}>图片预览</Text>
+      <Box className="capture-preview-panel">
+        <Box className="capture-preview-panel__header">
+          <Box>
+            <Text className="capture-section-title">图片预览</Text>
+            <Text className="capture-section-caption">核对导入图片与题目内容</Text>
+          </Box>
           {files.length > 0 && (
             <Box className="oops-badge oops-badge-muted">
               {Math.min(index + 1, files.length)} / {files.length}
@@ -316,22 +297,14 @@ export function UploadForm() {
         </Box>
 
         {!currentFile ? (
-          <Box
-            className="oops-empty-state"
-            sx={{
-              flex: 1,
-              border: '2px dashed',
-              borderColor: 'border.default',
-              borderRadius: "var(--oops-radius-md)",
-              minHeight: 300,
-            }}
-          >
-            <Text as="p" sx={{ fontWeight: 600 }}>等待导入图片</Text>
-            <Text as="p" sx={{ fontSize: 1 }}>从左侧选择拍照/多图/文件夹导入</Text>
+          <Box className="capture-preview-empty">
+            <Box className="capture-preview-empty__mark" aria-hidden="true">+</Box>
+            <Text className="capture-preview-empty__title">等待导入图片</Text>
+            <Text>从左侧选择图片，或将文件拖入导入区域</Text>
           </Box>
         ) : (
-          <Box className="oops-card" sx={{ overflow: "hidden", flex: 1 }}>
-            <ImagePreview ref={imagePreviewRef} file={currentFile} />
+          <Box className="capture-preview-canvas">
+            <ImagePreview file={currentFile} />
           </Box>
         )}
       </Box>

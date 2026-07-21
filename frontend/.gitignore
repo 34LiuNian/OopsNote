@@ -4,3 +4,14 @@ out
 .env
 .env.*
 !.env.example
+
+# Local verification artifacts
+.artifacts/
+.codex-*.log
+test-results/
+playwright-report/
+coverage/
+.turbo/
+
+# Recreated by scripts/sync-renderer-assets.mjs during npm install
+public/vendor/

@@ -1,14 +1,15 @@
 "use client";
 
-import { Box } from "@primer/react";
+import { Box } from "@/components/ui/primitives";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkBreaks from "remark-breaks";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
+import "katex/contrib/mhchem";
 import { Mermaid } from "./Mermaid";
-import { Smiles } from "./Smiles";
-import { Chemfig } from "./Chemfig";
+import { MoleculeRenderer } from "./MoleculeRenderer";
+import { TikzRenderer } from "./TikzRenderer";
 import { useEffect, useMemo, useRef } from "react";
 
 export function MarkdownRenderer({ text, fontSize }: { text: string; fontSize?: number }) {
@@ -97,9 +98,6 @@ export function MarkdownRenderer({ text, fontSize }: { text: string; fontSize?: 
   }, [text]);
 
   useEffect(() => {
-    // We ignore TypeScript errors for this dynamic import since katex doesn't have proper types for it
-    // @ts-ignore
-    void import("katex/contrib/mhchem");
     // Load additional KaTeX extensions that might be needed for array environments
     // @ts-ignore
     void import("katex/dist/contrib/auto-render");
@@ -134,7 +132,7 @@ export function MarkdownRenderer({ text, fontSize }: { text: string; fontSize?: 
             const className = (child as { props?: { className?: string } })?.props?.className || "";
             const language = className.replace("language-", "").trim();
 
-            if (language === "smiles" || language === "mermaid" || language === "chemfig") {
+            if (["molecule", "smiles", "mermaid", "tikz"].includes(language)) {
               return (
                 <Box sx={{ m: 0, mb: 2 }}>
                   {children}
@@ -171,12 +169,12 @@ export function MarkdownRenderer({ text, fontSize }: { text: string; fontSize?: 
               return <Mermaid code={raw} />;
             }
 
-            if (language === "smiles") {
-              return <Smiles code={raw} />;
+            if (language === "molecule" || language === "smiles") {
+              return <MoleculeRenderer code={raw} />;
             }
 
-            if (language === "chemfig") {
-              return <Chemfig code={raw} />;
+            if (language === "tikz") {
+              return <TikzRenderer code={raw} />;
             }
 
             return (

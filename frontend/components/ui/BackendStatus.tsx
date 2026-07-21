@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Box, Text, Tooltip } from "@primer/react";
+import { Box, Text, Tooltip } from "@/components/ui/primitives";
 
 import { API_BASE } from "@/lib/api";
 

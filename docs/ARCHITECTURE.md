@@ -257,6 +257,18 @@ hermes --profile oopsnote
 
 不做：登录、注册、账户、模型配置。
 
+#### 前端实现约束
+
+- **运行时：** Next.js 16 App Router + React 19，前端只通过 `/api` 反向代理访问 Core REST API。
+- **组件系统：** Mantine 9 提供组件、表单控件、主题与可访问性基础；不再依赖 Primer React。
+- **视觉语言：** 借鉴 shadcn/ui 的中性表面、低阴影、细边框和紧凑层级，但不引入复制式组件维护和 Tailwind 依赖。
+- **主题入口：** `frontend/theme.ts` 定义颜色、字体、圆角和间距；`frontend/app/globals.css` 只放全局 token、渲染器和布局级样式。
+- **迁移边界：** `frontend/components/ui/primitives.tsx` 只负责把存量 `sx` 布局语义映射到 Mantine，不包含业务状态和 API 调用；新组件优先直接使用 Mantine API 或 CSS Modules。
+- **图标：** 统一使用 Lucide，经 `frontend/components/ui/icons.tsx` 暴露业务语义名称。
+- **响应式：** 桌面端为侧栏 + 工作区，移动端为底部导航；上传、题库、任务详情共享同一 AppShell。
+- **状态管理：** TanStack Query 管理服务端状态，本地交互继续使用 React state；不得在 UI 层复制 Core 数据模型。
+- **产品边界：** 本地单人工具不做认证。API 客户端不得注入 token、刷新会话或跳转登录页。
+
 ### 入口三：CLI（调试/开发用）
 
 ```bash
@@ -589,10 +601,10 @@ OopsNote 改存储格式、换 LaTeX 引擎 —— Hermes skill 不受影响。
 | `app/repository.py`（精简） | JSON 存储 |
 | `app/tags.py` | 标签库 |
 | `app/api/tasks.py`（精简） | 前端 REST API |
-| `app/api/latex.py` | chemfig + LaTeX 编译 |
+| `app/api/latex.py` | TikZ → SVG 兼容回退与持久化输出 |
 | `app/api/papers.py` | LaTeX 试卷生成 |
 | `app/api/health.py` | 健康检查 |
-| 前端 Markdown/KaTeX | 题目展示 |
+| 前端 Markdown/KaTeX/mhchem + RDKit.js + TikZJax Worker | 题目、化学结构与图形展示 |
 | 前端 ProblemCard/Edit | 题目编辑 |
 | 前端 TagPicker/Chip | 标签交互 |
 | 前端 UploadForm | 上传 |
@@ -641,8 +653,8 @@ OopsNote 改存储格式、换 LaTeX 引擎 —— Hermes skill 不受影响。
 ### Phase 4 — 前端
 
 - [ ] REST API 补全（对接前端页面需求）
-- [ ] 首页 + 模式选择（随手拍 / 批量分割）
-- [ ] 批量分割页：图片展示 + 框选工具 + 提交
+- [x] 首页 + 模式选择（随手拍 / 批量分割）
+- [x] 批量分割页：图片展示 + 框选工具 + 提交
 - [ ] 题目详情 + 标签编辑 + 答案/解析
 - [ ] 题库浏览
 - [ ] 调试面板（空壳）

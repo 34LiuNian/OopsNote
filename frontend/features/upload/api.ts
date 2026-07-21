@@ -1,4 +1,4 @@
-import { fetchJson } from "../../lib/api";
+import { fetchApi, fetchJson, fetchRawUpload } from "../../lib/api";
 import type { TaskResponse } from "../../types/api";
 
 export type CreateUploadTaskPayload = {
@@ -14,6 +14,10 @@ export type CreateUploadTaskPayload = {
   image_base64: string;
   filename: string;
   mime_type: string;
+  batch_session_hash?: string;
+  batch_segment_id?: string;
+  batch_page_index?: number;
+  batch_question_no?: number;
 };
 
 export async function createUploadTask(payload: CreateUploadTaskPayload): Promise<TaskResponse> {
@@ -34,4 +38,66 @@ export async function createUploadTaskAndProcess(payload: CreateUploadTaskPayloa
   const taskId = created.task.id;
   await processTaskInBackground(taskId);
   return created;
+}
+
+export type BatchSessionSegment = {
+  id: string;
+  page_index: number;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  question_no?: number;
+  status: "pending" | "processing" | "completed" | "failed";
+  task_id?: string | null;
+  problem_ids: string[];
+  error?: string | null;
+};
+
+export type BatchSession = {
+  file_hash: string;
+  filename: string;
+  mime_type: string;
+  asset_path: string;
+  page_count: number;
+  subject: string;
+  notes: string;
+  active_page: number;
+  segments: BatchSessionSegment[];
+  created_at: string;
+  updated_at: string;
+};
+
+export async function listBatchSessions(): Promise<BatchSession[]> {
+  return (await fetchJson<{ items: BatchSession[] }>("/batch-sessions")).items;
+}
+
+export async function getBatchSession(fileHash: string): Promise<BatchSession | null> {
+  const response = await fetchApi(`/batch-sessions/${encodeURIComponent(fileHash)}`);
+  if (response.status === 404) return null;
+  if (!response.ok) throw new Error(await response.text());
+  return (await response.json() as { session: BatchSession }).session;
+}
+
+export async function uploadBatchSource(fileHash: string, file: File): Promise<BatchSession> {
+  const response = await fetchRawUpload(`/batch-sessions/${encodeURIComponent(fileHash)}/source`, {
+    method: "PUT",
+    headers: {
+      "Content-Type": file.type || "application/octet-stream",
+      "X-OopsNote-Filename": encodeURIComponent(file.name),
+    },
+    body: file,
+  });
+  if (!response.ok) throw new Error(await response.text());
+  return (await response.json() as { session: BatchSession }).session;
+}
+
+export async function updateBatchSession(
+  fileHash: string,
+  payload: Pick<BatchSession, "page_count" | "subject" | "notes" | "active_page" | "segments">,
+): Promise<BatchSession> {
+  return (await fetchJson<{ session: BatchSession }>(`/batch-sessions/${encodeURIComponent(fileHash)}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  })).session;
 }

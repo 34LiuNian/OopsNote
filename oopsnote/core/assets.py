@@ -44,6 +44,16 @@ class AssetStore:
         dest.write_bytes(source.read_bytes())
         return f"/assets/{name}"
 
+    def save_bytes(self, data: bytes, filename: str, stable_name: Optional[str] = None) -> str:
+        """保存原始上传文件；stable_name 用于内容哈希去重。"""
+        ext = Path(filename).suffix or ".bin"
+        name = f"{stable_name}{ext}" if stable_name else f"{uuid4().hex}{ext}"
+        safe_name = name.replace("/", "_").replace("\\", "_")
+        path = self.base_dir / safe_name
+        if not path.exists():
+            path.write_bytes(data)
+        return f"/assets/{safe_name}"
+
     @staticmethod
     def _extract(data: str) -> tuple[str, Optional[str]]:
         m = DATA_URI_RE.match(data)

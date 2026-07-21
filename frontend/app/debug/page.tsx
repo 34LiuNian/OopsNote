@@ -1,11 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { Box, Button, Heading, Text, Textarea } from "@primer/react";
+import { Box, Button, Heading, Text, Textarea } from "@/components/ui/primitives";
 import { MarkdownRenderer } from "../../components/renderers/MarkdownRenderer";
 import { TaskProgressBar } from "../../components/task/TaskProgressBar";
 import { useTaskProgress, ProgressStepKey } from "../../hooks/useTaskProgress";
-import { API_BASE } from "../../lib/api";
 
 const DEFAULT_TEXT = [
   "# Debug 页面",
@@ -27,26 +26,29 @@ const DEFAULT_TEXT = [
   "## LaTeX 表格（array 环境）",
   "$$\\begin{array}{|c|c|c|c|c|} \\hline & \\text{第一次} & \\text{第二次} & \\text{第三次} & \\text{第四次} \\\\ \\hline \\text{体积}/\\mathrm{mL} & 17.10 & 18.10 & 18.00 & 17.90 \\\\ \\hline \\end{array}$$",
   "",
-  "## Chemfig（Backend）",
-  "```chemfig",
-  "[,0.7]*6(-=(*5(-N(-H)-=(-[:30]CH_2CH_2NHCOCH_3)--))-=-(-H_3CO)=)",
-  "```",
-  "",
-  "```chemfig",
-  "[,0.7]*6(-=(*5(-[0.7]N(-H)-=(-[:30,0.7](-[:330,0.7](-[:30,0.7]N(-[2,0.7]H)(-[:330,0.7](=[6,0.7]O)(-[:30,0.7]())))))--))-=-(-[,0.7]O(-[1,0.7]))=)",
-  "```",
+  "## 化学方程式（mhchem）",
+  "$$\\ce{2H2 + O2 -> 2H2O}$$",
   "",
   "## 代码块（mermaid）",
   "```mermaid",
-  "flowchart LN",
+  "flowchart LR",
   "  A[输入题图] --> B[OCR/重建]",
   "  B --> C[解题]",
   "  C --> D[打标]",
   "```",
   "",
-  "## 代码块（smiles）",
-  "```smiles",
+  "## 分子结构（RDKit）",
+  "```molecule",
   "C1=CC=CC=C1",
+  "```",
+  "",
+  "## 图形（TikZJax）",
+  "```tikz",
+  "\\begin{tikzpicture}",
+  "  \\draw[->] (0,0) -- (2,0) node[right] {$x$};",
+  "  \\draw[->] (0,0) -- (0,2) node[above] {$y$};",
+  "  \\draw[domain=0:1.35,smooth] plot (\\x,{\\x*\\x});",
+  "\\end{tikzpicture}",
   "```",
   "",
   "## 普通代码块",
@@ -64,8 +66,6 @@ const STEP_KEYS: ProgressStepKey[] = ["queued", "ocr", "solving", "tagging"];
 export default function DebugPage() {
   // Markdown 相关状态
   const [text, setText] = useState(DEFAULT_TEXT);
-  const [chemfigStatus, setChemfigStatus] = useState<string>("未检测");
-  const [chemfigLoading, setChemfigLoading] = useState(false);
   const [progressIndex, setProgressIndex] = useState<number>(-1);
   const [latestLine, setLatestLine] = useState<string>("");
   const [isFailed, setIsFailed] = useState(false);
@@ -103,32 +103,6 @@ export default function DebugPage() {
     setLatestLine("任务完成");
     setIsFailed(false);
     setIsRunning(false);
-  };
-
-  const handleCheckChemfig = async () => {
-    setChemfigLoading(true);
-    setChemfigStatus("检测中...");
-    try {
-      const response = await fetch(`${API_BASE}/latex/chemfig`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          content: "\\chemfig{H-O-H}",
-          inline: true,
-        }),
-      });
-      if (response.ok) {
-        setChemfigStatus(`可访问 (${response.status})`);
-      } else {
-        setChemfigStatus(`不可访问 (${response.status})`);
-      }
-    } catch (error) {
-      setChemfigStatus(error instanceof Error ? `错误: ${error.message}` : "错误: 请求失败");
-    } finally {
-      setChemfigLoading(false);
-    }
   };
 
   return (

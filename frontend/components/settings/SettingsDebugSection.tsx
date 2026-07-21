@@ -1,7 +1,7 @@
 "use client";
 
-import { Box, Button, Heading, Spinner, Text, ToggleSwitch } from "@primer/react";
-import { BugIcon } from "@primer/octicons-react";
+import { Box, Button, Heading, Spinner, Text, ToggleSwitch } from "@/components/ui/primitives";
+import { BugIcon } from "@/components/ui/icons";
 import { ErrorBanner } from "../ui/ErrorBanner";
 import { useEffect } from "react";
 import { notify } from "@/lib/notify";

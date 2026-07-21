@@ -6,11 +6,20 @@
 from __future__ import annotations
 
 import json
+import threading
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
+from uuid import uuid4
 
-from .models import Problem, TaskCreateRequest, TaskRecord, TaskStatus
+from .models import (
+    BatchSessionRecord,
+    BatchSessionUpdateRequest,
+    Problem,
+    TaskCreateRequest,
+    TaskRecord,
+    TaskStatus,
+)
 
 
 class TaskStore:
@@ -37,6 +46,7 @@ class TaskStore:
             subject=payload.subject,
             status=TaskStatus.PENDING,
             asset_path=payload.asset_path,
+            metadata=payload.metadata,
         )
         self._write(record)
         return record
@@ -79,3 +89,76 @@ class TaskStore:
         path = self._path(task_id)
         if path.exists():
             path.unlink()
+
+
+class BatchSessionStore:
+    """批量扫描会话的单文件索引，文件哈希是稳定主键。"""
+
+    _lock = threading.RLock()
+
+    def __init__(self, path: Path) -> None:
+        self.path = path
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+
+    def _read(self) -> dict[str, BatchSessionRecord]:
+        if not self.path.exists():
+            return {}
+        try:
+            payload = json.loads(self.path.read_text(encoding="utf-8"))
+            return {
+                item["file_hash"]: BatchSessionRecord.model_validate(item)
+                for item in payload.get("items", [])
+            }
+        except Exception:
+            return {}
+
+    def _write(self, records: dict[str, BatchSessionRecord]) -> None:
+        tmp = self.path.with_name(f"{self.path.name}.{uuid4().hex}.tmp")
+        try:
+            tmp.write_text(
+                json.dumps(
+                    {"items": [record.model_dump(mode="json") for record in records.values()]},
+                    ensure_ascii=False,
+                    indent=2,
+                ),
+                encoding="utf-8",
+            )
+            tmp.replace(self.path)
+        finally:
+            if tmp.exists():
+                tmp.unlink()
+
+    def get(self, file_hash: str) -> BatchSessionRecord:
+        with self._lock:
+            record = self._read().get(file_hash)
+        if not record:
+            raise KeyError(file_hash)
+        return record
+
+    def list_all(self) -> list[BatchSessionRecord]:
+        with self._lock:
+            return sorted(self._read().values(), key=lambda record: record.updated_at, reverse=True)
+
+    def create(self, record: BatchSessionRecord) -> BatchSessionRecord:
+        with self._lock:
+            records = self._read()
+            existing = records.get(record.file_hash)
+            if existing:
+                return existing
+            records[record.file_hash] = record
+            self._write(records)
+            return record
+
+    def update(self, file_hash: str, payload: BatchSessionUpdateRequest) -> BatchSessionRecord:
+        with self._lock:
+            records = self._read()
+            current = records.get(file_hash)
+            if not current:
+                raise KeyError(file_hash)
+            update = payload.model_dump(exclude_unset=True)
+            updated = BatchSessionRecord.model_validate(
+                {**current.model_dump(), "updated_at": datetime.now(timezone.utc), **update}
+            )
+            records[file_hash] = updated
+            self._write(records)
+            return updated

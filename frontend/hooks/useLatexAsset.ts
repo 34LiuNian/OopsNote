@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { API_BASE } from "../lib/api";
 
-type LatexAssetKind = "chemfig" | "tikz";
+type LatexAssetKind = "tikz";
 
 type LatexAssetState = {
   status: "idle" | "loading" | "ready" | "error";
@@ -19,7 +19,6 @@ type CacheEntry = {
 };
 
 const ASSET_ENDPOINTS: Record<LatexAssetKind, string> = {
-  chemfig: "/latex/chemfig",
   tikz: "/latex/tikz",
 };
 

@@ -1,12 +1,12 @@
 "use client";
 
-import { Box, Heading, Spinner, Text } from "@primer/react";
+import { Box, Heading, Spinner, Text } from "@/components/ui/primitives";
 import {
   CheckCircleFillIcon,
   InfoIcon,
   XCircleFillIcon,
   DashIcon,
-} from "@primer/octicons-react";
+} from "@/components/ui/icons";
 import { ErrorBanner } from "../ui/ErrorBanner";
 import type { SystemInfoResponse } from "../../types/api";
 

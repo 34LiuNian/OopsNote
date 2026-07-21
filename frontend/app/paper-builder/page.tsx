@@ -4,19 +4,19 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Box,
   Button,
-  Heading,
   Text,
   Label,
   Select,
   TextInput,
   FormControl,
   Spinner,
-} from "@primer/react";
+} from "@/components/ui/primitives";
 import { compilePaper, useProblemList } from "../../features/tasks";
 import { ProblemListItem } from "../../components/ProblemListItem";
 import { TagSelectorRow } from "../../components/TagSelectorRow";
 import { useTagDimensions } from "../../features/tags";
-import { SUBJECT_OPTIONS, DEFAULT_SUBJECT } from "../../config/subjects";
+import { SUBJECT_OPTIONS } from "../../config/subjects";
+import { PageHeader } from "@/components/layout/PageHeader";
 
 const BUILDER_SUBJECT_OPTIONS = [
   ...SUBJECT_OPTIONS,
@@ -32,7 +32,7 @@ function generateDefaultTitle(subjectLabel: string): string {
 }
 
 export default function PaperBuilderPage() {
-  const [subject, setSubject] = useState<string>(DEFAULT_SUBJECT);
+  const [subject, setSubject] = useState<string>("");
   const [sourceFilter, setSourceFilter] = useState<string[]>([]);
   const [knowledgeFilter, setKnowledgeFilter] = useState<string[]>([]);
   const [errorFilter, setErrorFilter] = useState<string[]>([]);
@@ -148,19 +148,17 @@ export default function PaperBuilderPage() {
 
   return (
     <Box sx={{ display: "flex", flexDirection: "column", gap: 3 }}>
+      <PageHeader
+        title="试题组卷"
+        description="从题库选择题目，生成练习试卷"
+        action={isLoading ? <Spinner size="small" /> : undefined}
+      />
       <Box sx={{ display: "grid", gridTemplateColumns: ["1fr", "1fr 1fr"], gap: 3 }}>
         {/* <Box> */}
 
         <Box sx={{ borderColor: "border.default", borderRadius: 2 }}>
-          <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 2, mb: 3 }}>
-            <Box>
-              <Text sx={{ fontSize: 0, color: "fg.muted", textTransform: "uppercase" }}>Paper Builder</Text>
-              <Heading as="h2" sx={{ fontSize: 3 }}>
-                试题组卷
-              </Heading>
-            </Box>
+          <Box sx={{ display: "flex", justifyContent: "flex-end", alignItems: "center", flexWrap: "wrap", gap: 2, mb: 3 }}>
             <Box sx={{ display: "flex", gap: 2, alignItems: "center" }}>
-              {isLoading && <Spinner size="small" />}
               {error && <Label variant="danger">{error}</Label>}
               <Text sx={{ color: "fg.muted" }}>已选 {selectedCount} 道</Text>
               <Button 
@@ -252,7 +250,12 @@ export default function PaperBuilderPage() {
             // }}
           />
 
-          {items.length === 0 ? (
+          {isLoading ? (
+            <Box sx={{ textAlign: "center", p: 4, color: "fg.muted" }}>
+              <Spinner size="small" />
+              <Text as="p" sx={{ mt: 2 }}>正在加载题库…</Text>
+            </Box>
+          ) : items.length === 0 ? (
             <Box sx={{ textAlign: "center", p: 4, color: "fg.muted" }}>
               <Text as="p" sx={{ fontWeight: "bold" }}>
                 暂无题目。

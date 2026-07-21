@@ -1,10 +1,11 @@
 "use client";
 
-import { Box, Text } from "@primer/react";
+import { Box, Text } from "@/components/ui/primitives";
 import { useLatexAsset } from "@/hooks/useLatexAsset";
+import { SvgMarkup } from "./SvgMarkup";
 
 type LatexAssetRendererProps = {
-  kind: "chemfig" | "tikz";
+  kind: "tikz";
   content: string;
   inline?: boolean;
   loadingLabel?: string;
@@ -44,7 +45,8 @@ export function LatexAssetRenderer({
         display: inline ? "inline-flex" : "block",
         alignItems: "center",
       }}
-      dangerouslySetInnerHTML={{ __html: data }}
-    />
+    >
+      <SvgMarkup svg={data} label="后端生成的 TikZ 图形" />
+    </Box>
   );
 }

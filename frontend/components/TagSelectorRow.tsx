@@ -1,6 +1,6 @@
 "use client";
 
-import { Box, Text } from "@primer/react";
+import { Box, Text } from "@/components/ui/primitives";
 import { TagPicker } from "./TagPicker";
 import type { TagDimensionStyle } from "@/types/api";
 
