@@ -172,7 +172,7 @@ export default function DebugPage() {
         <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
           <Heading as="h3" sx={{ fontSize: 2 }}>预览</Heading>
           <Box sx={{ p: 3, border: "1px solid", borderColor: "border.default", borderRadius: 2 }}>
-            <MarkdownRenderer text={text} />
+            <MarkdownRenderer text={text} format="oopsmark-v1" />
           </Box>
         </Box>
       </Box>

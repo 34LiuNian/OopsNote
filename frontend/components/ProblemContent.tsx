@@ -8,6 +8,7 @@ import { MarkdownRenderer } from "./renderers/MarkdownRenderer";
 import { SvgMarkup } from "./renderers/SvgMarkup";
 import { TikzRenderer } from "./renderers/TikzRenderer";
 import { OptionsList } from "./ui/OptionsList";
+import type { ContentFormat } from "@/types/api";
 
 type ProblemOption = {
   key: string;
@@ -16,6 +17,7 @@ type ProblemOption = {
 
 type ProblemContentProps = {
   problemText: string;
+  contentFormat?: ContentFormat;
   options?: ProblemOption[];
   diagramDetected?: boolean;
   diagramKind?: string | null;
@@ -59,6 +61,7 @@ function looksLikeStandaloneMath(input: string): boolean {
 
 export function ProblemContent({
   problemText,
+  contentFormat = "legacy-markdown-latex",
   options,
   diagramDetected = false,
   diagramKind,
@@ -75,7 +78,7 @@ export function ProblemContent({
 }: ProblemContentProps) {
   return (
     <Box>
-      <MarkdownRenderer text={problemText || ""} fontSize={fontSize} />
+      <MarkdownRenderer text={problemText || ""} format={contentFormat} fontSize={fontSize} />
       {diagramDetected ? (
         <Box sx={{ mt: 2, mb: 2 }}>
           {diagramSvg ? (
@@ -133,7 +136,7 @@ export function ProblemContent({
                 <InlineMath math={`\\displaystyle ${normalizeLatexInline(opt.text)}`} />
               </Box>
             ) : (
-              <MarkdownRenderer text={opt.text || ""} fontSize={fontSize} />
+              <MarkdownRenderer text={opt.text || ""} format={contentFormat} fontSize={fontSize} />
             )
           }
         />

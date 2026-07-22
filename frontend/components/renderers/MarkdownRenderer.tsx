@@ -10,98 +10,29 @@ import "katex/contrib/mhchem";
 import { Mermaid } from "./Mermaid";
 import { MoleculeRenderer } from "./MoleculeRenderer";
 import { TikzRenderer } from "./TikzRenderer";
+import { prepareContentForWeb } from "@/lib/content/oopsmark";
+import type { ContentFormat } from "@/types/api";
 import { useEffect, useMemo, useRef } from "react";
 
-export function MarkdownRenderer({ text, fontSize }: { text: string; fontSize?: number }) {
+export function MarkdownRenderer({
+  text,
+  format = "legacy-markdown-latex",
+  fontSize,
+}: {
+  text: string;
+  format?: ContentFormat;
+  fontSize?: number;
+}) {
   const containerRef = useRef<HTMLDivElement | null>(null);
 
-  const processedText = useMemo(() => {
-    if (!text) return "";
-    // Handle potential HTML escaping from backend
-    let unescaped = text
-      .replace(/\\\$/g, "$"); // Unescape escaped dollar signs: \$ → $
-    
-    // Remove trailing backslashes at end of lines (common OCR artifact)
-    // Match \ at end of line (before \n or end of string), but not part of LaTeX commands
-    unescaped = unescaped.replace(/\\(\s*)(?=\n|$)/g, '');
-    
-    // Normalize line breaks: ensure \n\n is treated as paragraph separator
-    // Replace literal \n\n strings with actual double newlines for Markdown parsing
-    unescaped = unescaped.replace(/\\n\\n/g, '\n\n');
-    unescaped = unescaped.replace(/\\n/g, '\n');
-    
-    // Convert LaTeX enumerate environments to simple line breaks
-    // Remove \begin{enumerate} and \end{enumerate}, keep \item content
-    unescaped = unescaped
-      .replace(/\\begin\{enumerate\}/g, "")
-      .replace(/\\end\{enumerate\}/g, "")
-      .replace(/\\item\[(.*?)\]/g, "\n\n$1") // \item[(1)] → \n\n(1)
-      .replace(/\\item/g, "\n\n"); // \item → \n\n
-    
-    // Convert tabular to array (KaTeX doesn't support tabular) and wrap in math mode
-    // KaTeX requires array environment to be in math mode
-    unescaped = unescaped
-      // First convert tabular to array
-      .replace(/\\begin\{tabular\}/g, "\\begin{array}")
-      .replace(/\\end\{tabular\}/g, "\\end{array}")
-      // Then wrap standalone array environments in display math delimiters ($$...$$)
-      .replace(
-        /(\\begin\{array\}[\s\S]*?\\end\{array\})/g,
-        (match) => {
-          const trimmed = match.trim();
-          if (trimmed.startsWith("$$") || trimmed.startsWith("\\[") || trimmed.startsWith("\\(")) {
-            return match;
-          }
-          return `$$${match}$$`;
-        }
-      )
-      // Wrap standalone \underline{\hspace{...}} in inline math ($...$)
-      .replace(
-        /(\\underline\{\\hspace\{[^}]+\}\})/g,
-        (match) => {
-          // Check if already in math mode (preceded by $ or \()
-          return `$${match}$`;
-        }
-      );
-    
-    // Protect display math ($$...$$ and \[...\]) from inline math processing
-    // Replace with placeholders, process inline math, then restore
-    const displayMathBlocks: string[] = [];
-    unescaped = unescaped
-      .replace(/\$\$([\s\S]*?)\$\$/g, (match, p1) => {
-        displayMathBlocks.push(match);
-        return `__DISPLAY_MATH_${displayMathBlocks.length - 1}__`;
-      })
-      .replace(/\\\[([\s\S]*?)\\\]/g, (match, p1) => {
-        displayMathBlocks.push(match);
-        return `__DISPLAY_MATH_${displayMathBlocks.length - 1}__`;
-      });
-    
-    // Force displaystyle for inline math markers to match LaTeX output and avoid compression.
-    // Handles $...$ and \(...\) while avoiding $$...$$ and \[...\]
-    unescaped = unescaped
-      .replace(/\$(?!\$)([\s\S]*?)\$/g, (match, p1) => {
-        if (p1.trim().startsWith("\\displaystyle")) return match;
-        return `$\\displaystyle ${p1}$`;
-      })
-      .replace(/\\\(([\s\S]*?)\\\)/g, (match, p1) => {
-        if (p1.trim().startsWith("\\displaystyle")) return match;
-        return `\\(\\displaystyle ${p1}\\)`;
-      });
-    
-    // Restore display math blocks
-    displayMathBlocks.forEach((block, index) => {
-      unescaped = unescaped.replace(`__DISPLAY_MATH_${index}__`, block);
-    });
-    
-    return unescaped;
-  }, [text]);
+  const processedText = useMemo(() => prepareContentForWeb(text, format), [format, text]);
 
   useEffect(() => {
+    if (format !== "legacy-markdown-latex") return;
     // Load additional KaTeX extensions that might be needed for array environments
     // @ts-ignore
     void import("katex/dist/contrib/auto-render");
-  }, []);
+  }, [format]);
 
   const remarkPlugins = useMemo(() => {
     return [remarkGfm, remarkMath, remarkBreaks];
@@ -110,8 +41,8 @@ export function MarkdownRenderer({ text, fontSize }: { text: string; fontSize?: 
   const rehypePlugins = useMemo(() => {
     // Configure rehype-katex with strict: "ignore" to support array, hline, and other advanced LaTeX features
     // Also enable trust for safety since we control the content
-    return [[rehypeKatex, { strict: "ignore", trust: true }] as any];
-  }, []);
+    return [[rehypeKatex, { strict: "ignore", trust: format === "legacy-markdown-latex" }] as any];
+  }, [format]);
 
   return (
     <Box ref={containerRef} sx={{ fontSize: fontSize ?? 1, "& .katex": { fontSize: "1.1em" } }}>

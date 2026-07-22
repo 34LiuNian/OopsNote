@@ -1,4 +1,31 @@
 export type TaskStatus = "pending" | "processing" | "completed" | "failed" | "cancelled";
+export type TaskStage = "queued" | "starting" | "ocr" | "solving" | "verifying" | "tagging" | "finalizing" | "syncing";
+export type RunStatus = "queued" | "running" | "completed" | "failed" | "cancelled" | "timed_out";
+export type ContentFormat = "legacy-markdown-latex" | "oopsmark-v1";
+
+export interface TaskRunSummary {
+  id: string;
+  attempt: number;
+  status: RunStatus;
+  pid?: number | null;
+  exit_code?: number | null;
+  log_path?: string | null;
+  prompt_version: string;
+  started_at?: string | null;
+  heartbeat_at: string;
+  ended_at?: string | null;
+  error_code?: string | null;
+  error_message?: string | null;
+  stages: Array<{
+    stage: TaskStage;
+    status: "running" | "completed" | "failed" | "cancelled";
+    started_at: string;
+    ended_at?: string | null;
+    message?: string | null;
+    error_code?: string | null;
+    latency_ms?: number | null;
+  }>;
+}
 
 export interface SourceTrace {
   kind: "single_image" | "batch_segment";
@@ -16,8 +43,10 @@ export interface TaskResponse {
   task: {
     id: string;
     status: TaskStatus;
-    stage?: string | null;
+    stage?: TaskStage | null;
     stage_message?: string | null;
+    active_run_id?: string | null;
+    run?: TaskRunSummary | null;
     created_at: string;
     updated_at: string;
     asset?: {
@@ -37,6 +66,8 @@ export interface TaskResponse {
       question_no?: string | null;
       question_type?: string | null;
       source?: string | null;
+      difficulty?: string | null;
+      has_diagram?: boolean;
       diagram_detected?: boolean;
       diagram_kind?: string | null;
       diagram_tikz_source?: string | null;
@@ -49,6 +80,7 @@ export interface TaskResponse {
       error_tags?: string[];
       user_tags?: string[];
       trace?: SourceTrace | null;
+      content_format?: ContentFormat;
       problem_text: string;
       options?: Array<{
         key: string;
@@ -58,6 +90,7 @@ export interface TaskResponse {
     solutions: Array<{
       problem_id: string;
       answer: string;
+      short_answer?: string;
       explanation: string;
     }>;
     tags: Array<{
@@ -70,8 +103,9 @@ export interface TaskResponse {
 export interface TaskSummary {
   id: string;
   status: TaskStatus;
-  stage?: string | null;
+  stage?: TaskStage | null;
   stage_message?: string | null;
+  active_run_id?: string | null;
   created_at: string;
   updated_at: string;
   subject: string;
@@ -92,6 +126,7 @@ export interface ProblemSummary {
   problem_id: string;
   question_no?: string | null;
   question_type?: string | null;
+  content_format?: ContentFormat;
   problem_text: string;
   options?: Array<{
     key: string;
@@ -100,6 +135,8 @@ export interface ProblemSummary {
   subject: string;
   grade?: string | null;
   source?: string | null;
+  difficulty?: string | null;
+  has_diagram?: boolean;
   knowledge_points: string[];
   knowledge_tags?: string[];
   error_tags?: string[];

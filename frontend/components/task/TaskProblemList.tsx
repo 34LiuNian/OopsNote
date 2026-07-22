@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Box, Button, Heading, IconButton, Label, Text, Tooltip } from "@/components/ui/primitives";
 import { PencilIcon, CopyIcon, TrashIcon, ChevronDownIcon, ChevronUpIcon } from "@/components/ui/icons";
 import type { TagDimensionStyle } from "@/types/api";
+import type { ContentFormat } from "@/types/api";
 import { MarkdownRenderer } from "../renderers/MarkdownRenderer";
 import { ProblemCard } from "../ProblemCard";
 import { ProblemEditPanel } from "../ProblemEditPanel";
@@ -25,6 +26,7 @@ type TaskProblemListProps = {
     diagram_error?: string | null;
     diagram_needs_review?: boolean;
     problem_text: string;
+    content_format?: ContentFormat;
     options?: Array<{ key: string; text: string }>;
     knowledge_tags?: string[];
     error_tags?: string[];
@@ -300,6 +302,7 @@ function ProblemCardItem({
           questionType={null}
           source={null}
           problemText={problem.problem_text || ""}
+          contentFormat={problem.content_format}
           options={problem.options}
           diagramDetected={problem.diagram_detected}
           diagramKind={problem.diagram_kind}
@@ -357,11 +360,11 @@ function ProblemCardItem({
             <Box sx={{ px: 3, py: 3 }}>
               <Box sx={{ mb: 3 }}>
                 <Text sx={{ fontWeight: 600, fontSize: 1, color: "accent.fg", display: "block", mb: 1 }}>答案</Text>
-                <MarkdownRenderer text={solution.answer || ""} />
+                <MarkdownRenderer text={solution.answer || ""} format={problem.content_format} />
               </Box>
               <Box>
                 <Text sx={{ fontWeight: 600, fontSize: 1, color: "accent.fg", display: "block", mb: 1 }}>解析</Text>
-                <MarkdownRenderer text={solution.explanation || ""} />
+                <MarkdownRenderer text={solution.explanation || ""} format={problem.content_format} />
               </Box>
             </Box>
           )}

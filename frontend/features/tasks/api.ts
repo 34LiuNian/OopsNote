@@ -1,7 +1,9 @@
 import { fetchJson } from "../../lib/api";
 import type {
+  ContentFormat,
   ProblemsResponse,
   TaskResponse,
+  TaskStage,
   TaskStatus,
   TasksResponse,
 } from "../../types/api";
@@ -39,7 +41,7 @@ type CoreTaskSummary = {
   subject: string;
   created_at: string;
   updated_at?: string;
-  stage?: string | null;
+  stage?: TaskStage | null;
   stage_message?: string | null;
   question_no?: string | null;
   asset?: TasksResponse["items"][number]["asset"];
@@ -84,6 +86,7 @@ export type OverrideProblemPayload = {
   question_no: string | null;
   source: string | null;
   problem_text: string;
+  content_format?: ContentFormat;
   options: Array<{ key: string; text: string }>;
   knowledge_tags: string[];
   error_tags: string[];

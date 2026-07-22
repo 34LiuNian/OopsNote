@@ -28,6 +28,7 @@ export const ProblemListItem = memo(function ProblemListItem(props: {
       questionType={item.question_type}
       source={item.source}
       problemText={item.problem_text || "（无题干）"}
+      contentFormat={item.content_format}
       options={item.options}
       itemKeyPrefix={item.problem_id}
       fontSize={2}

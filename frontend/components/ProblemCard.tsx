@@ -3,6 +3,7 @@
 import { memo } from "react";
 import { Box, Text } from "@/components/ui/primitives";
 import { ProblemContent } from "./ProblemContent";
+import type { ContentFormat } from "@/types/api";
 
 type ProblemOption = {
   key: string;
@@ -15,6 +16,7 @@ type ProblemCardProps = {
   questionType?: string | null;
   source?: string | null;
   problemText: string;
+  contentFormat?: ContentFormat;
   options?: ProblemOption[];
   diagramDetected?: boolean;
   diagramKind?: string | null;
@@ -44,6 +46,7 @@ export const ProblemCard = memo(function ProblemCard({
   questionType,
   source,
   problemText,
+  contentFormat,
   options,
   diagramDetected,
   diagramKind,
@@ -78,6 +81,7 @@ export const ProblemCard = memo(function ProblemCard({
       ) : null}
       <ProblemContent
         problemText={problemText}
+        contentFormat={contentFormat}
         options={options}
         diagramDetected={diagramDetected}
         diagramKind={diagramKind}
