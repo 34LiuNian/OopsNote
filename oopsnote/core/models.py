@@ -11,7 +11,9 @@ from enum import Enum
 from typing import Any, Optional
 from uuid import uuid4
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
+
+from oopsnote.content import validate_oopsmark
 
 
 # ── 枚举 ──────────────────────────────────────────────
@@ -19,6 +21,33 @@ from pydantic import BaseModel, Field
 class TaskStatus(str, Enum):
     PENDING = "pending"
     PROCESSING = "processing"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+
+
+class TaskStage(str, Enum):
+    QUEUED = "queued"
+    STARTING = "starting"
+    OCR = "ocr"
+    SOLVING = "solving"
+    VERIFYING = "verifying"
+    TAGGING = "tagging"
+    FINALIZING = "finalizing"
+    SYNCING = "syncing"
+
+
+class RunStatus(str, Enum):
+    QUEUED = "queued"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+    TIMED_OUT = "timed_out"
+
+
+class StageStatus(str, Enum):
+    RUNNING = "running"
     COMPLETED = "completed"
     FAILED = "failed"
     CANCELLED = "cancelled"
@@ -38,6 +67,13 @@ class TagDimension(str, Enum):
     CUSTOM = "custom"
 
 
+class ContentFormat(str, Enum):
+    """Versioned contract for rich problem content."""
+
+    LEGACY_MARKDOWN_LATEX = "legacy-markdown-latex"
+    OOPSMARK_V1 = "oopsmark-v1"
+
+
 # ── 题目 ──────────────────────────────────────────────
 
 class Problem(BaseModel):
@@ -46,15 +82,37 @@ class Problem(BaseModel):
     id: str = Field(default_factory=lambda: uuid4().hex)
     subject: str = ""                           # 数学/物理/化学
     question_type: QuestionType = QuestionType.SHORT_ANSWER
-    problem_text: str = ""                      # Markdown + LaTeX
+    content_format: ContentFormat = ContentFormat.LEGACY_MARKDOWN_LATEX
+    problem_text: str = ""                      # Versioned by content_format
     options: list[str] = Field(default_factory=list)  # 选择题选项
     answer: str = ""
+    short_answer: str = ""
     explanation: str = ""
+    difficulty: Optional[str] = None
+    has_diagram: bool = False
     knowledge_points: list[str] = Field(default_factory=list)
     error_hypothesis: list[str] = Field(default_factory=list)
     source: str = ""                            # 如 "2024-10 月考"
     source_page: Optional[int] = None           # PDF 页码
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+    @model_validator(mode="after")
+    def validate_versioned_content(self) -> "Problem":
+        if self.content_format != ContentFormat.OOPSMARK_V1:
+            return self
+        fields = {
+            "problem_text": self.problem_text,
+            "answer": self.answer,
+            "short_answer": self.short_answer,
+            "explanation": self.explanation,
+            **{f"options[{index}]": option for index, option in enumerate(self.options)},
+        }
+        for field_name, content in fields.items():
+            issues = validate_oopsmark(content)
+            if issues:
+                issue = issues[0]
+                raise ValueError(f"{field_name}:{issue.line} [{issue.code}] {issue.message}")
+        return self
 
 
 # ── 任务 ──────────────────────────────────────────────
@@ -81,6 +139,51 @@ class TaskRecord(BaseModel):
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     last_error: Optional[str] = None
+    stage: Optional[TaskStage] = None
+    stage_message: Optional[str] = None
+    active_run_id: Optional[str] = None
+
+
+class StageRun(BaseModel):
+    """A persisted observation of one AI pipeline stage."""
+
+    stage: TaskStage
+    status: StageStatus = StageStatus.RUNNING
+    started_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    ended_at: Optional[datetime] = None
+    message: Optional[str] = None
+    error_code: Optional[str] = None
+    latency_ms: Optional[int] = None
+
+
+class TaskRun(BaseModel):
+    """One managed AI process execution for a task."""
+
+    id: str = Field(default_factory=lambda: uuid4().hex)
+    task_id: str
+    attempt: int = 1
+    status: RunStatus = RunStatus.QUEUED
+    stage_runs: list[StageRun] = Field(default_factory=list)
+    pid: Optional[int] = None
+    exit_code: Optional[int] = None
+    log_path: Optional[str] = None
+    backend: str = "hermes"
+    provider: Optional[str] = None
+    model: Optional[str] = None
+    input_tokens: Optional[int] = None
+    output_tokens: Optional[int] = None
+    cache_tokens: Optional[int] = None
+    cost: Optional[float] = None
+    duration_ms: Optional[int] = None
+    rpc_log_path: Optional[str] = None
+    retry_count: int = 0
+    retryable: bool = False
+    prompt_version: str = "orchestrator-v3"
+    started_at: Optional[datetime] = None
+    heartbeat_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    ended_at: Optional[datetime] = None
+    error_code: Optional[str] = None
+    error_message: Optional[str] = None
 
 
 # ── 批量扫描会话 ────────────────────────────────────────

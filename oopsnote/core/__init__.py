@@ -8,19 +8,25 @@ from .models import (
     BatchSegment,
     BatchSessionRecord,
     BatchSessionUpdateRequest,
+    ContentFormat,
     Problem,
     QuestionType,
+    RunStatus,
     SearchQuery,
+    StageRun,
+    StageStatus,
     TagCreateRequest,
     TagDimension,
     TagItem,
     TagsResponse,
     TaskCreateRequest,
     TaskRecord,
+    TaskRun,
+    TaskStage,
     TaskStatus,
 )
 from .search import Searcher
-from .store import BatchSessionStore, TaskStore
+from .store import BatchSessionStore, RunStore, TaskStore
 from .tags import TagStore
 
 __all__ = [
@@ -29,10 +35,15 @@ __all__ = [
     "BatchSessionRecord",
     "BatchSessionStore",
     "BatchSessionUpdateRequest",
+    "ContentFormat",
     "Problem",
     "QuestionType",
+    "RunStatus",
+    "RunStore",
     "Searcher",
     "SearchQuery",
+    "StageRun",
+    "StageStatus",
     "TagCreateRequest",
     "TagDimension",
     "TagItem",
@@ -40,6 +51,8 @@ __all__ = [
     "TagStore",
     "TaskCreateRequest",
     "TaskRecord",
+    "TaskRun",
+    "TaskStage",
     "TaskStatus",
     "TaskStore",
 ]

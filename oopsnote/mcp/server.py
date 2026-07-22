@@ -13,6 +13,7 @@ from mcp.server.fastmcp import FastMCP
 
 from oopsnote.core import (
     AssetStore,
+    ContentFormat,
     Problem,
     Searcher,
     SearchQuery,
@@ -22,6 +23,7 @@ from oopsnote.core import (
     TagStore,
     TaskCreateRequest,
     TaskRecord,
+    TaskStage,
     TaskStatus,
     TaskStore,
 )
@@ -124,6 +126,103 @@ def mark_task_status(
         return TASK_STORE.mark_status(task_id, TaskStatus(status), error)
     except (KeyError, ValueError):
         return None
+
+
+@mcp.tool()
+def report_task_stage(
+    task_id: str,
+    stage: str,
+    run_id: str = "",
+    message: Optional[str] = None,
+) -> TaskRecord:
+    """上报受管 AI 任务阶段。stage: ocr/solving/verifying/tagging/finalizing/syncing。"""
+    task = TASK_STORE.get(task_id)
+    if task.active_run_id and task.active_run_id != run_id:
+        raise ValueError(f"run_id {run_id} is not active for task {task_id}")
+    if run_id and not task.active_run_id:
+        raise ValueError(f"task {task_id} has no active managed run")
+    return TASK_STORE.update(
+        task_id,
+        stage=TaskStage(stage),
+        stage_message=message,
+    )
+
+
+@mcp.tool()
+def fail_task(task_id: str, error: str, run_id: str = "") -> TaskRecord:
+    """以明确原因终止当前受管 AI 任务。"""
+    task = TASK_STORE.get(task_id)
+    if task.active_run_id and task.active_run_id != run_id:
+        raise ValueError(f"run_id {run_id} is not active for task {task_id}")
+    if run_id and not task.active_run_id:
+        raise ValueError(f"task {task_id} has no active managed run")
+    return TASK_STORE.update(
+        task_id,
+        status=TaskStatus.FAILED,
+        stage_message=error,
+        active_run_id=None,
+        last_error=error,
+    )
+
+
+@mcp.tool()
+def finalize_task(
+    task_id: str,
+    problems_json: str,
+    run_id: str = "",
+    sync_to_obsidian: bool = True,
+) -> TaskRecord:
+    """校验并原子提交 AI 结果；这是受管流水线唯一允许的最终写入口。"""
+    import json
+
+    task = TASK_STORE.get(task_id)
+    if task.active_run_id and task.active_run_id != run_id:
+        raise ValueError(f"run_id {run_id} is not active for task {task_id}")
+    if run_id and not task.active_run_id:
+        raise ValueError(f"task {task_id} has no active managed run")
+    raw = json.loads(problems_json)
+    if not isinstance(raw, list) or not raw:
+        raise ValueError("problems_json must be a non-empty JSON array")
+    problems = [Problem.model_validate(item) for item in raw]
+    for index, problem in enumerate(problems, start=1):
+        if problem.content_format != ContentFormat.OOPSMARK_V1:
+            raise ValueError(f"problem {index} must declare content_format=oopsmark-v1")
+        missing = [
+            name for name in ("subject", "problem_text", "answer", "explanation")
+            if not getattr(problem, name).strip()
+        ]
+        if missing:
+            raise ValueError(f"problem {index} missing required fields: {', '.join(missing)}")
+        if problem.question_type.value in {"单选题", "多选题"} and len(problem.options) < 2:
+            raise ValueError(f"problem {index} selection options are incomplete")
+
+    subject = task.subject
+    if not subject or subject == "auto":
+        subject = problems[0].subject
+    completed = TASK_STORE.update(
+        task_id,
+        subject=subject,
+        problems=problems,
+        status=TaskStatus.COMPLETED,
+        stage=TaskStage.FINALIZING,
+        stage_message="AI 结果已校验并写入",
+        active_run_id=None,
+        last_error=None,
+    )
+    if sync_to_obsidian:
+        try:
+            syncer = ObsidianSyncer(
+                task_store=TASK_STORE,
+                tag_store=TAG_STORE,
+                vault_root=STORAGE_DIR.parent / "vaults",
+            )
+            syncer.sync_for_subject(subject)
+        except Exception as error:
+            completed = TASK_STORE.update(
+                task_id,
+                stage_message=f"AI 结果已写入；Obsidian 同步失败：{error}",
+            )
+    return completed
 
 
 @mcp.tool()

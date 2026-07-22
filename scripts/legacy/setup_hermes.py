@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""OopsNote Hermes 初始化脚本。
+"""Legacy OopsNote Hermes setup retained only during the Pi migration.
 
 运行即检测/创建/更新 Hermes oopsnote profile：
 - 检测 profile 是否存在
@@ -11,16 +11,18 @@ from __future__ import annotations
 
 import subprocess
 import sys
-import os
+from copy import deepcopy
 from pathlib import Path
-from shutil import copytree, ignore_patterns
+from shutil import copytree
+
+import yaml
 
 PROFILE_NAME = "oopsnote"
 HERMES = "hermes"
 
 # ── 路径 ──────────────────────────────────────────
 
-REPO_ROOT = Path(__file__).resolve().parent
+REPO_ROOT = Path(__file__).resolve().parents[2]
 PROFILE_DIR = Path.home() / "AppData" / "Local" / "hermes" / "profiles" / PROFILE_NAME
 
 # ── 检查 hermes 是否可用 ───────────────────────────
@@ -61,10 +63,10 @@ def write_soul():
 6. 将结果存入本地题库、同步到 Obsidian
 
 ## 工作方式
-- 使用 `oopsnote-orchestrator` skill 编排流程（随手拍/手动录入/单题更新三种模式）
-- 调用 `mcp__oopsnote__*` 工具读写数据
+- 使用 `oopsnote-orchestrator` skill 编排单题流水线
+- Web 受管任务只调用 `mcp__oopsnote_pipeline__*`；交互模式调用 `mcp__oopsnote__*`
 - OCR 阶段用 `vision_analyze` 查看图片
-- 解题和打标用 `delegate_task` 并行处理
+- OCR、解题、验证、打标按顺序执行，每阶段上报状态
 - 批量扫描未来走 Web 手动框选，不在此处理 PDF
 
 ## 风格
@@ -77,7 +79,8 @@ def write_soul():
 ## 约束
 - 只处理印刷题目，忽略学生手写内容
 - 不确定的地方明确标注，交给用户判断
-- 任何阶段出错都要报告具体原因
+- 任何阶段出错都要通过 `fail_task` 报告具体原因
+- 成功结果只能通过 `finalize_task` 校验并提交
 """
     soul_path = PROFILE_DIR / "SOUL.md"
     soul_path.write_text(soul_content, encoding="utf-8")
@@ -92,7 +95,7 @@ def sync_skills():
     dst_dir = PROFILE_DIR / "skills"
 
     if not src_dir.exists():
-        print("  ⚠ skills/ 目录不存在，跳过")
+        print("  [WARN] skills/ 目录不存在，跳过")
         return
 
     for skill_dir in src_dir.iterdir():
@@ -118,50 +121,46 @@ def sync_skills():
 # ── 配置 MCP ───────────────────────────────────────
 
 def config_mcp():
-    """在 hermes config.yaml 中注册 oopsnote MCP server。"""
-    config_path = Path.home() / "AppData" / "Local" / "hermes" / "config.yaml"
-    if not config_path.exists():
-        print("  ⚠ config.yaml 不存在，跳过 MCP 配置")
-        return
-
-    content = config_path.read_text(encoding="utf-8")
-
-    # 检查是否已有 oopsnote 配置
-    if "oopsnote:" in content and "mcp_server.py" in content:
-        print("  MCP 配置已存在，跳过")
-        return
-
-    # 追加 MCP 配置
-    mcp_config = f"""\n
-  oopsnote:
-    command: uv
-    args:
-      - run
-      - python
-      - -m
-      - oopsnote.mcp
-    enabled: true
-"""
-
-    # 找到 mcp: 节并添加
-    if "mcp:" in content:
-        # 在最后一个 mcp server 配置后插入
-        lines = content.split("\n")
-        new_lines = []
-        in_mcp = False
-        for line in lines:
-            new_lines.append(line)
-            if line.strip().startswith("mcp:"):
-                in_mcp = True
-            elif in_mcp and not line.startswith(" ") and line.strip():
-                in_mcp = False
-        # 在末尾追加
-        new_lines.append(mcp_config.rstrip())
-        config_path.write_text("\n".join(new_lines), encoding="utf-8")
-    else:
-        config_path.write_text(content + "\nmcp:" + mcp_config, encoding="utf-8")
-
-    print("  配置 MCP server")
+    """Register full interactive and restricted Web pipeline MCP servers."""
+    config_path = PROFILE_DIR / "config.yaml"
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+    config = yaml.safe_load(config_path.read_text(encoding="utf-8")) if config_path.exists() else {}
+    config = config or {}
+    servers = config.setdefault("mcp_servers", {})
+    base_server = {
+        "command": "uv",
+        "args": [
+            "--directory",
+            str(REPO_ROOT),
+            "run",
+            "python",
+            "-m",
+            "oopsnote.mcp",
+        ],
+        "enabled": True,
+    }
+    servers["oopsnote"] = deepcopy(base_server)
+    servers["oopsnote_pipeline"] = {
+        **deepcopy(base_server),
+        "tools": {
+            "include": [
+                "get_task",
+                "get_asset_path",
+                "list_tags",
+                "create_tag",
+                "report_task_stage",
+                "finalize_task",
+                "fail_task",
+            ]
+        },
+    }
+    tmp = config_path.with_suffix(".yaml.tmp")
+    tmp.write_text(
+        yaml.safe_dump(config, allow_unicode=True, sort_keys=False),
+        encoding="utf-8",
+    )
+    tmp.replace(config_path)
+    print("  配置 MCP servers: oopsnote, oopsnote_pipeline")
 
 
 # ── 主流程 ─────────────────────────────────────────
@@ -174,21 +173,21 @@ def main():
     print("=" * 50)
 
     if not check_hermes():
-        print("\n❌ 未找到 hermes 命令。请先安装 Hermes Agent:")
+        print("\n[ERROR] 未找到 hermes 命令。请先安装 Hermes Agent:")
         print("   https://hermes-agent.nousresearch.com/docs")
         sys.exit(1)
 
     if profile_exists():
-        print(f"\n📋 Profile '{PROFILE_NAME}' 已存在，更新中 ...")
+        print(f"\nProfile '{PROFILE_NAME}' 已存在，更新中 ...")
     else:
-        print(f"\n🆕 创建 Profile '{PROFILE_NAME}' ...")
+        print(f"\n创建 Profile '{PROFILE_NAME}' ...")
         create_profile()
 
     write_soul()
     sync_skills()
     config_mcp()
 
-    print(f"\n✅ 完成。运行: hermes --profile {PROFILE_NAME}")
+    print(f"\n完成。运行: hermes --profile {PROFILE_NAME}")
 
 
 if __name__ == "__main__":

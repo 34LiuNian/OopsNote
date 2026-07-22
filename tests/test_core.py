@@ -2,19 +2,25 @@
 
 import base64
 import tempfile
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
 
+import oopsnote.core.store as store_module
+
 from oopsnote.core import (
     AssetStore,
     Problem,
+    RunStatus,
+    RunStore,
     Searcher,
     SearchQuery,
     TagDimension,
     TagStore,
     TaskCreateRequest,
     TaskRecord,
+    TaskStage,
     TaskStatus,
     TaskStore,
 )
@@ -52,7 +58,51 @@ class TestTaskStore:
         t = store.mark_status(t.id, TaskStatus.FAILED, "模型超时")
         assert t.status == TaskStatus.FAILED
         assert t.last_error == "模型超时"
+        t = store.mark_status(t.id, TaskStatus.PROCESSING)
+        assert t.last_error is None
         store.delete(t.id)
+
+    def test_get_retries_transient_windows_file_lock(self, tmp_path, monkeypatch):
+        store = TaskStore(base_dir=tmp_path)
+        task = store.create(TaskCreateRequest(subject="数学"))
+        original_read = Path.read_text
+        attempts = 0
+
+        def temporarily_locked(path, *args, **kwargs):
+            nonlocal attempts
+            if path == store._path(task.id) and attempts < 2:
+                attempts += 1
+                raise PermissionError(13, "sharing violation", str(path))
+            return original_read(path, *args, **kwargs)
+
+        monkeypatch.setattr(Path, "read_text", temporarily_locked)
+        monkeypatch.setattr(store_module.time, "sleep", lambda _seconds: None)
+
+        assert store.get(task.id).id == task.id
+        assert attempts == 2
+
+
+class TestRunStore:
+    def test_persists_attempts_and_stage_transitions(self, tmp_path):
+        store = RunStore(tmp_path / "runs")
+        first = store.create("task-1")
+        store.start(first.id, pid=123, log_path="runs/first.log")
+        store.observe_stage(first.id, TaskStage.OCR, "提取题面")
+        store.observe_stage(first.id, TaskStage.SOLVING, "生成解析")
+        completed = store.finish(first.id, RunStatus.COMPLETED, exit_code=0)
+
+        second = store.create("task-1")
+        assert second.attempt == 2
+        assert completed.stage_runs[0].status.value == "completed"
+        assert completed.stage_runs[1].status.value == "completed"
+        assert completed.ended_at is not None
+
+    def test_active_run_uses_heartbeat(self, tmp_path):
+        store = RunStore(tmp_path / "runs")
+        run = store.create("task-1")
+        old = datetime.now(timezone.utc) - timedelta(hours=1)
+        store.update(run.id, heartbeat_at=old)
+        assert store.active_for_task("task-1").id == run.id
 
 
 class TestTagStore:

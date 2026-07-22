@@ -1,0 +1,31 @@
+{
+  "mcpServers": {
+    "oopsnote_pipeline": {
+      "command": "uv",
+      "args": [
+        "run",
+        "python",
+        "-m",
+        "oopsnote.mcp"
+      ],
+      "lifecycle": "eager",
+      "directTools": [
+        "get_task",
+        "get_asset_path",
+        "list_tags",
+        "create_tag",
+        "report_task_stage",
+        "finalize_task",
+        "fail_task"
+      ],
+      "excludeTools": [
+        "create_task",
+        "list_tasks",
+        "update_task",
+        "mark_task_status",
+        "set_task_problems",
+        "delete_tag"
+      ]
+    }
+  }
+}

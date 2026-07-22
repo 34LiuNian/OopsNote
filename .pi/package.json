@@ -1,0 +1,7 @@
+{
+  "private": true,
+  "description": "Pinned Pi project dependencies for OopsNote.",
+  "dependencies": {
+    "pi-mcp-adapter": "2.11.0"
+  }
+}

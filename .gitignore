@@ -15,6 +15,7 @@ __pycache__/
 *.egg-info/
 .coverage
 .pytest_cache/
+.pytest-tmp*/
 .mypy_cache/
 .ruff_cache/
 .pytype/
@@ -45,7 +46,15 @@ venv/
 
 # Frontend build and coverage artifacts
 /frontend/.next/
+/frontend/.next*/
 /frontend/out/
 /frontend/.turbo/
 /frontend/coverage/
 *.tsbuildinfo
+
+# Local Pi credentials and installed JavaScript packages
+/.pi/extensions.json
+/.pi/runtime.json
+/.pi/node_modules/
+/.pi/skills/
+/.pi/self-learning-memory/

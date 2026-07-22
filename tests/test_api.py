@@ -6,7 +6,8 @@ import hashlib
 from fastapi.testclient import TestClient
 
 from oopsnote.api import main
-from oopsnote.core import AssetStore, BatchSessionStore, TagStore, TaskStore
+from oopsnote.ai import HermesRunner
+from oopsnote.core import AssetStore, BatchSessionStore, RunStatus, RunStore, TagStore, TaskStore, TaskStatus
 
 
 def test_web_contract_uses_wrapped_collections_and_persisted_upload(tmp_path, monkeypatch):
@@ -97,3 +98,46 @@ def test_batch_session_deduplicates_source_and_persists_progress(tmp_path, monke
     assert restored["active_page"] == 4
     assert restored["segments"][0]["page_index"] == 3
     assert client.get("/batch-sessions").json()["items"][0]["file_hash"] == digest
+
+
+def test_process_endpoint_creates_observable_run(tmp_path, monkeypatch):
+    storage = tmp_path / "storage"
+    task_store = TaskStore(storage)
+    run_store = RunStore(storage / "runs")
+    runner = HermesRunner(
+        project_root=tmp_path,
+        task_store=task_store,
+        run_store=run_store,
+    )
+    monkeypatch.setattr(main, "STORAGE_DIR", storage)
+    monkeypatch.setattr(main, "TASK_STORE", task_store)
+    monkeypatch.setattr(main, "RUN_STORE", run_store)
+    monkeypatch.setattr(main, "HERMES_RUNNER", runner)
+
+    def fake_run(task_id, run_id):
+        task_store.update(task_id, status=TaskStatus.COMPLETED, active_run_id=None)
+        run_store.finish(run_id, RunStatus.COMPLETED, exit_code=0)
+
+    monkeypatch.setattr(runner, "run", fake_run)
+    client = TestClient(main.app)
+    task = client.post("/tasks", json={"subject": "math"}).json()["task"]
+
+    response = client.post(f"/tasks/{task['id']}/process?backend=hermes")
+    assert response.status_code == 200
+    assert response.json()["run"]["attempt"] == 1
+    assert client.get(f"/tasks/{task['id']}").json()["task"]["status"] == "completed"
+    runs = client.get(f"/tasks/{task['id']}/runs").json()["items"]
+    assert runs[0]["status"] == "completed"
+    assert runs[0]["backend"] == "hermes"
+    assert runs[0]["retry_count"] == 0
+
+
+def test_process_rejects_unknown_backend(tmp_path, monkeypatch):
+    storage = tmp_path / "storage"
+    task_store = TaskStore(storage)
+    monkeypatch.setattr(main, "TASK_STORE", task_store)
+    client = TestClient(main.app)
+    task = client.post("/tasks", json={"subject": "math"}).json()["task"]
+
+    response = client.post(f"/tasks/{task['id']}/process?backend=unknown")
+    assert response.status_code == 422
