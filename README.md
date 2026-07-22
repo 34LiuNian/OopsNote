@@ -7,150 +7,83 @@
 <br/>
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="assets/oopsnote_white.svg">
-  <img src="assets/oopsnote_black.svg" height="100" alt="OopsNote Logo" />
+  <img src="assets/oopsnote_black.svg" height="100" alt="OopsNote" />
 </picture>
 
-<h2>AI 驱动的个人错题管理工具</h2>
+## AI 驱动的个人错题管理工具
 
-扫描作业 → AI 自动识别/解题/打标 → 积累个人错题库 → 针对性复习
-
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="assets/page1_dark.png">
-  <img src="assets/page1_light.png" height="" alt="Page1" />
-</picture>
+图片或手动录入 -> OCR、解题、验证、打标 -> 可检索题库、Obsidian 与试卷输出
 
 </div>
 
----
+## 当前架构
 
-<p align="center">
-  <img src="https://img.shields.io/badge/Python-3.11+-3776AB?logo=python&logoColor=white" alt="Python" />
-  <img src="https://img.shields.io/badge/Hermes-Agent-8A2BE2?logo=robot&logoColor=white" alt="Hermes Agent" />
-  <img src="https://img.shields.io/badge/MCP-stdio-FF6B6B" alt="MCP" />
-  <img src="https://img.shields.io/badge/Obsidian-Vault-7C3AED?logo=obsidian&logoColor=white" alt="Obsidian" />
-</p>
-
-<p align="center">
-  <img src="https://img.shields.io/badge/License-AGPL--3.0-blue" alt="License" />
-  <img src="https://img.shields.io/badge/Phase-4_In_Progress-teal" alt="Phase 4 in progress" />
-  <img src="https://img.shields.io/github/stars/34LiuNian/OopsNote?logo=github" alt="GitHub Stars" />
-</p>
-
----
-
-## 🏗️ 架构
-
-```
-Hermes (自然语言)    Web 前端 (上传/浏览)    Obsidian (知识图谱)
-       │ MCP                │ REST                  ▲ 文件
-       ▼                    ▼                      │
-  ┌────────────────────────────────────────────┐    │
-  │            OopsNote Core (Python)           │────┘
-  │  models · store · tags · search · mcp       │
-  └────────────────────────────────────────────┘
+```text
+Web / REST
+    -> ManagedAiRunner
+       -> Pi RPC（默认）
+       -> Hermes（限时 fallback）
+    -> 受限 Python MCP
+    -> OopsNote Core
+       -> JSON / Assets / Obsidian
 ```
 
-**Hermes Agent** 管理所有 AI：OCR、解题、打标，通过 MCP 协议与 Core 通信。profile 隔离保证错题处理与日常聊天互不干扰。
+Pi 每个任务使用独立无会话进程。Core 负责数据、任务生命周期和原子 finalize；AI 运行时不直接写仓库文件。题目正文统一使用 [OopsMark v1](docs/oopsmark-v1.md)。
 
-> 完整产品设计见 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
+完整设计见 [架构文档](docs/ARCHITECTURE.md)，本机 Pi 配置与调试见 [Pi 运维指南](docs/operations/pi.md)。
 
----
+## 项目结构
 
-## 📁 项目结构
-
-```
+```text
 OopsNote/
-├── oopsnote/             ← Core 库
-│   ├── core/             # 数据模型、存储、标签、搜索
-│   ├── mcp/              # MCP Server（→ Hermes）
-│   ├── api/              # REST API（→ 前端）
-│   ├── cli/              # CLI 调试入口
-│   ├── obsidian/         # Obsidian 同步（Phase 3）
-│   └── paper/            # LaTeX 试卷编译
-├── frontend/             ← Next.js 前端（Phase 4）
-├── tests/                ← 测试
-└── docs/                 ← 文档
+├── oopsnote/       Python Core、AI runtime、REST、MCP、Obsidian、paper
+├── frontend/       Next.js Web 应用
+├── skills/         Skill 唯一源码
+├── scripts/        安装、基准、诊断和 legacy 工具
+├── tests/          Python 测试
+├── docs/           协议、架构、运维、决策与 backlog
+├── storage/        本地运行数据
+└── vaults/         用户题库与 Obsidian 数据
 ```
 
----
+## 安装与测试
 
-## 🚀 使用
-
-### 安装
-
-```bash
-git clone https://github.com/34LiuNian/OopsNote.git
-cd OopsNote
+```powershell
 uv sync
+npm install --prefix .pi
+.\.venv\Scripts\python.exe scripts\setup\setup_pi.py --sync
+
+$env:PYTEST_ADDOPTS='--basetemp=E:/works/2026/OopsNote/.pytest-tmp'
+.\.venv\Scripts\python.exe -m pytest -q
 ```
 
-### 运行测试
+API 与前端：
 
-```bash
-uv run pytest -v
+```powershell
+.\.venv\Scripts\python.exe -m uvicorn oopsnote.api.main:app --reload
+npm --prefix frontend install
+npm --prefix frontend run dev
 ```
 
-### 题目渲染格式
+Pi 实题验证：
 
-- Markdown：GitHub Flavored Markdown，支持表格、列表、链接和代码块。
-- 数学与化学方程式：KaTeX，化学方程式使用 `\ce{...}`（mhchem）。
-- 分子结构：使用 ```` ```molecule ```` 代码块输入 SMILES 或 MolBlock，由 RDKit.js 渲染；旧的 ```` ```smiles ```` 仍作为兼容别名。
-- TikZ 图形：使用 ```` ```tikz ```` 代码块；浏览器端 TikZJax Worker 优先渲染，超时、中文或不兼容内容回退后端 SVG。
-
-前端依赖安装后会自动运行 `npm run renderers:sync`，把锁定版本的 RDKit、TikZJax Worker、TeX 资源和字体同步到 `frontend/public/vendor/`。不再支持 `chemfig` 代码块。
-
-### CLI（调试用）
-
-```bash
-uv run python -m oopsnote.cli.main scan ./试卷.pdf --subject 数学
-uv run python -m oopsnote.cli.main search --tags "二次函数"
+```powershell
+.\.venv\Scripts\python.exe scripts\benchmarks\pi_math_smoke.py
+.\.venv\Scripts\python.exe scripts\benchmarks\pi_math_benchmark.py
 ```
 
-### Hermes 入口（主入口）
+基准报告写入 `storage/pi-benchmark/`，单次任务状态和 RPC 日志写入 `storage/runs/`。
 
-```bash
-# 创建独立 profile
-hermes profile create oopsnote
+## 当前进度
 
-# 开始使用
-hermes --profile oopsnote
-> 扫一下这本练透数学选必一
-> 帮我找二次函数相关的错题
-```
+- Core、MCP、Obsidian、搜索和 Web 主流程已建立。
+- Pi P1/P2 已接入，具备受管运行、取消、超时、恢复、统计和受限工具。
+- OopsMark v1 已接入 Core、AI 输出与 Web 渲染。
+- 下一步是结构化生产验证和 60 题黄金集，不是继续扩展双后端。
+- Hermes 仅保留到 Pi 达成下线门槛。
 
-Hermes 配置见 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) 第六章。
+具体优先级见 [项目 backlog](docs/todo.md)。
 
----
-
-## 📋 实施进度
-
-| Phase | 内容 | 状态 |
-|-------|------|------|
-| 1 | Core 骨架（数据模型/存储/标签/搜索） | ✅ |
-| 2 | Hermes 集成（MCP Server + Skills） | ✅ |
-| 3 | Obsidian 同步 + 搜索 API | ✅ |
-| 4 | 前端（含手动批量分割） | 进行中 |
-| 5 | 知识体系 + 智能出卷 | 远期 |
-
----
-
-## 📄 许可
+## License
 
 AGPL-3.0
-
-## 🙏 致谢
-
-- [**Hermes Agent**](https://github.com/NousResearch/hermes-agent) — AI 引擎
-- [**Mantine**](https://mantine.dev/) — React 组件与主题系统
-- [**shadcn/ui**](https://ui.shadcn.com/) — 前端视觉语言参考
-- [**Lucide**](https://lucide.dev/) — 图标系统
-- [**imsyy/home**](https://github.com/imsyy/home) — Loading 页参考
-- 标签数据来源：[filatex.cn](https://filatex.cn/) · [wrong-notebook](https://github.com/wttwins/wrong-notebook)
-
----
-
-<div align="center">
-
-**Made with ❤️ by 34LiuNian**
-
-</div>
