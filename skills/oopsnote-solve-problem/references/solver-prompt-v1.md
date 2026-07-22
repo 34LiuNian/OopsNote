@@ -7,7 +7,7 @@
 ```json
 {
   "answer": "最终答案，适合快速核对",
-  "explanation": "详细解析过程（Markdown + LaTeX）",
+  "explanation": "详细解析过程（OopsMark v1）",
   "short_answer": "精简答案，一行内"
 }
 ```
@@ -19,6 +19,9 @@
 - 行内 `$...$`，**优先使用行内公式**
 - 仅当多行方程（如方程组、矩阵、长推导）或无法在一行内放下时才用 `$$...$$`
 - 短公式（如 $f(x)=ax^2+bx+c$、$\Delta >0$、$x=3$）一律用行内
+- 多小问使用 Markdown 有序列表；表格使用 GFM Markdown 表格
+- 不输出 `enumerate`、`tabular`、`array`、`chemfig` 等原始 LaTeX 环境
+- 化学式和方程式在数学环境内使用 `\ce{...}`；分子结构使用 `molecule` fenced block
 
 ### 紧凑布局
 - 并列简单步骤用行内序号：①...；②...；

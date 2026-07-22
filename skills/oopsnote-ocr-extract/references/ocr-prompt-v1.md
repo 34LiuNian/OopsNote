@@ -16,6 +16,7 @@
 
 ```json
 {
+  "content_format": "oopsmark-v1",
   "subject": "math",
   "question_type": "解答题",
   "problem_text": "已知 $f(x) = x^2 - 2ax + 3$，$x \\in [1, 3]$，求 $f(x)$ 的最小值。",
@@ -27,6 +28,7 @@
 
 | 字段 | 必须 | 说明 |
 |------|:----:|------|
+| `content_format` | ✅ | 固定为 `oopsmark-v1` |
 | `subject` | ✅ | 仅限 `math` / `physics` / `chemistry`（英文）|
 | `question_type` | ✅ | `单选题` / `多选题` / `填空题` / `解答题`（中文）|
 | `problem_text` | ✅ | 完整题面，Markdown + LaTeX |
@@ -39,19 +41,23 @@
 - 注意反斜杠转义：LaTeX 中的 `\` 在 JSON 中需写为 `\\`
 
 ### 填空题
-- 空位用 `\\underline{\\hspace{2cm}}` 表示
+- 空位用 `$\\underline{\\hspace{2cm}}$` 表示
 
 ### 选择题
 - 选项单独列出，不混入题干
 - 选项格式：`["A. $x=1$", "B. $x=2$", ...]`
 
 ### 多小问题
-- 使用 `\\begin{enumerate} \\item[(1)] ... \\end{enumerate}` 包裹
-- 每个 `\\item[(1)]` 代表一个小问
+- 使用 Markdown 有序列表，每个小问单独一项
 
-### 化学式
-- 可用 `\\ce{...}`（mhchem 包）或手写 LaTeX
-- 有机物结构式保留文本描述即可
+### 化学内容
+- 化学式和方程式在 `$...$` 或 `$$...$$` 内使用 `\\ce{...}`
+- 分子结构使用 `molecule` fenced block，内容为 SMILES 或 MolBlock
+- 不使用 `\\chemfig`
+
+### 表格和图形
+- 普通表格使用 GFM Markdown 表格，不使用 `tabular`、`array` 或 `tblr`
+- TikZ 使用 `tikz` fenced block，不在正文直接放 `tikzpicture`
 
 ## 约束
 

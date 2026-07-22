@@ -32,7 +32,7 @@ metadata:
 ## 步骤
 
 ### 1. 查询标签候选
-调用 `mcp__oopsnote__list_tags` 获取已有标签库。
+调用 Pi 暴露的 OopsNote `list_tags` 直连工具获取已有标签库。
 - dimension=knowledge：获取知识点候选
 - dimension=error：获取错因候选
 
@@ -45,10 +45,10 @@ metadata:
 - **difficulty**：简单/中等/较难
 
 ### 3. 创建新标签（如果需要）
-如果标签库中不存在合适的标签，调用 `mcp__oopsnote__create_tag` 创建。
+如果标签库中不存在合适的标签，调用 Pi 暴露的 OopsNote `create_tag` 直连工具创建。
 
-### 4. 写入结果
-调用 `mcp__oopsnote__update_task` 将打标结果更新到任务中。
+### 4. 返回结果
+将标签字段返回给 orchestrator，由 `finalize_task` 与完整 Problem 一次性提交。
 
 ## 约束
 - 优先复用已有标签，避免同义词泛滥

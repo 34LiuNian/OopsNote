@@ -6,14 +6,14 @@
 
 ### 1. 查询已有标签
 
-调用 `mcp__oopsnote__list_tags` 获取标签候选：
+受管 Web 模式调用 `mcp__oopsnote_pipeline__list_tags`，交互模式调用 `mcp__oopsnote__list_tags` 获取标签候选：
 
 ```python
 # 获取知识点标签
-mcp__oopsnote__list_tags(dimension="knowledge", query="", limit=50)
+mcp__oopsnote_pipeline__list_tags(dimension="knowledge", query="函数", limit=20)
 
 # 获取错因标签
-mcp__oopsnote__list_tags(dimension="error", query="", limit=50)
+mcp__oopsnote_pipeline__list_tags(dimension="error", query="定义域", limit=20)
 ```
 
 **优先使用已有标签**，避免创建同义标签。仅当确实没有匹配时才创建新的。
@@ -31,7 +31,7 @@ mcp__oopsnote__list_tags(dimension="error", query="", limit=50)
 ### 3. 创建新标签（如果需要）
 
 ```python
-mcp__oopsnote__create_tag(
+mcp__oopsnote_pipeline__create_tag(
     dimension="knowledge",
     value="二次函数",
     aliases=["一元二次函数", "二次函数图像"],
