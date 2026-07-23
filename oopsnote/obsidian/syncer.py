@@ -1,7 +1,7 @@
 """Obsidian 同步器 — JSON → Obsidian vault 单向同步。
 
 流程：
-1. 读取所有 Task 的所有 Problem
+1. 读取所有 Task 的 Problem
 2. 写入 .md 文件到 vaults/{subject}/problems/
 3. 重新生成标签索引文件到 vaults/{subject}/indexes/
 4. 清理 vault 中已不存在于 JSON 中的旧文件
@@ -82,7 +82,8 @@ class ObsidianSyncer:
         """从所有 Task 中收集 Problem。"""
         all_problems: list[Problem] = []
         for task in self.task_store.list_all():
-            all_problems.extend(task.problems)
+            if task.problem:
+                all_problems.append(task.problem)
         # 按创建时间去重排序
         seen: set[str] = set()
         unique: list[Problem] = []

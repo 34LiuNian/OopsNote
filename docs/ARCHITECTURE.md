@@ -30,6 +30,8 @@ Pi JSONL RPC process, one process per task
 
 Pi 使用 `--no-session --no-builtin-tools --no-extensions` 启动，再显式加载 OCR Extension 和固定版本 MCP Adapter。每个任务隔离上下文。
 
+Pi RPC 本身支持在一个进程内连续处理 `prompt`，并可通过 `new_session` 重置上下文。生产验证期仍保留逐任务进程隔离，并先用有界队列限制并发；长驻 worker 只有在逐任务取消、超时、MCP 状态重置和进程崩溃恢复测试通过后才能启用。
+
 ## 3. 数据与写入边界
 
 ```text
@@ -59,17 +61,17 @@ OCR / AI / manual edit -> OopsMark v1 -> Web renderer
 
 ## 5. 源码职责
 
-| 区域 | 职责 |
-| --- | --- |
-| `oopsnote/core` | Pydantic 模型、JSON store、资产、标签和搜索 |
-| `oopsnote/content` | OopsMark 解析、验证和导出适配 |
-| `oopsnote/ai` | 共享受管生命周期和 backend 协议 |
-| `oopsnote/api` | REST DTO、路由与应用组合 |
-| `oopsnote/mcp` | AI 可调用的数据工具和 pipeline 写入边界 |
-| `oopsnote/obsidian` | Core 到 Vault 的同步 |
-| `oopsnote/paper` | 试卷模板与导出支持 |
-| `frontend` | Next.js UI，只经 REST 访问 Core |
-| `skills` | OCR、解题、验证、标签和编排指令的唯一源码 |
+| 区域                | 职责                                        |
+| ------------------- | ------------------------------------------- |
+| `oopsnote/core`     | Pydantic 模型、JSON store、资产、标签和搜索 |
+| `oopsnote/content`  | OopsMark 解析、验证和导出适配               |
+| `oopsnote/ai`       | 共享受管生命周期和 backend 协议             |
+| `oopsnote/api`      | REST DTO、路由与应用组合                    |
+| `oopsnote/mcp`      | AI 可调用的数据工具和 pipeline 写入边界     |
+| `oopsnote/obsidian` | Core 到 Vault 的同步                        |
+| `oopsnote/paper`    | 试卷模板与导出支持                          |
+| `frontend`          | Next.js UI，只经 REST 访问 Core             |
+| `skills`            | OCR、解题、验证、标签和编排指令的唯一源码   |
 
 ## 6. 配置与密钥
 

@@ -145,7 +145,7 @@ export function ProblemEditPanel({ taskId, problem, tagStyles, onClose, onSaved 
         text: opt.text,
       }));
 
-      await overrideProblem(taskId, problem.problem_id, {
+      await overrideProblem(taskId, {
         question_no: questionNo.trim() || null,
         source: sourceTags[0]?.trim() || null,
         problem_text: problemText,

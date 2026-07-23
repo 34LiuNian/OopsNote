@@ -13,7 +13,7 @@ import {
 import { fetchJson } from "@/lib/api";
 import type { TaskResponse } from "@/types/api";
 import { TaskActions } from "./task/TaskActions";
-import { TaskProblemList } from "./task/TaskProblemList";
+import { TaskProblemDetail } from "./task/TaskProblemList";
 import { deleteTask } from "@/features/tasks";
 import { useTagDimensions } from "@/features/tags";
 import { useTaskStream } from "@/hooks/useTaskStream";
@@ -140,7 +140,7 @@ export function TaskLiveView({ taskId }: { taskId: string }) {
 
 
   const removeTask = useCallback(async () => {
-    if (!window.confirm("确认删除这个任务（将删除其所有题目）？")) return;
+    if (!window.confirm("确认删除这个任务及其题目？")) return;
     try {
       await deleteTask(taskId);
       window.location.href = "/library";
@@ -246,12 +246,18 @@ export function TaskLiveView({ taskId }: { taskId: string }) {
             </Text>
           )}
           {data.task.trace.kind === "batch_segment" && data.task.trace.source_file_hash && (
-            <Link
-              href={`/batch-segment?session=${encodeURIComponent(data.task.trace.source_file_hash)}&page=${(data.task.trace.page_index ?? 0) + 1}`}
-              className="task-trace-link"
-            >
-              定位到批量扫描
-            </Link>
+            data.task.trace.batch_session_available === false ? (
+              <span className="task-trace-link is-disabled" aria-disabled="true" title="原批量扫描记录已删除">
+                定位到批量扫描
+              </span>
+            ) : (
+              <Link
+                href={`/batch-segment?session=${encodeURIComponent(data.task.trace.source_file_hash)}&page=${(data.task.trace.page_index ?? 0) + 1}`}
+                className="task-trace-link"
+              >
+                定位到批量扫描
+              </Link>
+            )
           )}
           <Button size="small" variant="invisible" onClick={() => setIsScreenshotOpen(true)}>
             {data.task.trace.kind === "batch_segment" ? "查看选框截图" : "查看原图"}
@@ -288,12 +294,12 @@ export function TaskLiveView({ taskId }: { taskId: string }) {
       )}
 
       {data && (
-        <TaskProblemList
+        <TaskProblemDetail
           taskId={taskId}
           taskDifficulty={data.task.payload?.difficulty}
-          problems={data.task.problems}
-          solutions={data.task.solutions}
-          tags={data.task.tags}
+          problem={data.task.problem}
+          solution={data.task.solution}
+          tag={data.task.tag}
           editingKey={editingKey}
           onEdit={setEditingKey}
           onCloseEdit={() => setEditingKey("")}

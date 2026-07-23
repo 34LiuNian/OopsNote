@@ -58,3 +58,6 @@ venv/
 /.pi/node_modules/
 /.pi/skills/
 /.pi/self-learning-memory/
+
+
+/.agents/

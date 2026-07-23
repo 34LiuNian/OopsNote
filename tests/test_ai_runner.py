@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+import threading
 from datetime import datetime, timedelta, timezone
 
 from oopsnote.ai import HermesRunner, PiRpcBackend, PiRpcRunner
@@ -105,6 +106,23 @@ def test_recover_stale_run_and_legacy_task(tmp_path):
     assert task_store.get(legacy.id).status == TaskStatus.FAILED
 
 
+def test_recover_stale_run_preserves_completed_task(tmp_path):
+    runner, task_store, run_store = make_runner(tmp_path, stale_seconds=60)
+    task = task_store.create(TaskCreateRequest(subject="math"))
+    run = runner.enqueue(task.id)
+    old = datetime.now(timezone.utc) - timedelta(hours=1)
+    run_store.update(run.id, status=RunStatus.RUNNING, heartbeat_at=old)
+    task_store.update(
+        task.id,
+        status=TaskStatus.COMPLETED,
+        active_run_id=None,
+    )
+
+    assert runner.recover_stale() == 1
+    assert run_store.get(run.id).status == RunStatus.COMPLETED
+    assert task_store.get(task.id).status == TaskStatus.COMPLETED
+
+
 class RpcStdin(io.StringIO):
     def __init__(self, on_close):
         super().__init__()
@@ -123,6 +141,7 @@ class SettlingRpcProcess:
         self.stdin = RpcStdin(on_close)
         self.stdout = io.StringIO(
             '{"type":"response","command":"prompt","success":true}\n'
+            '{"type":"message_update","message":{"content":"must-not-be-persisted"}}\n'
             '{"type":"agent_settled"}\n'
             '{"type":"response","command":"get_session_stats","data":'
             '{"tokens":{"input":12,"output":8,"cacheRead":3,"cacheWrite":1},"cost":0.02}}\n'
@@ -182,9 +201,66 @@ def test_pi_rpc_runner_persists_jsonl_and_stats(tmp_path, monkeypatch):
     assert stored.retry_count == 0
     assert not stored.retryable
     assert stored.rpc_log_path
-    assert (run_store.base_dir / f"{run.id}.rpc.jsonl").read_text(encoding="utf-8")
+    rpc_log = (run_store.base_dir / f"{run.id}.rpc.jsonl").read_text(encoding="utf-8")
+    assert '"direction": "command"' in rpc_log
+    assert '"message_chars"' in rpc_log
+    assert '"command": "get_session_stats"' in rpc_log
+    assert "must-not-be-persisted" not in rpc_log
+    assert "oopsnote-solve-problem" not in rpc_log
     assert captured["encoding"] == "utf-8"
     assert captured["errors"] == "replace"
+
+
+def test_pi_runner_limits_concurrency_and_skips_cancelled_queue_item(
+    tmp_path,
+    monkeypatch,
+):
+    task_store = TaskStore(tmp_path / "storage")
+    run_store = RunStore(tmp_path / "storage" / "runs")
+    runner = PiRpcRunner(
+        backend=PiRpcBackend(tmp_path),
+        project_root=tmp_path,
+        task_store=task_store,
+        run_store=run_store,
+        max_concurrent_tasks=2,
+    )
+    tasks = [task_store.create(TaskCreateRequest(subject="math")) for _ in range(3)]
+    runs = [runner.enqueue(task.id) for task in tasks]
+    entered: list[str] = []
+    entered_two = threading.Event()
+    release = threading.Event()
+    lock = threading.Lock()
+
+    def block_in_slot(task_id, _run_id):
+        with lock:
+            entered.append(task_id)
+            if len(entered) == 2:
+                entered_two.set()
+        release.wait(timeout=2)
+
+    monkeypatch.setattr(runner, "_run_in_slot", block_in_slot)
+    active_threads = [
+        threading.Thread(target=runner.run, args=(task.id, run.id))
+        for task, run in zip(tasks[:2], runs[:2])
+    ]
+    for thread in active_threads:
+        thread.start()
+
+    assert entered_two.wait(timeout=1)
+    assert len(entered) == 2
+    queued_thread = threading.Thread(
+        target=runner.run,
+        args=(tasks[2].id, runs[2].id),
+    )
+    queued_thread.start()
+    runner.cancel(tasks[2].id)
+    release.set()
+    for thread in [*active_threads, queued_thread]:
+        thread.join(timeout=2)
+
+    assert len(entered) == 2
+    assert task_store.get(tasks[2].id).status == TaskStatus.CANCELLED
+    assert run_store.get(runs[2].id).status == RunStatus.CANCELLED
 
 
 def test_pi_prompt_contains_synced_skill_pack(tmp_path):

@@ -133,7 +133,7 @@ class TaskRecord(BaseModel):
     id: str = Field(default_factory=lambda: uuid4().hex)
     subject: str = ""
     status: TaskStatus = TaskStatus.PENDING
-    problems: list[Problem] = Field(default_factory=list)
+    problem: Optional[Problem] = None
     asset_path: Optional[str] = None
     metadata: dict[str, Any] = Field(default_factory=dict)
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
@@ -188,20 +188,92 @@ class TaskRun(BaseModel):
 
 # ── 批量扫描会话 ────────────────────────────────────────
 
-class BatchSegment(BaseModel):
-    """手动框选区域。坐标相对于单页图片的宽高，范围为 0 到 1。"""
+class BatchSegmentContinuation(BaseModel):
+    """同一道题在紧邻下一页中的延续裁剪区域。"""
 
-    id: str = Field(default_factory=lambda: uuid4().hex)
     page_index: int = Field(ge=0)
     x: float = Field(ge=0, le=1)
     y: float = Field(ge=0, le=1)
     width: float = Field(gt=0, le=1)
     height: float = Field(gt=0, le=1)
+
+
+class BatchCropRect(BaseModel):
+    """One normalized crop applied proportionally to every page in a PDF."""
+
+    x: float = Field(default=0, ge=0, le=1)
+    y: float = Field(default=0, ge=0, le=1)
+    width: float = Field(default=1, gt=0, le=1)
+    height: float = Field(default=1, gt=0, le=1)
+
+    @model_validator(mode="after")
+    def validate_bounds(self) -> "BatchCropRect":
+        if self.x + self.width > 1 or self.y + self.height > 1:
+            raise ValueError("Batch crop rectangle exceeds page bounds")
+        return self
+
+
+class BatchSegmentPart(BaseModel):
+    """One page-local projection of a document-space selection."""
+
+    page_index: int = Field(ge=0)
+    x: float = Field(ge=0, le=1)
+    y: float = Field(ge=0, le=1)
+    width: float = Field(gt=0, le=1)
+    height: float = Field(gt=0, le=1)
+    order: int = Field(default=0, ge=0)
+
+    @model_validator(mode="after")
+    def validate_bounds(self) -> "BatchSegmentPart":
+        if self.x + self.width > 1 or self.y + self.height > 1:
+            raise ValueError("Batch segment part exceeds page bounds")
+        return self
+
+
+class BatchSegment(BaseModel):
+    """A selection persisted as an ordered list of page-local parts."""
+
+    id: str = Field(default_factory=lambda: uuid4().hex)
+    parts: list[BatchSegmentPart] = Field(default_factory=list)
+    # Legacy fields remain readable while old sessions migrate to parts[].
+    page_index: Optional[int] = Field(default=None, ge=0)
+    x: Optional[float] = Field(default=None, ge=0, le=1)
+    y: Optional[float] = Field(default=None, ge=0, le=1)
+    width: Optional[float] = Field(default=None, gt=0, le=1)
+    height: Optional[float] = Field(default=None, gt=0, le=1)
+    continuation: Optional[BatchSegmentContinuation] = None
     question_no: Optional[int] = Field(default=None, ge=1)
     status: str = "pending"
     task_id: Optional[str] = None
     problem_ids: list[str] = Field(default_factory=list)
     error: Optional[str] = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def migrate_legacy_parts(cls, value: Any) -> Any:
+        if not isinstance(value, dict) or value.get("parts"):
+            return value
+        required = ("page_index", "x", "y", "width", "height")
+        if not all(value.get(key) is not None for key in required):
+            return value
+        parts = [{
+            "page_index": value["page_index"],
+            "x": value["x"],
+            "y": value["y"],
+            "width": value["width"],
+            "height": value["height"],
+            "order": 0,
+        }]
+        continuation = value.get("continuation")
+        if continuation:
+            parts.append({**continuation, "order": 1})
+        return {**value, "parts": parts}
+
+    @model_validator(mode="after")
+    def validate_parts(self) -> "BatchSegment":
+        if not self.parts:
+            raise ValueError("Batch segment requires at least one part")
+        return self
 
 
 class BatchSessionRecord(BaseModel):
@@ -215,6 +287,8 @@ class BatchSessionRecord(BaseModel):
     subject: str = "auto"
     notes: str = ""
     active_page: int = 0
+    crop_rect: BatchCropRect = Field(default_factory=BatchCropRect)
+    crop_confirmed: bool = False
     segments: list[BatchSegment] = Field(default_factory=list)
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
@@ -225,6 +299,8 @@ class BatchSessionUpdateRequest(BaseModel):
     subject: Optional[str] = None
     notes: Optional[str] = None
     active_page: Optional[int] = Field(default=None, ge=0)
+    crop_rect: Optional[BatchCropRect] = None
+    crop_confirmed: Optional[bool] = None
     segments: Optional[list[BatchSegment]] = None
 
 

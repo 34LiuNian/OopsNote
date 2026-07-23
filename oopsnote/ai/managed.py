@@ -104,6 +104,28 @@ class ManagedAiRunner:
                 locally_managed = run.task_id in self._processes
             if locally_managed or run.heartbeat_at >= cutoff:
                 continue
+            try:
+                task = self.task_store.get(run.task_id)
+            except KeyError:
+                task = None
+            terminal_status = {
+                TaskStatus.COMPLETED: RunStatus.COMPLETED,
+                TaskStatus.FAILED: RunStatus.FAILED,
+                TaskStatus.CANCELLED: RunStatus.CANCELLED,
+            }.get(task.status if task else None)
+            if terminal_status is not None:
+                self.run_store.finish(
+                    run.id,
+                    terminal_status,
+                    error_code=(
+                        "pipeline_failed"
+                        if terminal_status == RunStatus.FAILED
+                        else None
+                    ),
+                    error_message=(task.last_error if task else None),
+                )
+                recovered += 1
+                continue
             message = "AI run heartbeat expired"
             self.run_store.finish(
                 run.id,

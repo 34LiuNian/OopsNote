@@ -5,8 +5,8 @@
 
 from __future__ import annotations
 
-import json
 import errno
+import json
 import threading
 import time
 from datetime import datetime, timezone
@@ -29,18 +29,34 @@ from .models import (
 )
 
 
-def _read_text_with_retry(path: Path, *, attempts: int = 5) -> str:
+def _is_transient_file_lock(error: OSError) -> bool:
+    return (
+        isinstance(error, PermissionError)
+        or error.errno in {errno.EACCES, errno.EBUSY}
+        or getattr(error, "winerror", None) in {5, 32, 33}
+    )
+
+
+def _read_text_with_retry(path: Path, *, attempts: int = 8) -> str:
     """Tolerate a peer process briefly holding a JSON file on Windows."""
     for attempt in range(attempts):
         try:
             return path.read_text(encoding="utf-8")
         except OSError as error:
-            is_sharing_violation = (
-                isinstance(error, PermissionError)
-                or error.errno in {errno.EACCES, errno.EBUSY}
-                or getattr(error, "winerror", None) in {32, 33}
-            )
-            if not is_sharing_violation or attempt == attempts - 1:
+            if not _is_transient_file_lock(error) or attempt == attempts - 1:
+                raise
+            time.sleep(0.02 * (attempt + 1))
+    raise AssertionError("unreachable")
+
+
+def _replace_with_retry(source: Path, destination: Path, *, attempts: int = 8) -> None:
+    """Preserve atomic replacement while tolerating transient Windows readers."""
+    for attempt in range(attempts):
+        try:
+            source.replace(destination)
+            return
+        except OSError as error:
+            if not _is_transient_file_lock(error) or attempt == attempts - 1:
                 raise
             time.sleep(0.02 * (attempt + 1))
     raise AssertionError("unreachable")
@@ -66,7 +82,7 @@ class TaskStore:
                 record.model_dump_json(indent=2, ensure_ascii=False),
                 encoding="utf-8",
             )
-            tmp.replace(path)
+            _replace_with_retry(tmp, path)
         finally:
             if tmp.exists():
                 tmp.unlink()
@@ -107,8 +123,8 @@ class TaskStore:
             self._write(updated)
             return updated
 
-    def set_problems(self, task_id: str, problems: list[Problem]) -> TaskRecord:
-        return self.update(task_id, problems=problems)
+    def set_problem(self, task_id: str, problem: Optional[Problem]) -> TaskRecord:
+        return self.update(task_id, problem=problem)
 
     def mark_status(self, task_id: str, status: TaskStatus, error: Optional[str] = None) -> TaskRecord:
         fields: dict = {"status": status, "last_error": error}
@@ -139,7 +155,7 @@ class RunStore:
         tmp = path.with_name(f"{path.name}.{uuid4().hex}.tmp")
         try:
             tmp.write_text(run.model_dump_json(indent=2), encoding="utf-8")
-            tmp.replace(path)
+            _replace_with_retry(tmp, path)
         finally:
             if tmp.exists():
                 tmp.unlink()
@@ -310,7 +326,7 @@ class BatchSessionStore:
                 ),
                 encoding="utf-8",
             )
-            tmp.replace(self.path)
+            _replace_with_retry(tmp, self.path)
         finally:
             if tmp.exists():
                 tmp.unlink()
@@ -349,3 +365,13 @@ class BatchSessionStore:
             records[file_hash] = updated
             self._write(records)
             return updated
+
+    def delete(self, file_hash: str) -> BatchSessionRecord:
+        """Delete only the batch workspace record; task assets remain untouched."""
+        with self._lock:
+            records = self._read()
+            record = records.pop(file_hash, None)
+            if not record:
+                raise KeyError(file_hash)
+            self._write(records)
+            return record

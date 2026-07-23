@@ -16,6 +16,80 @@ from oopsnote.ai.pi_skills import load_skill_pack
 from oopsnote.core import RunStatus, TaskStage, TaskStatus
 
 
+_RPC_LOG_TEXT_LIMIT = 4_000
+_RPC_LIFECYCLE_EVENTS = {
+    "agent_start",
+    "agent_end",
+    "agent_settled",
+    "turn_start",
+    "turn_end",
+}
+_RPC_TOOL_EVENTS = {"tool_execution_start", "tool_execution_end"}
+_RPC_ERROR_EVENTS = {"error", "agent_error", "extension_error"}
+
+
+def _truncate_rpc_text(value: Any) -> str:
+    text = str(value or "")
+    if len(text) <= _RPC_LOG_TEXT_LIMIT:
+        return text
+    return text[:_RPC_LOG_TEXT_LIMIT] + "...[truncated]"
+
+
+def _compact_rpc_event(event: dict[str, Any]) -> Optional[dict[str, Any]]:
+    """Keep diagnostic RPC metadata without persisting streamed prompt content."""
+    event_type = event.get("type")
+    if event_type == "response":
+        command = event.get("command")
+        compact = {
+            "type": "response",
+            "id": event.get("id"),
+            "command": command,
+            "success": event.get("success"),
+        }
+        if command == "get_session_stats":
+            compact["data"] = event.get("data") or {}
+        if event.get("error"):
+            compact["error"] = _truncate_rpc_text(event["error"])
+        return compact
+    if event_type in _RPC_LIFECYCLE_EVENTS:
+        return {
+            key: event.get(key)
+            for key in ("type", "timestamp", "stopReason")
+            if event.get(key) is not None
+        }
+    if event_type in _RPC_TOOL_EVENTS:
+        return {
+            key: event.get(key)
+            for key in ("type", "toolName", "toolCallId", "isError", "timestamp")
+            if event.get(key) is not None
+        }
+    if event_type in _RPC_ERROR_EVENTS:
+        return {
+            "type": event_type,
+            "code": event.get("code"),
+            "message": _truncate_rpc_text(
+                event.get("message") or event.get("error") or "RPC error"
+            ),
+        }
+    return None
+
+
+def _compact_rpc_command(payload: dict[str, Any]) -> dict[str, Any]:
+    compact = {
+        "direction": "command",
+        "id": payload.get("id"),
+        "type": payload.get("type"),
+    }
+    if payload.get("type") == "prompt":
+        compact["message_chars"] = len(str(payload.get("message") or ""))
+    return compact
+
+
+def _write_rpc_record(rpc_log: Any, record: dict[str, Any]) -> None:
+    rpc_log.write(json.dumps(record, ensure_ascii=False) + "\n")
+    rpc_log.flush()
+
+
 class PiRpcBackend:
     """Pi's JSONL RPC command contract, isolated from task lifecycle code."""
 
@@ -87,9 +161,17 @@ class PiRpcRunner(ManagedAiRunner):
 
     backend_name = "pi"
 
-    def __init__(self, *, backend: PiRpcBackend, **kwargs: Any) -> None:
+    def __init__(
+        self,
+        *,
+        backend: PiRpcBackend,
+        max_concurrent_tasks: int = 2,
+        **kwargs: Any,
+    ) -> None:
         super().__init__(**kwargs)
         self.backend = backend
+        self.max_concurrent_tasks = max(1, max_concurrent_tasks)
+        self._execution_slots = threading.BoundedSemaphore(self.max_concurrent_tasks)
 
     def _run_metadata(self) -> dict[str, Any]:
         return {
@@ -101,6 +183,20 @@ class PiRpcRunner(ManagedAiRunner):
         return self.backend.build_command(task_id, run_id)
 
     def run(self, task_id: str, run_id: str) -> None:
+        with self._execution_slots:
+            run = self.run_store.get(run_id)
+            task = self.task_store.get(task_id)
+            if run.status not in {RunStatus.QUEUED, RunStatus.RUNNING}:
+                return
+            if task.status in {
+                TaskStatus.COMPLETED,
+                TaskStatus.FAILED,
+                TaskStatus.CANCELLED,
+            }:
+                return
+            self._run_in_slot(task_id, run_id)
+
+    def _run_in_slot(self, task_id: str, run_id: str) -> None:
         log_path = self.run_store.base_dir / f"{run_id}.log"
         rpc_path = self.run_store.base_dir / f"{run_id}.rpc.jsonl"
         process: Optional[subprocess.Popen[str]] = None
@@ -184,12 +280,29 @@ class PiRpcRunner(ManagedAiRunner):
                     if line is None:
                         break
                     if line:
-                        rpc_log.write(line)
-                        rpc_log.flush()
                         try:
                             event = json.loads(line)
                         except json.JSONDecodeError:
+                            _write_rpc_record(
+                                rpc_log,
+                                {
+                                    "type": "invalid_json",
+                                    "preview": _truncate_rpc_text(line.rstrip()),
+                                },
+                            )
                             continue
+                        if not isinstance(event, dict):
+                            _write_rpc_record(
+                                rpc_log,
+                                {
+                                    "type": "invalid_event",
+                                    "value_type": type(event).__name__,
+                                },
+                            )
+                            continue
+                        compact_event = _compact_rpc_event(event)
+                        if compact_event is not None:
+                            _write_rpc_record(rpc_log, compact_event)
                         if event.get("type") == "agent_settled":
                             settled = True
                             self._send(
@@ -271,8 +384,7 @@ class PiRpcRunner(ManagedAiRunner):
         payload: dict[str, Any],
     ) -> None:
         line = json.dumps(payload, ensure_ascii=False)
-        rpc_log.write(line + "\n")
-        rpc_log.flush()
+        _write_rpc_record(rpc_log, _compact_rpc_command(payload))
         assert process.stdin is not None
         process.stdin.write(line + "\n")
         process.stdin.flush()

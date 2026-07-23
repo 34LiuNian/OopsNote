@@ -5,7 +5,9 @@
 
 from .assets import AssetStore
 from .models import (
+    BatchCropRect,
     BatchSegment,
+    BatchSegmentPart,
     BatchSessionRecord,
     BatchSessionUpdateRequest,
     ContentFormat,
@@ -31,7 +33,9 @@ from .tags import TagStore
 
 __all__ = [
     "AssetStore",
+    "BatchCropRect",
     "BatchSegment",
+    "BatchSegmentPart",
     "BatchSessionRecord",
     "BatchSessionStore",
     "BatchSessionUpdateRequest",

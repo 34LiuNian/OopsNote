@@ -81,6 +81,28 @@ class TestTaskStore:
         assert store.get(task.id).id == task.id
         assert attempts == 2
 
+    def test_write_retries_transient_windows_replace_lock(self, tmp_path, monkeypatch):
+        store = TaskStore(base_dir=tmp_path)
+        task = store.create(TaskCreateRequest(subject="math"))
+        original_replace = Path.replace
+        attempts = 0
+
+        def temporarily_locked(source, destination):
+            nonlocal attempts
+            if destination == store._path(task.id) and attempts < 2:
+                attempts += 1
+                raise PermissionError(13, "sharing violation", str(destination))
+            return original_replace(source, destination)
+
+        monkeypatch.setattr(Path, "replace", temporarily_locked)
+        monkeypatch.setattr(store_module.time, "sleep", lambda _seconds: None)
+
+        updated = store.update(task.id, subject="physics")
+
+        assert updated.subject == "physics"
+        assert store.get(task.id).subject == "physics"
+        assert attempts == 2
+
 
 class TestRunStore:
     def test_persists_attempts_and_stage_transitions(self, tmp_path):
@@ -145,7 +167,7 @@ class TestTagStore:
 class TestSearcher:
     def _make_task(self, subject, **problem_kw):
         p = Problem(subject=subject, **problem_kw)
-        t = TaskRecord(subject=subject, problems=[p])
+        t = TaskRecord(subject=subject, problem=p)
         return t
 
     def test_by_subject(self):
@@ -220,15 +242,15 @@ class TestSearcherExtra:
         old = Problem(subject="数学", created_at=datetime(2020, 1, 1, tzinfo=timezone.utc))
         new = Problem(subject="数学", created_at=datetime.now(timezone.utc))
         s = Searcher([
-            TaskRecord(subject="数学", problems=[old]),
-            TaskRecord(subject="数学", problems=[new]),
+            TaskRecord(subject="数学", problem=old),
+            TaskRecord(subject="数学", problem=new),
         ])
         results = s.search(SearchQuery(since="2024-01-01"))
         assert len(results) == 1
 
     def test_regex_error_handled(self):
         """非法正则不会崩溃。"""
-        t = TaskRecord(subject="数学", problems=[Problem(subject="数学", problem_text="test")])
+        t = TaskRecord(subject="数学", problem=Problem(subject="数学", problem_text="test"))
         s = Searcher([t])
         results = s.search(SearchQuery(regex="\\"))
         assert len(results) == 0

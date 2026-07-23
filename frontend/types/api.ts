@@ -37,6 +37,7 @@ export interface SourceTrace {
   page_index?: number;
   question_no?: number;
   segment_id?: string;
+  batch_session_available?: boolean;
 }
 
 export interface TaskResponse {
@@ -61,7 +62,7 @@ export interface TaskResponse {
       difficulty?: string | null;
     } | null;
     trace?: SourceTrace | null;
-    problems: Array<{
+    problem: {
       problem_id: string;
       question_no?: string | null;
       question_type?: string | null;
@@ -86,17 +87,17 @@ export interface TaskResponse {
         key: string;
         text: string;
       }>;
-    }>;
-    solutions: Array<{
+    } | null;
+    solution: {
       problem_id: string;
       answer: string;
       short_answer?: string;
       explanation: string;
-    }>;
-    tags: Array<{
+    } | null;
+    tag: {
       problem_id: string;
       knowledge_points: string[];
-    }>;
+    } | null;
   };
 }
 

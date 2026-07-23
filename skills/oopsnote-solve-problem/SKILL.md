@@ -1,7 +1,7 @@
 ---
 name: oopsnote-solve-problem
 description: "按 OopsMark v1 和《高掌》简洁书写规范生成高中题的答案与解析。"
-version: 1.2.0
+version: 1.3.0
 license: MIT
 metadata:
   hermes:
@@ -20,7 +20,7 @@ metadata:
 }
 ```
 
-`answer` 只保留最终结论；选择题使用选项字母，填空题保留结果；`short_answer` 不重复推导。解析必须基于题面作答，不能以猜测替代缺失条件。
+`answer` 只保留最终结论；选择题使用选项字母，填空题保留结果，解答题按小问列出结论。`answer` 中禁止写证明、推导、求导、分类讨论过程、理由或“由/因为/所以/故”等论证句；所有过程只能放入 `explanation`。生成后必须单独复核：删除 `answer` 中任何用于说明结论如何得到的内容。`short_answer` 不重复推导。解析必须基于题面作答，不能以猜测替代缺失条件。
 
 ## 通用 OopsMark v1
 

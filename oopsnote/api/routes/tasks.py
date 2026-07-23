@@ -149,10 +149,9 @@ def list_task_runs(task_id: str) -> dict[str, list[dict[str, Any]]]:
     return {"items": [api._run_view(run) for run in runs]}
 
 
-@router.patch("/tasks/{task_id}/problems/{problem_id}/override")
+@router.patch("/tasks/{task_id}/problem/override")
 def override_problem(
     task_id: str,
-    problem_id: str,
     payload: dict[str, Any],
 ) -> dict[str, Any]:
     api = _api()
@@ -161,86 +160,60 @@ def override_problem(
     except KeyError:
         raise HTTPException(status_code=404, detail="Task not found")
 
-    updated_problems: list[Problem] = []
-    found = False
-    for problem in task.problems:
-        if problem.id != problem_id:
-            updated_problems.append(problem)
-            continue
-        found = True
-        question_type = problem.question_type
-        if payload.get("question_type"):
-            try:
-                question_type = QuestionType(payload["question_type"])
-            except ValueError:
-                pass
-        options = payload.get("options", problem.options)
-        if options and isinstance(options[0], dict):
-            options = [item.get("text", "") for item in options]
-        content_format = problem.content_format
-        if payload.get("content_format"):
-            try:
-                content_format = ContentFormat(payload["content_format"])
-            except ValueError:
-                raise HTTPException(
-                    status_code=422,
-                    detail="Unsupported content_format",
-                )
+    problem = task.problem
+    if not problem:
+        raise HTTPException(status_code=404, detail="Problem not found")
+    question_type = problem.question_type
+    if payload.get("question_type"):
         try:
-            updated_problems.append(
-                Problem.model_validate(
-                    {
-                        **problem.model_dump(),
-                        "content_format": content_format,
-                        "problem_text": payload.get(
-                            "problem_text",
-                            problem.problem_text,
-                        ),
-                        "options": options,
-                        "question_type": question_type,
-                        "source": payload.get("source") or problem.source,
-                        "knowledge_points": payload.get(
-                            "knowledge_tags",
-                            problem.knowledge_points,
-                        ),
-                        "error_hypothesis": payload.get(
-                            "error_tags",
-                            problem.error_hypothesis,
-                        ),
-                    }
-                )
+            question_type = QuestionType(payload["question_type"])
+        except ValueError:
+            pass
+    options = payload.get("options", problem.options)
+    if options and isinstance(options[0], dict):
+        options = [item.get("text", "") for item in options]
+    content_format = problem.content_format
+    if payload.get("content_format"):
+        try:
+            content_format = ContentFormat(payload["content_format"])
+        except ValueError:
+            raise HTTPException(
+                status_code=422,
+                detail="Unsupported content_format",
             )
-        except ValueError as error:
-            raise HTTPException(status_code=422, detail=str(error))
-
-    if not found:
-        raise HTTPException(status_code=404, detail="Problem not found")
-    task = api.TASK_STORE.set_problems(task_id, updated_problems)
+    try:
+        updated_problem = Problem.model_validate(
+            {
+                **problem.model_dump(),
+                "content_format": content_format,
+                "problem_text": payload.get("problem_text", problem.problem_text),
+                "options": options,
+                "question_type": question_type,
+                "source": payload.get("source") or problem.source,
+                "knowledge_points": payload.get(
+                    "knowledge_tags",
+                    problem.knowledge_points,
+                ),
+                "error_hypothesis": payload.get(
+                    "error_tags",
+                    problem.error_hypothesis,
+                ),
+            }
+        )
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error))
+    task = api.TASK_STORE.set_problem(task_id, updated_problem)
     return {"task": api._task_view(task)}
 
 
-@router.delete("/tasks/{task_id}/problems/{problem_id}")
-def delete_problem(task_id: str, problem_id: str) -> dict[str, Any]:
+@router.post("/tasks/{task_id}/problem/diagram")
+def rerender_problem_diagram(task_id: str) -> dict[str, Any]:
     api = _api()
     try:
         task = api.TASK_STORE.get(task_id)
     except KeyError:
         raise HTTPException(status_code=404, detail="Task not found")
-    remaining = [problem for problem in task.problems if problem.id != problem_id]
-    if len(remaining) == len(task.problems):
-        raise HTTPException(status_code=404, detail="Problem not found")
-    task = api.TASK_STORE.set_problems(task_id, remaining)
-    return {"task": api._task_view(task)}
-
-
-@router.post("/tasks/{task_id}/problems/{problem_id}/diagram")
-def rerender_problem_diagram(task_id: str, problem_id: str) -> dict[str, Any]:
-    api = _api()
-    try:
-        task = api.TASK_STORE.get(task_id)
-    except KeyError:
-        raise HTTPException(status_code=404, detail="Task not found")
-    if not any(problem.id == problem_id for problem in task.problems):
+    if not task.problem:
         raise HTTPException(status_code=404, detail="Problem not found")
     return {"task": api._task_view(task)}
 

@@ -63,6 +63,7 @@ PI_RUNNER = PiRpcRunner(
     project_root=PROJECT_ROOT,
     task_store=TASK_STORE,
     run_store=RUN_STORE,
+    max_concurrent_tasks=int(os.getenv("OOPSNOTE_PI_MAX_CONCURRENT_TASKS", "2")),
     **_runner_settings(),
 )
 
@@ -84,10 +85,27 @@ def _batch_session_view(record: BatchSessionRecord) -> dict[str, Any]:
         "subject": record.subject,
         "notes": record.notes,
         "active_page": record.active_page,
+        "crop_rect": record.crop_rect.model_dump(),
+        "crop_confirmed": record.crop_confirmed,
         "segments": [segment.model_dump() for segment in record.segments],
         "created_at": record.created_at.isoformat(),
         "updated_at": record.updated_at.isoformat(),
     }
+
+
+def _trace_view(trace: Any) -> Any:
+    if not isinstance(trace, dict) or trace.get("kind") != "batch_segment":
+        return trace
+    file_hash = trace.get("source_file_hash")
+    available = False
+    if file_hash:
+        try:
+            BATCH_SESSION_STORE.get(file_hash)
+        except KeyError:
+            pass
+        else:
+            available = True
+    return {**trace, "batch_session_available": available}
 
 
 def _sync_batch_session_tasks(record: BatchSessionRecord) -> BatchSessionRecord:
@@ -114,7 +132,7 @@ def _sync_batch_session_tasks(record: BatchSessionRecord) -> BatchSessionRecord:
             next_segment = segment.model_copy(
                 update={
                     "status": status,
-                    "problem_ids": [problem.id for problem in task.problems],
+                    "problem_ids": [task.problem.id] if task.problem else [],
                     "error": task.last_error if status == "failed" else None,
                 }
             )
@@ -160,7 +178,7 @@ def _problem_view(task: TaskRecord, problem: Problem) -> dict[str, Any]:
         "knowledge_tags": problem.knowledge_points,
         "error_tags": problem.error_hypothesis,
         "user_tags": metadata.get("user_tags", []),
-        "trace": metadata.get("trace"),
+        "trace": _trace_view(metadata.get("trace")),
     }
 
 
@@ -194,7 +212,7 @@ def _run_view(run: Any) -> dict[str, Any]:
 
 
 def _task_view(record: TaskRecord) -> dict[str, Any]:
-    problems = [_problem_view(record, problem) for problem in record.problems]
+    problem = record.problem
     run = RUN_STORE.latest_for_task(record.id)
     return {
         "id": record.id,
@@ -207,24 +225,18 @@ def _task_view(record: TaskRecord) -> dict[str, Any]:
         "updated_at": record.updated_at.isoformat(),
         "asset": _asset_view(record),
         "payload": {"difficulty": record.metadata.get("difficulty")},
-        "trace": record.metadata.get("trace"),
-        "problems": problems,
-        "solutions": [
-            {
-                "problem_id": problem.id,
-                "answer": problem.answer,
-                "short_answer": problem.short_answer,
-                "explanation": problem.explanation,
-            }
-            for problem in record.problems
-        ],
-        "tags": [
-            {
-                "problem_id": problem.id,
-                "knowledge_points": problem.knowledge_points,
-            }
-            for problem in record.problems
-        ],
+        "trace": _trace_view(record.metadata.get("trace")),
+        "problem": _problem_view(record, problem) if problem else None,
+        "solution": {
+            "problem_id": problem.id,
+            "answer": problem.answer,
+            "short_answer": problem.short_answer,
+            "explanation": problem.explanation,
+        } if problem else None,
+        "tag": {
+            "problem_id": problem.id,
+            "knowledge_points": problem.knowledge_points,
+        } if problem else None,
     }
 
 

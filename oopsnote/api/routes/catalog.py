@@ -44,26 +44,28 @@ def list_problems(
     before = _parse_iso(created_before)
     items: list[dict[str, Any]] = []
     for task in api.TASK_STORE.list_all():
-        for problem in task.problems:
-            item = api._problem_summary(task, problem)
-            if subject and item["subject"] != subject:
-                continue
-            if source and item["source"] not in source:
-                continue
-            if knowledge_tag and not set(knowledge_tag).issubset(
-                item["knowledge_tags"]
-            ):
-                continue
-            if error_tag and not set(error_tag).issubset(item["error_tags"]):
-                continue
-            if user_tag and not set(user_tag).issubset(item["user_tags"]):
-                continue
-            created = problem.created_at
-            if after and created < after:
-                continue
-            if before and created > before:
-                continue
-            items.append(item)
+        problem = task.problem
+        if not problem:
+            continue
+        item = api._problem_summary(task, problem)
+        if subject and item["subject"] != subject:
+            continue
+        if source and item["source"] not in source:
+            continue
+        if knowledge_tag and not set(knowledge_tag).issubset(
+            item["knowledge_tags"]
+        ):
+            continue
+        if error_tag and not set(error_tag).issubset(item["error_tags"]):
+            continue
+        if user_tag and not set(user_tag).issubset(item["user_tags"]):
+            continue
+        created = problem.created_at
+        if after and created < after:
+            continue
+        if before and created > before:
+            continue
+        items.append(item)
     items.sort(key=lambda item: item["created_at"], reverse=True)
     return {"items": items}
 

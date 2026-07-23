@@ -23,9 +23,8 @@ class Searcher:
         results: list[Problem] = []
 
         for task in self._tasks:
-            for p in task.problems:
-                if self._match(p, query):
-                    results.append(p)
+            if task.problem and self._match(task.problem, query):
+                results.append(task.problem)
 
         # 按时间倒序
         results.sort(key=lambda p: p.created_at, reverse=True)

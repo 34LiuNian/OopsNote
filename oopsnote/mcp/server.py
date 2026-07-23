@@ -168,7 +168,7 @@ def fail_task(task_id: str, error: str, run_id: str = "") -> TaskRecord:
 @mcp.tool()
 def finalize_task(
     task_id: str,
-    problems_json: str,
+    problem_json: str,
     run_id: str = "",
     sync_to_obsidian: bool = True,
 ) -> TaskRecord:
@@ -180,29 +180,28 @@ def finalize_task(
         raise ValueError(f"run_id {run_id} is not active for task {task_id}")
     if run_id and not task.active_run_id:
         raise ValueError(f"task {task_id} has no active managed run")
-    raw = json.loads(problems_json)
-    if not isinstance(raw, list) or not raw:
-        raise ValueError("problems_json must be a non-empty JSON array")
-    problems = [Problem.model_validate(item) for item in raw]
-    for index, problem in enumerate(problems, start=1):
-        if problem.content_format != ContentFormat.OOPSMARK_V1:
-            raise ValueError(f"problem {index} must declare content_format=oopsmark-v1")
-        missing = [
-            name for name in ("subject", "problem_text", "answer", "explanation")
-            if not getattr(problem, name).strip()
-        ]
-        if missing:
-            raise ValueError(f"problem {index} missing required fields: {', '.join(missing)}")
-        if problem.question_type.value in {"单选题", "多选题"} and len(problem.options) < 2:
-            raise ValueError(f"problem {index} selection options are incomplete")
+    raw = json.loads(problem_json)
+    if not isinstance(raw, dict):
+        raise ValueError("problem_json must be a JSON object")
+    problem = Problem.model_validate(raw)
+    if problem.content_format != ContentFormat.OOPSMARK_V1:
+        raise ValueError("problem must declare content_format=oopsmark-v1")
+    missing = [
+        name for name in ("subject", "problem_text", "answer", "explanation")
+        if not getattr(problem, name).strip()
+    ]
+    if missing:
+        raise ValueError(f"problem missing required fields: {', '.join(missing)}")
+    if problem.question_type.value in {"单选题", "多选题"} and len(problem.options) < 2:
+        raise ValueError("problem selection options are incomplete")
 
     subject = task.subject
     if not subject or subject == "auto":
-        subject = problems[0].subject
+        subject = problem.subject
     completed = TASK_STORE.update(
         task_id,
         subject=subject,
-        problems=problems,
+        problem=problem,
         status=TaskStatus.COMPLETED,
         stage=TaskStage.FINALIZING,
         stage_message="AI 结果已校验并写入",
@@ -226,17 +225,16 @@ def finalize_task(
 
 
 @mcp.tool()
-def set_task_problems(
+def set_task_problem(
     task_id: str,
-    problems_json: str,
+    problem_json: str,
 ) -> Optional[TaskRecord]:
-    """批量设标题目列表。problems_json 是 Problem 列表的 JSON 字符串。"""
+    """设置任务的唯一题目。problem_json 是 Problem 对象的 JSON 字符串。"""
     import json
 
-    raw = json.loads(problems_json)
-    problems = [Problem(**p) for p in raw]
+    problem = Problem.model_validate(json.loads(problem_json))
     try:
-        return TASK_STORE.set_problems(task_id, problems)
+        return TASK_STORE.set_problem(task_id, problem)
     except KeyError:
         return None
 

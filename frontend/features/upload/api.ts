@@ -42,11 +42,26 @@ export async function createUploadTaskAndProcess(payload: CreateUploadTaskPayloa
 
 export type BatchSessionSegment = {
   id: string;
-  page_index: number;
-  x: number;
-  y: number;
-  width: number;
-  height: number;
+  parts: Array<{
+    page_index: number;
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    order: number;
+  }>;
+  page_index?: number | null;
+  x?: number | null;
+  y?: number | null;
+  width?: number | null;
+  height?: number | null;
+  continuation?: {
+    page_index: number;
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  } | null;
   question_no?: number;
   status: "pending" | "processing" | "completed" | "failed";
   task_id?: string | null;
@@ -63,6 +78,8 @@ export type BatchSession = {
   subject: string;
   notes: string;
   active_page: number;
+  crop_rect: { x: number; y: number; width: number; height: number };
+  crop_confirmed: boolean;
   segments: BatchSessionSegment[];
   created_at: string;
   updated_at: string;
@@ -94,10 +111,14 @@ export async function uploadBatchSource(fileHash: string, file: File): Promise<B
 
 export async function updateBatchSession(
   fileHash: string,
-  payload: Pick<BatchSession, "page_count" | "subject" | "notes" | "active_page" | "segments">,
+  payload: Pick<BatchSession, "page_count" | "active_page" | "crop_rect" | "crop_confirmed" | "segments">,
 ): Promise<BatchSession> {
   return (await fetchJson<{ session: BatchSession }>(`/batch-sessions/${encodeURIComponent(fileHash)}`, {
     method: "PATCH",
     body: JSON.stringify(payload),
   })).session;
+}
+
+export async function deleteBatchSession(fileHash: string): Promise<void> {
+  await fetchJson(`/batch-sessions/${encodeURIComponent(fileHash)}`, { method: "DELETE" });
 }

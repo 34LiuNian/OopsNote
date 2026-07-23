@@ -1,3 +1,11 @@
+user:
+- [ ] 跨页（切页脚）
+- [ ] 框纠正
+- [ ] 框修改
+- [ ] web displaymode
+- [ ] 相同题目合并
+- [ ] 提高pdf性能
+- [ ] 识别章节、题号
 # OopsNote backlog
 
 更新：2026-07-22
@@ -13,6 +21,9 @@
 
 ## P1 - 生产验证
 
+- [x] 为 Pi 增加有界任务队列，默认最多同时运行 2 个任务，排队任务仍可取消。
+- [x] 修复 Windows 下 RunStore 并发读写、完成任务遗留 running run 和 stale recovery 反向覆盖问题。
+- [ ] 在保持逐任务取消、超时、崩溃隔离的前提下，实验长驻 Pi RPC worker + `new_session`；通过故障注入后再决定是否替代单任务进程。
 - [ ] Web 上传 -> process -> stage -> finalize 的真实浏览器 E2E。
 - [ ] 覆盖文本题、图片题、不可读图片、限流、OCR timeout、取消和 retry。
 - [ ] 覆盖错误 JSON、错误 run_id、重复 finalize、abort 无响应与进程崩溃。
@@ -26,6 +37,7 @@
 - [ ] 保存阶段 prompt version、raw/parsed output、validation error、latency 和 retry count。
 - [ ] OCR 增加缺失区域与低质量提示，禁止补写不存在题面。
 - [ ] solve 与 verify 使用独立上下文并检查单位、定义域、条件和选项映射。
+- [ ] 增加 `answer` 语义校验与一次定向修复：只允许最终结论，证明、推导和理由必须位于 `explanation`。
 - [ ] 标签先召回已有候选再排序，默认禁止自由生成近义重复标签。
 
 ## P3 - 产品链路

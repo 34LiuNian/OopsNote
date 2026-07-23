@@ -86,4 +86,20 @@ def update_batch_session(
     return {"session": api._batch_session_view(record)}
 
 
+@router.delete("/batch-sessions/{file_hash}")
+def delete_batch_session(file_hash: str) -> dict[str, Any]:
+    api = _api()
+    try:
+        record = api.BATCH_SESSION_STORE.delete(file_hash)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Batch session not found")
+    return {
+        "deleted": True,
+        "file_hash": record.file_hash,
+        "preserved_task_ids": [
+            segment.task_id for segment in record.segments if segment.task_id
+        ],
+    }
+
+
 __all__ = ["router"]

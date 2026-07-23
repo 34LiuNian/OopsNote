@@ -151,7 +151,7 @@ def main() -> int:
         elapsed_ms = int((time.monotonic() - started) * 1000)
         stored_run = run_store.get(run.id)
         stored_task = task_store.get(task.id)
-        answer = stored_task.problems[0].answer.strip() if stored_task.problems else ""
+        answer = stored_task.problem.answer.strip() if stored_task.problem else ""
         rows.append({
             "case": name,
             "task_id": task.id,

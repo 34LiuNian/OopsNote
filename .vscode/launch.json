@@ -1,22 +1,56 @@
 {
+    "version": "0.2.0",
     "configurations": [
         {
+            "name": "OopsNote: Backend FastAPI",
             "type": "debugpy",
             "request": "launch",
-            "name": "Debug FastAPI (uvicorn)",
             "module": "uvicorn",
+            "python": "${workspaceFolder}\\.venv\\Scripts\\python.exe",
+            "cwd": "${workspaceFolder}",
             "args": [
-                "app.main:app",
+                "oopsnote.api.main:app",
                 "--reload",
                 "--host",
-                "0.0.0.0",
+                "127.0.0.1",
                 "--port",
                 "8000"
             ],
-            "cwd": "${workspaceFolder}/backend",
-            "envFile": "${workspaceFolder}/backend/.env",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}"
+            },
             "console": "integratedTerminal",
-            "internalConsoleOptions": "neverOpen"
+            "subProcess": true,
+            "justMyCode": true
+        },
+        {
+            "name": "OopsNote: Frontend Next.js",
+            "type": "node-terminal",
+            "request": "launch",
+            "command": "npm run dev -- -p 3000",
+            "cwd": "${workspaceFolder}\\frontend",
+            "serverReadyAction": {
+                "action": "debugWithEdge",
+                "pattern": "- Local:\\s+(https?://\\S+)",
+                "uriFormat": "%s"
+            }
+        },
+        {
+            "name": "OopsNote: Frontend Browser",
+            "type": "pwa-msedge",
+            "request": "launch",
+            "url": "http://127.0.0.1:3000",
+            "webRoot": "${workspaceFolder}\\frontend"
+        }
+    ],
+    "compounds": [
+        {
+            "name": "OopsNote: Full Stack",
+            "configurations": [
+                "OopsNote: Backend FastAPI",
+                "OopsNote: Frontend Next.js"
+            ],
+            "stopAll": true
         }
     ]
 }

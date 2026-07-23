@@ -69,9 +69,9 @@ def run_task(image_path: Path, expected_option: str) -> int:
     print(f"run_id={run.id}")
     print(f"status={completed_task.status.value} run_status={completed_run.status.value}")
     print(f"rpc_log={completed_run.rpc_log_path}")
-    if not completed_task.problems:
+    if not completed_task.problem:
         return 1
-    answer = completed_task.problems[0].answer.strip()
+    answer = completed_task.problem.answer.strip()
     print(f"expected_option={expected_option} actual_answer={answer}")
     return 0 if answer == expected_option else 1
 

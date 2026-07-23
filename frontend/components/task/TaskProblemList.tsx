@@ -1,39 +1,46 @@
 "use client";
 
 import { useState } from "react";
-import { Box, Button, Heading, IconButton, Label, Text, Tooltip } from "@/components/ui/primitives";
-import { PencilIcon, CopyIcon, TrashIcon, ChevronDownIcon, ChevronUpIcon } from "@/components/ui/icons";
-import type { TagDimensionStyle } from "@/types/api";
-import type { ContentFormat } from "@/types/api";
+import { Box, Heading, IconButton, Label, Text, Tooltip } from "@/components/ui/primitives";
+import { PencilIcon, CopyIcon, ChevronDownIcon, ChevronUpIcon } from "@/components/ui/icons";
+import type { ContentFormat, TagDimensionStyle } from "@/types/api";
 import { MarkdownRenderer } from "../renderers/MarkdownRenderer";
 import { ProblemCard } from "../ProblemCard";
 import { ProblemEditPanel } from "../ProblemEditPanel";
-import { deleteProblem, rerenderProblemDiagram } from "@/features/tasks";
+import { rerenderProblemDiagram } from "@/features/tasks";
 
-type TaskProblemListProps = {
+type TaskProblem = {
+  problem_id: string;
+  question_no?: string | null;
+  question_type?: string | null;
+  source?: string | null;
+  diagram_detected?: boolean;
+  diagram_kind?: string | null;
+  diagram_tikz_source?: string | null;
+  diagram_svg?: string | null;
+  diagram_render_status?: string | null;
+  diagram_error?: string | null;
+  diagram_needs_review?: boolean;
+  problem_text: string;
+  content_format?: ContentFormat;
+  options?: Array<{ key: string; text: string }>;
+  knowledge_tags?: string[];
+  error_tags?: string[];
+  user_tags?: string[];
+};
+
+type TaskSolution = {
+  problem_id: string;
+  answer: string;
+  explanation: string;
+};
+
+type TaskProblemDetailProps = {
   taskId: string;
   taskDifficulty?: string | null;
-  problems: Array<{
-    problem_id: string;
-    question_no?: string | null;
-    question_type?: string | null;
-    source?: string | null;
-    diagram_detected?: boolean;
-    diagram_kind?: string | null;
-    diagram_tikz_source?: string | null;
-    diagram_svg?: string | null;
-    diagram_render_status?: string | null;
-    diagram_error?: string | null;
-    diagram_needs_review?: boolean;
-    problem_text: string;
-    content_format?: ContentFormat;
-    options?: Array<{ key: string; text: string }>;
-    knowledge_tags?: string[];
-    error_tags?: string[];
-    user_tags?: string[];
-  }>;
-  solutions: Array<{ problem_id: string; answer: string; explanation: string }>;
-  tags: Array<{ problem_id: string; knowledge_points: string[] }>;
+  problem: TaskProblem | null;
+  solution: TaskSolution | null;
+  tag: { problem_id: string; knowledge_points: string[] } | null;
   editingKey: string;
   onEdit: (problemId: string) => void;
   onCloseEdit: () => void;
@@ -43,12 +50,12 @@ type TaskProblemListProps = {
   onError?: (message: string) => void;
 };
 
-export function TaskProblemList({
+export function TaskProblemDetail({
   taskId,
   taskDifficulty,
-  problems,
-  solutions,
-  tags,
+  problem,
+  solution,
+  tag,
   editingKey,
   onEdit,
   onCloseEdit,
@@ -56,34 +63,23 @@ export function TaskProblemList({
   tagStyles,
   onStatusMessage,
   onError,
-}: TaskProblemListProps) {
-  const copyMarkdown = async (problemId: string) => {
+}: TaskProblemDetailProps) {
+  const copyMarkdown = async () => {
+    if (!problem) return;
     try {
-      const p = problems.find((x) => x.problem_id === problemId);
-      if (!p) throw new Error("题目不存在");
-      const tagResult = tags.find((x) => x.problem_id === problemId);
-      const s = solutions.find((x) => x.problem_id === problemId);
-
       const lines: string[] = [];
-      lines.push(`# ${p.question_no ? `题号 ${p.question_no}` : "题目"}`);
-      if (p.source) lines.push(`来源：${p.source}`);
-      lines.push("");
-      lines.push("## 题干");
-      lines.push(p.problem_text || "");
-      lines.push("");
+      lines.push(`# ${problem.question_no ? `题号 ${problem.question_no}` : "题目"}`);
+      if (problem.source) lines.push(`来源：${problem.source}`);
+      lines.push("", "## 题干", problem.problem_text || "", "");
 
-      if (p.diagram_detected && p.diagram_tikz_source) {
-        lines.push("## 识别图 (TikZ)");
-        lines.push("```tikz");
-        lines.push(p.diagram_tikz_source);
-        lines.push("```");
-        lines.push("");
+      if (problem.diagram_detected && problem.diagram_tikz_source) {
+        lines.push("## 识别图 (TikZ)", "```tikz", problem.diagram_tikz_source, "```", "");
       }
 
-      const knowledgeTags = Array.isArray(p.knowledge_tags) ? p.knowledge_tags : [];
-      const errorTags = Array.isArray(p.error_tags) ? p.error_tags : [];
-      const userTags = Array.isArray(p.user_tags) ? p.user_tags : [];
-      const aiKnowledge = tagResult?.knowledge_points || [];
+      const knowledgeTags = Array.isArray(problem.knowledge_tags) ? problem.knowledge_tags : [];
+      const errorTags = Array.isArray(problem.error_tags) ? problem.error_tags : [];
+      const userTags = Array.isArray(problem.user_tags) ? problem.user_tags : [];
+      const aiKnowledge = tag?.knowledge_points || [];
 
       lines.push("## 标签");
       if (knowledgeTags.length) lines.push(`- 知识体系：${knowledgeTags.join("，")}`);
@@ -95,13 +91,8 @@ export function TaskProblemList({
       }
       lines.push("");
 
-      if (s) {
-        lines.push("## 答案");
-        lines.push(s.answer || "");
-        lines.push("");
-        lines.push("## 解析");
-        lines.push(s.explanation || "");
-        lines.push("");
+      if (solution) {
+        lines.push("## 答案", solution.answer || "", "", "## 解析", solution.explanation || "", "");
       }
 
       await navigator.clipboard.writeText(lines.join("\n"));
@@ -111,20 +102,11 @@ export function TaskProblemList({
     }
   };
 
-  const removeProblem = async (problemId: string) => {
-    if (!window.confirm("确认删除这道题？")) return;
-    try {
-      await deleteProblem(taskId, problemId);
-      await onSaved();
-    } catch (err) {
-      onError?.(err instanceof Error ? err.message : "删除失败");
-    }
-  };
-
-  const retryDiagram = async (problemId: string) => {
+  const retryDiagram = async () => {
+    if (!problem) return;
     try {
       onStatusMessage?.("开始重试自动识图...");
-      await rerenderProblemDiagram(taskId, problemId);
+      await rerenderProblemDiagram(taskId);
       await onSaved();
       onStatusMessage?.("自动识图重试完成");
     } catch (err) {
@@ -132,67 +114,44 @@ export function TaskProblemList({
     }
   };
 
+  const knowledgeTags = Array.isArray(problem?.knowledge_tags) ? problem.knowledge_tags : [];
+  const errorTags = Array.isArray(problem?.error_tags) ? problem.error_tags : [];
+  const userTags = Array.isArray(problem?.user_tags) ? problem.user_tags : [];
+  const aiKnowledge = tag?.knowledge_points || [];
+  const allTags = Array.from(new Set([...knowledgeTags, ...errorTags, ...userTags, ...aiKnowledge]));
+
   return (
     <Box sx={{ mt: 3 }}>
-      <Box sx={{ display: "flex", alignItems: "center", gap: 2, mb: 3 }}>
-        <Heading as="h3" sx={{ fontSize: 2, m: 0 }}>
-          题目与解答
-        </Heading>
-        {problems.length > 0 && (
-          <Box className="oops-badge oops-badge-muted">{problems.length} 题</Box>
-        )}
-      </Box>
+      <Heading as="h3" sx={{ fontSize: 2, m: 0, mb: 3 }}>
+        题目与解答
+      </Heading>
 
-      {problems.length === 0 ? (
+      {!problem ? (
         <Box className="oops-empty-state" sx={{ py: 5 }}>
           <Text as="p" sx={{ fontWeight: 600, fontSize: 2 }}>尚未解析出题目</Text>
           <Text as="p" sx={{ fontSize: 1 }}>如果任务仍在处理中，稍等片刻即可看到结果。</Text>
         </Box>
       ) : (
-        <Box sx={{ display: "flex", flexDirection: "column", gap: 3 }}>
-          {problems.map((problem, idx) => {
-            const solution = solutions.find((s) => s.problem_id === problem.problem_id);
-            const tag = tags.find((t) => t.problem_id === problem.problem_id);
-            const isEditing = editingKey === problem.problem_id;
-
-            // Collect all tags for display
-            const knowledgeTags = Array.isArray(problem.knowledge_tags) ? problem.knowledge_tags : [];
-            const errorTagsList = Array.isArray(problem.error_tags) ? problem.error_tags : [];
-            const userTagsList = Array.isArray(problem.user_tags) ? problem.user_tags : [];
-            const aiKnowledge = tag?.knowledge_points || [];
-            const allTags = Array.from(
-              new Set([...knowledgeTags, ...errorTagsList, ...userTagsList, ...aiKnowledge]),
-            );
-
-            return (
-              <ProblemCardItem
-                key={problem.problem_id}
-                idx={idx}
-                problem={problem}
-                solution={solution}
-                allTags={allTags}
-                taskDifficulty={taskDifficulty}
-                isEditing={isEditing}
-                taskId={taskId}
-                tagStyles={tagStyles}
-                onEdit={onEdit}
-                onCloseEdit={onCloseEdit}
-                onSaved={onSaved}
-                onCopy={copyMarkdown}
-                onRemove={removeProblem}
-                onRetryDiagram={retryDiagram}
-              />
-            );
-          })}
-        </Box>
+        <ProblemDetailCard
+          problem={problem}
+          solution={solution}
+          allTags={allTags}
+          taskDifficulty={taskDifficulty}
+          isEditing={editingKey === problem.problem_id}
+          taskId={taskId}
+          tagStyles={tagStyles}
+          onEdit={() => onEdit(problem.problem_id)}
+          onCloseEdit={onCloseEdit}
+          onSaved={onSaved}
+          onCopy={copyMarkdown}
+          onRetryDiagram={retryDiagram}
+        />
       )}
     </Box>
   );
 }
 
-/** Individual problem card with collapsible answer */
-function ProblemCardItem({
-  idx,
+function ProblemDetailCard({
   problem,
   solution,
   allTags,
@@ -204,23 +163,20 @@ function ProblemCardItem({
   onCloseEdit,
   onSaved,
   onCopy,
-  onRemove,
   onRetryDiagram,
 }: {
-  idx: number;
-  problem: TaskProblemListProps["problems"][0];
-  solution?: { problem_id: string; answer: string; explanation: string };
+  problem: TaskProblem;
+  solution: TaskSolution | null;
   allTags: string[];
   taskDifficulty?: string | null;
   isEditing: boolean;
   taskId: string;
   tagStyles: Record<string, TagDimensionStyle>;
-  onEdit: (id: string) => void;
+  onEdit: () => void;
   onCloseEdit: () => void;
   onSaved: () => Promise<void> | void;
-  onCopy: (id: string) => void;
-  onRemove: (id: string) => void;
-  onRetryDiagram: (id: string) => Promise<void>;
+  onCopy: () => void;
+  onRetryDiagram: () => Promise<void>;
 }) {
   const [showAnswer, setShowAnswer] = useState(true);
   const [isRetryingDiagram, setIsRetryingDiagram] = useState(false);
@@ -229,23 +185,14 @@ function ProblemCardItem({
     if (isRetryingDiagram) return;
     setIsRetryingDiagram(true);
     try {
-      await onRetryDiagram(problem.problem_id);
+      await onRetryDiagram();
     } finally {
       setIsRetryingDiagram(false);
     }
   };
 
   return (
-    <Box
-      className="oops-card"
-      sx={{
-        overflow: "hidden",
-        animation: "slideUp 0.3s ease-out",
-        animationDelay: `${idx * 0.05}s`,
-        animationFillMode: "both",
-      }}
-    >
-      {/* Card header */}
+    <Box className="oops-card" sx={{ overflow: "hidden", animation: "slideUp 0.3s ease-out" }}>
       <Box
         sx={{
           display: "flex",
@@ -260,32 +207,22 @@ function ProblemCardItem({
       >
         <Box sx={{ display: "flex", alignItems: "center", gap: 2, flexWrap: "wrap", flex: 1, minWidth: 0 }}>
           <Text sx={{ fontWeight: 600, fontSize: 2 }}>
-            {problem.question_no ? `题 ${problem.question_no}` : `题目 ${idx + 1}`}
+            {problem.question_no ? `题 ${problem.question_no}` : "题目"}
           </Text>
-          {problem.question_type && (
-            <Box className="oops-badge oops-badge-accent">{problem.question_type}</Box>
-          )}
-          {problem.source && (
-            <Text sx={{ fontSize: 0, color: "fg.muted" }}>{problem.source}</Text>
-          )}
-          {taskDifficulty && (
-            <Text sx={{ fontSize: 0, color: "fg.muted" }}>难度：{taskDifficulty}</Text>
-          )}
+          {problem.question_type && <Box className="oops-badge oops-badge-accent">{problem.question_type}</Box>}
+          {problem.source && <Text sx={{ fontSize: 0, color: "fg.muted" }}>{problem.source}</Text>}
+          {taskDifficulty && <Text sx={{ fontSize: 0, color: "fg.muted" }}>难度：{taskDifficulty}</Text>}
         </Box>
         <Box sx={{ display: "flex", gap: 1, flexShrink: 0 }}>
           <Tooltip text="编辑" direction="s">
-            <IconButton icon={PencilIcon} aria-label="编辑" size="small" variant="invisible" onClick={() => onEdit(problem.problem_id)} />
+            <IconButton icon={PencilIcon} aria-label="编辑" size="small" variant="invisible" onClick={onEdit} />
           </Tooltip>
           <Tooltip text="复制 Markdown" direction="s">
-            <IconButton icon={CopyIcon} aria-label="复制" size="small" variant="invisible" onClick={() => onCopy(problem.problem_id)} />
-          </Tooltip>
-          <Tooltip text="删除" direction="s">
-            <IconButton icon={TrashIcon} aria-label="删除" size="small" variant="invisible" sx={{ color: "danger.fg" }} onClick={() => onRemove(problem.problem_id)} />
+            <IconButton icon={CopyIcon} aria-label="复制" size="small" variant="invisible" onClick={onCopy} />
           </Tooltip>
         </Box>
       </Box>
 
-      {/* Edit panel */}
       {isEditing && (
         <ProblemEditPanel
           taskId={taskId}
@@ -296,7 +233,6 @@ function ProblemCardItem({
         />
       )}
 
-      {/* Problem body */}
       <Box sx={{ px: 3, py: 3 }}>
         <ProblemCard
           questionType={null}
@@ -311,11 +247,7 @@ function ProblemCardItem({
           diagramRenderStatus={problem.diagram_render_status}
           diagramError={problem.diagram_error}
           diagramNeedsReview={problem.diagram_needs_review}
-          onRetryDiagram={
-            problem.diagram_render_status === "failed" || problem.diagram_needs_review
-              ? handleRetryDiagram
-              : undefined
-          }
+          onRetryDiagram={problem.diagram_render_status === "failed" || problem.diagram_needs_review ? handleRetryDiagram : undefined}
           isRetryingDiagram={isRetryingDiagram}
           itemKeyPrefix={problem.problem_id}
           fontSize={2}
@@ -323,16 +255,14 @@ function ProblemCardItem({
         />
       </Box>
 
-      {/* Tags row */}
       {allTags.length > 0 && (
         <Box sx={{ px: 3, pb: 2, display: "flex", gap: 1, flexWrap: "wrap" }}>
-          {allTags.map((t) => (
-            <Label key={t} variant="secondary" sx={{ fontSize: "11px" }}>{t}</Label>
+          {allTags.map((value) => (
+            <Label key={value} variant="secondary" sx={{ fontSize: "11px" }}>{value}</Label>
           ))}
         </Box>
       )}
 
-      {/* Collapsible answer section */}
       {solution && (
         <Box sx={{ borderTop: "1px solid", borderColor: "border.muted" }}>
           <Box

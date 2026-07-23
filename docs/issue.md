@@ -1,3 +1,3 @@
 - [ ] $[a, b]$ 识别为标签
 - [ ] ()、（）标准化
-- [ ] hermes越权完成oopsnotecore工作
+- [ ] ai后端越权完成oopsnotecore工作

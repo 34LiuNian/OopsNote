@@ -102,23 +102,16 @@ export type OverrideProblemPayload = {
 
 export async function overrideProblem(
   taskId: string,
-  problemId: string,
   payload: OverrideProblemPayload,
 ): Promise<TaskResponse> {
-  return fetchJson<TaskResponse>(`/tasks/${encodeURIComponent(taskId)}/problems/${encodeURIComponent(problemId)}/override`, {
+  return fetchJson<TaskResponse>(`/tasks/${encodeURIComponent(taskId)}/problem/override`, {
     method: "PATCH",
     body: JSON.stringify(payload),
   });
 }
 
-export async function deleteProblem(taskId: string, problemId: string): Promise<TaskResponse> {
-  return fetchJson<TaskResponse>(`/tasks/${encodeURIComponent(taskId)}/problems/${encodeURIComponent(problemId)}`, {
-    method: "DELETE",
-  });
-}
-
-export async function rerenderProblemDiagram(taskId: string, problemId: string): Promise<TaskResponse> {
-  return fetchJson<TaskResponse>(`/tasks/${encodeURIComponent(taskId)}/problems/${encodeURIComponent(problemId)}/diagram`, {
+export async function rerenderProblemDiagram(taskId: string): Promise<TaskResponse> {
+  return fetchJson<TaskResponse>(`/tasks/${encodeURIComponent(taskId)}/problem/diagram`, {
     method: "POST",
   });
 }
