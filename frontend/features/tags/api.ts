@@ -24,6 +24,7 @@ export async function searchTags(params: {
   query?: string;
   subject?: string;
   chapter?: string;
+  scope?: "core" | "competition" | "prerequisite";
   limit?: number;
 }): Promise<TagsResponse> {
   const sp = new URLSearchParams();
@@ -31,6 +32,7 @@ export async function searchTags(params: {
   if (params.query && params.query.trim()) sp.set("query", params.query.trim());
   if (params.subject && params.subject.trim()) sp.set("subject", params.subject.trim());
   if (params.chapter && params.chapter.trim()) sp.set("chapter", params.chapter.trim());
+  if (params.scope) sp.set("scope", params.scope);
   sp.set("limit", String(params.limit ?? 100));
   return fetchJson<TagsResponse>(`/tags?${sp.toString()}`);
 }

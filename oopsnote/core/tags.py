@@ -1,14 +1,13 @@
-"""标签库管理。
-
-文件持久化：storage/settings/tags_user.json + tags_builtin.json
-"""
+"""Tracked knowledge-catalog and runtime user-tag management."""
 
 from __future__ import annotations
 
 import json
 import threading
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
+
+from oopsnote.catalog import KNOWLEDGE_TAGS_PATH, KNOWLEDGE_TREES_PATH
 
 from .models import TagCreateRequest, TagDimension, TagItem
 
@@ -28,15 +27,21 @@ class TagStore:
         self,
         user_path: Optional[Path] = None,
         builtin_path: Optional[Path] = None,
+        tree_path: Optional[Path] = None,
     ) -> None:
         base = Path(__file__).resolve().parents[1] / "storage" / "settings"
         base.mkdir(parents=True, exist_ok=True)
         self.user_path = user_path or base / "tags_user.json"
-        self.builtin_path = builtin_path or base / "tags_builtin.json"
+        self.builtin_path = builtin_path or KNOWLEDGE_TAGS_PATH
+        self.tree_path = tree_path or KNOWLEDGE_TREES_PATH
+        self._builtin_cache: Optional[list[TagItem]] = None
+        self._tree_cache: Optional[dict[str, Any]] = None
 
     # ── 加载 ──────────────────────────────────────────
 
     def _load_builtin(self) -> list[TagItem]:
+        if self._builtin_cache is not None:
+            return list(self._builtin_cache)
         if not self.builtin_path.exists():
             return []
         raw = json.loads(self.builtin_path.read_text(encoding="utf-8"))
@@ -45,7 +50,8 @@ class TagStore:
         for i in items:
             i["source"] = "builtin"
             result.append(TagItem(**i))
-        return result
+        self._builtin_cache = result
+        return list(result)
 
     def _load_user(self) -> list[TagItem]:
         if not self.user_path.exists():
@@ -69,11 +75,11 @@ class TagStore:
         """合并内置 + 用户标签，用户标签覆盖同名。"""
         builtin = self._load_builtin()
         user = self._load_user()
-        # 用户标签优先（去重：同 dimension + value）
-        seen: set[tuple[TagDimension, str]] = set()
+        # User tags override a builtin with the same dimension, subject, and value.
+        seen: set[tuple[TagDimension, Optional[str], str]] = set()
         result: list[TagItem] = []
         for item in user + builtin:
-            key = (item.dimension, item.value.casefold())
+            key = (item.dimension, item.subject, item.value.casefold())
             if key not in seen:
                 seen.add(key)
                 result.append(item)
@@ -92,20 +98,81 @@ class TagStore:
         dimension: Optional[TagDimension] = None,
         query: Optional[str] = None,
         limit: int = 50,
+        *,
+        subject: Optional[str] = None,
+        scope: Optional[str] = None,
     ) -> list[TagItem]:
         """搜索标签（按 value 或 alias 匹配）。"""
         q = (query or "").strip().casefold()
         items = self._all_items()
         if dimension:
             items = [t for t in items if t.dimension == dimension]
+        if subject:
+            items = [
+                t for t in items
+                if t.subject == subject
+                or (t.subject is None and t.dimension != TagDimension.KNOWLEDGE)
+            ]
+        if scope:
+            items = [
+                t for t in items
+                if t.source == "user" or scope == t.scope or scope in t.scopes
+            ]
         if q:
             items = [
                 t for t in items
                 if q in t.value.casefold()
                 or any(q in a.casefold() for a in t.aliases)
             ]
-        items.sort(key=lambda t: (-t.ref_count, t.value))
+        def rank(item: TagItem) -> tuple[int, int, int, str]:
+            if not q:
+                match_rank = 0
+            else:
+                value = item.value.casefold()
+                aliases = [alias.casefold() for alias in item.aliases]
+                if value == q:
+                    match_rank = 0
+                elif value.startswith(q):
+                    match_rank = 1
+                elif q in value:
+                    match_rank = 2
+                elif any(alias == q or alias.endswith(f"/{q}") for alias in aliases):
+                    match_rank = 3
+                else:
+                    match_rank = 4
+            return (match_rank, -item.ref_count, item.depth or 0, item.value)
+
+        items.sort(key=rank)
+        if not subject:
+            # The UI stores tag values rather than catalog IDs. Avoid rendering
+            # indistinguishable cross-subject duplicates when it has no subject context.
+            unique: list[TagItem] = []
+            seen_values: set[tuple[TagDimension, str]] = set()
+            for item in items:
+                key = (item.dimension, item.value.casefold())
+                if key not in seen_values:
+                    seen_values.add(key)
+                    unique.append(item)
+            items = unique
         return items[:max(1, limit)]
+
+    def knowledge_tree(self, subject: Optional[str] = None) -> dict[str, Any]:
+        """Return the cleaned tracked knowledge tree, optionally for one subject."""
+
+        if self._tree_cache is not None:
+            document = self._tree_cache
+        elif not self.tree_path.exists():
+            return {"schema_version": "xkw-knowledge-tree-v1", "subjects": {}}
+        else:
+            document = json.loads(self.tree_path.read_text(encoding="utf-8"))
+            self._tree_cache = document
+        if not subject:
+            return document
+        item = document.get("subjects", {}).get(subject)
+        return {
+            "schema_version": document.get("schema_version", "xkw-knowledge-tree-v1"),
+            "subjects": {subject: item} if item else {},
+        }
 
     # ── 增删改 ────────────────────────────────────────
 
@@ -124,9 +191,9 @@ class TagStore:
 
         with self._lock:
             user = self._load_user()
-            key = (dimension, value.casefold())
+            key = (dimension, subject, value.casefold())
             for item in user:
-                if (item.dimension, item.value.casefold()) == key:
+                if (item.dimension, item.subject, item.value.casefold()) == key:
                     # 更新 aliases
                     merged = list(dict.fromkeys(item.aliases + aliases))
                     if merged != item.aliases:

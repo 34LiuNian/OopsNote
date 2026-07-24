@@ -11,6 +11,7 @@ from typing import Optional
 
 from mcp.server.fastmcp import FastMCP
 
+from oopsnote.catalog import KNOWLEDGE_TAGS_PATH, KNOWLEDGE_TREES_PATH
 from oopsnote.core import (
     AssetStore,
     ContentFormat,
@@ -55,7 +56,8 @@ STORAGE_DIR = Path(__file__).resolve().parents[2] / "storage"
 TASK_STORE = TaskStore(base_dir=STORAGE_DIR)
 TAG_STORE = TagStore(
     user_path=STORAGE_DIR / "settings" / "tags_user.json",
-    builtin_path=STORAGE_DIR / "settings" / "tags_builtin.json",
+    builtin_path=KNOWLEDGE_TAGS_PATH,
+    tree_path=KNOWLEDGE_TREES_PATH,
 )
 ASSET_STORE = AssetStore(base_dir=STORAGE_DIR / "assets")
 
@@ -273,12 +275,20 @@ def list_tags(
     dimension: Optional[str] = None,
     query: Optional[str] = None,
     limit: int = 50,
+    subject: Optional[str] = None,
+    scope: Optional[str] = "core",
 ) -> list[TagItem]:
-    """列出标签。可用 dimension (knowledge/error/meta/custom) 和 query 过滤。"""
+    """列出标签，可按维度、查询词、学科和知识范围过滤。"""
     dim = None
     if dimension:
         dim = TagDimension(dimension)
-    return TAG_STORE.search(dimension=dim, query=query, limit=limit)
+    return TAG_STORE.search(
+        dimension=dim,
+        query=query,
+        limit=limit,
+        subject=subject,
+        scope=scope,
+    )
 
 
 @mcp.tool()

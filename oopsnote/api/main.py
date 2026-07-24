@@ -18,6 +18,7 @@ from fastapi.staticfiles import StaticFiles
 from oopsnote.ai import HermesRunner, PiRpcBackend, PiRpcRunner
 from oopsnote.api.routes import batch, catalog, tasks
 from oopsnote.api.schemas import TagInput, TagRenameInput, UploadRequest
+from oopsnote.catalog import KNOWLEDGE_TAGS_PATH, KNOWLEDGE_TREES_PATH
 from oopsnote.core import (
     AssetStore,
     BatchSessionRecord,
@@ -37,7 +38,8 @@ STORAGE_DIR = PROJECT_ROOT / "storage"
 TASK_STORE = TaskStore(base_dir=STORAGE_DIR)
 TAG_STORE = TagStore(
     user_path=STORAGE_DIR / "settings" / "tags_user.json",
-    builtin_path=STORAGE_DIR / "settings" / "tags_builtin.json",
+    builtin_path=KNOWLEDGE_TAGS_PATH,
+    tree_path=KNOWLEDGE_TREES_PATH,
 )
 ASSET_STORE = AssetStore(base_dir=STORAGE_DIR / "assets")
 BATCH_SESSION_STORE = BatchSessionStore(

@@ -97,15 +97,28 @@ def search(
 def list_tags(
     dimension: Optional[TagDimension] = None,
     query: Optional[str] = None,
+    subject: Optional[str] = None,
+    scope: Optional[str] = None,
     limit: int = Query(default=100, ge=1, le=500),
 ) -> dict[str, list[dict[str, Any]]]:
     api = _api()
     return {
         "items": [
             item.model_dump(mode="json")
-            for item in api.TAG_STORE.search(dimension, query, limit)
+            for item in api.TAG_STORE.search(
+                dimension,
+                query,
+                limit,
+                subject=subject,
+                scope=scope,
+            )
         ]
     }
+
+
+@router.get("/tags/tree")
+def get_knowledge_tree(subject: Optional[str] = None) -> dict[str, Any]:
+    return _api().TAG_STORE.knowledge_tree(subject)
 
 
 @router.post("/tags")
@@ -117,7 +130,11 @@ def create_tag(payload: TagInput) -> dict[str, list[dict[str, Any]]]:
         payload.aliases,
         payload.subject,
     )
-    return list_tags(dimension=payload.dimension, query=payload.value)
+    return list_tags(
+        dimension=payload.dimension,
+        query=payload.value,
+        subject=payload.subject,
+    )
 
 
 @router.get("/tags/dimensions")

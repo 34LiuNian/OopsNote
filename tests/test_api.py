@@ -11,6 +11,28 @@ from oopsnote.ai import HermesRunner
 from oopsnote.core import AssetStore, BatchSessionStore, Problem, RunStatus, RunStore, TagStore, TaskStore, TaskStatus
 
 
+def test_tracked_knowledge_catalog_supports_subject_search_and_tree():
+    client = TestClient(main.app)
+
+    tags = client.get(
+        "/tags",
+        params={
+            "dimension": "knowledge",
+            "query": "牛顿第二定律",
+            "subject": "physics",
+            "scope": "core",
+            "limit": 5,
+        },
+    )
+    tree = client.get("/tags/tree", params={"subject": "physics"})
+
+    assert tags.status_code == 200
+    assert tags.json()["items"][0]["value"] == "牛顿第二定律"
+    assert {item["subject"] for item in tags.json()["items"]} == {"physics"}
+    assert tree.status_code == 200
+    assert tree.json()["subjects"]["physics"]["root"]["title"] == "高中物理综合库"
+
+
 def test_web_contract_uses_wrapped_collections_and_persisted_upload(tmp_path, monkeypatch):
     storage = tmp_path / "storage"
     monkeypatch.setattr(main, "STORAGE_DIR", storage)

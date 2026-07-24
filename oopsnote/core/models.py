@@ -328,8 +328,18 @@ class TagItem(BaseModel):
     value: str
     aliases: list[str] = Field(default_factory=list)
     subject: Optional[str] = None
+    chapter: Optional[str] = None
     ref_count: int = 0
     source: str = "user"                        # "builtin" | "user"
+    source_id: Optional[str] = None
+    source_ids: list[str] = Field(default_factory=list)
+    parent_id: Optional[str] = None
+    path: list[str] = Field(default_factory=list)
+    paths: list[list[str]] = Field(default_factory=list)
+    depth: Optional[int] = None
+    scope: Optional[str] = None
+    scopes: list[str] = Field(default_factory=list)
+    is_leaf: Optional[bool] = None
 
 
 class TagCreateRequest(BaseModel):

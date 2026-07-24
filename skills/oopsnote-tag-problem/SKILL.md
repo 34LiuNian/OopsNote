@@ -32,8 +32,8 @@ metadata:
 ## 步骤
 
 ### 1. 查询标签候选
-调用 Pi 暴露的 OopsNote `list_tags` 直连工具获取已有标签库。
-- dimension=knowledge：获取知识点候选
+调用 Pi 暴露的 OopsNote `list_tags` 直连工具获取已有标签库。查询知识点时必须传入题目的英文 `subject`，普通题默认使用 `scope=core`。
+- dimension=knowledge、subject=<题目学科>、scope=core：获取当前学科知识点候选
 - dimension=error：获取错因候选
 
 **优先从已有标签中选择**，避免创建同义标签。
@@ -45,7 +45,7 @@ metadata:
 - **difficulty**：简单/中等/较难
 
 ### 3. 创建新标签（如果需要）
-如果标签库中不存在合适的标签，调用 Pi 暴露的 OopsNote `create_tag` 直连工具创建。
+如果权威知识树中不存在合适的标签，再调用 Pi 暴露的 OopsNote `create_tag` 直连工具创建。不要把知识树中的父级目录、竞赛分支或初中衔接分支作为普通题标签。
 
 ### 4. 返回结果
 将标签字段返回给 orchestrator，由 `finalize_task` 与完整 Problem 一次性提交。

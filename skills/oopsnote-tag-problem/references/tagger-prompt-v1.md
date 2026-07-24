@@ -10,7 +10,7 @@
 
 ```python
 # 获取知识点标签
-mcp__oopsnote_pipeline__list_tags(dimension="knowledge", query="函数", limit=20)
+mcp__oopsnote_pipeline__list_tags(dimension="knowledge", query="函数", subject="math", scope="core", limit=20)
 
 # 获取错因标签
 mcp__oopsnote_pipeline__list_tags(dimension="error", query="定义域", limit=20)

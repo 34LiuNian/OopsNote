@@ -65,11 +65,14 @@ export default function PaperBuilderPage() {
 
   // 试卷标题 - 直接使用计算后的初始值
   const [paperTitle, setPaperTitle] = useState<string>(() => generateDefaultTitle(subjectLabel));
+  const [isPaperTitleCustomized, setIsPaperTitleCustomized] = useState(false);
 
-  // 当学科改变时更新标题
+  // 只在用户尚未编辑标题时随学科更新默认值，避免覆盖用户输入。
   useEffect(() => {
-    setPaperTitle(generateDefaultTitle(subjectLabel));
-  }, [subjectLabel]);
+    if (!isPaperTitleCustomized) {
+      setPaperTitle(generateDefaultTitle(subjectLabel));
+    }
+  }, [subjectLabel, isPaperTitleCustomized]);
 
   const [paperPdfUrl, setPaperPdfUrl] = useState<string | null>(null);
   const [paperError, setPaperError] = useState<{ message: string; log?: string } | null>(null);
@@ -189,7 +192,14 @@ export default function PaperBuilderPage() {
           <Box sx={{ display: 'grid', gridTemplateColumns: ['1fr', '1fr 1fr 1fr'], gap: 3, mb: 3 }}>
             <FormControl>
               <FormControl.Label>试卷标题</FormControl.Label>
-              <TextInput value={paperTitle} onChange={(e) => setPaperTitle(e.target.value)} block />
+              <TextInput
+                value={paperTitle}
+                onChange={(e) => {
+                  setPaperTitle(e.target.value);
+                  setIsPaperTitleCustomized(true);
+                }}
+                block
+              />
             </FormControl>
             <FormControl>
               <FormControl.Label>学科</FormControl.Label>

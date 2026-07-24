@@ -24,6 +24,9 @@ build-backend = "setuptools.build_meta"
 [tool.setuptools.packages.find]
 include = ["oopsnote*"]
 
+[tool.setuptools.package-data]
+oopsnote = ["catalog/data/*.json"]
+
 [dependency-groups]
 dev = [
     "pytest>=9.1.1",
