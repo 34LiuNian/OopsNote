@@ -52,3 +52,30 @@ test("RDKit and TikZJax render non-empty SVG output", async ({ page }) => {
   );
   expect(relevantErrors, relevantErrors.join("\n\n")).toEqual([]);
 });
+
+test("GFM tables show a cell grid and are centered", async ({ page }) => {
+  await page.goto("/debug", { waitUntil: "domcontentloaded" });
+
+  const table = page.locator(".oops-markdown table").first();
+  await expect(table).toBeVisible();
+
+  const layout = await table.evaluate((element) => {
+    const tableStyle = getComputedStyle(element);
+    const cellStyle = getComputedStyle(element.querySelector("td")!);
+    const rect = element.getBoundingClientRect();
+    const parentRect = element.parentElement!.getBoundingClientRect();
+    return {
+      borderStyle: tableStyle.borderTopStyle,
+      borderWidth: tableStyle.borderTopWidth,
+      cellBorderStyle: cellStyle.borderTopStyle,
+      cellBorderWidth: cellStyle.borderTopWidth,
+      centerOffset: Math.abs(rect.left + rect.width / 2 - (parentRect.left + parentRect.width / 2)),
+    };
+  });
+
+  expect(layout.borderStyle).toBe("solid");
+  expect(layout.borderWidth).not.toBe("0px");
+  expect(layout.cellBorderStyle).toBe("solid");
+  expect(layout.cellBorderWidth).not.toBe("0px");
+  expect(layout.centerOffset).toBeLessThan(1);
+});

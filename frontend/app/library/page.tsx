@@ -5,8 +5,6 @@ import Link from "next/link";
 import {
   Box,
   Text,
-  Label,
-  Checkbox,
   Select,
   TextInput,
   FormControl,
@@ -15,9 +13,10 @@ import {
 } from "@/components/ui/primitives";
 import { notify } from "@/lib/notify";
 import { useEffect } from "react";
-import { retryTask, useActiveTaskList, useProblemList, useTaskList } from "../../features/tasks";
+import { useActiveTaskList, useProblemList, useTaskList } from "../../features/tasks";
 import { ProblemListItem } from "../../components/ProblemListItem";
 import { TaskThumbnail } from "../../components/TaskThumbnail";
+import { FailedTaskPanel } from "../../components/task/FailedTaskPanel";
 import { TagSelectorRow } from "../../components/TagSelectorRow";
 import { ListSkeleton } from "../../components/ui/LoadingStates";
 import { useTagDimensions } from "../../features/tags";
@@ -54,7 +53,6 @@ export default function LibraryPage() {
     created_before: dateBefore || undefined,
   });
   const {
-    items: activeTasks,
     activeItems: activeTaskItems,
     isLoading: isLoadingActive,
     refresh: refreshActiveTasks,
@@ -69,64 +67,11 @@ export default function LibraryPage() {
     subject: subject || undefined,
   });
   const [taskStripTab, setTaskStripTab] = useState<"active" | "failed">("active");
-  const [selectedFailedTaskIds, setSelectedFailedTaskIds] = useState<Record<string, boolean>>({});
-  const [isBatchRetrying, setIsBatchRetrying] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Record<string, boolean>>({});
-  const visibleTaskItems = taskStripTab === "active" ? activeTaskItems : failedTaskItems;
-  const isLoadingTaskStrip = taskStripTab === "active" ? isLoadingActive : isLoadingFailed;
-  const selectedFailedCount = failedTaskItems.filter((task) => selectedFailedTaskIds[task.id]).length;
-
-
 
   const toggleSelected = useCallback((key: string) => {
     setSelectedIds((prev) => ({ ...prev, [key]: !prev[key] }));
   }, []);
-
-  const toggleFailedTaskSelected = useCallback((taskId: string) => {
-    setSelectedFailedTaskIds((prev) => ({ ...prev, [taskId]: !prev[taskId] }));
-  }, []);
-
-  const clearFailedTaskSelection = useCallback(() => {
-    setSelectedFailedTaskIds({});
-  }, []);
-
-  const selectAllFailedTasks = useCallback(() => {
-    const allSelected: Record<string, boolean> = {};
-    failedTaskItems.forEach((task) => {
-      allSelected[task.id] = true;
-    });
-    setSelectedFailedTaskIds(allSelected);
-  }, [failedTaskItems]);
-
-  const retrySelectedFailedTasks = useCallback(async () => {
-    const targetIds = failedTaskItems
-      .filter((task) => selectedFailedTaskIds[task.id])
-      .map((task) => task.id);
-
-    if (targetIds.length === 0 || isBatchRetrying) return;
-
-    setIsBatchRetrying(true);
-    try {
-      const results = await Promise.allSettled(targetIds.map((taskId) => retryTask(taskId, true)));
-      const successCount = results.filter((r) => r.status === "fulfilled").length;
-      const failCount = targetIds.length - successCount;
-
-      if (successCount > 0) {
-        notify.success({ title: `已提交 ${successCount} 个任务重试` });
-      }
-      if (failCount > 0) {
-        notify.error({ title: `${failCount} 个任务重试失败` });
-      }
-
-      setSelectedFailedTaskIds({});
-      await Promise.all([refreshFailedTasks(), refreshActiveTasks()]);
-      setTaskStripTab("active");
-    } catch (err) {
-      notify.error({ title: err instanceof Error ? err.message : "批量重试失败" });
-    } finally {
-      setIsBatchRetrying(false);
-    }
-  }, [failedTaskItems, isBatchRetrying, refreshActiveTasks, refreshFailedTasks, selectedFailedTaskIds]);
 
   // 显示错误通知
   useEffect(() => {
@@ -166,101 +111,28 @@ export default function LibraryPage() {
               >
                 失败 {failedTaskItems.length}
               </Button>
-              {taskStripTab === "failed" && failedTaskItems.length > 0 && (
-                <>
-                  <Button size="small" variant="invisible" onClick={selectAllFailedTasks}>
-                    全选
-                  </Button>
-                  {selectedFailedCount > 0 && (
-                    <Button size="small" variant="invisible" onClick={clearFailedTaskSelection}>
-                      清空 ({selectedFailedCount})
-                    </Button>
-                  )}
-                  <Button
-                    size="small"
-                    variant="primary"
-                    disabled={selectedFailedCount === 0 || isBatchRetrying}
-                    onClick={() => {
-                      void retrySelectedFailedTasks();
-                    }}
-                  >
-                    {isBatchRetrying ? "重试中..." : `批量重试 (${selectedFailedCount})`}
-                  </Button>
-                </>
-              )}
-              {isLoadingTaskStrip && (
+              {(taskStripTab === "active" ? isLoadingActive : isLoadingFailed) && (
                 <Spinner size="small" />
               )}
             </Box>
-            <Box
-              sx={{
-                minHeight: TASK_STRIP_CONTENT_MIN_HEIGHT,
-                display: "flex",
-                alignItems: "center",
-              }}
-            >
-              {visibleTaskItems.length > 0 ? (
+            {taskStripTab === "failed" ? (
+              <FailedTaskPanel
+                tasks={failedTaskItems}
+                isLoading={isLoadingFailed}
+                refreshFailedTasks={refreshFailedTasks}
+                refreshActiveTasks={refreshActiveTasks}
+              />
+            ) : (
+              <Box
+                sx={{
+                  minHeight: TASK_STRIP_CONTENT_MIN_HEIGHT,
+                  display: "flex",
+                  alignItems: "center",
+                }}
+              >
+              {activeTaskItems.length > 0 ? (
                 <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
-                {visibleTaskItems.map((t) => (
-                  taskStripTab === "failed" ? (
-                    <Box
-                      key={t.id}
-                      sx={{
-                        position: "relative",
-                        borderRadius: "var(--oops-radius-sm)",
-                        overflow: "hidden",
-                        border: "1px solid",
-                        borderColor: selectedFailedTaskIds[t.id] ? "accent.fg" : "border.default",
-                        transition: "all var(--oops-transition-fast)",
-                        bg: "canvas.default",
-                      }}
-                    >
-                      <TaskThumbnail asset={t.asset} size="medium" />
-                      <Box
-                        sx={{
-                          position: "absolute",
-                          right: 6,
-                          bottom: 6,
-                          zIndex: 2,
-                          bg: "canvas.default",
-                          borderRadius: 6,
-                          px: 2,
-                          py: 1,
-                          border: "1px solid",
-                          borderColor: "border.default",
-                          boxShadow: "shadow.small",
-                          display: "flex",
-                          alignItems: "center",
-                          gap: 2,
-                        }}
-                      >
-                        <Label
-                          sx={{ display: "flex", alignItems: "center", gap: 1, m: 0, cursor: "pointer" }}
-                          onClick={(e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                          }}
-                        >
-                          <Checkbox
-                            checked={!!selectedFailedTaskIds[t.id]}
-                            onChange={() => toggleFailedTaskSelected(t.id)}
-                          />
-                          <Text sx={{ fontSize: 0 }}>选中</Text>
-                        </Label>
-                        <Link href={`/tasks/${t.id}`} style={{ textDecoration: "none", color: "inherit" }}>
-                          <Button
-                            size="small"
-                            variant="invisible"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                            }}
-                          >
-                            查看
-                          </Button>
-                        </Link>
-                      </Box>
-                    </Box>
-                  ) : (
+                {activeTaskItems.map((t) => (
                     <Link key={t.id} href={`/tasks/${t.id}`} style={{ textDecoration: 'none', color: 'inherit' }}>
                       <Box
                         sx={{
@@ -277,10 +149,9 @@ export default function LibraryPage() {
                         <TaskThumbnail asset={t.asset} size="medium" />
                       </Box>
                     </Link>
-                  )
                 ))}
                 </Box>
-              ) : isLoadingTaskStrip ? (
+              ) : isLoadingActive ? (
                 <Box sx={{ width: "100%", display: "flex", justifyContent: "center" }}>
                   <Spinner size="small" />
                 </Box>
@@ -289,7 +160,8 @@ export default function LibraryPage() {
                   当前没有{taskStripTab === "active" ? "进行中" : "失败"}任务
                 </Text>
               )}
-            </Box>
+              </Box>
+            )}
           </Box>
         </Box>
       )}
@@ -299,7 +171,7 @@ export default function LibraryPage() {
         <Box sx={{ display: 'grid', gridTemplateColumns: ['1fr', '1fr 1fr'], gap: 3, mb: 3 }}>
           <FormControl>
             <FormControl.Label>学科</FormControl.Label>
-            <Select value={subject} onChange={(e) => setSubject(e.target.value)} block>
+            <Select value={subject} onValueChange={setSubject} block>
                 {LIBRARY_SUBJECT_OPTIONS.map((option) => (
                 <Select.Option key={option.value || "all"} value={option.value}>
                   {option.label}

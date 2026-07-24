@@ -248,11 +248,96 @@ export const Textarea = forwardRef<HTMLTextAreaElement, TextareaCompatProps>(fun
   return <MantineTextarea ref={ref} className={[resolved.className, className].filter(Boolean).join(" ") || undefined} style={{ ...resolved.style, ...(block ? { width: "100%" } : {}), ...style }} w={block ? "100%" : undefined} {...props as any} />;
 });
 
-type SelectCompatProps = Omit<React.SelectHTMLAttributes<HTMLSelectElement>, "size"> & { sx?: SxProps; block?: boolean };
-export const Select = Object.assign(forwardRef<HTMLSelectElement, SelectCompatProps>(function Select({ sx, className, style, block, ...props }, ref) {
+type SelectOptionProps = {
+  children: React.ReactNode;
+  disabled?: boolean;
+  value: string;
+};
+
+function SelectOption(_props: SelectOptionProps) {
+  return null;
+}
+
+function selectOptionLabel(node: React.ReactNode): string {
+  return React.Children.toArray(node)
+    .map((child) => {
+      if (typeof child === "string" || typeof child === "number") return String(child);
+      if (React.isValidElement<{ children?: React.ReactNode }>(child)) {
+        return selectOptionLabel(child.props.children);
+      }
+      return "";
+    })
+    .join("");
+}
+
+type SelectCompatProps = {
+  "aria-label"?: string;
+  "aria-labelledby"?: string;
+  autoFocus?: boolean;
+  block?: boolean;
+  children: React.ReactNode;
+  className?: string;
+  disabled?: boolean;
+  form?: string;
+  id?: string;
+  name?: string;
+  onBlur?: React.FocusEventHandler<HTMLInputElement>;
+  onFocus?: React.FocusEventHandler<HTMLInputElement>;
+  onValueChange: (value: string) => void;
+  required?: boolean;
+  style?: React.CSSProperties;
+  sx?: SxProps;
+  tabIndex?: number;
+  value: string;
+};
+
+export const Select = Object.assign(forwardRef<HTMLInputElement, SelectCompatProps>(function Select({
+  block,
+  children,
+  className,
+  onValueChange,
+  style,
+  sx,
+  value,
+  ...props
+}, ref) {
   const resolved = useSx(sx);
-  return <select ref={ref} className={["oops-native-select", resolved.className, className].filter(Boolean).join(" ")} style={{ ...resolved.style, ...(block ? { width: "100%" } : {}), ...style }} {...props} />;
-}), { Option: "option" as const });
+  const options = React.Children.toArray(children)
+    .filter((child): child is React.ReactElement<SelectOptionProps> => (
+      React.isValidElement<SelectOptionProps>(child) && child.type === SelectOption
+    ))
+    .map((child, index) => ({
+      disabled: child.props.disabled,
+      externalValue: child.props.value,
+      label: selectOptionLabel(child.props.children),
+      value: `oops-select-option-${index}`,
+    }));
+  const selectedOption = options.find((option) => option.externalValue === value && !option.disabled)
+    ?? options.find((option) => option.externalValue === value);
+
+  return (
+    <MantineSelect
+      {...props}
+      ref={ref}
+      allowDeselect={false}
+      className={[resolved.className, className].filter(Boolean).join(" ") || undefined}
+      classNames={{
+        dropdown: "oops-select-dropdown",
+        input: "oops-select-input",
+        option: "oops-select-option",
+      }}
+      comboboxProps={{ withinPortal: true }}
+      data={options.map(({ disabled, label, value: optionValue }) => ({ disabled, label, value: optionValue }))}
+      onChange={(nextValue) => {
+        const option = options.find((candidate) => candidate.value === nextValue);
+        if (option) onValueChange(option.externalValue);
+      }}
+      style={{ ...resolved.style, ...(block ? { width: "100%" } : {}), ...style }}
+      value={selectedOption?.value ?? null}
+      w={block ? "100%" : undefined}
+    />
+  );
+}), { Option: SelectOption });
 
 type FormControlProps = React.HTMLAttributes<HTMLDivElement> & { sx?: SxProps };
 function FormControlComponent({ sx, className, style, ...props }: FormControlProps) {

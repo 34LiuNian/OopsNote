@@ -222,7 +222,7 @@ export function AnnotationForm({
                         </FormControl>
                         <FormControl>
                             <FormControl.Label>学科</FormControl.Label>
-                            <Select value={subject} onChange={(e) => onSubjectChange(e.target.value)} block>
+                            <Select value={subject} onValueChange={onSubjectChange} block>
                                 <Select.Option value="auto">自动识别</Select.Option>
                                   {SUBJECT_OPTIONS.map((option) => (
                                     <Select.Option key={option.value} value={option.value}>
@@ -235,7 +235,7 @@ export function AnnotationForm({
 
                     <FormControl>
                         <FormControl.Label>题型</FormControl.Label>
-                        <Select value={questionType} onChange={(e) => onQuestionTypeChange(e.target.value)} block>
+                        <Select value={questionType} onValueChange={onQuestionTypeChange} block>
                             <Select.Option value="">自动识别</Select.Option>
                             <Select.Option value="选择题">选择题</Select.Option>
                             <Select.Option value="多选题">多选题</Select.Option>

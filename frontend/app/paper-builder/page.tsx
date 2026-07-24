@@ -193,7 +193,7 @@ export default function PaperBuilderPage() {
             </FormControl>
             <FormControl>
               <FormControl.Label>学科</FormControl.Label>
-              <Select value={subject} onChange={(e) => setSubject(e.target.value)} block>
+              <Select value={subject} onValueChange={setSubject} block>
                   {BUILDER_SUBJECT_OPTIONS.map((option) => (
                   <Select.Option key={option.value || "all"} value={option.value}>
                     {option.label}

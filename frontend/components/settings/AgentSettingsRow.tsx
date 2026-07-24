@@ -71,7 +71,7 @@ export function AgentSettingsRow({
           <FormControl.Label visuallyHidden>Model</FormControl.Label>
           <Select
             value={currentValue}
-            onChange={(e) => onChangeModel(agent.key, e.target.value)}
+            onValueChange={(value) => onChangeModel(agent.key, value)}
             disabled={isLoadingSettings || isSaving || isLoadingModels}
             block
           >

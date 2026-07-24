@@ -65,7 +65,11 @@ export function MarkdownRenderer({
   }, [format]);
 
   return (
-    <Box ref={containerRef} sx={{ fontSize: fontSize ?? 1, "& .katex": { fontSize: "1.1em" } }}>
+    <Box
+      ref={containerRef}
+      className="oops-markdown"
+      sx={{ fontSize: fontSize ?? 1, "& .katex": { fontSize: "1.1em" } }}
+    >
       <ReactMarkdown
         remarkPlugins={remarkPlugins}
         rehypePlugins={rehypePlugins}

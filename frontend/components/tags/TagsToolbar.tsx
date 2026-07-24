@@ -41,7 +41,7 @@ export function TagsToolbar({
           onChange={(e) => onQueryInputChange(e.target.value)}
         />
 
-        <Select value={dimFilter} onChange={(e) => onDimFilterChange(e.target.value as DimFilter)}>
+        <Select value={dimFilter} onValueChange={(value) => onDimFilterChange(value as DimFilter)}>
           <Select.Option value="all">全部维度（{dimCounts.all || 0}）</Select.Option>
           {tagDimensions.map((dim) => (
             <Select.Option key={dim.key} value={dim.key}>

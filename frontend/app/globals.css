@@ -610,27 +610,29 @@ select {
   min-width: 0;
 }
 
-.oops-native-select {
+.oops-select-input {
   min-height: 36px;
-  padding: 0 34px 0 11px;
-  border: 1px solid var(--borderColor-default);
+  border-color: var(--borderColor-default);
   border-radius: var(--oops-radius-md);
   color: var(--fgColor-default);
-  background-color: var(--bgColor-default);
-  background-image:
-    linear-gradient(45deg, transparent 50%, var(--fgColor-muted) 50%),
-    linear-gradient(135deg, var(--fgColor-muted) 50%, transparent 50%);
-  background-position: calc(100% - 16px) 15px, calc(100% - 11px) 15px;
-  background-size: 5px 5px, 5px 5px;
-  background-repeat: no-repeat;
-  appearance: none;
-  transition: border-color var(--oops-transition-fast), box-shadow var(--oops-transition-fast);
+  background: var(--bgColor-default);
 }
 
-.oops-native-select:focus {
+.oops-select-input:focus,
+.oops-select-input:focus-within {
   border-color: var(--fgColor-accent);
-  outline: none;
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--fgColor-accent) 18%, transparent);
+}
+
+.oops-select-dropdown {
+  border-color: var(--borderColor-default);
+  border-radius: var(--oops-radius-md);
+  background: var(--bgColor-overlay, var(--bgColor-default));
+  box-shadow: var(--oops-shadow-lg);
+}
+
+.oops-select-option {
+  color: var(--fgColor-default);
 }
 
 .oops-button-group {
@@ -788,6 +790,300 @@ html[data-oopsnote-color-scheme="dark"] .oops-badge-accent { background: var(--b
 html[data-oopsnote-color-scheme="dark"] .oops-badge-muted { background: var(--bgColor-muted, #161b22); color: var(--fgColor-muted, #8b949e); }
 html[data-oopsnote-color-scheme="dark"] .oops-badge-warning { background: var(--bgColor-attention-muted, #2d2000); color: var(--fgColor-attention, #d29922); }
 
+/* Failed tasks are an exception workflow: explain first, then offer recovery. */
+.failed-task-panel {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.failed-task-panel__summary {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid color-mix(in srgb, var(--fgColor-danger) 24%, var(--borderColor-default));
+  border-radius: var(--oops-radius-md);
+  background: color-mix(in srgb, var(--bgColor-danger-muted) 35%, transparent);
+}
+
+.failed-task-panel__summary-icon {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  flex: 0 0 32px;
+  place-items: center;
+  border-radius: 50%;
+  color: var(--fgColor-danger);
+  background: var(--bgColor-danger-muted);
+}
+
+.failed-task-panel__batch {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 42px;
+  padding: 6px 8px 6px 12px;
+  border: 1px solid var(--borderColor-default);
+  border-radius: var(--oops-radius-sm);
+  background: var(--bgColor-muted);
+}
+
+.failed-task-panel__grid {
+  display: grid;
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+  grid-auto-flow: dense;
+  grid-auto-rows: 4px;
+  gap: 10px;
+}
+
+.failed-task-card {
+  position: relative;
+  display: block;
+  min-width: 0;
+  isolation: isolate;
+  overflow: hidden;
+  border: 1px solid var(--borderColor-default);
+  border-radius: var(--oops-radius-md);
+  background: var(--bgColor-muted);
+  transition: border-color var(--oops-transition-fast), box-shadow var(--oops-transition-fast), transform var(--oops-transition-fast);
+}
+
+.failed-task-card.is-layout-pending,
+.failed-task-card.is-regular {
+  grid-column: span 1;
+  grid-row: span 10;
+}
+
+.failed-task-card.is-wide {
+  grid-column: span 2;
+  grid-row: span 8;
+}
+
+.failed-task-card.is-panorama {
+  grid-column: span 3;
+  grid-row: span 8;
+}
+
+.failed-task-card.is-tall {
+  grid-column: span 1;
+  grid-row: span 13;
+}
+
+.failed-task-card:hover {
+  border-color: color-mix(in srgb, var(--borderColor-default) 58%, var(--fgColor-muted));
+  box-shadow: var(--oops-shadow-sm);
+}
+
+.failed-task-card.is-selectable {
+  cursor: pointer;
+}
+
+.failed-task-card.is-selectable:focus-visible {
+  outline: 2px solid var(--fgColor-accent);
+  outline-offset: 2px;
+}
+
+.failed-task-card.is-selected {
+  border-color: var(--fgColor-accent);
+  box-shadow: inset 0 0 0 2px var(--fgColor-accent), var(--oops-shadow-sm);
+  transform: translateY(-1px);
+}
+
+.failed-task-card__image {
+  position: absolute;
+  z-index: -2;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: var(--fgColor-muted);
+  background-color: var(--bgColor-muted);
+  font-size: 12px;
+  transition: transform var(--oops-transition-normal);
+}
+
+.failed-task-card__image img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.failed-task-card__scrim {
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  background:
+    linear-gradient(90deg, rgb(0 0 0 / 0.88) 0%, rgb(0 0 0 / 0.72) 58%, rgb(0 0 0 / 0.44) 100%),
+    linear-gradient(0deg, rgb(0 0 0 / 0.72), transparent 62%);
+  transition: opacity var(--oops-transition-normal);
+}
+
+.failed-task-card__content {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 10px;
+  justify-content: flex-end;
+  padding: 16px;
+  pointer-events: none;
+  transition: opacity var(--oops-transition-normal), transform var(--oops-transition-normal);
+}
+
+.failed-task-card__meta {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.failed-task-card__reason {
+  display: -webkit-box;
+  overflow: hidden;
+  color: #fff;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.5;
+  text-shadow: 0 1px 3px rgb(0 0 0 / 0.8);
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.failed-task-card__actions {
+  position: absolute;
+  z-index: 3;
+  right: 10px;
+  bottom: 10px;
+  left: 10px;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 6px;
+  border: 1px solid rgb(255 255 255 / 0.2);
+  border-radius: var(--oops-radius-sm);
+  opacity: 0;
+  background: rgb(9 9 11 / 0.78);
+  box-shadow: var(--oops-shadow-sm);
+  backdrop-filter: blur(8px);
+  transform: translateY(6px);
+  transition: opacity var(--oops-transition-fast), transform var(--oops-transition-fast);
+}
+
+.failed-task-card__detail {
+  padding: 5px 4px;
+  color: #d4d4d8;
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.failed-task-card__detail:hover {
+  color: #fff;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.failed-task-card:hover .failed-task-card__image,
+.failed-task-card:focus-within .failed-task-card__image {
+  transform: scale(1.025);
+}
+
+.failed-task-card:hover .failed-task-card__scrim,
+.failed-task-card:hover .failed-task-card__content,
+.failed-task-card:focus-within .failed-task-card__scrim,
+.failed-task-card:focus-within .failed-task-card__content {
+  opacity: 0;
+}
+
+.failed-task-card:hover .failed-task-card__content,
+.failed-task-card:focus-within .failed-task-card__content {
+  transform: translateY(-4px);
+}
+
+.failed-task-card:hover .failed-task-card__actions,
+.failed-task-card:focus-within .failed-task-card__actions {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.failed-task-panel__loading,
+.failed-task-panel__empty {
+  display: flex;
+  min-height: 96px;
+  align-items: center;
+  justify-content: center;
+}
+
+.failed-task-panel__empty {
+  flex-direction: column;
+  gap: 4px;
+}
+
+@media (max-width: 543px) {
+  .failed-task-panel__summary {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .failed-task-panel__summary > button {
+    width: 100%;
+  }
+
+  .failed-task-panel__batch {
+    flex-wrap: wrap;
+  }
+
+  .failed-task-panel__grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .failed-task-card.is-layout-pending,
+  .failed-task-card.is-regular,
+  .failed-task-card.is-wide,
+  .failed-task-card.is-panorama,
+  .failed-task-card.is-tall {
+    grid-column: span 2;
+    grid-row: span 14;
+  }
+}
+
+@media (min-width: 544px) and (max-width: 1023px) {
+  .failed-task-panel__grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .failed-task-card.is-panorama {
+    grid-column: span 4;
+  }
+}
+
+@media (min-width: 1024px) and (max-width: 1279px) {
+  .failed-task-panel__grid {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
+}
+
+@media (hover: none) {
+  .failed-task-card__content {
+    padding-bottom: 64px;
+  }
+
+  .failed-task-card__actions {
+    opacity: 1;
+    transform: none;
+  }
+
+  .failed-task-card:hover .failed-task-card__scrim,
+  .failed-task-card:hover .failed-task-card__content {
+    opacity: 1;
+    transform: none;
+  }
+}
+
 /* === Smooth list item === */
 .oops-list-item {
   transition: background-color var(--oops-transition-fast), box-shadow var(--oops-transition-fast);
@@ -825,6 +1121,32 @@ html[data-oopsnote-color-scheme="dark"] .oops-list-item:hover {
   overflow-x: auto;
   overflow-y: hidden;
   padding: 0.2rem 0;
+}
+
+/* OopsMark/GFM tables: visible cell grid and centered by default. */
+.oops-markdown table {
+  --oops-markdown-table-border: color-mix(
+    in srgb,
+    var(--borderColor-default) 70%,
+    var(--fgColor-muted)
+  );
+  width: max-content;
+  max-width: 100%;
+  margin: 0 auto 1rem;
+  border: 1px solid var(--oops-markdown-table-border);
+  border-collapse: collapse;
+}
+
+.oops-markdown th,
+.oops-markdown td {
+  padding: 0.45rem 0.75rem;
+  border: 1px solid var(--oops-markdown-table-border);
+  text-align: center;
+}
+
+.oops-markdown th {
+  background: var(--bgColor-muted);
+  font-weight: 600;
 }
 
 /* KaTeX array/table: ensure proper display */

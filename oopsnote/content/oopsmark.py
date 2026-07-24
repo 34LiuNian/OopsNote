@@ -257,17 +257,44 @@ def normalize_oopsmark(source: str) -> str:
     """Normalize newlines in OopsMark v1 content.
 
     - Replaces CRLF/CR with LF.
-    - Collapses 3+ consecutive newlines to exactly \n\n (one blank line).
+    - Collapses 3+ consecutive newlines to exactly \n\n (one blank line) outside fenced code blocks.
     - Strips leading/trailing whitespace.
 
     This keeps standard Markdown paragraph separation (\n\n) intact
     while eliminating unintended extra blank lines from AI output.
+    Fenced code blocks (```…```) are preserved verbatim to avoid corrupting
+    tikz, molecule, or mermaid content with intentional blank lines.
     """
-    # Normalize line endings
     normalized = source.replace("\r\n", "\n").replace("\r", "\n")
-    # Collapse excessive consecutive newlines to max one blank line
-    normalized = re.sub(r"\n{3,}", "\n\n", normalized)
-    return normalized.strip()
+    lines = normalized.split("\n")
+    result: list[str] = []
+    in_fence = False
+    need_blank = False  # emit one blank line before next non-blank non-fence line
+
+    for line in lines:
+        if line.strip().startswith("```"):
+            if need_blank:
+                result.append("")
+                need_blank = False
+            result.append(line)
+            in_fence = not in_fence
+        elif in_fence:
+            result.append(line)
+        elif not line.strip():
+            need_blank = True
+        else:
+            if need_blank:
+                result.append("")
+                need_blank = False
+            result.append(line)
+
+    # strip leading and trailing blank lines
+    while result and result[0] == "":
+        result.pop(0)
+    while result and result[-1] == "":
+        result.pop()
+
+    return "\n".join(result)
 
 
 _LATEX_ESCAPES = {
