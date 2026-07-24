@@ -17,6 +17,7 @@ from pathlib import Path
 
 from oopsnote.ai import PiRpcBackend, PiRpcRunner
 from oopsnote.core import AssetStore, RunStore, TaskCreateRequest, TaskStore
+from oopsnote.mcp.http_runtime import SharedMcpHttpRuntime
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -41,7 +42,7 @@ def default_image_path() -> Path:
     return matches[0]
 
 
-def run_task(image_path: Path, expected_option: str) -> int:
+def run_task(image_path: Path, expected_option: str, runtime: str) -> int:
     storage = ROOT / "storage"
     task_store = TaskStore(storage)
     run_store = RunStore(storage / "runs")
@@ -55,18 +56,25 @@ def run_task(image_path: Path, expected_option: str) -> int:
         metadata={"source": "pi-smoke-example-1.1", "expected_option": expected_option},
     ))
     runner = PiRpcRunner(
-        backend=PiRpcBackend(ROOT),
+        backend=PiRpcBackend(ROOT, runtime=runtime),
         project_root=ROOT,
         task_store=task_store,
         run_store=run_store,
     )
-    run = runner.enqueue(task.id)
-    runner.run(task.id, run.id)
+    mcp_runtime = SharedMcpHttpRuntime()
+    try:
+        runner.set_child_environment(mcp_runtime.start())
+        run = runner.enqueue(task.id)
+        runner.run(task.id, run.id)
+    finally:
+        runner.shutdown()
+        mcp_runtime.shutdown()
 
     completed_task = task_store.get(task.id)
     completed_run = run_store.get(run.id)
     print(f"task_id={task.id}")
     print(f"run_id={run.id}")
+    print(f"runtime={completed_run.runtime_kind} version={completed_run.runtime_version}")
     print(f"status={completed_task.status.value} run_status={completed_run.status.value}")
     print(f"rpc_log={completed_run.rpc_log_path}")
     if not completed_task.problem:
@@ -79,15 +87,17 @@ def run_task(image_path: Path, expected_option: str) -> int:
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--image", type=Path, help="Use an existing cropped image instead of rendering the Markdown excerpt")
+    parser.add_argument("--expected", help="Expected answer; skips reading the curated vault answer")
+    parser.add_argument("--runtime", choices=("pi", "pi-rust"), default="pi-rust")
     args = parser.parse_args()
 
-    question, expected_option = source_case()
+    expected_option = args.expected or source_case()[1]
     image_path = (args.image or default_image_path()).resolve()
     if not image_path.is_file():
         raise RuntimeError(f"Image not found: {image_path}")
     print(f"image={image_path}")
     print(f"expected_option={expected_option}")
-    return run_task(image_path, expected_option)
+    return run_task(image_path, expected_option, args.runtime)
 
 
 if __name__ == "__main__":

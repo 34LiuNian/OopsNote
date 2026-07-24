@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import time
 
 from fastapi.testclient import TestClient
 
@@ -274,7 +275,12 @@ def test_process_endpoint_creates_observable_run(tmp_path, monkeypatch):
     assert response.status_code == 200
     assert response.json()["run"]["attempt"] == 1
     assert client.get(f"/tasks/{task['id']}").json()["task"]["status"] == "completed"
-    runs = client.get(f"/tasks/{task['id']}/runs").json()["items"]
+    deadline = time.monotonic() + 2
+    while True:
+        runs = client.get(f"/tasks/{task['id']}/runs").json()["items"]
+        if runs[0]["status"] == "completed" or time.monotonic() >= deadline:
+            break
+        time.sleep(0.01)
     assert runs[0]["status"] == "completed"
     assert runs[0]["backend"] == "hermes"
     assert runs[0]["retry_count"] == 0

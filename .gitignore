@@ -59,5 +59,13 @@ venv/
 /.pi/skills/
 /.pi/self-learning-memory/
 
+# Local pi_agent_rust runtime, credentials, caches, and generated state
+/.pi-rust/bin/
+/.pi-rust/runtime.json
+/.pi-rust/extensions.json
+/.pi-rust/agent/
+/.pi-rust/sessions/
+/.pi-rust/cache/
+
 
 /.agents/

@@ -1,0 +1,10 @@
+{
+  "command": [
+    ".pi-rust/bin/pi.exe"
+  ],
+  "version": "0.1.22",
+  "provider": "deepseek",
+  "model": "deepseek-v4-flash",
+  "agent_dir": ".pi-rust/agent",
+  "sessions_dir": ".pi-rust/sessions"
+}

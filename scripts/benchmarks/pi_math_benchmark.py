@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 import json
 import math
 import shutil
@@ -12,6 +13,7 @@ from pathlib import Path
 
 from oopsnote.ai import PiRpcBackend, PiRpcRunner
 from oopsnote.core import AssetStore, RunStore, TaskCreateRequest, TaskStore
+from oopsnote.mcp.http_runtime import SharedMcpHttpRuntime
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -38,24 +40,25 @@ def find_asset(pattern: str) -> Path:
 
 def preflight(backend: PiRpcBackend) -> list[str]:
     issues: list[str] = []
-    extension_config = ROOT / ".pi" / "extensions.json"
+    config_dir = ROOT / (".pi" if backend.runtime_kind == "pi-rust" else f".{backend.runtime_kind}")
+    extension_config = config_dir / "extensions.json"
     adapter_dir = ROOT / ".pi" / "node_modules" / "pi-mcp-adapter"
     if not extension_config.exists():
-        issues.append("missing .pi/extensions.json")
+        issues.append(f"missing {config_dir.name}/extensions.json")
     else:
         try:
             ocr = json.loads(extension_config.read_text(encoding="utf-8")).get("ocr_image", {})
             if not ocr.get("dashscope_api_key"):
-                issues.append("missing DashScope key in .pi/extensions.json")
+                issues.append(f"missing DashScope key in {config_dir.name}/extensions.json")
             if not ocr.get("model"):
-                issues.append("missing OCR model in .pi/extensions.json")
+                issues.append(f"missing OCR model in {config_dir.name}/extensions.json")
         except (OSError, json.JSONDecodeError):
-            issues.append("invalid .pi/extensions.json")
-    if not adapter_dir.exists():
+            issues.append(f"invalid {config_dir.name}/extensions.json")
+    if backend.runtime_kind == "pi" and not adapter_dir.exists():
         issues.append("missing .pi/node_modules/pi-mcp-adapter; run npm install in .pi")
     executable = backend.command[0]
     if not (Path(executable).exists() or shutil.which(executable)):
-        issues.append(f"Pi launcher not found: {executable}")
+        issues.append(f"{backend.runtime_kind.upper()} launcher not found: {executable}")
     return issues
 
 
@@ -119,7 +122,10 @@ def summary_table(rows: list[dict[str, object]]) -> str:
 
 
 def main() -> int:
-    backend = PiRpcBackend(ROOT)
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--runtime", choices=("pi", "pi-rust"), default="pi-rust")
+    args = parser.parse_args()
+    backend = PiRpcBackend(ROOT, runtime=args.runtime)
     issues = preflight(backend)
     if issues:
         print("Benchmark preflight failed:")
@@ -137,38 +143,50 @@ def main() -> int:
         task_store=task_store,
         run_store=run_store,
     )
+    mcp_runtime = SharedMcpHttpRuntime()
+    runner.set_child_environment(mcp_runtime.start())
     rows: list[dict[str, object]] = []
-    for name, pattern, expected in CASES:
-        source = find_asset(pattern)
-        task = task_store.create(TaskCreateRequest(
-            subject="math",
-            asset_path=f"/assets/{source.name}",
-            metadata={"source": f"pi-benchmark-{name}", "expected_answer": expected},
-        ))
-        run = runner.enqueue(task.id)
-        started = time.monotonic()
-        runner.run(task.id, run.id)
-        elapsed_ms = int((time.monotonic() - started) * 1000)
-        stored_run = run_store.get(run.id)
-        stored_task = task_store.get(task.id)
-        answer = stored_task.problem.answer.strip() if stored_task.problem else ""
-        rows.append({
-            "case": name,
-            "task_id": task.id,
-            "run_id": run.id,
-            "expected": expected,
-            "answer": answer,
-            "status": stored_run.status.value,
-            "duration_ms": stored_run.duration_ms or elapsed_ms,
-            "stages": stage_durations(stored_run),
-            "input_tokens": stored_run.input_tokens,
-            "output_tokens": stored_run.output_tokens,
-            "cache_tokens": stored_run.cache_tokens,
-            "cost": stored_run.cost,
-            "rpc_log": stored_run.rpc_log_path,
-        })
+    try:
+        for name, pattern, expected in CASES:
+            source = find_asset(pattern)
+            task = task_store.create(TaskCreateRequest(
+                subject="math",
+                asset_path=f"/assets/{source.name}",
+                metadata={"source": f"pi-benchmark-{name}", "expected_answer": expected},
+            ))
+            run = runner.enqueue(task.id)
+            started = time.monotonic()
+            runner.run(task.id, run.id)
+            elapsed_ms = int((time.monotonic() - started) * 1000)
+            stored_run = run_store.get(run.id)
+            stored_task = task_store.get(task.id)
+            answer = stored_task.problem.answer.strip() if stored_task.problem else ""
+            rows.append({
+                "case": name,
+                "task_id": task.id,
+                "run_id": run.id,
+                "expected": expected,
+                "answer": answer,
+                "status": stored_run.status.value,
+                "duration_ms": stored_run.duration_ms or elapsed_ms,
+                "stages": stage_durations(stored_run),
+                "input_tokens": stored_run.input_tokens,
+                "output_tokens": stored_run.output_tokens,
+                "cache_tokens": stored_run.cache_tokens,
+                "cost": stored_run.cost,
+                "rpc_log": stored_run.rpc_log_path,
+            })
+    finally:
+        runner.shutdown()
+        mcp_runtime.shutdown()
 
-    report = markdown_table(rows) + "\n\n" + summary_table(rows)
+    report = (
+        f"Runtime: `{backend.runtime_kind}`"
+        f"{f' {backend.runtime_version}' if backend.runtime_version else ''}\n\n"
+        + markdown_table(rows)
+        + "\n\n"
+        + summary_table(rows)
+    )
     print(report)
     REPORT_ROOT.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now().strftime("%Y%m%d-%H%M%S")

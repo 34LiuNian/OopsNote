@@ -20,6 +20,10 @@ class TagStore:
     - 按引用计数排序，优先展示常用标签。
     """
 
+    # REST and the shared MCP server use separate store instances in the same
+    # process. They still write the same JSON file, so locking must be shared.
+    _lock = threading.RLock()
+
     def __init__(
         self,
         user_path: Optional[Path] = None,
@@ -29,7 +33,6 @@ class TagStore:
         base.mkdir(parents=True, exist_ok=True)
         self.user_path = user_path or base / "tags_user.json"
         self.builtin_path = builtin_path or base / "tags_builtin.json"
-        self._lock = threading.Lock()
 
     # ── 加载 ──────────────────────────────────────────
 

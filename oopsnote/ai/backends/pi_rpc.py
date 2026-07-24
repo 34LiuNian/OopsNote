@@ -8,12 +8,18 @@ import queue
 import subprocess
 import threading
 import time
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from pathlib import Path
 from typing import Any, Optional
 
 from oopsnote.ai.managed import ManagedAiRunner
 from oopsnote.ai.pi_skills import load_skill_pack
+from oopsnote.ai.rpc import (
+    PiRuntimeAdapter,
+    RpcRuntimeAdapter,
+    RpcWorkerState,
+    RustPiRuntimeAdapter,
+)
 from oopsnote.core import RunStatus, TaskStage, TaskStatus
 
 
@@ -92,72 +98,49 @@ def _write_rpc_record(rpc_log: Any, record: dict[str, Any]) -> None:
 
 
 class PiRpcBackend:
-    """Pi's JSONL RPC command contract, isolated from task lifecycle code."""
+    """JSONL RPC backend with an explicit upstream-Pi or Rust adapter.
+
+    The historical class name is retained as the public compatibility surface.
+    """
 
     name = "pi"
 
-    def __init__(self, project_root: Path, model: Optional[str] = None) -> None:
+    def __init__(
+        self,
+        project_root: Path,
+        model: Optional[str] = None,
+        runtime: Optional[str] = None,
+    ) -> None:
         self.project_root = project_root
-        config = self._load_config()
-        command = config.get("command") or [os.getenv("OOPSNOTE_PI_COMMAND", "pi")]
-        if (
-            not isinstance(command, list)
-            or not command
-            or not all(isinstance(part, str) and part for part in command)
-        ):
-            raise ValueError(".pi/runtime.json command must be a non-empty string array")
-        self.command = command
-        self.model = (
-            model
-            or config.get("model")
-            or os.getenv("OOPSNOTE_AI_MODEL", "deepseek-v4-flash")
-        )
-        self.provider = config.get("provider") or os.getenv(
-            "OOPSNOTE_PI_PROVIDER",
-            "deepseek",
-        )
-
-    def _load_config(self) -> dict[str, Any]:
-        path = self.project_root / ".pi" / "runtime.json"
-        if not path.exists():
-            return {}
+        runtime_kind = (runtime or os.getenv("OOPSNOTE_RPC_RUNTIME", "pi")).lower()
+        adapters: dict[str, type[RpcRuntimeAdapter]] = {
+            "pi": PiRuntimeAdapter,
+            "pi-rust": RustPiRuntimeAdapter,
+            "rust": RustPiRuntimeAdapter,
+        }
         try:
-            data = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError) as error:
-            raise ValueError(f"Invalid Pi runtime config: {path}") from error
-        if not isinstance(data, dict):
-            raise ValueError(".pi/runtime.json must contain a JSON object")
-        return data
+            adapter_type = adapters[runtime_kind]
+        except KeyError as error:
+            raise ValueError(f"Unsupported RPC runtime: {runtime_kind}") from error
+        self.runtime = adapter_type(project_root, model=model)
+        self.command = self.runtime.command
+        self.model = self.runtime.model
+        self.provider = self.runtime.provider
+        self.runtime_kind = self.runtime.kind
+        self.runtime_version = self.runtime.version
 
     def build_command(self, task_id: str, run_id: str) -> list[str]:
-        command = [
-            *self.command,
-            "--mode",
-            "rpc",
-            "--no-builtin-tools",
-            "--no-extensions",
-            "--provider",
-            self.provider,
-            "--model",
-            self.model,
-        ]
-        extension = self.project_root / ".pi" / "extensions" / "ocr_image.js"
-        if extension.exists():
-            command.extend(["--extension", str(extension)])
-        mcp_adapter = (
-            self.project_root
-            / ".pi"
-            / "node_modules"
-            / "pi-mcp-adapter"
-            / "index.ts"
-        )
-        if mcp_adapter.exists():
-            command.extend(["--extension", str(mcp_adapter)])
-        return command
+        return self.runtime.build_command(task_id, run_id)
+
+    def build_environment(self) -> dict[str, str]:
+        return self.runtime.build_environment()
+
+    def is_settled_event(self, event: dict[str, Any]) -> bool:
+        return self.runtime.is_settled_event(event)
 
 
 class PiRpcRunner(ManagedAiRunner):
-    """Managed serial task runner backed by one long-lived Pi RPC process."""
+    """Managed task runner backed by a bounded pool of serial RPC workers."""
 
     backend_name = "pi"
 
@@ -168,39 +151,65 @@ class PiRpcRunner(ManagedAiRunner):
         max_concurrent_tasks: int = 1,
         **kwargs: Any,
     ) -> None:
-        super().__init__(**kwargs)
         self.backend = backend
-        # A single RPC session can process many tasks, but only one prompt at a time.
-        self.max_concurrent_tasks = 1
-        self._execution_slots = threading.BoundedSemaphore(1)
-        self._mcp_cache_lock_path = self.project_root / "storage" / "runs" / ".pi-mcp-cache.lock"
-        self._worker_process: Optional[subprocess.Popen[str]] = None
-        self._worker_stdout: queue.Queue[Optional[str]] = queue.Queue()
-        self._worker_stderr: queue.Queue[Optional[str]] = queue.Queue()
-        self._worker_write_lock = threading.Lock()
+        # One RPC process remains serial. Concurrency comes from a small bounded
+        # pool so resource use is predictable and every task has a clean session.
+        self.max_concurrent_tasks = max(1, int(max_concurrent_tasks))
+        super().__init__(**kwargs)
+        self._execution_slots = threading.BoundedSemaphore(self.max_concurrent_tasks)
+        self._mcp_cache_lock_path = (
+            self.project_root
+            / "storage"
+            / "runs"
+            / self.backend.runtime.startup_lock_name
+        )
+        self._workers = [
+            RpcWorkerState(worker_id=f"{self.backend.runtime_kind}-{index + 1}")
+            for index in range(self.max_concurrent_tasks)
+        ]
+        self._idle_workers: queue.LifoQueue[RpcWorkerState] = queue.LifoQueue()
+        for worker in reversed(self._workers):
+            self._idle_workers.put(worker)
+        self._worker_local = threading.local()
+        self._worker_map_lock = threading.Lock()
+        self._workers_by_process: dict[int, RpcWorkerState] = {}
+        self._child_environment: dict[str, str] = {}
 
     def _run_metadata(self) -> dict[str, Any]:
         return {
             "provider": self.backend.provider,
             "model": self.backend.model,
+            "runtime_kind": self.backend.runtime_kind,
+            "runtime_version": self.backend.runtime_version,
         }
 
     def build_command(self, task_id: str, run_id: str) -> list[str]:
         return self.backend.build_command(task_id, run_id)
 
+    def set_child_environment(self, values: dict[str, str]) -> None:
+        """Set ephemeral values inherited by subsequently started workers."""
+        self._child_environment = dict(values)
+        self.backend.runtime.configure_child_environment(self._child_environment)
+
     def run(self, task_id: str, run_id: str) -> None:
         with self._execution_slots:
-            run = self.run_store.get(run_id)
-            task = self.task_store.get(task_id)
-            if run.status not in {RunStatus.QUEUED, RunStatus.RUNNING}:
-                return
-            if task.status in {
-                TaskStatus.COMPLETED,
-                TaskStatus.FAILED,
-                TaskStatus.CANCELLED,
-            }:
-                return
-            self._run_in_slot(task_id, run_id)
+            worker = self._idle_workers.get()
+            self._worker_local.worker = worker
+            try:
+                run = self.run_store.get(run_id)
+                task = self.task_store.get(task_id)
+                if run.status not in {RunStatus.QUEUED, RunStatus.RUNNING}:
+                    return
+                if task.status in {
+                    TaskStatus.COMPLETED,
+                    TaskStatus.FAILED,
+                    TaskStatus.CANCELLED,
+                }:
+                    return
+                self._run_in_slot(task_id, run_id)
+            finally:
+                self._worker_local.worker = None
+                self._idle_workers.put(worker)
         # Retry only after releasing the serial worker slot. The retry is a
         # fresh managed run and receives another clean Pi session.
         self._retry_if_eligible(task_id, run_id)
@@ -256,12 +265,27 @@ class PiRpcRunner(ManagedAiRunner):
         finally:
             output.put(None)
 
+    def _current_worker(self) -> RpcWorkerState:
+        worker = getattr(self._worker_local, "worker", None)
+        if worker is None:
+            raise RuntimeError("RPC worker state is not leased to this thread")
+        return worker
+
+    def _worker_for_process(
+        self, process: subprocess.Popen[str]
+    ) -> Optional[RpcWorkerState]:
+        with self._worker_map_lock:
+            return self._workers_by_process.get(id(process))
+
     def _start_worker(self, task_id: str, run_id: str) -> subprocess.Popen[str]:
+        worker = self._current_worker()
         env = os.environ.copy()
         env["PYTHONUTF8"] = "1"
         env["PYTHONPATH"] = str(self.project_root) + (
             os.pathsep + env["PYTHONPATH"] if env.get("PYTHONPATH") else ""
         )
+        env.update(self.backend.build_environment())
+        env.update(self._child_environment)
         creationflags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
         process = subprocess.Popen(
             self.build_command(task_id, run_id),
@@ -276,41 +300,49 @@ class PiRpcRunner(ManagedAiRunner):
             errors="replace",
             creationflags=creationflags,
         )
-        self._worker_stdout = queue.Queue()
-        self._worker_stderr = queue.Queue()
+        worker.reset_streams()
         assert process.stdout is not None
         assert process.stderr is not None
         threading.Thread(
             target=self._read_stream,
-            args=(process.stdout, self._worker_stdout),
+            args=(process.stdout, worker.stdout),
             daemon=True,
         ).start()
         threading.Thread(
             target=self._read_stream,
-            args=(process.stderr, self._worker_stderr),
+            args=(process.stderr, worker.stderr),
             daemon=True,
         ).start()
-        self._worker_process = process
+        worker.process = process
+        with self._worker_map_lock:
+            self._workers_by_process[id(process)] = worker
         return process
 
     def _live_worker(self) -> Optional[subprocess.Popen[str]]:
-        process = self._worker_process
+        worker = self._current_worker()
+        process = worker.process
         if process is not None and process.poll() is None:
             return process
         if process is not None:
-            self._worker_process = None
+            worker.process = None
+            with self._worker_map_lock:
+                self._workers_by_process.pop(id(process), None)
         return None
 
     def _invalidate_worker(self, process: subprocess.Popen[str]) -> None:
         if process.poll() is None:
             self._terminate(process)
-        if self._worker_process is process:
-            self._worker_process = None
+        worker = self._worker_for_process(process)
+        if worker is not None and worker.process is process:
+            worker.process = None
+        with self._worker_map_lock:
+            self._workers_by_process.pop(id(process), None)
 
     def _drain_stderr(self, log: Any) -> None:
+        worker = self._current_worker()
         while True:
             try:
-                line = self._worker_stderr.get_nowait()
+                line = worker.stderr.get_nowait()
             except queue.Empty:
                 return
             if line is None:
@@ -342,8 +374,9 @@ class PiRpcRunner(ManagedAiRunner):
         process: subprocess.Popen[str],
         rpc_log: Any,
     ) -> Optional[dict[str, Any]]:
+        worker = self._current_worker()
         try:
-            line = self._worker_stdout.get(timeout=self.poll_seconds)
+            line = worker.stdout.get(timeout=self.poll_seconds)
         except queue.Empty:
             return {}
         if line is None:
@@ -393,9 +426,14 @@ class PiRpcRunner(ManagedAiRunner):
                 raise
             return process
 
-        # Hold the cross-process lock only through startup and the first
-        # successful RPC response, which proves extension initialization ended.
-        with self._mcp_cache_lock():
+        # Upstream Pi's MCP adapter has a shared metadata cache. Rust workers
+        # use the application-owned bridge and start independently.
+        startup_context = (
+            self._mcp_cache_lock()
+            if self.backend.runtime.serialize_startup
+            else nullcontext()
+        )
+        with startup_context:
             process = self._live_worker() or self._start_worker(task_id, run_id)
             try:
                 self._reset_session(process, task_id, run_id, rpc_log, started)
@@ -425,7 +463,12 @@ class PiRpcRunner(ManagedAiRunner):
                     return
                 with self._lock:
                     self._processes[task_id] = process
-                self.run_store.start(run_id, process.pid, f"runs/{log_path.name}")
+                self.run_store.start(
+                    run_id,
+                    process.pid,
+                    f"runs/{log_path.name}",
+                    worker_id=self._current_worker().worker_id,
+                )
                 self.run_store.update(run_id, rpc_log_path=f"runs/{rpc_path.name}")
                 self.task_store.update(
                     task_id,
@@ -463,7 +506,7 @@ class PiRpcRunner(ManagedAiRunner):
                     if event is None:
                         break
                     if event:
-                        if event.get("type") == "agent_settled":
+                        if self.backend.is_settled_event(event):
                             settled = True
                             self._send(
                                 process,
@@ -513,7 +556,11 @@ class PiRpcRunner(ManagedAiRunner):
                     self._save_stats(run_id, {}, started)
                 exit_code = process.poll()
                 if exit_code is not None:
-                    self._worker_process = None
+                    worker = self._worker_for_process(process)
+                    if worker is not None:
+                        worker.process = None
+                    with self._worker_map_lock:
+                        self._workers_by_process.pop(id(process), None)
                 self._complete_after_task(
                     task_id,
                     run_id,
@@ -526,7 +573,7 @@ class PiRpcRunner(ManagedAiRunner):
             self._fail_start(
                 task_id,
                 run_id,
-                "Pi is not installed or is not on PATH",
+                f"{self.backend.runtime.display_name} is not installed or is not on PATH",
                 "not_installed",
             )
         except TimeoutError as error:
@@ -562,10 +609,11 @@ class PiRpcRunner(ManagedAiRunner):
             self.run_store.finish(active.id, RunStatus.CANCELLED)
 
     def shutdown(self) -> None:
-        """Stop the shared Pi worker when the application exits."""
-        process = self._live_worker()
-        if process is not None:
-            self._invalidate_worker(process)
+        """Stop every pooled RPC process when the application exits."""
+        for worker in self._workers:
+            process = worker.process
+            if process is not None:
+                self._invalidate_worker(process)
 
     def _send(
         self,
@@ -577,7 +625,9 @@ class PiRpcRunner(ManagedAiRunner):
         if rpc_log is not None:
             _write_rpc_record(rpc_log, _compact_rpc_command(payload))
         assert process.stdin is not None
-        with self._worker_write_lock:
+        worker = self._worker_for_process(process)
+        write_lock = worker.write_lock if worker is not None else self._lock
+        with write_lock:
             process.stdin.write(line + "\n")
             process.stdin.flush()
 
@@ -665,7 +715,7 @@ class PiRpcRunner(ManagedAiRunner):
                 run_id,
                 RunStatus.FAILED,
                 "process_exit",
-                f"Pi exited with code {exit_code}; see {log_path}",
+                f"{self.backend.runtime.display_name} exited with code {exit_code}; see {log_path}",
             )
         elif not settled or task.status != TaskStatus.COMPLETED:
             self._finish_failure(
@@ -673,7 +723,7 @@ class PiRpcRunner(ManagedAiRunner):
                 run_id,
                 RunStatus.FAILED,
                 "not_finalized",
-                "Pi exited without finalizing the task",
+                f"{self.backend.runtime.display_name} exited without finalizing the task",
             )
         else:
             self.run_store.finish(

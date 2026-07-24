@@ -166,6 +166,8 @@ class RunStore:
         prompt_version: str = "orchestrator-v3",
         *,
         backend: str = "hermes",
+        runtime_kind: Optional[str] = None,
+        runtime_version: Optional[str] = None,
         provider: Optional[str] = None,
         model: Optional[str] = None,
     ) -> TaskRun:
@@ -181,6 +183,8 @@ class RunStore:
                 attempt=attempt,
                 prompt_version=prompt_version,
                 backend=backend,
+                runtime_kind=runtime_kind,
+                runtime_version=runtime_version,
                 provider=provider,
                 model=model,
                 retry_count=retry_count,
@@ -221,13 +225,21 @@ class RunStore:
         runs = [run for run in self.list_all() if run.task_id == task_id]
         return max(runs, key=lambda run: run.heartbeat_at, default=None)
 
-    def start(self, run_id: str, pid: int, log_path: str) -> TaskRun:
+    def start(
+        self,
+        run_id: str,
+        pid: int,
+        log_path: str,
+        *,
+        worker_id: Optional[str] = None,
+    ) -> TaskRun:
         now = datetime.now(timezone.utc)
         return self.update(
             run_id,
             status=RunStatus.RUNNING,
             pid=pid,
             log_path=log_path,
+            worker_id=worker_id,
             started_at=now,
             heartbeat_at=now,
         )

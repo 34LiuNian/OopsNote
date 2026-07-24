@@ -125,6 +125,62 @@ def test_recover_stale_run_preserves_completed_task(tmp_path):
     assert task_store.get(task.id).status == TaskStatus.COMPLETED
 
 
+def test_recover_orphaned_running_requires_fresh_retry(tmp_path):
+    runner, task_store, run_store = make_runner(tmp_path, stale_seconds=3600)
+    task = task_store.create(TaskCreateRequest(subject="math"))
+    run = runner.enqueue(task.id)
+    run_store.update(run.id, status=RunStatus.RUNNING)
+
+    assert runner.recover_orphaned_running() == 1
+
+    recovered = run_store.get(run.id)
+    assert recovered.status == RunStatus.FAILED
+    assert recovered.error_code == "worker_lost"
+    assert recovered.retryable is True
+    assert task_store.get(task.id).status == TaskStatus.FAILED
+
+
+def test_enqueue_admission_is_atomic_across_threads(tmp_path):
+    runner, task_store, run_store = make_runner(tmp_path)
+    task = task_store.create(TaskCreateRequest(subject="math"))
+    barrier = threading.Barrier(2)
+    outcomes = []
+
+    def enqueue_once():
+        barrier.wait(timeout=1)
+        try:
+            outcomes.append(("ok", runner.enqueue(task.id).id))
+        except RuntimeError as error:
+            outcomes.append(("error", str(error)))
+
+    threads = [threading.Thread(target=enqueue_once) for _ in range(2)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=2)
+        assert not thread.is_alive()
+
+    assert [kind for kind, _ in outcomes].count("ok") == 1
+    assert [kind for kind, _ in outcomes].count("error") == 1
+    assert len([run for run in run_store.list_all() if run.task_id == task.id]) == 1
+
+
+def test_recover_queued_filters_runs_by_backend(tmp_path, monkeypatch):
+    runner, task_store, _run_store = make_runner(tmp_path)
+    task = task_store.create(TaskCreateRequest(subject="math"))
+    run = runner.enqueue(task.id)
+    scheduled = []
+    monkeypatch.setattr(runner._dispatcher, "schedule", lambda *item: scheduled.append(item))
+
+    assert runner.recover_queued() == 1
+    assert scheduled == [(task.id, run.id)]
+
+    runner.backend_name = "pi"
+    scheduled.clear()
+    assert runner.recover_queued() == 0
+    assert scheduled == []
+
+
 class RpcOutput:
     def __init__(self):
         self.lines = queue.Queue()
@@ -158,12 +214,13 @@ class RpcStdin:
 class SettlingRpcProcess:
     pid = 9876
 
-    def __init__(self, on_prompt, *, settle_prompt=True):
+    def __init__(self, on_prompt, *, settle_prompt=True, settle_event="agent_settled"):
         self.stdout = RpcOutput()
         self.stderr = io.StringIO("")
         self.stdin = RpcStdin(self.handle_command)
         self.on_prompt = on_prompt
         self.settle_prompt = settle_prompt
+        self.settle_event = settle_event
         self.commands = []
         self.returncode = None
 
@@ -191,7 +248,7 @@ class SettlingRpcProcess:
                 "message": {"content": "must-not-be-persisted"},
             })
             if self.settle_prompt:
-                self.stdout.emit({"type": "agent_settled"})
+                self.stdout.emit({"type": self.settle_event})
         elif command == "get_session_stats":
             self.stdout.emit({
                 "type": "response",
@@ -214,7 +271,7 @@ class SettlingRpcProcess:
                 "command": command,
                 "success": True,
             })
-            self.stdout.emit({"type": "agent_settled"})
+            self.stdout.emit({"type": self.settle_event})
 
     def poll(self):
         return self.returncode
@@ -281,6 +338,85 @@ def test_pi_rpc_runner_persists_jsonl_and_stats(tmp_path, monkeypatch):
     assert captured["encoding"] == "utf-8"
     assert captured["errors"] == "replace"
     assert captured["process"].poll() is None
+    runner.shutdown()
+
+
+def test_pi_rust_runtime_isolated_cli_environment_and_mcp_flags(tmp_path):
+    config_dir = tmp_path / ".pi-rust"
+    extension_dir = config_dir / "extensions"
+    extension_dir.mkdir(parents=True)
+    bridge = extension_dir / "oopsnote_mcp.js"
+    bridge.write_text("", encoding="utf-8")
+    (config_dir / "runtime.json").write_text(
+        json.dumps(
+            {
+                "command": [".pi-rust/bin/pi.exe"],
+                "version": "0.1.22",
+                "provider": "deepseek",
+                "model": "deepseek-v4-flash",
+                "agent_dir": ".pi-rust/agent",
+                "sessions_dir": ".pi-rust/sessions",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    backend = PiRpcBackend(tmp_path, runtime="pi-rust")
+    backend.runtime.configure_child_environment(
+        {
+            "OOPSNOTE_MCP_URL": "http://127.0.0.1:43123/mcp",
+            "OOPSNOTE_MCP_TOKEN": "ephemeral-test-token",
+        }
+    )
+    command = backend.build_command("task", "run")
+    environment = backend.build_environment()
+
+    assert backend.runtime_kind == "pi-rust"
+    assert backend.runtime_version == "0.1.22"
+    assert "--no-tools" in command
+    assert "--no-extensions" in command
+    assert "--no-skills" in command
+    assert "--extension-policy" in command
+    assert "permissive" in command
+    assert str(bridge) in command
+    assert command[command.index("--oopsnote-mcp-url") + 1] == "http://127.0.0.1:43123/mcp"
+    assert command[command.index("--oopsnote-mcp-token") + 1] == "ephemeral-test-token"
+    assert environment["PI_CODING_AGENT_DIR"] == str((config_dir / "agent").resolve())
+    assert environment["PI_SESSIONS_DIR"] == str((config_dir / "sessions").resolve())
+    assert environment["PI_HTTP_ALLOW_LOOPBACK"] == "1"
+
+
+def test_pi_rust_runner_settles_on_agent_end(tmp_path, monkeypatch):
+    config_dir = tmp_path / ".pi-rust"
+    config_dir.mkdir(parents=True)
+    (config_dir / "runtime.json").write_text(
+        '{"command":["pi.exe"],"version":"0.1.22"}',
+        encoding="utf-8",
+    )
+    task_store = TaskStore(tmp_path / "storage")
+    run_store = RunStore(tmp_path / "storage" / "runs")
+    write_pi_skill_pack(tmp_path)
+    runner = PiRpcRunner(
+        backend=PiRpcBackend(tmp_path, runtime="pi-rust"),
+        project_root=tmp_path,
+        task_store=task_store,
+        run_store=run_store,
+        poll_seconds=0.05,
+    )
+    task = task_store.create(TaskCreateRequest(subject="math"))
+    run = runner.enqueue(task.id)
+
+    def finish_task(_payload):
+        task_store.update(task.id, status=TaskStatus.COMPLETED, active_run_id=None)
+
+    process = SettlingRpcProcess(finish_task, settle_event="agent_end")
+    monkeypatch.setattr(runner_module.subprocess, "Popen", lambda *_a, **_k: process)
+    runner.run(task.id, run.id)
+
+    completed = run_store.get(run.id)
+    assert completed.status == RunStatus.COMPLETED
+    assert completed.runtime_kind == "pi-rust"
+    assert completed.runtime_version == "0.1.22"
     runner.shutdown()
 
 
@@ -373,7 +509,7 @@ def test_pi_rpc_cancel_aborts_task_without_killing_shared_worker(tmp_path, monke
     runner.shutdown()
 
 
-def test_pi_runner_serializes_tasks_and_skips_cancelled_queue_item(
+def test_pi_runner_single_worker_skips_cancelled_queue_item(
     tmp_path,
     monkeypatch,
 ):
@@ -384,7 +520,7 @@ def test_pi_runner_serializes_tasks_and_skips_cancelled_queue_item(
         project_root=tmp_path,
         task_store=task_store,
         run_store=run_store,
-        max_concurrent_tasks=8,
+        max_concurrent_tasks=1,
     )
     tasks = [task_store.create(TaskCreateRequest(subject="math")) for _ in range(2)]
     runs = [runner.enqueue(task.id) for task in tasks]
@@ -415,6 +551,48 @@ def test_pi_runner_serializes_tasks_and_skips_cancelled_queue_item(
     assert runner.max_concurrent_tasks == 1
     assert task_store.get(tasks[1].id).status == TaskStatus.CANCELLED
     assert run_store.get(runs[1].id).status == RunStatus.CANCELLED
+
+
+def test_pi_runner_pool_executes_on_distinct_workers(tmp_path, monkeypatch):
+    task_store = TaskStore(tmp_path / "storage")
+    run_store = RunStore(tmp_path / "storage" / "runs")
+    runner = PiRpcRunner(
+        backend=PiRpcBackend(tmp_path),
+        project_root=tmp_path,
+        task_store=task_store,
+        run_store=run_store,
+        max_concurrent_tasks=2,
+    )
+    tasks = [task_store.create(TaskCreateRequest(subject="math")) for _ in range(2)]
+    runs = [runner.enqueue(task.id) for task in tasks]
+    both_entered = threading.Event()
+    release = threading.Event()
+    entered: list[tuple[str, str]] = []
+    entered_lock = threading.Lock()
+
+    def block_in_slot(task_id, _run_id):
+        with entered_lock:
+            entered.append((task_id, runner._current_worker().worker_id))
+            if len(entered) == 2:
+                both_entered.set()
+        release.wait(timeout=2)
+
+    monkeypatch.setattr(runner, "_run_in_slot", block_in_slot)
+    threads = [
+        threading.Thread(target=runner.run, args=(task.id, run.id))
+        for task, run in zip(tasks, runs)
+    ]
+    for thread in threads:
+        thread.start()
+
+    assert both_entered.wait(timeout=1)
+    assert runner.max_concurrent_tasks == 2
+    assert len({worker_id for _, worker_id in entered}) == 2
+
+    release.set()
+    for thread in threads:
+        thread.join(timeout=2)
+        assert not thread.is_alive()
 
 
 def test_pi_prompt_contains_synced_skill_pack(tmp_path):
@@ -448,7 +626,9 @@ def test_pi_backend_reads_non_secret_local_runtime_config(tmp_path):
 
     assert backend.build_command("task", "run")[:2] == ["node", "C:/pi/dist/cli.js"]
     assert backend.provider == "deepseek"
-    assert "--no-extensions" in backend.build_command("task", "run")
+    command = backend.build_command("task", "run")
+    assert "--no-builtin-tools" in command
+    assert "--no-extensions" in command
     assert "--no-session" not in backend.build_command("task", "run")
 
 

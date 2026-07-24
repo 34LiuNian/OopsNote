@@ -1,13 +1,10 @@
 {
   "mcpServers": {
     "oopsnote_pipeline": {
-      "command": "uv",
-      "args": [
-        "run",
-        "python",
-        "-m",
-        "oopsnote.mcp"
-      ],
+      "url": "${OOPSNOTE_MCP_URL}",
+      "headers": {
+        "Authorization": "Bearer ${OOPSNOTE_MCP_TOKEN}"
+      },
       "lifecycle": "eager",
       "directTools": [
         "get_task",

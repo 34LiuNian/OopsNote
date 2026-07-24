@@ -8,6 +8,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Optional, Protocol
 
+from oopsnote.ai.dispatcher import ManagedTaskDispatcher
 from oopsnote.core import RunStatus, RunStore, TaskRun, TaskStage, TaskStatus, TaskStore
 
 
@@ -23,6 +24,7 @@ class ManagedAiRunner:
     """Own task/run state independently from a specific agent process."""
 
     backend_name = "unknown"
+    _admission_lock = threading.RLock()
 
     def __init__(
         self,
@@ -44,32 +46,54 @@ class ManagedAiRunner:
         self.poll_seconds = max(0.05, poll_seconds)
         self._processes: dict[str, subprocess.Popen[Any]] = {}
         self._lock = threading.RLock()
+        worker_count = max(1, int(getattr(self, "max_concurrent_tasks", 1)))
+        self._dispatcher = ManagedTaskDispatcher(self, worker_count)
 
     def _run_metadata(self) -> dict[str, Any]:
         return {}
 
     def enqueue(self, task_id: str) -> TaskRun:
         """Create a run and move a task into the managed processing state."""
-        task = self.task_store.get(task_id)
-        active = self.run_store.active_for_task(task_id)
-        if active:
-            raise RuntimeError(f"Task already has active run {active.id}")
-        if task.status == TaskStatus.PROCESSING:
-            raise RuntimeError("Task is already processing without a managed run")
-        run = self.run_store.create(
-            task_id,
-            backend=self.backend_name,
-            **self._run_metadata(),
-        )
-        self.task_store.update(
-            task.id,
-            status=TaskStatus.PROCESSING,
-            stage=TaskStage.QUEUED,
-            stage_message=f"Waiting for {self.backend_name} worker",
-            active_run_id=run.id,
-            last_error=None,
-        )
-        return run
+        # One local API process may receive concurrent requests for the same
+        # task through different runtime runners. Admission is one transaction
+        # at the lifecycle level even though task/run JSON files are separate.
+        with self._admission_lock:
+            task = self.task_store.get(task_id)
+            active = self.run_store.active_for_task(task_id)
+            if active:
+                raise RuntimeError(f"Task already has active run {active.id}")
+            if task.status == TaskStatus.PROCESSING:
+                raise RuntimeError("Task is already processing without a managed run")
+            run = self.run_store.create(
+                task_id,
+                backend=self.backend_name,
+                **self._run_metadata(),
+            )
+            self.task_store.update(
+                task.id,
+                status=TaskStatus.PROCESSING,
+                stage=TaskStage.QUEUED,
+                stage_message=f"Waiting for {self.backend_name} worker",
+                active_run_id=run.id,
+                last_error=None,
+            )
+            return run
+
+    def submit(self, task_id: str) -> TaskRun:
+        """Persist and schedule a run without tying execution to an HTTP request."""
+        return self._dispatcher.submit(task_id)
+
+    def start_dispatcher(self) -> None:
+        self._dispatcher.start()
+
+    def recover_queued(self) -> int:
+        return self._dispatcher.recover_queued()
+
+    def shutdown_dispatcher(self) -> None:
+        self._dispatcher.shutdown()
+
+    def dispatcher_status(self) -> dict[str, int]:
+        return self._dispatcher.status()
 
     def build_command(self, task_id: str, run_id: str) -> list[str]:
         raise NotImplementedError
@@ -151,6 +175,51 @@ class ManagedAiRunner:
                     "Legacy processing task expired",
                 )
                 recovered += 1
+        return recovered
+
+    def recover_orphaned_running(self) -> int:
+        """Close runs whose worker process disappeared with the last app process.
+
+        QUEUED runs remain durable and are rescheduled separately. A RUNNING
+        run cannot be resumed safely because its RPC session and subprocess no
+        longer exist; retries must always get a fresh run id and clean session.
+        """
+        recovered = 0
+        for run in self.run_store.list_all():
+            if run.status != RunStatus.RUNNING:
+                continue
+            try:
+                task = self.task_store.get(run.task_id)
+            except KeyError:
+                task = None
+            terminal_status = {
+                TaskStatus.COMPLETED: RunStatus.COMPLETED,
+                TaskStatus.FAILED: RunStatus.FAILED,
+                TaskStatus.CANCELLED: RunStatus.CANCELLED,
+            }.get(task.status if task else None)
+            if terminal_status is not None:
+                self.run_store.finish(
+                    run.id,
+                    terminal_status,
+                    error_code=(
+                        "pipeline_failed"
+                        if terminal_status == RunStatus.FAILED
+                        else None
+                    ),
+                    error_message=(task.last_error if task else None),
+                )
+            else:
+                message = "AI worker process was lost during application restart"
+                self.run_store.finish(
+                    run.id,
+                    RunStatus.FAILED,
+                    error_code="worker_lost",
+                    error_message=message,
+                )
+                self.run_store.update(run.id, retryable=True)
+                if task is not None:
+                    self.task_store.mark_status(task.id, TaskStatus.FAILED, message)
+            recovered += 1
         return recovered
 
     def _observe_task(self, run_id: str, task_id: str) -> None:

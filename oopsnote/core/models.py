@@ -175,6 +175,9 @@ class TaskRun(BaseModel):
     exit_code: Optional[int] = None
     log_path: Optional[str] = None
     backend: str = "hermes"
+    runtime_kind: Optional[str] = None
+    runtime_version: Optional[str] = None
+    worker_id: Optional[str] = None
     provider: Optional[str] = None
     model: Optional[str] = None
     input_tokens: Optional[int] = None
@@ -186,6 +189,7 @@ class TaskRun(BaseModel):
     retry_count: int = 0
     retryable: bool = False
     prompt_version: str = "orchestrator-v3"
+    queued_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     started_at: Optional[datetime] = None
     heartbeat_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     ended_at: Optional[datetime] = None

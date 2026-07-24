@@ -30,6 +30,7 @@ from oopsnote.core import (
     TaskStatus,
     TaskStore,
 )
+from oopsnote.mcp.http_runtime import SharedMcpHttpRuntime
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 STORAGE_DIR = PROJECT_ROOT / "storage"
@@ -43,6 +44,7 @@ BATCH_SESSION_STORE = BatchSessionStore(
     STORAGE_DIR / "settings" / "batch_sessions.json"
 )
 RUN_STORE = RunStore(STORAGE_DIR / "runs")
+MCP_HTTP_RUNTIME = SharedMcpHttpRuntime()
 
 
 def _runner_settings() -> dict[str, int]:
@@ -59,11 +61,19 @@ HERMES_RUNNER = HermesRunner(
     **_runner_settings(),
 )
 PI_RUNNER = PiRpcRunner(
-    backend=PiRpcBackend(PROJECT_ROOT),
+    backend=PiRpcBackend(
+        PROJECT_ROOT,
+        runtime=os.getenv("OOPSNOTE_RPC_RUNTIME", "pi-rust"),
+    ),
     project_root=PROJECT_ROOT,
     task_store=TASK_STORE,
     run_store=RUN_STORE,
-    max_concurrent_tasks=int(os.getenv("OOPSNOTE_PI_MAX_CONCURRENT_TASKS", "1")),
+    max_concurrent_tasks=int(
+        os.getenv(
+            "OOPSNOTE_RPC_MAX_WORKERS",
+            os.getenv("OOPSNOTE_PI_MAX_CONCURRENT_TASKS", "3"),
+        )
+    ),
     **_runner_settings(),
 )
 
@@ -215,6 +225,9 @@ def _run_view(run: Any) -> dict[str, Any]:
         "log_path": run.log_path,
         "rpc_log_path": run.rpc_log_path,
         "backend": run.backend,
+        "runtime_kind": run.runtime_kind,
+        "runtime_version": run.runtime_version,
+        "worker_id": run.worker_id,
         "provider": run.provider,
         "model": run.model,
         "input_tokens": run.input_tokens,
@@ -225,6 +238,7 @@ def _run_view(run: Any) -> dict[str, Any]:
         "retry_count": run.retry_count,
         "retryable": run.retryable,
         "prompt_version": run.prompt_version,
+        "queued_at": run.queued_at.isoformat(),
         "started_at": run.started_at.isoformat() if run.started_at else None,
         "heartbeat_at": run.heartbeat_at.isoformat(),
         "ended_at": run.ended_at.isoformat() if run.ended_at else None,
@@ -322,12 +336,22 @@ def _run_managed(task_id: str, run_id: str, backend: str) -> None:
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    HERMES_RUNNER.recover_orphaned_running()
+    PI_RUNNER.recover_orphaned_running()
     HERMES_RUNNER.recover_stale()
     PI_RUNNER.recover_stale()
+    PI_RUNNER.set_child_environment(MCP_HTTP_RUNTIME.start())
+    HERMES_RUNNER.start_dispatcher()
+    PI_RUNNER.start_dispatcher()
+    HERMES_RUNNER.recover_queued()
+    PI_RUNNER.recover_queued()
     try:
         yield
     finally:
+        HERMES_RUNNER.shutdown_dispatcher()
+        PI_RUNNER.shutdown_dispatcher()
         PI_RUNNER.shutdown()
+        MCP_HTTP_RUNTIME.shutdown()
 
 
 app = FastAPI(title="OopsNote", version="0.3.0", lifespan=lifespan)
@@ -341,8 +365,16 @@ app.mount("/assets", StaticFiles(directory=STORAGE_DIR / "assets"), name="assets
 
 
 @app.get("/health")
-def health() -> dict[str, str]:
-    return {"status": "ok", "version": "0.3.0"}
+def health() -> dict[str, Any]:
+    return {
+        "status": "ok",
+        "version": "0.3.0",
+        "ai": {
+            "runtime": PI_RUNNER.backend.runtime_kind,
+            "runtime_version": PI_RUNNER.backend.runtime_version,
+            **PI_RUNNER.dispatcher_status(),
+        },
+    }
 
 
 app.include_router(tasks.router)

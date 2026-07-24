@@ -1,0 +1,6 @@
+{
+  "ocr_image": {
+    "dashscope_api_key": "",
+    "model": "qwen-vl-max"
+  }
+}

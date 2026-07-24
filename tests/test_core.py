@@ -2,6 +2,7 @@
 
 import base64
 import tempfile
+import threading
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -162,6 +163,31 @@ class TestTagStore:
         tag = tags.upsert(TagDimension.KNOWLEDGE, "要删除的标签")
         assert tags.delete(tag.id)
         assert not tags.delete("nonexistent")
+
+    def test_instances_serialize_writes_to_shared_file(self, tmp_path):
+        user_path = tmp_path / "tags_user.json"
+        builtin_path = tmp_path / "tags_builtin.json"
+        stores = [
+            TagStore(user_path=user_path, builtin_path=builtin_path)
+            for _ in range(12)
+        ]
+        threads = [
+            threading.Thread(
+                target=store.upsert,
+                args=(TagDimension.CUSTOM, f"tag-{index}"),
+            )
+            for index, store in enumerate(stores)
+        ]
+
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join(timeout=2)
+            assert not thread.is_alive()
+
+        assert {item.value for item in stores[0].list_all()} == {
+            f"tag-{index}" for index in range(12)
+        }
 
 
 class TestSearcher:

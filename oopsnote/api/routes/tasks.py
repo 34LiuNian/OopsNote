@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query
 
 from oopsnote.api.schemas import UploadRequest
 from oopsnote.core import (
@@ -92,7 +92,6 @@ def cancel_task(task_id: str) -> dict[str, Any]:
 
 def _enqueue(
     task_id: str,
-    background_tasks: BackgroundTasks,
     backend: Optional[str],
 ) -> dict[str, Any]:
     api = _api()
@@ -104,15 +103,9 @@ def _enqueue(
     runner = api._runner_for(selected_backend)
     runner.recover_stale()
     try:
-        run = runner.enqueue(task_id)
+        run = runner.submit(task_id)
     except RuntimeError as error:
         raise HTTPException(status_code=409, detail=str(error))
-    background_tasks.add_task(
-        api._run_managed,
-        task_id,
-        run.id,
-        selected_backend,
-    )
     return {
         "task": api._task_view(api.TASK_STORE.get(task_id)),
         "run": api._run_view(run),
@@ -122,19 +115,17 @@ def _enqueue(
 @router.post("/tasks/{task_id}/process")
 def process_task(
     task_id: str,
-    background_tasks: BackgroundTasks,
     backend: Optional[str] = Query(default=None),
 ) -> dict[str, Any]:
-    return _enqueue(task_id, background_tasks, backend)
+    return _enqueue(task_id, backend)
 
 
 @router.post("/tasks/{task_id}/retry")
 def retry_task(
     task_id: str,
-    background_tasks: BackgroundTasks,
     backend: Optional[str] = Query(default=None),
 ) -> dict[str, Any]:
-    return _enqueue(task_id, background_tasks, backend)
+    return _enqueue(task_id, backend)
 
 
 @router.get("/tasks/{task_id}/runs")
