@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import io
+import json
+import queue
 import threading
 from datetime import datetime, timedelta, timezone
 
@@ -123,43 +125,110 @@ def test_recover_stale_run_preserves_completed_task(tmp_path):
     assert task_store.get(task.id).status == TaskStatus.COMPLETED
 
 
-class RpcStdin(io.StringIO):
-    def __init__(self, on_close):
-        super().__init__()
-        self.on_close = on_close
+class RpcOutput:
+    def __init__(self):
+        self.lines = queue.Queue()
+
+    def emit(self, payload):
+        self.lines.put(json.dumps(payload) + "\n")
+
+    def readline(self):
+        return self.lines.get()
 
     def close(self):
-        if not self.closed:
-            self.on_close()
-        super().close()
+        self.lines.put("")
+
+
+class RpcStdin:
+    def __init__(self, on_command):
+        self.on_command = on_command
+        self.closed = False
+
+    def write(self, value):
+        self.on_command(json.loads(value))
+        return len(value)
+
+    def flush(self):
+        return None
+
+    def close(self):
+        self.closed = True
 
 
 class SettlingRpcProcess:
     pid = 9876
 
-    def __init__(self, on_close):
-        self.stdin = RpcStdin(on_close)
-        self.stdout = io.StringIO(
-            '{"type":"response","command":"prompt","success":true}\n'
-            '{"type":"message_update","message":{"content":"must-not-be-persisted"}}\n'
-            '{"type":"agent_settled"}\n'
-            '{"type":"response","command":"get_session_stats","data":'
-            '{"tokens":{"input":12,"output":8,"cacheRead":3,"cacheWrite":1},"cost":0.02}}\n'
-        )
+    def __init__(self, on_prompt, *, settle_prompt=True):
+        self.stdout = RpcOutput()
+        self.stderr = io.StringIO("")
+        self.stdin = RpcStdin(self.handle_command)
+        self.on_prompt = on_prompt
+        self.settle_prompt = settle_prompt
+        self.commands = []
         self.returncode = None
 
+    def handle_command(self, payload):
+        self.commands.append(payload)
+        command = payload["type"]
+        if command == "new_session":
+            self.stdout.emit({
+                "type": "response",
+                "id": payload["id"],
+                "command": command,
+                "success": True,
+                "data": {"cancelled": False},
+            })
+        elif command == "prompt":
+            self.on_prompt(payload)
+            self.stdout.emit({
+                "type": "response",
+                "id": payload["id"],
+                "command": command,
+                "success": True,
+            })
+            self.stdout.emit({
+                "type": "message_update",
+                "message": {"content": "must-not-be-persisted"},
+            })
+            if self.settle_prompt:
+                self.stdout.emit({"type": "agent_settled"})
+        elif command == "get_session_stats":
+            self.stdout.emit({
+                "type": "response",
+                "id": payload["id"],
+                "command": command,
+                "success": True,
+                "data": {
+                    "tokens": {
+                        "input": 12,
+                        "output": 8,
+                        "cacheRead": 3,
+                        "cacheWrite": 1,
+                    },
+                    "cost": 0.02,
+                },
+            })
+        elif command == "abort":
+            self.stdout.emit({
+                "type": "response",
+                "command": command,
+                "success": True,
+            })
+            self.stdout.emit({"type": "agent_settled"})
+
     def poll(self):
-        return 0 if self.stdin.closed else None
+        return self.returncode
 
     def wait(self, timeout=None):
-        self.returncode = 0
-        return 0
+        return self.returncode
 
     def terminate(self):
         self.returncode = 1
+        self.stdin.close()
+        self.stdout.close()
 
     def kill(self):
-        self.returncode = 1
+        self.terminate()
 
 
 def test_pi_rpc_runner_persists_jsonl_and_stats(tmp_path, monkeypatch):
@@ -178,14 +247,15 @@ def test_pi_rpc_runner_persists_jsonl_and_stats(tmp_path, monkeypatch):
     task = task_store.create(TaskCreateRequest(subject="math"))
     run = runner.enqueue(task.id)
 
-    def finish_task():
+    def finish_task(_payload):
         task_store.update(task.id, status=TaskStatus.COMPLETED, active_run_id=None)
 
     captured = {}
 
     def fake_popen(*args, **kwargs):
         captured.update(kwargs)
-        return SettlingRpcProcess(finish_task)
+        captured["process"] = SettlingRpcProcess(finish_task)
+        return captured["process"]
 
     monkeypatch.setattr(runner_module.subprocess, "Popen", fake_popen)
     runner.run(task.id, run.id)
@@ -205,13 +275,105 @@ def test_pi_rpc_runner_persists_jsonl_and_stats(tmp_path, monkeypatch):
     assert '"direction": "command"' in rpc_log
     assert '"message_chars"' in rpc_log
     assert '"command": "get_session_stats"' in rpc_log
+    assert '"type": "new_session"' in rpc_log
     assert "must-not-be-persisted" not in rpc_log
     assert "oopsnote-solve-problem" not in rpc_log
     assert captured["encoding"] == "utf-8"
     assert captured["errors"] == "replace"
+    assert captured["process"].poll() is None
+    runner.shutdown()
 
 
-def test_pi_runner_limits_concurrency_and_skips_cancelled_queue_item(
+def test_pi_rpc_runner_reuses_process_with_clean_session_per_task(tmp_path, monkeypatch):
+    task_store = TaskStore(tmp_path / "storage")
+    run_store = RunStore(tmp_path / "storage" / "runs")
+    write_pi_skill_pack(tmp_path)
+    runner = PiRpcRunner(
+        backend=PiRpcBackend(tmp_path),
+        project_root=tmp_path,
+        task_store=task_store,
+        run_store=run_store,
+        poll_seconds=0.05,
+    )
+    tasks = [task_store.create(TaskCreateRequest(subject="math")) for _ in range(2)]
+    runs = [runner.enqueue(task.id) for task in tasks]
+    tasks_by_run = {run.id: task for task, run in zip(tasks, runs)}
+    spawned = []
+
+    def finish_prompt(payload):
+        run_id = payload["id"].removeprefix("prompt-")
+        task = tasks_by_run[run_id]
+        task_store.update(task.id, status=TaskStatus.COMPLETED, active_run_id=None)
+
+    def fake_popen(*_args, **_kwargs):
+        process = SettlingRpcProcess(finish_prompt)
+        spawned.append(process)
+        return process
+
+    monkeypatch.setattr(runner_module.subprocess, "Popen", fake_popen)
+    for task, run in zip(tasks, runs):
+        runner.run(task.id, run.id)
+
+    assert len(spawned) == 1
+    commands = [command["type"] for command in spawned[0].commands]
+    assert commands == [
+        "new_session",
+        "prompt",
+        "get_session_stats",
+        "new_session",
+        "prompt",
+        "get_session_stats",
+    ]
+    assert all(run_store.get(run.id).status == RunStatus.COMPLETED for run in runs)
+    runner.shutdown()
+
+
+def test_pi_rpc_cancel_aborts_task_without_killing_shared_worker(tmp_path, monkeypatch):
+    task_store = TaskStore(tmp_path / "storage")
+    run_store = RunStore(tmp_path / "storage" / "runs")
+    write_pi_skill_pack(tmp_path)
+    runner = PiRpcRunner(
+        backend=PiRpcBackend(tmp_path),
+        project_root=tmp_path,
+        task_store=task_store,
+        run_store=run_store,
+        poll_seconds=0.05,
+    )
+    prompt_started = threading.Event()
+    process = SettlingRpcProcess(
+        lambda _payload: prompt_started.set(), settle_prompt=False
+    )
+    monkeypatch.setattr(runner_module.subprocess, "Popen", lambda *_args, **_kwargs: process)
+
+    cancelled_task = task_store.create(TaskCreateRequest(subject="math"))
+    cancelled_run = runner.enqueue(cancelled_task.id)
+    worker_thread = threading.Thread(
+        target=runner.run, args=(cancelled_task.id, cancelled_run.id)
+    )
+    worker_thread.start()
+    assert prompt_started.wait(timeout=1)
+    runner.cancel(cancelled_task.id)
+    worker_thread.join(timeout=2)
+
+    assert not worker_thread.is_alive()
+    assert process.poll() is None
+    assert task_store.get(cancelled_task.id).status == TaskStatus.CANCELLED
+    assert run_store.get(cancelled_run.id).status == RunStatus.CANCELLED
+
+    next_task = task_store.create(TaskCreateRequest(subject="math"))
+    next_run = runner.enqueue(next_task.id)
+    process.settle_prompt = True
+    process.on_prompt = lambda _payload: task_store.update(
+        next_task.id, status=TaskStatus.COMPLETED, active_run_id=None
+    )
+    runner.run(next_task.id, next_run.id)
+
+    assert run_store.get(next_run.id).status == RunStatus.COMPLETED
+    assert sum(command["type"] == "new_session" for command in process.commands) == 2
+    runner.shutdown()
+
+
+def test_pi_runner_serializes_tasks_and_skips_cancelled_queue_item(
     tmp_path,
     monkeypatch,
 ):
@@ -222,45 +384,37 @@ def test_pi_runner_limits_concurrency_and_skips_cancelled_queue_item(
         project_root=tmp_path,
         task_store=task_store,
         run_store=run_store,
-        max_concurrent_tasks=2,
+        max_concurrent_tasks=8,
     )
-    tasks = [task_store.create(TaskCreateRequest(subject="math")) for _ in range(3)]
+    tasks = [task_store.create(TaskCreateRequest(subject="math")) for _ in range(2)]
     runs = [runner.enqueue(task.id) for task in tasks]
     entered: list[str] = []
-    entered_two = threading.Event()
+    entered_one = threading.Event()
     release = threading.Event()
-    lock = threading.Lock()
 
     def block_in_slot(task_id, _run_id):
-        with lock:
-            entered.append(task_id)
-            if len(entered) == 2:
-                entered_two.set()
+        entered.append(task_id)
+        entered_one.set()
         release.wait(timeout=2)
 
     monkeypatch.setattr(runner, "_run_in_slot", block_in_slot)
-    active_threads = [
-        threading.Thread(target=runner.run, args=(task.id, run.id))
-        for task, run in zip(tasks[:2], runs[:2])
-    ]
-    for thread in active_threads:
-        thread.start()
-
-    assert entered_two.wait(timeout=1)
-    assert len(entered) == 2
+    active_thread = threading.Thread(target=runner.run, args=(tasks[0].id, runs[0].id))
+    active_thread.start()
+    assert entered_one.wait(timeout=1)
     queued_thread = threading.Thread(
-        target=runner.run,
-        args=(tasks[2].id, runs[2].id),
+        target=runner.run, args=(tasks[1].id, runs[1].id)
     )
     queued_thread.start()
-    runner.cancel(tasks[2].id)
+    runner.cancel(tasks[1].id)
+    assert len(entered) == 1
     release.set()
-    for thread in [*active_threads, queued_thread]:
+    for thread in [active_thread, queued_thread]:
         thread.join(timeout=2)
 
-    assert len(entered) == 2
-    assert task_store.get(tasks[2].id).status == TaskStatus.CANCELLED
-    assert run_store.get(runs[2].id).status == RunStatus.CANCELLED
+    assert entered == [tasks[0].id]
+    assert runner.max_concurrent_tasks == 1
+    assert task_store.get(tasks[1].id).status == TaskStatus.CANCELLED
+    assert run_store.get(runs[1].id).status == RunStatus.CANCELLED
 
 
 def test_pi_prompt_contains_synced_skill_pack(tmp_path):
@@ -295,6 +449,7 @@ def test_pi_backend_reads_non_secret_local_runtime_config(tmp_path):
     assert backend.build_command("task", "run")[:2] == ["node", "C:/pi/dist/cli.js"]
     assert backend.provider == "deepseek"
     assert "--no-extensions" in backend.build_command("task", "run")
+    assert "--no-session" not in backend.build_command("task", "run")
 
 
 def test_pi_retries_only_retryable_failures_in_new_run(tmp_path, monkeypatch):

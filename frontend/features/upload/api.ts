@@ -63,7 +63,10 @@ export type BatchSessionSegment = {
     height: number;
   } | null;
   question_no?: number;
-  status: "pending" | "processing" | "completed" | "failed";
+  status: "pending" | "processing" | "completed" | "failed" | "needs_review";
+  review_reason?: "unreadable" | "incomplete" | "multiple_questions" | "other" | null;
+  review_previous_status?: "pending" | "processing" | "completed" | "failed" | null;
+  review_resolved?: boolean;
   task_id?: string | null;
   problem_ids: string[];
   error?: string | null;

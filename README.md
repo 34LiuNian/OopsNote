@@ -28,7 +28,7 @@ Web / REST
        -> JSON / Assets / Obsidian
 ```
 
-Pi 每个任务使用独立无会话进程。Core 负责数据、任务生命周期和原子 finalize；AI 运行时不直接写仓库文件。题目正文统一使用 [OopsMark v1](docs/oopsmark-v1.md)。
+Pi 使用一个长驻 RPC 进程串行处理任务，并在每个任务前通过 `new_session` 创建干净上下文。Core 负责数据、任务生命周期和原子 finalize；AI 运行时不直接写仓库文件。题目正文统一使用 [OopsMark v1](docs/oopsmark-v1.md)。
 
 完整设计见 [架构文档](docs/ARCHITECTURE.md)，本机 Pi 配置与调试见 [Pi 运维指南](docs/operations/pi.md)。
 

@@ -13,7 +13,7 @@ from uuid import uuid4
 
 from pydantic import BaseModel, Field, model_validator
 
-from oopsnote.content import validate_oopsmark
+from oopsnote.content import normalize_oopsmark, validate_oopsmark
 
 
 # ── 枚举 ──────────────────────────────────────────────
@@ -100,6 +100,13 @@ class Problem(BaseModel):
     def validate_versioned_content(self) -> "Problem":
         if self.content_format != ContentFormat.OOPSMARK_V1:
             return self
+        # Normalize newlines before validation
+        self.problem_text = normalize_oopsmark(self.problem_text)
+        self.answer = normalize_oopsmark(self.answer)
+        self.short_answer = normalize_oopsmark(self.short_answer)
+        self.explanation = normalize_oopsmark(self.explanation)
+        self.options = [normalize_oopsmark(o) for o in self.options]
+        # Validate
         fields = {
             "problem_text": self.problem_text,
             "answer": self.answer,
@@ -244,6 +251,9 @@ class BatchSegment(BaseModel):
     continuation: Optional[BatchSegmentContinuation] = None
     question_no: Optional[int] = Field(default=None, ge=1)
     status: str = "pending"
+    review_reason: Optional[str] = None
+    review_previous_status: Optional[str] = None
+    review_resolved: bool = False
     task_id: Optional[str] = None
     problem_ids: list[str] = Field(default_factory=list)
     error: Optional[str] = None

@@ -21,16 +21,16 @@ ManagedAiRunner
 PiRpcRunner               HermesRunner
 (default)                 (temporary fallback)
    |
-Pi JSONL RPC process, one process per task
+Pi JSONL RPC process, one long-lived serial worker
    |-- ocr_image extension -> DashScope vision model
    `-- pi-mcp-adapter -> restricted Python MCP -> Core stores
 ```
 
 共享生命周期只由 `ManagedAiRunner` 管理：run 所有权、heartbeat、timeout、abort、陈旧任务恢复、日志、重试资格和 finalize 后检查。Backend 只负责具体进程协议。
 
-Pi 使用 `--no-session --no-builtin-tools --no-extensions` 启动，再显式加载 OCR Extension 和固定版本 MCP Adapter。每个任务隔离上下文。
+Pi 使用 `--no-builtin-tools --no-extensions` 启动，再显式加载 OCR Extension 和固定版本 MCP Adapter。进程长期存活并串行处理任务；每个任务前必须等待 `new_session` 成功，以隔离上下文。
 
-Pi RPC 本身支持在一个进程内连续处理 `prompt`，并可通过 `new_session` 重置上下文。生产验证期仍保留逐任务进程隔离，并先用有界队列限制并发；长驻 worker 只有在逐任务取消、超时、MCP 状态重置和进程崩溃恢复测试通过后才能启用。
+正常任务复用同一进程，因此 MCP Adapter 的共享缓存只在 worker 启动时初始化。跨 API 进程的启动锁仅保护这段初始化；超时、session 重置失败或进程异常退出会销毁 worker，下一个任务再启动新进程。取消通过 RPC `abort` 完成，不关闭健康的共享 worker。
 
 ## 3. 数据与写入边界
 

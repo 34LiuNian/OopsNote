@@ -176,6 +176,9 @@ def test_batch_session_persists_parts_crop_and_deletes_without_tasks(tmp_path, m
                     {"page_index": 2, "x": 0.2, "y": 0, "width": 0.5, "height": 0.15, "order": 2},
                 ],
                 "question_no": 1,
+                "status": "needs_review",
+                "review_reason": "multiple_questions",
+                "review_previous_status": "pending",
             }],
         },
     )
@@ -183,6 +186,8 @@ def test_batch_session_persists_parts_crop_and_deletes_without_tasks(tmp_path, m
     session = updated.json()["session"]
     assert session["crop_confirmed"] is True
     assert len(session["segments"][0]["parts"]) == 3
+    assert session["segments"][0]["status"] == "needs_review"
+    assert session["segments"][0]["review_reason"] == "multiple_questions"
 
     task = client.post(
         "/upload?auto_process=false",
@@ -203,9 +208,41 @@ def test_batch_session_persists_parts_crop_and_deletes_without_tasks(tmp_path, m
     ).json()["task"]
     assert task["trace"]["batch_session_available"] is True
 
+    task_store.update(
+        task["id"],
+        status=TaskStatus.COMPLETED,
+        problem=Problem(subject="math", problem_text="第一道完整题"),
+        metadata={**task_store.get(task["id"]).metadata, "intake_review_reason": "multiple_questions"},
+    )
+    linked_segment = {
+        **session["segments"][0],
+        "task_id": task["id"],
+        "status": "processing",
+        "review_reason": None,
+        "review_previous_status": None,
+        "review_resolved": False,
+    }
+    assert client.patch(f"/batch-sessions/{digest}", json={"segments": [linked_segment]}).status_code == 200
+    auto_review = client.get(f"/batch-sessions/{digest}").json()["session"]["segments"][0]
+    assert auto_review["status"] == "needs_review"
+    assert auto_review["review_reason"] == "multiple_questions"
+    assert auto_review["review_previous_status"] == "completed"
+
+    resolved_segment = {
+        **auto_review,
+        "status": "completed",
+        "review_reason": None,
+        "review_previous_status": None,
+        "review_resolved": True,
+    }
+    assert client.patch(f"/batch-sessions/{digest}", json={"segments": [resolved_segment]}).status_code == 200
+    resolved = client.get(f"/batch-sessions/{digest}").json()["session"]["segments"][0]
+    assert resolved["status"] == "completed"
+    assert resolved["review_resolved"] is True
+
     deleted = client.delete(f"/batch-sessions/{digest}")
     assert deleted.status_code == 200
-    assert deleted.json()["preserved_task_ids"] == []
+    assert deleted.json()["preserved_task_ids"] == [task["id"]]
     assert client.get(f"/batch-sessions/{digest}").status_code == 404
     retained = client.get(f"/tasks/{task['id']}").json()["task"]
     assert retained["trace"]["batch_session_available"] is False

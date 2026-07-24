@@ -22,11 +22,11 @@ metadata:
 
 1. 调用 OopsNote 的 `get_task(task_id)` 工具，确认 `active_run_id == run_id`；不一致立即停止，不写入。
 2. 调用 OopsNote 的 `report_task_stage(stage="ocr", run_id=run_id)` 工具。图片任务先调用 `get_asset_path`，再调用 `ocr_image(path)`；文本任务读取已有题面。
-3. OCR 的 `uncertain_regions` 非空且影响题干、选项、条件或图形时，调用 `fail_task`，不得补写猜测内容。
+3. OCR 的 `review_reason` 为 `unreadable` 或 `incomplete`，或 `uncertain_regions` 非空且影响题干、选项、条件或图形时，调用 `fail_task(review_reason=...)`，不得补写猜测内容。若 `review_reason="multiple_questions"`，只继续处理 OCR 返回的第一道完整题目，不得创建第二个任务。
 4. 调用 `report_task_stage(stage="solving", run_id=run_id)`，按 `oopsnote-solve-problem` 生成解答。
 5. 调用 `report_task_stage(stage="verifying", run_id=run_id)`。独立检查答案、题设条件、定义域、单位、选项映射和题图一致性；再检查 `answer` 只含最终结论，证明、推导、理由和计算过程全部位于 `explanation`，修正后再继续。
 6. 调用 `report_task_stage(stage="tagging", run_id=run_id)`，按 `oopsnote-tag-problem` 先召回已有标签再排序；只保留直接考查且解答不可绕开的核心知识点，选择题不得从干扰项扩展标签。
-7. 调用 `report_task_stage(stage="finalizing", run_id=run_id)`，将唯一的完整 `Problem` 对象 JSON 字符串传入 OopsNote 的 `finalize_task(task_id, problem_json, run_id=run_id)` 工具。禁止提交数组或多道独立题目。
+7. 调用 `report_task_stage(stage="finalizing", run_id=run_id)`，将唯一的完整 `Problem` 对象 JSON 字符串传入 OopsNote 的 `finalize_task(task_id, problem_json, run_id=run_id, review_reason=...)` 工具。OCR 无异常时 `review_reason` 传空字符串；有 `multiple_questions` 或 `other` 时原样传递。禁止提交数组或多道独立题目。
 
 ## OopsMark v1 写入契约
 
@@ -52,4 +52,5 @@ metadata:
 - 数学仅使用 `$...$` 或独立 `$$...$$`；多小问使用 Markdown 有序列表。
 - 禁止 `array`、`tabular`、`enumerate`、`chemfig`、`tikzpicture` 和文档级 LaTeX 命令。
 - 选择题的选项只放在 `options`，不混入 `problem_text`；无法确定的字段不能伪造。
+- `review_reason` 不是 Problem/OopsMark 内容字段，只能作为 `finalize_task` 或 `fail_task` 的独立参数传递。合法值为 `unreadable`、`incomplete`、`multiple_questions`、`other` 或空字符串。
 - `answer` 只回答“最终结果是什么”，不得包含证明、推导、理由、求导或分类讨论过程；过程只能写入 `explanation`。

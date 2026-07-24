@@ -29,12 +29,7 @@ export const metadata: Metadata = {
     title: "OopsNote",
   },
   icons: {
-    icon: [
-      { url: "/icon-light", type: "image/png", media: "(prefers-color-scheme: light)" },
-      { url: "/icon-dark", type: "image/png", media: "(prefers-color-scheme: dark)" },
-      { url: "/icon", type: "image/png" },
-      { url: "/favicon.svg", type: "image/svg+xml" },
-    ],
+    icon: [{ url: "/favicon.svg", type: "image/svg+xml", sizes: "any" }],
     apple: [{ url: "/apple-icon", sizes: "180x180", type: "image/png" }],
   },
 };

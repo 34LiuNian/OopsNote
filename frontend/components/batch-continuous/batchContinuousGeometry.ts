@@ -10,6 +10,7 @@ import type {
 } from "./batchContinuousTypes";
 
 export const DOCUMENT_WIDTH = 1000;
+export const MIN_CROP_SIZE = 0.05;
 
 export function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value));

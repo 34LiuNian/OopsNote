@@ -45,6 +45,12 @@
   --sidebar-text-strong: #18181b;
   --sidebar-hover: #e4e4e7;
   --sidebar-active: #e4e4e7;
+  --batch-viewer-canvas: #e4e4e7;
+  --batch-viewer-toolbar: #f4f4f5;
+  --batch-viewer-control: #ffffff;
+  --batch-viewer-control-border: #d4d4d8;
+  --batch-viewer-text: #27272a;
+  --batch-viewer-text-muted: #71717a;
 }
 
 html {
@@ -107,6 +113,12 @@ html[data-oopsnote-color-scheme="dark"] {
   --bgColor-attention-muted: #451a03;
   --borderColor-default: #27272a;
   --borderColor-muted: #1f1f22;
+  --batch-viewer-canvas: #202124;
+  --batch-viewer-toolbar: #2a2c30;
+  --batch-viewer-control: #1f2023;
+  --batch-viewer-control-border: #4b4e55;
+  --batch-viewer-text: #e7e9ee;
+  --batch-viewer-text-muted: #b8bcc5;
   --sidebar-bg: #18181b;
   --sidebar-border: #3f3f46;
   --sidebar-text: #a1a1aa;
@@ -179,7 +191,7 @@ html[data-oopsnote-batch-scan="active"] .oops-page-enter {
 }
 
 .app-sidebar__brand {
-  min-height: 64px;
+  min-height: 48px;
   gap: 10px;
   padding: 0 16px;
   border-bottom: 1px solid var(--sidebar-border);
@@ -428,7 +440,7 @@ html[data-oopsnote-batch-scan="active"] .oops-page-enter {
 .batch-scan-history__header { display: flex; min-height: 28px; align-items: center; justify-content: space-between; padding: 0 2px; }
 .batch-scan-history__header > p:last-child { margin: 0; color: var(--fgColor-muted); font-size: 11px; font-variant-numeric: tabular-nums; }
 .batch-scan-history__title { margin: 0; color: var(--fgColor-default); font-size: 13px; font-weight: 650; }
-.batch-scan-history__item { display: grid; min-height: 64px; grid-template-columns: 34px minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 9px 10px; border: 1px solid var(--borderColor-default); border-radius: 8px; background: var(--bgColor-default); transition: border-color var(--oops-transition-fast), background-color var(--oops-transition-fast); }
+.batch-scan-history__item { display: grid; min-height: 64px; grid-template-columns: 34px minmax(0, 1fr) auto auto; align-items: center; gap: 10px; padding: 9px 10px; border: 1px solid var(--borderColor-default); border-radius: 8px; background: var(--bgColor-default); transition: border-color var(--oops-transition-fast), background-color var(--oops-transition-fast); }
 .batch-scan-history__item:hover { border-color: color-mix(in srgb, var(--borderColor-default) 62%, var(--fgColor-muted)); background: var(--bgColor-muted); }
 .batch-scan-history__mark { display: grid; width: 32px; height: 32px; place-items: center; border-radius: 6px; color: var(--fgColor-muted); background: var(--bgColor-muted); }
 .batch-scan-history__body { min-width: 0; }
@@ -436,18 +448,13 @@ html[data-oopsnote-batch-scan="active"] .oops-page-enter {
 .batch-scan-history__meta { display: flex; gap: 10px; margin-top: 4px; color: var(--fgColor-muted); font-size: 11px; font-variant-numeric: tabular-nums; }
 .batch-scan-history__meta span { white-space: nowrap; }
 .batch-scan-history__item button { flex: 0 0 auto; }
-.batch-history-menu { position: relative; }
-.batch-history-menu summary { display: grid; width: 30px; height: 30px; place-items: center; border-radius: 5px; cursor: pointer; list-style: none; }
-.batch-history-menu summary::-webkit-details-marker { display: none; }
-.batch-history-menu summary:hover { background: var(--bgColor-muted); }
-.batch-history-menu[open] > button { position: absolute; z-index: 20; top: 34px; right: 0; display: flex; width: 190px; min-height: 34px; align-items: center; gap: 8px; padding: 7px 10px; border: 1px solid var(--borderColor-default); border-radius: 6px; color: var(--fgColor-danger); background: var(--bgColor-overlay); box-shadow: var(--oops-shadow-md); font: inherit; font-size: 12px; cursor: pointer; }
 .batch-workflow-toolbar { position: relative; z-index: 20; display: flex; min-height: 52px; align-items: center; gap: 6px; padding: 7px 12px; border-bottom: 1px solid var(--borderColor-default); background: var(--bgColor-default); }
 .batch-workflow-toolbar__spacer { min-width: 8px; flex: 1; }
 .batch-save-state { display: inline-flex; min-width: 112px; align-items: center; gap: 6px; color: var(--fgColor-muted); font-size: 12px; white-space: nowrap; }
 .batch-save-state::before { width: 7px; height: 7px; border-radius: 50%; background: currentColor; content: ""; }
 .batch-save-state.is-saved { color: var(--fgColor-success); }
 .batch-save-state.is-failed { color: var(--fgColor-danger); }
-.batch-continuous-workspace { display: grid; height: calc(100dvh - 52px); min-width: 0; min-height: 0; grid-template-columns: minmax(0, 1fr); overflow: hidden; background: #202124; }
+.batch-continuous-workspace { display: grid; height: calc(100dvh - 52px); min-width: 0; min-height: 0; grid-template-columns: minmax(0, 1fr); overflow: hidden; background: var(--batch-viewer-canvas); }
 .batch-continuous-workspace.has-left { grid-template-columns: 220px minmax(0, 1fr); }
 .batch-continuous-workspace.has-right { grid-template-columns: minmax(0, 1fr) 300px; }
 .batch-continuous-workspace.has-left.has-right { grid-template-columns: 220px minmax(0, 1fr) 300px; }
@@ -458,29 +465,37 @@ html[data-oopsnote-batch-scan="active"] .oops-page-enter {
 .batch-rail-title { margin: 0; color: var(--fgColor-default); font-size: 12px; font-weight: 700; }
 .batch-page-rail > .batch-rail-title { display: flex; min-height: 42px; align-items: center; padding: 0 14px; border-bottom: 1px solid var(--borderColor-muted); }
 .batch-page-rail nav { height: calc(100% - 42px); overflow: auto; padding: 6px; }
-.batch-page-rail nav button { display: grid; width: 100%; min-height: 42px; grid-template-columns: 28px minmax(0, 1fr); align-items: center; gap: 7px; padding: 5px 7px; border: 0; border-radius: 5px; color: var(--fgColor-muted); background: transparent; font: inherit; text-align: left; cursor: pointer; }
+.batch-page-rail nav button { display: grid; width: 100%; min-height: 42px; grid-template-columns: 28px; justify-content: center; align-items: center; padding: 5px 7px; border: 0; border-radius: 5px; color: var(--fgColor-muted); background: transparent; font: inherit; text-align: left; cursor: pointer; }
 .batch-page-rail nav button:hover { background: var(--bgColor-muted); }
 .batch-page-rail nav button.is-active { color: var(--fgColor-default); background: var(--bgColor-accent-muted); }
 .batch-page-rail nav button span { display: grid; width: 24px; height: 24px; place-items: center; border-radius: 4px; background: var(--bgColor-muted); font-size: 11px; font-variant-numeric: tabular-nums; font-weight: 700; }
-.batch-page-rail nav button small { overflow: hidden; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
 .batch-document-column { display: grid; min-width: 0; min-height: 0; grid-template-rows: 42px minmax(0, 1fr); overflow: hidden; }
-.batch-pdf-controls { position: relative; z-index: 10; display: flex; min-width: 0; min-height: 42px; align-items: center; justify-content: center; gap: 4px; border-bottom: 1px solid #383a3e; color: #e7e9ee; background: #2a2c30; }
+.batch-pdf-controls { position: relative; z-index: 10; display: flex; min-width: 0; min-height: 42px; align-items: center; justify-content: center; gap: 4px; border-bottom: 1px solid var(--batch-viewer-control-border); color: var(--batch-viewer-text); background: var(--batch-viewer-toolbar); }
 .batch-pdf-controls > span { width: 48px; font-size: 12px; font-variant-numeric: tabular-nums; text-align: center; }
-.batch-pdf-controls button { color: #e7e9ee; }
-.batch-page-input { display: flex; align-items: center; gap: 4px; margin-left: 8px; color: #b8bcc5; font-size: 12px; }
-.batch-page-input input { width: 38px; height: 26px; border: 1px solid #4b4e55; border-radius: 4px; color: #fff; background: #1f2023; font: inherit; font-variant-numeric: tabular-nums; text-align: center; }
-.batch-document-viewport { position: relative; min-width: 0; min-height: 0; overflow: auto; padding: 24px max(20px, calc((100% - 820px) / 2)); overscroll-behavior: contain; scrollbar-gutter: stable; }
+.batch-pdf-controls button { color: var(--batch-viewer-text); }
+.batch-page-input { display: flex; align-items: center; gap: 4px; margin-left: 8px; color: var(--batch-viewer-text-muted); font-size: 12px; }
+.batch-page-input input { width: 38px; height: 26px; border: 1px solid var(--batch-viewer-control-border); border-radius: 4px; color: var(--batch-viewer-text); background: var(--batch-viewer-control); font: inherit; font-variant-numeric: tabular-nums; text-align: center; }
+.batch-document-viewport { position: relative; min-width: 0; min-height: 0; overflow: auto; padding: 24px max(20px, calc((100% - 820px) / 2)); padding-bottom: max(72px, calc(24px + env(safe-area-inset-bottom))); overscroll-behavior: contain; scrollbar-gutter: stable; scroll-padding-bottom: max(72px, calc(24px + env(safe-area-inset-bottom))); }
 .batch-document-viewport > .batch-continuous-surface,
 .batch-document-viewport > .batch-crop-editor { margin: 0 auto; }
 .batch-crop-editor { position: relative; min-width: 320px; overflow: hidden; background: #fff; box-shadow: 0 0 0 1px #43464c; }
 .batch-crop-editor > img { display: block; width: 100%; height: 100%; object-fit: fill; user-select: none; }
+.batch-crop-editor.is-inverted { background: #050505; }
+.batch-crop-editor.is-inverted > img { filter: invert(1) hue-rotate(180deg); }
+.batch-crop-editor.is-inverted .batch-crop-overlay__rect { --crop-frame-color: #22d3ee; box-shadow: inset 0 0 0 var(--selection-stroke) var(--crop-frame-color), 0 0 0 9999px rgb(255 255 255 / 16%); }
 .batch-selection-rail__header { display: flex; min-height: 42px; align-items: center; justify-content: space-between; padding: 0 12px; border-bottom: 1px solid var(--borderColor-muted); }
 .batch-selection-rail__header > p:last-child { color: var(--fgColor-muted); font-size: 11px; }
 .batch-selection-list { height: calc(100% - 42px); overflow: auto; padding: 6px; }
-.batch-selection-list > button { display: grid; width: 100%; min-height: 52px; grid-template-columns: 28px minmax(0, 1fr) auto; align-items: center; gap: 8px; padding: 6px 7px; border: 1px solid transparent; border-radius: 6px; color: var(--fgColor-default); background: transparent; font: inherit; text-align: left; cursor: pointer; }
-.batch-selection-list > button:hover { background: var(--bgColor-muted); }
-.batch-selection-list > button.is-active { border-color: color-mix(in srgb, var(--fgColor-success) 42%, var(--borderColor-default)); background: var(--bgColor-success-muted); }
-.batch-selection-list > button > span:nth-child(2) { min-width: 0; }
+.batch-selection-list__item { display: grid; width: 100%; min-height: 52px; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; border: 1px solid transparent; border-radius: 6px; color: var(--fgColor-default); background: transparent; }
+.batch-selection-list__item:hover { background: var(--bgColor-muted); }
+.batch-selection-list__item.is-active { border-color: color-mix(in srgb, var(--fgColor-success) 42%, var(--borderColor-default)); background: var(--bgColor-success-muted); }
+.batch-selection-list__primary { display: grid; min-width: 0; min-height: 50px; grid-template-columns: 28px minmax(0, 1fr); align-items: center; gap: 8px; padding: 6px 7px; border: 0; color: inherit; background: transparent; font: inherit; text-align: left; cursor: pointer; }
+.batch-selection-list__primary:focus-visible { outline: 2px solid var(--fgColor-accent); outline-offset: -2px; }
+.batch-selection-list__primary > span:nth-child(2) { min-width: 0; }
+.batch-selection-list__item > .mantine-ActionIcon-root { margin-right: 7px; }
+.batch-selection-list__review { display: inline-flex; align-items: center; gap: 3px; margin-right: 2px; color: var(--fgColor-muted); }
+.batch-selection-list__review select { max-width: 22px; min-height: 24px; padding: 0 2px; border: 1px solid var(--borderColor-default); border-radius: 4px; color: var(--fgColor-default); background: var(--bgColor-default); font-size: 10px; opacity: .72; }
+.batch-selection-list__review select:focus-visible { outline: 2px solid var(--fgColor-accent); outline-offset: 1px; opacity: 1; }
 .batch-selection-list strong,
 .batch-selection-list small { display: block; overflow: hidden; letter-spacing: 0; text-overflow: ellipsis; white-space: nowrap; }
 .batch-selection-list strong { font-size: 12px; }
@@ -489,6 +504,7 @@ html[data-oopsnote-batch-scan="active"] .oops-page-enter {
 .batch-selection-list__number.is-processing { background: #0f766e; }
 .batch-selection-list__number.is-completed { background: #475569; }
 .batch-selection-list__number.is-failed { background: var(--fgColor-danger); }
+.batch-selection-list__number.is-needs_review { background: #b45309; }
 .batch-selection-list__empty { margin: 20px 10px; color: var(--fgColor-muted); font-size: 12px; line-height: 1.6; text-align: center; }
 .batch-scan-error { position: fixed; z-index: 100; right: 18px; bottom: 18px; display: flex; max-width: min(440px, calc(100vw - 36px)); align-items: flex-start; gap: 8px; padding: 10px 12px; border: 1px solid color-mix(in srgb, var(--fgColor-danger) 48%, var(--borderColor-default)); border-radius: 6px; color: var(--fgColor-danger); background: var(--bgColor-overlay); box-shadow: var(--oops-shadow-md); font-size: 12px; }
 .task-trace-link { display: inline-flex; min-height: 26px; align-items: center; padding: 0 8px; border: 1px solid var(--borderColor-default); border-radius: 5px; color: var(--fgColor-default); font-size: 12px; font-weight: 600; text-decoration: none; }
@@ -505,7 +521,7 @@ html[data-oopsnote-batch-scan="active"] .oops-page-enter {
   .batch-continuous-workspace.has-right { grid-template-columns: minmax(0, 1fr) 280px; }
   .batch-workflow-toolbar { padding-inline: 7px; }
   .batch-save-state { min-width: 0; }
-  .batch-document-viewport { padding: 12px; }
+  .batch-document-viewport { padding: 12px; padding-bottom: max(64px, calc(12px + env(safe-area-inset-bottom))); scroll-padding-bottom: max(64px, calc(12px + env(safe-area-inset-bottom))); }
 }
 
 @media (max-width: 560px) {
@@ -995,21 +1011,37 @@ html.oops-splash-skip #oops-splash {
 .oops-splash__section--left  { left: 0; }
 .oops-splash__section--right { right: 0; }
 
-/* CSS-only exit: the splash can never trap an already rendered app. */
+/* Keep the splash until hydration, load, fonts, and the first stable paint finish. */
 #oops-splash {
-  animation: oops-splash-dismiss 0.25s 1.1s ease-out forwards;
+  animation: oops-splash-fallback-dismiss 0.25s 12s ease-out forwards;
 }
 
 .oops-splash__loader {
-  animation: oops-splash-content-out 0.2s 0.62s ease-out forwards;
+  animation: oops-splash-fallback-content-out 0.2s 11.52s ease-out forwards;
 }
 
 .oops-splash__section--left {
-  animation: oops-splash-curtain-left 0.42s 0.72s cubic-bezier(0.645, 0.045, 0.355, 1) forwards;
+  animation: oops-splash-fallback-curtain-left 0.42s 11.62s cubic-bezier(0.645, 0.045, 0.355, 1) forwards;
 }
 
 .oops-splash__section--right {
-  animation: oops-splash-curtain-right 0.42s 0.72s cubic-bezier(0.645, 0.045, 0.355, 1) forwards;
+  animation: oops-splash-fallback-curtain-right 0.42s 11.62s cubic-bezier(0.645, 0.045, 0.355, 1) forwards;
+}
+
+#oops-splash.is-ready {
+  animation: oops-splash-dismiss 0.25s 0.65s ease-out forwards;
+}
+
+#oops-splash.is-ready .oops-splash__loader {
+  animation: oops-splash-content-out 0.2s 0.08s ease-out forwards;
+}
+
+#oops-splash.is-ready .oops-splash__section--left {
+  animation: oops-splash-curtain-left 0.42s 0.18s cubic-bezier(0.645, 0.045, 0.355, 1) forwards;
+}
+
+#oops-splash.is-ready .oops-splash__section--right {
+  animation: oops-splash-curtain-right 0.42s 0.18s cubic-bezier(0.645, 0.045, 0.355, 1) forwards;
 }
 
 @keyframes oops-splash-content-out {
@@ -1025,6 +1057,26 @@ html.oops-splash-skip #oops-splash {
 }
 
 @keyframes oops-splash-dismiss {
+  to {
+    visibility: hidden;
+    pointer-events: none;
+    transform: translateY(-100%);
+  }
+}
+
+@keyframes oops-splash-fallback-content-out {
+  to { opacity: 0; }
+}
+
+@keyframes oops-splash-fallback-curtain-left {
+  to { transform: translateX(-100%); }
+}
+
+@keyframes oops-splash-fallback-curtain-right {
+  to { transform: translateX(100%); }
+}
+
+@keyframes oops-splash-fallback-dismiss {
   to {
     visibility: hidden;
     pointer-events: none;
@@ -1048,14 +1100,15 @@ html.oops-splash-skip #oops-splash {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  #oops-splash {
-    animation-delay: 0.15s;
-  }
-  .oops-splash__loader,
-  .oops-splash__section--left,
-  .oops-splash__section--right {
+  #oops-splash.is-ready {
     animation-duration: 0.01ms;
     animation-delay: 0.1s;
+  }
+  #oops-splash.is-ready .oops-splash__loader,
+  #oops-splash.is-ready .oops-splash__section--left,
+  #oops-splash.is-ready .oops-splash__section--right {
+    animation-duration: 0.01ms;
+    animation-delay: 0.05s;
   }
   .oops-page-enter {
     animation-duration: 0.01ms;

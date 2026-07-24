@@ -7,12 +7,32 @@ import remarkBreaks from "remark-breaks";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
 import "katex/contrib/mhchem";
+import katex from "katex";
 import { Mermaid } from "./Mermaid";
 import { MoleculeRenderer } from "./MoleculeRenderer";
 import { TikzRenderer } from "./TikzRenderer";
 import { prepareContentForWeb } from "@/lib/content/oopsmark";
 import type { ContentFormat } from "@/types/api";
+import type { PluggableList } from "unified";
 import { useEffect, useMemo, useRef } from "react";
+
+/** Patch KaTeX to inject \displaystyle into inline math, mirroring
+ *  RyotaUshio/obsidian-auto-displaystyle-inline-math's approach. */
+{
+  const original = katex.renderToString;
+  if (!("__patched" in (katex as unknown as Record<string, unknown>))) {
+    (katex as unknown as Record<string, unknown>).__patched = true;
+    katex.renderToString = function patched(
+      source: string,
+      options?: Parameters<typeof katex.renderToString>[1],
+    ): string {
+      if (options && options.displayMode === false && !source.startsWith("\\displaystyle")) {
+        source = "\\displaystyle " + source;
+      }
+      return original(source, options);
+    };
+  }
+}
 
 export function MarkdownRenderer({
   text,
@@ -29,19 +49,19 @@ export function MarkdownRenderer({
 
   useEffect(() => {
     if (format !== "legacy-markdown-latex") return;
-    // Load additional KaTeX extensions that might be needed for array environments
     // @ts-ignore
     void import("katex/dist/contrib/auto-render");
   }, [format]);
 
   const remarkPlugins = useMemo(() => {
-    return [remarkGfm, remarkMath, remarkBreaks];
+    const plugins: PluggableList = [remarkGfm, remarkMath, remarkBreaks];
+    return plugins;
   }, []);
 
   const rehypePlugins = useMemo(() => {
-    // Configure rehype-katex with strict: "ignore" to support array, hline, and other advanced LaTeX features
-    // Also enable trust for safety since we control the content
-    return [[rehypeKatex, { strict: "ignore", trust: format === "legacy-markdown-latex" }] as any];
+    const plugins: PluggableList = [];
+    plugins.push([rehypeKatex, { strict: "ignore", trust: format === "legacy-markdown-latex" }]);
+    return plugins;
   }, [format]);
 
   return (
@@ -60,7 +80,13 @@ export function MarkdownRenderer({
           li: ({ children }) => <Box as="li" sx={{ mb: 1, whiteSpace: "pre-wrap" }}>{children}</Box>,
           pre: ({ children }) => {
             const child = Array.isArray(children) ? children[0] : children;
-            const className = (child as { props?: { className?: string } })?.props?.className || "";
+            let className = "";
+            if (child && typeof child === "object" && "props" in child) {
+              const props = child.props;
+              if (props && typeof props === "object" && "className" in props) {
+                className = String(props.className || "");
+              }
+            }
             const language = className.replace("language-", "").trim();
 
             if (["molecule", "smiles", "mermaid", "tikz"].includes(language)) {

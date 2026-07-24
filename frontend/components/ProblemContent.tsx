@@ -3,7 +3,6 @@
 import { Box } from "@/components/ui/primitives";
 import { Button, Spinner } from "@/components/ui/primitives";
 import { Text } from "@/components/ui/primitives";
-import { InlineMath } from "react-katex";
 import { MarkdownRenderer } from "./renderers/MarkdownRenderer";
 import { SvgMarkup } from "./renderers/SvgMarkup";
 import { TikzRenderer } from "./renderers/TikzRenderer";
@@ -30,34 +29,7 @@ type ProblemContentProps = {
   isRetryingDiagram?: boolean;
   itemKeyPrefix?: string;
   fontSize?: number;
-  enableInlineMath?: boolean;
 };
-
-function normalizeLatexInline(input: string): string {
-  const trimmed = input.trim();
-  if (trimmed.startsWith("$$") && trimmed.endsWith("$$")) {
-    return trimmed.slice(2, -2).trim();
-  }
-  if (trimmed.startsWith("\\[") && trimmed.endsWith("\\]")) {
-    return trimmed.slice(2, -2).trim();
-  }
-  if (trimmed.startsWith("\\(") && trimmed.endsWith("\\)")) {
-    return trimmed.slice(2, -2).trim();
-  }
-  if (trimmed.startsWith("$") && trimmed.endsWith("$")) {
-    return trimmed.slice(1, -1).trim();
-  }
-  return trimmed;
-}
-
-function looksLikeStandaloneMath(input: string): boolean {
-  const t = input.trim();
-  if (!t) return false;
-  if (t.includes("$") || t.includes("\\(") || t.includes("\\[") || t.includes("$$")) return false;
-  if (/[\u4e00-\u9fff]/.test(t)) return false;
-  if (/\\[a-zA-Z]+/.test(t)) return true;
-  return false;
-}
 
 export function ProblemContent({
   problemText,
@@ -74,7 +46,6 @@ export function ProblemContent({
   isRetryingDiagram = false,
   itemKeyPrefix,
   fontSize,
-  enableInlineMath = true,
 }: ProblemContentProps) {
   return (
     <Box>
@@ -130,15 +101,9 @@ export function ProblemContent({
         <OptionsList
           options={options}
           itemKeyPrefix={itemKeyPrefix ?? "problem"}
-          renderOptionText={(opt) =>
-            enableInlineMath && looksLikeStandaloneMath(opt.text) ? (
-              <Box as="span" sx={{ "& .katex": { fontSize: "1.05em" } }}>
-                <InlineMath math={`\\displaystyle ${normalizeLatexInline(opt.text)}`} />
-              </Box>
-            ) : (
-              <MarkdownRenderer text={opt.text || ""} format={contentFormat} fontSize={fontSize} />
-            )
-          }
+          renderOptionText={(opt) => (
+            <MarkdownRenderer text={opt.text || ""} format={contentFormat} fontSize={fontSize} />
+          )}
         />
       ) : null}
     </Box>

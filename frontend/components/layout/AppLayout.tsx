@@ -27,7 +27,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
              position: 'sticky',
              top: 0,
              zIndex: 20,
-             height: 50,
+             height: [50, 48],
            }}
          >
             <Box sx={{ display: ['flex', 'none'], alignItems: 'center', gap: 2, color: 'fg.default' }}>

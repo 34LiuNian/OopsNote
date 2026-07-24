@@ -253,6 +253,23 @@ def validate_oopsmark(source: str) -> list[ContentIssue]:
     return issues
 
 
+def normalize_oopsmark(source: str) -> str:
+    """Normalize newlines in OopsMark v1 content.
+
+    - Replaces CRLF/CR with LF.
+    - Collapses 3+ consecutive newlines to exactly \n\n (one blank line).
+    - Strips leading/trailing whitespace.
+
+    This keeps standard Markdown paragraph separation (\n\n) intact
+    while eliminating unintended extra blank lines from AI output.
+    """
+    # Normalize line endings
+    normalized = source.replace("\r\n", "\n").replace("\r", "\n")
+    # Collapse excessive consecutive newlines to max one blank line
+    normalized = re.sub(r"\n{3,}", "\n\n", normalized)
+    return normalized.strip()
+
+
 _LATEX_ESCAPES = {
     "&": r"\&",
     "%": r"\%",

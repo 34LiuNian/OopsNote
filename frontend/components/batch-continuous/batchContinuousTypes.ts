@@ -31,7 +31,8 @@ export type SelectionSlice = {
   order: number;
 };
 
-export type SelectionStatus = "pending" | "processing" | "completed" | "failed";
+export type SelectionStatus = "pending" | "processing" | "completed" | "failed" | "needs_review";
+export type SelectionReviewReason = "unreadable" | "incomplete" | "multiple_questions" | "other";
 
 export type SelectionModel = {
   id: string;
@@ -41,6 +42,9 @@ export type SelectionModel = {
   slices: SelectionSlice[];
   questionNo: number;
   status: SelectionStatus;
+  reviewReason?: SelectionReviewReason;
+  reviewPreviousStatus?: Exclude<SelectionStatus, "needs_review">;
+  reviewResolved?: boolean;
   taskId?: string;
   problemIds?: string[];
   error?: string;

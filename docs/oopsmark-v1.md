@@ -123,6 +123,8 @@ C1=CC=CC=C1
 | 普通表格 | GFM table | HTML table | tabularray |
 | Mermaid | `mermaid` fenced block | Mermaid | 派生资产 + graphicx |
 
+注：网页 KaTeX 渲染行内公式（`$...$`）时，`MarkdownRenderer` 在模块初始化时 monkey-patch `katex.renderToString`，自动向 `displayMode === false` 的调用注入 `\displaystyle`，使行内公式按展示样式（display style）渲染但保持行内布局。该做法参考 [RyotaUshio/obsidian-auto-displaystyle-inline-math](https://github.com/RyotaUshio/obsidian-auto-displaystyle-inline-math)。
+
 ## 4. 数据模型
 
 每道题必须携带格式版本：

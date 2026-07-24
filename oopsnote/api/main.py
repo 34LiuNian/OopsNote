@@ -63,7 +63,7 @@ PI_RUNNER = PiRpcRunner(
     project_root=PROJECT_ROOT,
     task_store=TASK_STORE,
     run_store=RUN_STORE,
-    max_concurrent_tasks=int(os.getenv("OOPSNOTE_PI_MAX_CONCURRENT_TASKS", "2")),
+    max_concurrent_tasks=int(os.getenv("OOPSNOTE_PI_MAX_CONCURRENT_TASKS", "1")),
     **_runner_settings(),
 )
 
@@ -72,6 +72,12 @@ TAG_DIMENSIONS = {
     "error": {"label": "错题归因", "label_variant": "default"},
     "meta": {"label": "来源", "label_variant": "default"},
     "custom": {"label": "自定义标签", "label_variant": "default"},
+}
+BATCH_REVIEW_REASONS = {
+    "unreadable",
+    "incomplete",
+    "multiple_questions",
+    "other",
 }
 
 
@@ -124,16 +130,33 @@ def _sync_batch_session_tasks(record: BatchSessionRecord) -> BatchSessionRecord:
             )
         else:
             if task.status == TaskStatus.COMPLETED:
-                status = "completed"
+                task_status = "completed"
             elif task.status in {TaskStatus.FAILED, TaskStatus.CANCELLED}:
-                status = "failed"
+                task_status = "failed"
             else:
-                status = "processing"
+                task_status = "processing"
+            task_review_reason = task.metadata.get("intake_review_reason")
+            if task_review_reason not in BATCH_REVIEW_REASONS:
+                task_review_reason = None
+            if segment.status == "needs_review" and segment.review_reason and not segment.review_resolved:
+                status = "needs_review"
+                review_reason = segment.review_reason
+                review_previous_status = segment.review_previous_status or task_status
+            elif task_review_reason and not segment.review_resolved:
+                status = "needs_review"
+                review_reason = task_review_reason
+                review_previous_status = task_status
+            else:
+                status = task_status
+                review_reason = None
+                review_previous_status = None
             next_segment = segment.model_copy(
                 update={
                     "status": status,
+                    "review_reason": review_reason,
+                    "review_previous_status": review_previous_status,
                     "problem_ids": [task.problem.id] if task.problem else [],
-                    "error": task.last_error if status == "failed" else None,
+                    "error": task.last_error if task.status in {TaskStatus.FAILED, TaskStatus.CANCELLED} else None,
                 }
             )
         changed = changed or next_segment != segment
@@ -301,7 +324,10 @@ def _run_managed(task_id: str, run_id: str, backend: str) -> None:
 async def lifespan(_: FastAPI):
     HERMES_RUNNER.recover_stale()
     PI_RUNNER.recover_stale()
-    yield
+    try:
+        yield
+    finally:
+        PI_RUNNER.shutdown()
 
 
 app = FastAPI(title="OopsNote", version="0.3.0", lifespan=lifespan)

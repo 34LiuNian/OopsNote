@@ -8,6 +8,7 @@ import queue
 import subprocess
 import threading
 import time
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Optional
 
@@ -133,7 +134,6 @@ class PiRpcBackend:
             *self.command,
             "--mode",
             "rpc",
-            "--no-session",
             "--no-builtin-tools",
             "--no-extensions",
             "--provider",
@@ -157,7 +157,7 @@ class PiRpcBackend:
 
 
 class PiRpcRunner(ManagedAiRunner):
-    """Managed Pi worker using its documented JSONL RPC mode."""
+    """Managed serial task runner backed by one long-lived Pi RPC process."""
 
     backend_name = "pi"
 
@@ -165,13 +165,19 @@ class PiRpcRunner(ManagedAiRunner):
         self,
         *,
         backend: PiRpcBackend,
-        max_concurrent_tasks: int = 2,
+        max_concurrent_tasks: int = 1,
         **kwargs: Any,
     ) -> None:
         super().__init__(**kwargs)
         self.backend = backend
-        self.max_concurrent_tasks = max(1, max_concurrent_tasks)
-        self._execution_slots = threading.BoundedSemaphore(self.max_concurrent_tasks)
+        # A single RPC session can process many tasks, but only one prompt at a time.
+        self.max_concurrent_tasks = 1
+        self._execution_slots = threading.BoundedSemaphore(1)
+        self._mcp_cache_lock_path = self.project_root / "storage" / "runs" / ".pi-mcp-cache.lock"
+        self._worker_process: Optional[subprocess.Popen[str]] = None
+        self._worker_stdout: queue.Queue[Optional[str]] = queue.Queue()
+        self._worker_stderr: queue.Queue[Optional[str]] = queue.Queue()
+        self._worker_write_lock = threading.Lock()
 
     def _run_metadata(self) -> dict[str, Any]:
         return {
@@ -195,6 +201,208 @@ class PiRpcRunner(ManagedAiRunner):
             }:
                 return
             self._run_in_slot(task_id, run_id)
+        # Retry only after releasing the serial worker slot. The retry is a
+        # fresh managed run and receives another clean Pi session.
+        self._retry_if_eligible(task_id, run_id)
+
+    @contextmanager
+    def _mcp_cache_lock(self):
+        """Serialize the rare startup of Pi processes across API workers.
+
+        pi-mcp-adapter writes ``~/.pi/agent/mcp-cache.json`` with a PID-based
+        temporary file and an unguarded rename. Normal tasks reuse the already
+        initialized process and never take this lock.
+        """
+        self._mcp_cache_lock_path.parent.mkdir(parents=True, exist_ok=True)
+        handle = self._mcp_cache_lock_path.open("a+b")
+        try:
+            if handle.tell() == 0 and self._mcp_cache_lock_path.stat().st_size == 0:
+                handle.write(b"0")
+                handle.flush()
+            handle.seek(0)
+            if os.name == "nt":
+                import msvcrt
+
+                while True:
+                    try:
+                        msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+                        break
+                    except OSError:
+                        time.sleep(0.1)
+            else:
+                import fcntl
+
+                fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+            yield
+        finally:
+            try:
+                if os.name == "nt":
+                    import msvcrt
+
+                    handle.seek(0)
+                    msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+                else:
+                    import fcntl
+
+                    fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+            finally:
+                handle.close()
+
+    @staticmethod
+    def _read_stream(stream: Any, output: queue.Queue[Optional[str]]) -> None:
+        try:
+            for line in iter(stream.readline, ""):
+                output.put(line)
+        finally:
+            output.put(None)
+
+    def _start_worker(self, task_id: str, run_id: str) -> subprocess.Popen[str]:
+        env = os.environ.copy()
+        env["PYTHONUTF8"] = "1"
+        env["PYTHONPATH"] = str(self.project_root) + (
+            os.pathsep + env["PYTHONPATH"] if env.get("PYTHONPATH") else ""
+        )
+        creationflags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
+        process = subprocess.Popen(
+            self.build_command(task_id, run_id),
+            cwd=self.project_root,
+            env=env,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            bufsize=1,
+            encoding="utf-8",
+            errors="replace",
+            creationflags=creationflags,
+        )
+        self._worker_stdout = queue.Queue()
+        self._worker_stderr = queue.Queue()
+        assert process.stdout is not None
+        assert process.stderr is not None
+        threading.Thread(
+            target=self._read_stream,
+            args=(process.stdout, self._worker_stdout),
+            daemon=True,
+        ).start()
+        threading.Thread(
+            target=self._read_stream,
+            args=(process.stderr, self._worker_stderr),
+            daemon=True,
+        ).start()
+        self._worker_process = process
+        return process
+
+    def _live_worker(self) -> Optional[subprocess.Popen[str]]:
+        process = self._worker_process
+        if process is not None and process.poll() is None:
+            return process
+        if process is not None:
+            self._worker_process = None
+        return None
+
+    def _invalidate_worker(self, process: subprocess.Popen[str]) -> None:
+        if process.poll() is None:
+            self._terminate(process)
+        if self._worker_process is process:
+            self._worker_process = None
+
+    def _drain_stderr(self, log: Any) -> None:
+        while True:
+            try:
+                line = self._worker_stderr.get_nowait()
+            except queue.Empty:
+                return
+            if line is None:
+                return
+            log.write(line.encode("utf-8", errors="replace"))
+
+    def _decode_event(self, line: str, rpc_log: Any) -> Optional[dict[str, Any]]:
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            _write_rpc_record(
+                rpc_log,
+                {"type": "invalid_json", "preview": _truncate_rpc_text(line.rstrip())},
+            )
+            return None
+        if not isinstance(event, dict):
+            _write_rpc_record(
+                rpc_log,
+                {"type": "invalid_event", "value_type": type(event).__name__},
+            )
+            return None
+        compact_event = _compact_rpc_event(event)
+        if compact_event is not None:
+            _write_rpc_record(rpc_log, compact_event)
+        return event
+
+    def _next_event(
+        self,
+        process: subprocess.Popen[str],
+        rpc_log: Any,
+    ) -> Optional[dict[str, Any]]:
+        try:
+            line = self._worker_stdout.get(timeout=self.poll_seconds)
+        except queue.Empty:
+            return {}
+        if line is None:
+            return None
+        return self._decode_event(line, rpc_log)
+
+    def _reset_session(
+        self,
+        process: subprocess.Popen[str],
+        task_id: str,
+        run_id: str,
+        rpc_log: Any,
+        started: float,
+    ) -> None:
+        command_id = f"session-{run_id}"
+        self._send(process, rpc_log, {"id": command_id, "type": "new_session"})
+        while process.poll() is None:
+            if time.monotonic() - started >= self.timeout_seconds:
+                raise TimeoutError("Pi RPC new_session timeout")
+            event = self._next_event(process, rpc_log)
+            if event is None:
+                break
+            if event.get("type") == "response" and event.get("id") == command_id:
+                if not event.get("success"):
+                    raise RuntimeError(str(event.get("error") or "Pi new_session failed"))
+                data = event.get("data") or {}
+                if data.get("cancelled"):
+                    raise RuntimeError("Pi new_session was cancelled by an extension")
+                return
+            self._observe_task(run_id, task_id)
+            self.run_store.heartbeat(run_id)
+        raise RuntimeError("Pi RPC exited before creating a clean session")
+
+    def _worker_with_clean_session(
+        self,
+        task_id: str,
+        run_id: str,
+        rpc_log: Any,
+        started: float,
+    ) -> subprocess.Popen[str]:
+        process = self._live_worker()
+        if process is not None:
+            try:
+                self._reset_session(process, task_id, run_id, rpc_log, started)
+            except Exception:
+                self._invalidate_worker(process)
+                raise
+            return process
+
+        # Hold the cross-process lock only through startup and the first
+        # successful RPC response, which proves extension initialization ended.
+        with self._mcp_cache_lock():
+            process = self._live_worker() or self._start_worker(task_id, run_id)
+            try:
+                self._reset_session(process, task_id, run_id, rpc_log, started)
+            except Exception:
+                self._invalidate_worker(process)
+                raise
+            return process
 
     def _run_in_slot(self, task_id: str, run_id: str) -> None:
         log_path = self.run_store.base_dir / f"{run_id}.log"
@@ -202,37 +410,19 @@ class PiRpcRunner(ManagedAiRunner):
         process: Optional[subprocess.Popen[str]] = None
         started = time.monotonic()
         last_heartbeat = started
-        lines: queue.Queue[Optional[str]] = queue.Queue()
-
-        def read_stdout(stream: Any) -> None:
-            for line in iter(stream.readline, ""):
-                lines.put(line)
-            lines.put(None)
 
         try:
-            env = os.environ.copy()
-            env["PYTHONUTF8"] = "1"
-            env["PYTHONPATH"] = str(self.project_root) + (
-                os.pathsep + env["PYTHONPATH"] if env.get("PYTHONPATH") else ""
-            )
-            creationflags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
             with (
-                log_path.open("ab", buffering=0) as stderr,
+                log_path.open("ab", buffering=0) as stderr_log,
                 rpc_path.open("a", encoding="utf-8") as rpc_log,
             ):
-                process = subprocess.Popen(
-                    self.build_command(task_id, run_id),
-                    cwd=self.project_root,
-                    env=env,
-                    stdin=subprocess.PIPE,
-                    stdout=subprocess.PIPE,
-                    stderr=stderr,
-                    text=True,
-                    bufsize=1,
-                    encoding="utf-8",
-                    errors="replace",
-                    creationflags=creationflags,
+                process = self._worker_with_clean_session(
+                    task_id, run_id, rpc_log, started
                 )
+                task = self.task_store.get(task_id)
+                run = self.run_store.get(run_id)
+                if task.status == TaskStatus.CANCELLED or run.status == RunStatus.CANCELLED:
+                    return
                 with self._lock:
                     self._processes[task_id] = process
                 self.run_store.start(run_id, process.pid, f"runs/{log_path.name}")
@@ -240,20 +430,15 @@ class PiRpcRunner(ManagedAiRunner):
                 self.task_store.update(
                     task_id,
                     stage=TaskStage.STARTING,
-                    stage_message="Pi RPC started",
+                    stage_message="Pi RPC session ready",
                 )
-                assert process.stdout is not None
-                threading.Thread(
-                    target=read_stdout,
-                    args=(process.stdout,),
-                    daemon=True,
-                ).start()
                 prompt = self._prompt(task_id, run_id)
+                prompt_id = f"prompt-{run_id}"
                 self._send(
                     process,
                     rpc_log,
                     {
-                        "id": f"prompt-{run_id}",
+                        "id": prompt_id,
                         "type": "prompt",
                         "message": prompt,
                     },
@@ -263,7 +448,7 @@ class PiRpcRunner(ManagedAiRunner):
                 rpc_error: Optional[tuple[str, str]] = None
                 while process.poll() is None:
                     if time.monotonic() - started >= self.timeout_seconds:
-                        self._terminate(process)
+                        self._invalidate_worker(process)
                         self._save_stats(run_id, {}, started)
                         self._finish_failure(
                             task_id,
@@ -273,36 +458,11 @@ class PiRpcRunner(ManagedAiRunner):
                             "Pi RPC timeout",
                         )
                         return
-                    try:
-                        line = lines.get(timeout=self.poll_seconds)
-                    except queue.Empty:
-                        line = ""
-                    if line is None:
+                    event = self._next_event(process, rpc_log)
+                    self._drain_stderr(stderr_log)
+                    if event is None:
                         break
-                    if line:
-                        try:
-                            event = json.loads(line)
-                        except json.JSONDecodeError:
-                            _write_rpc_record(
-                                rpc_log,
-                                {
-                                    "type": "invalid_json",
-                                    "preview": _truncate_rpc_text(line.rstrip()),
-                                },
-                            )
-                            continue
-                        if not isinstance(event, dict):
-                            _write_rpc_record(
-                                rpc_log,
-                                {
-                                    "type": "invalid_event",
-                                    "value_type": type(event).__name__,
-                                },
-                            )
-                            continue
-                        compact_event = _compact_rpc_event(event)
-                        if compact_event is not None:
-                            _write_rpc_record(rpc_log, compact_event)
+                    if event:
                         if event.get("type") == "agent_settled":
                             settled = True
                             self._send(
@@ -324,8 +484,17 @@ class PiRpcRunner(ManagedAiRunner):
                                 event.get("data") or {},
                                 started,
                             )
-                            assert process.stdin is not None
-                            process.stdin.close()
+                            break
+                        elif (
+                            event.get("type") == "response"
+                            and event.get("id") == prompt_id
+                            and not event.get("success")
+                        ):
+                            rpc_error = (
+                                "rpc_prompt_error",
+                                str(event.get("error") or "Pi prompt was rejected"),
+                            )
+                            break
                         elif event.get("type") in {"error", "agent_error"}:
                             rpc_error = (
                                 str(event.get("code") or "rpc_error"),
@@ -339,19 +508,20 @@ class PiRpcRunner(ManagedAiRunner):
                     if time.monotonic() - last_heartbeat >= self.heartbeat_seconds:
                         self.run_store.heartbeat(run_id)
                         last_heartbeat = time.monotonic()
+                self._drain_stderr(stderr_log)
                 if not stats_requested:
                     self._save_stats(run_id, {}, started)
-                if process.poll() is None:
-                    process.wait(timeout=5)
-                self._complete_after_exit(
+                exit_code = process.poll()
+                if exit_code is not None:
+                    self._worker_process = None
+                self._complete_after_task(
                     task_id,
                     run_id,
-                    process.returncode,
+                    exit_code,
                     log_path,
                     settled,
                     rpc_error,
                 )
-                self._retry_if_eligible(task_id, run_id)
         except FileNotFoundError:
             self._fail_start(
                 task_id,
@@ -359,7 +529,19 @@ class PiRpcRunner(ManagedAiRunner):
                 "Pi is not installed or is not on PATH",
                 "not_installed",
             )
+        except TimeoutError as error:
+            if process is not None:
+                self._invalidate_worker(process)
+            self._finish_failure(
+                task_id,
+                run_id,
+                RunStatus.TIMED_OUT,
+                "process_timeout",
+                str(error),
+            )
         except Exception as error:
+            if process is not None:
+                self._invalidate_worker(process)
             self._fail_start(task_id, run_id, str(error), "runner_error")
         finally:
             with self._lock:
@@ -371,23 +553,33 @@ class PiRpcRunner(ManagedAiRunner):
             process = self._processes.get(task_id)
         if process and process.poll() is None and process.stdin:
             try:
-                process.stdin.write(json.dumps({"type": "abort"}) + "\n")
-                process.stdin.flush()
+                self._send(process, None, {"type": "abort"})
             except (BrokenPipeError, OSError):
                 pass
-        super().cancel(task_id)
+        active = self.run_store.active_for_task(task_id)
+        self.task_store.mark_status(task_id, TaskStatus.CANCELLED)
+        if active:
+            self.run_store.finish(active.id, RunStatus.CANCELLED)
 
-    @staticmethod
+    def shutdown(self) -> None:
+        """Stop the shared Pi worker when the application exits."""
+        process = self._live_worker()
+        if process is not None:
+            self._invalidate_worker(process)
+
     def _send(
+        self,
         process: subprocess.Popen[str],
-        rpc_log: Any,
+        rpc_log: Optional[Any],
         payload: dict[str, Any],
     ) -> None:
         line = json.dumps(payload, ensure_ascii=False)
-        _write_rpc_record(rpc_log, _compact_rpc_command(payload))
+        if rpc_log is not None:
+            _write_rpc_record(rpc_log, _compact_rpc_command(payload))
         assert process.stdin is not None
-        process.stdin.write(line + "\n")
-        process.stdin.flush()
+        with self._worker_write_lock:
+            process.stdin.write(line + "\n")
+            process.stdin.flush()
 
     def _prompt(self, task_id: str, run_id: str) -> str:
         task = self.task_store.get(task_id)
@@ -440,7 +632,7 @@ class PiRpcRunner(ManagedAiRunner):
             retryable=self.is_retryable_error(code, message),
         )
 
-    def _complete_after_exit(
+    def _complete_after_task(
         self,
         task_id: str,
         run_id: str,

@@ -25,7 +25,7 @@ function createPdf(pageCount: number): Buffer {
   return Buffer.from(pdf);
 }
 
-async function openWorkspace(page: Page, options: { failPatchCount?: number } = {}) {
+async function openWorkspace(page: Page, options: { failPatchCount?: number; cropRect?: { x: number; y: number; width: number; height: number } } = {}) {
   let failedPatches = 0;
   let session = {
     file_hash: "fixture",
@@ -36,7 +36,7 @@ async function openWorkspace(page: Page, options: { failPatchCount?: number } = 
     subject: "auto",
     notes: "",
     active_page: 0,
-    crop_rect: { x: 0, y: 0, width: 1, height: 1 },
+    crop_rect: options.cropRect ?? { x: 0, y: 0, width: 1, height: 1 },
     crop_confirmed: false,
     segments: [] as unknown[],
     created_at: "2026-07-23T00:00:00Z",
@@ -50,6 +50,10 @@ async function openWorkspace(page: Page, options: { failPatchCount?: number } = 
       return;
     }
     if (request.method() === "GET") {
+      if (options.cropRect) {
+        await route.fulfill({ json: { session } });
+        return;
+      }
       await route.fulfill({ status: 404, json: { detail: "not found" } });
       return;
     }
@@ -66,9 +70,94 @@ async function openWorkspace(page: Page, options: { failPatchCount?: number } = 
   await page.goto("/batch-segment", { waitUntil: "domcontentloaded" });
   await expect(page.locator("#oops-splash")).toBeHidden();
   await page.locator('input[type="file"]').setInputFiles({ name: "continuous.pdf", mimeType: "application/pdf", buffer: createPdf(3) });
-  await expect(page.locator(".batch-crop-editor")).toBeVisible();
+  await expect(page.locator(".batch-crop-editor")).toBeVisible({ timeout: 30_000 });
   await expect(page.locator(".batch-page-rail nav button")).toHaveCount(3);
+  await expect(page.locator(".batch-page-rail nav button small")).toHaveCount(0);
 }
+
+test("recent files expose delete directly without a secondary menu", async ({ page }) => {
+  await page.route(/\/batch-sessions$/, async (route) => {
+    await route.fulfill({ json: { items: [{
+      file_hash: "recent-fixture",
+      filename: "recent.pdf",
+      mime_type: "application/pdf",
+      asset_path: "/assets/recent.pdf",
+      page_count: 2,
+      subject: "auto",
+      notes: "",
+      active_page: 0,
+      crop_rect: { x: 0, y: 0, width: 1, height: 1 },
+      crop_confirmed: false,
+      segments: [],
+      created_at: "2026-07-23T00:00:00Z",
+      updated_at: "2026-07-23T00:00:00Z",
+    }] } });
+  });
+  await page.goto("/batch-segment", { waitUntil: "domcontentloaded" });
+  await expect(page.locator("#oops-splash")).toBeHidden();
+  await expect(page.getByRole("button", { name: "删除最近文件" })).toBeVisible();
+  await expect(page.locator(".batch-history-menu, .batch-scan-history details")).toHaveCount(0);
+});
+
+test("uniform crop rejects undersized regions and compacts resize handles", async ({ page }) => {
+  await page.setViewportSize({ width: 1200, height: 800 });
+  await openWorkspace(page, { cropRect: { x: 0.1, y: 0.1, width: 0.04, height: 0.04 } });
+  await expect(page.getByRole("button", { name: "检查裁剪" })).toBeDisabled();
+  await expect(page.locator(".batch-crop-overlay__rect .batch-selection-handle.is-n")).toBeHidden();
+  await expect(page.locator(".batch-crop-overlay__rect .batch-selection-handle.is-e")).toBeHidden();
+  await expect(page.locator(".batch-crop-overlay__rect .batch-selection-handle.is-se")).toBeVisible();
+});
+
+test("viewer follows live color scheme and can scroll fully above the bottom safe area", async ({ page }) => {
+  await page.emulateMedia({ colorScheme: "light" });
+  await page.setViewportSize({ width: 1200, height: 700 });
+  await openWorkspace(page);
+  const editor = page.locator(".batch-crop-editor");
+  const workspace = page.locator(".batch-continuous-workspace");
+  const controls = page.locator(".batch-pdf-controls");
+  const pageInput = page.locator(".batch-page-input input");
+
+  await expect(editor).not.toHaveClass(/is-inverted/);
+  await expect(workspace).toHaveCSS("background-color", "rgb(228, 228, 231)");
+  await expect(controls).toHaveCSS("background-color", "rgb(244, 244, 245)");
+  await expect(pageInput).toHaveCSS("background-color", "rgb(255, 255, 255)");
+
+  await page.emulateMedia({ colorScheme: "dark" });
+  await expect(editor).toHaveClass(/is-inverted/);
+  await expect(workspace).toHaveCSS("background-color", "rgb(32, 33, 36)");
+  await expect(controls).toHaveCSS("background-color", "rgb(42, 44, 48)");
+  await expect(pageInput).toHaveCSS("background-color", "rgb(31, 32, 35)");
+  const darkStyles = await editor.evaluate((element) => {
+    const image = element.querySelector("img");
+    const overlay = element.querySelector<HTMLElement>(".batch-crop-overlay__rect");
+    return {
+      background: getComputedStyle(element).backgroundColor,
+      imageFilter: image ? getComputedStyle(image).filter : "",
+      overlayShadow: overlay ? getComputedStyle(overlay).boxShadow : "",
+    };
+  });
+  expect(darkStyles.background).toBe("rgb(5, 5, 5)");
+  expect(darkStyles.imageFilter).toContain("invert(1)");
+  expect(darkStyles.overlayShadow).toContain("rgba(255, 255, 255, 0.16)");
+
+  await page.emulateMedia({ colorScheme: "light" });
+  await expect(editor).not.toHaveClass(/is-inverted/);
+  await expect(workspace).toHaveCSS("background-color", "rgb(228, 228, 231)");
+
+  const viewport = page.locator(".batch-document-viewport");
+  await viewport.evaluate((element) => { element.scrollTop = element.scrollHeight; });
+  const bottomGeometry = await viewport.evaluate((element) => {
+    const editorElement = element.querySelector<HTMLElement>(".batch-crop-editor")!;
+    const viewportBounds = element.getBoundingClientRect();
+    const editorBounds = editorElement.getBoundingClientRect();
+    return {
+      remainingScroll: element.scrollHeight - element.clientHeight - element.scrollTop,
+      visibleBottomSpace: viewportBounds.bottom - editorBounds.bottom,
+    };
+  });
+  expect(bottomGeometry.remainingScroll).toBeLessThanOrEqual(1);
+  expect(bottomGeometry.visibleBottomSpace).toBeGreaterThanOrEqual(64);
+});
 
 test("one crop produces a lazy, single-column, gapless selection surface", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
@@ -100,8 +189,66 @@ test("one crop produces a lazy, single-column, gapless selection surface", async
   await page.mouse.up();
   await expect(page.locator("[data-selection-id]")).toHaveCount(1);
   await expect(page.locator(".batch-selection-handle")).toHaveCount(8);
-  await expect(page.locator(".batch-selection-list > button")).toHaveCount(1);
+  const selectionStyle = await page.locator("[data-selection-id]").evaluate((element) => {
+    const style = getComputedStyle(element);
+    return { frameStroke: style.getPropertyValue("--batch-selection-stroke"), borderRadius: style.borderTopLeftRadius };
+  });
+  expect(selectionStyle).toEqual({ frameStroke: "2px", borderRadius: "5px" });
+  const handleAlignment = await page.locator("[data-selection-id]").evaluate((element) => {
+    const selection = element.getBoundingClientRect();
+    const border = Number.parseFloat(getComputedStyle(element).getPropertyValue("--batch-selection-stroke"));
+    const rect = (name: string) => element.querySelector<HTMLElement>(`.batch-selection-handle.is-${name}`)!.getBoundingClientRect();
+    const n = rect("n");
+    const e = rect("e");
+    const se = rect("se");
+    return {
+      northCenterOffset: Math.abs(n.top + n.height / 2 - (selection.top + border / 2)),
+      eastCenterOffset: Math.abs(e.left + e.width / 2 - (selection.right - border / 2)),
+      southEastXOffset: Math.abs(se.left + se.width / 2 - (selection.right - border / 2)),
+      southEastYOffset: Math.abs(se.top + se.height / 2 - (selection.bottom - border / 2)),
+      northRadius: getComputedStyle(element.querySelector<HTMLElement>(".batch-selection-handle.is-n")!, "::before").borderRadius,
+    };
+  });
+  expect(handleAlignment.northCenterOffset).toBeLessThanOrEqual(0.5);
+  expect(handleAlignment.eastCenterOffset).toBeLessThanOrEqual(0.5);
+  expect(handleAlignment.southEastXOffset).toBeLessThanOrEqual(0.5);
+  expect(handleAlignment.southEastYOffset).toBeLessThanOrEqual(0.5);
+  expect(handleAlignment.northRadius).toBe("999px");
+  const baseHandleStyle = await page.locator("[data-selection-id]").evaluate((element) => {
+    const north = element.querySelector<HTMLElement>(".batch-selection-handle.is-n")!;
+    const northWest = element.querySelector<HTMLElement>(".batch-selection-handle.is-nw")!;
+    return {
+      frameStroke: Number.parseFloat(getComputedStyle(element).getPropertyValue("--batch-selection-stroke")),
+      sideLength: Number.parseFloat(getComputedStyle(north, "::before").width),
+      cornerStroke: Number.parseFloat(getComputedStyle(northWest, "::before").paddingTop),
+      cornerRadius: Number.parseFloat(getComputedStyle(northWest, "::before").borderTopLeftRadius),
+    };
+  });
+  await page.getByRole("button", { name: "放大" }).click();
+  const enlargedHandleStyle = await page.locator("[data-selection-id]").evaluate((element) => {
+    const north = element.querySelector<HTMLElement>(".batch-selection-handle.is-n")!;
+    const northWest = element.querySelector<HTMLElement>(".batch-selection-handle.is-nw")!;
+    return {
+      frameStroke: Number.parseFloat(getComputedStyle(element).getPropertyValue("--batch-selection-stroke")),
+      sideLength: Number.parseFloat(getComputedStyle(north, "::before").width),
+      cornerStroke: Number.parseFloat(getComputedStyle(northWest, "::before").paddingTop),
+      cornerRadius: Number.parseFloat(getComputedStyle(northWest, "::before").borderTopLeftRadius),
+    };
+  });
+  expect(enlargedHandleStyle.frameStroke / baseHandleStyle.frameStroke).toBeCloseTo(1.1, 1);
+  expect(enlargedHandleStyle.sideLength / baseHandleStyle.sideLength).toBeCloseTo(1.1, 1);
+  expect(enlargedHandleStyle.cornerStroke / baseHandleStyle.cornerStroke).toBeCloseTo(1.1, 1);
+  expect(enlargedHandleStyle.cornerRadius / baseHandleStyle.cornerRadius).toBeCloseTo(1.1, 1);
+  await expect(page.locator(".batch-selection-list__item")).toHaveCount(1);
+  await expect(page.locator(".batch-selection-list__item button button")).toHaveCount(0);
   await expect(page.locator(".batch-scan-layout.is-spread")).toHaveCount(0);
+
+  const review = page.getByRole("combobox", { name: "第 1 题异常状态" });
+  await review.selectOption("multiple_questions");
+  await expect(page.locator("[data-selection-id]")).toHaveClass(/is-needs_review/);
+  await expect(page.locator(".batch-selection-list__item")).toContainText("包含多道完整题目");
+  await review.selectOption("");
+  await expect(page.locator("[data-selection-id]")).not.toHaveClass(/is-needs_review/);
 });
 
 test("viewer zoom uses Ctrl+wheel and page navigation has no previous/next controls", async ({ page }) => {
@@ -112,12 +259,26 @@ test("viewer zoom uses Ctrl+wheel and page navigation has no previous/next contr
   await expect(page.getByRole("button", { name: "上一页" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "下一页" })).toHaveCount(0);
   const before = await page.locator(".batch-pdf-controls > span").first().textContent();
-  const viewport = (await page.locator(".batch-document-viewport").boundingBox())!;
+  const viewportLocator = page.locator(".batch-document-viewport");
+  await viewportLocator.evaluate((element) => {
+    const state = window as typeof window & { __viewerWheelPrevented?: boolean };
+    state.__viewerWheelPrevented = false;
+    element.addEventListener("wheel", (event) => { state.__viewerWheelPrevented = event.defaultPrevented; }, { once: true });
+  });
+  const pageScaleBefore = await page.evaluate(() => ({ innerWidth: window.innerWidth, dpr: window.devicePixelRatio }));
+  const viewport = (await viewportLocator.boundingBox())!;
   await page.keyboard.down("Control");
   await page.mouse.move(viewport.x + viewport.width / 2, viewport.y + 180);
   await page.mouse.wheel(0, -100);
   await page.keyboard.up("Control");
   await expect(page.locator(".batch-pdf-controls > span").first()).not.toHaveText(before ?? "100%");
+  const wheelResult = await page.evaluate(() => ({
+    prevented: (window as typeof window & { __viewerWheelPrevented?: boolean }).__viewerWheelPrevented,
+    innerWidth: window.innerWidth,
+    dpr: window.devicePixelRatio,
+  }));
+  expect(wheelResult.prevented).toBe(true);
+  expect({ innerWidth: wheelResult.innerWidth, dpr: wheelResult.dpr }).toEqual(pageScaleBefore);
 });
 
 test("compact workspace removes the app shell and keeps the document controls usable", async ({ page }) => {

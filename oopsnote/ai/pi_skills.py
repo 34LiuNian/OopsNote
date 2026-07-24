@@ -1,4 +1,4 @@
-"""Load the repository-owned Pi skill pack for an isolated RPC task."""
+"""Load the repository-owned Pi skill pack for a clean Pi RPC session."""
 
 from __future__ import annotations
 
@@ -18,8 +18,8 @@ ACTIVE_PI_SKILLS = (
 def load_skill_pack(project_root: Path) -> str:
     """Return the synced skills in a prompt-safe, deterministic form.
 
-    Pi's project skill auto-discovery is version-dependent.  Passing this pack
-    with each isolated ``--no-session`` task keeps the workflow deterministic.
+    Pi's project skill auto-discovery is version-dependent. Passing this pack
+    with every clean task session keeps the workflow deterministic.
     """
     skill_root = project_root / ".pi" / "skills"
     sections: list[str] = []

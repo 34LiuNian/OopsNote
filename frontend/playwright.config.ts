@@ -2,6 +2,9 @@ import { defineConfig, devices } from "@playwright/test";
 
 const frontendPort = Number(process.env.OOPSNOTE_FRONTEND_PORT ?? "3000");
 const frontendUrl = `http://127.0.0.1:${frontendPort}`;
+const browserChannel = process.env.OOPSNOTE_BROWSER_CHANNEL === "none"
+  ? undefined
+  : process.env.OOPSNOTE_BROWSER_CHANNEL ?? (process.platform === "win32" ? "msedge" : undefined);
 
 export default defineConfig({
   testDir: "./tests/e2e",
@@ -15,7 +18,7 @@ export default defineConfig({
     trace: "retain-on-failure",
   },
   webServer: {
-    command: `npm run dev -- -p ${frontendPort}`,
+    command: `npm run dev -- --port ${frontendPort}`,
     url: frontendUrl,
     env: {
       ...process.env,
@@ -26,8 +29,8 @@ export default defineConfig({
   },
   projects: [
     {
-      name: "desktop",
-      use: { ...devices["Desktop Chrome"], channel: process.platform === "win32" ? "msedge" : undefined },
+    name: "desktop",
+      use: { ...devices["Desktop Chrome"], ...(browserChannel ? { channel: browserChannel } : {}) },
     },
     {
       name: "firefox",

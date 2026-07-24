@@ -21,9 +21,9 @@ user:
 
 ## P1 - 生产验证
 
-- [x] 为 Pi 增加有界任务队列，默认最多同时运行 2 个任务，排队任务仍可取消。
+- [x] 为 Pi 增加串行任务队列；排队任务仍可取消。
 - [x] 修复 Windows 下 RunStore 并发读写、完成任务遗留 running run 和 stale recovery 反向覆盖问题。
-- [ ] 在保持逐任务取消、超时、崩溃隔离的前提下，实验长驻 Pi RPC worker + `new_session`；通过故障注入后再决定是否替代单任务进程。
+- [x] 启用长驻 Pi RPC worker，并以逐任务 `new_session`、启动期 MCP 缓存锁、超时重建和进程崩溃恢复保持隔离。
 - [ ] Web 上传 -> process -> stage -> finalize 的真实浏览器 E2E。
 - [ ] 覆盖文本题、图片题、不可读图片、限流、OCR timeout、取消和 retry。
 - [ ] 覆盖错误 JSON、错误 run_id、重复 finalize、abort 无响应与进程崩溃。

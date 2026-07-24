@@ -44,6 +44,7 @@ def test_finalize_validates_and_commits_managed_task(tmp_path, monkeypatch):
         json.dumps(valid_problem(), ensure_ascii=False),
         run_id="run-1",
         sync_to_obsidian=False,
+        review_reason="multiple_questions",
     )
 
     assert completed.status.value == "completed"
@@ -52,6 +53,7 @@ def test_finalize_validates_and_commits_managed_task(tmp_path, monkeypatch):
     assert completed.problem.short_answer == "$x=1$"
     assert completed.problem.content_format.value == "oopsmark-v1"
     assert completed.active_run_id is None
+    assert completed.metadata["intake_review_reason"] == "multiple_questions"
 
 
 def test_finalize_rejects_missing_answer_and_wrong_run(tmp_path, monkeypatch):
@@ -84,3 +86,22 @@ def test_finalize_rejects_multiple_independent_problems(tmp_path, monkeypatch):
             run_id="run-1",
             sync_to_obsidian=False,
         )
+
+
+def test_fail_task_persists_structured_review_reason(tmp_path, monkeypatch):
+    task_store = configure_stores(tmp_path, monkeypatch)
+    task = task_store.create(TaskCreateRequest(subject="auto"))
+    task_store.update(task.id, active_run_id="run-1")
+
+    failed = server.fail_task(
+        task.id,
+        "题目区域被裁断",
+        run_id="run-1",
+        review_reason="incomplete",
+    )
+
+    assert failed.status.value == "failed"
+    assert failed.metadata["intake_review_reason"] == "incomplete"
+
+    with pytest.raises(ValueError, match="invalid review_reason"):
+        server.fail_task(task.id, "bad", review_reason="unsupported")

@@ -20,6 +20,28 @@ test("homepage hydrates and dismisses splash", async ({ page }) => {
   expect(relevantErrors, relevantErrors.join("\n\n")).toEqual([]);
 });
 
+test("splash remains visible while hydration scripts are still loading", async ({ page }) => {
+  let delayedFirstScript = false;
+  await page.route("**/_next/**/*.js*", async (route) => {
+    if (delayedFirstScript) {
+      await route.continue();
+      return;
+    }
+    delayedFirstScript = true;
+    await new Promise((resolve) => setTimeout(resolve, 1_800));
+    await route.continue();
+  });
+
+  await page.goto("/", { waitUntil: "commit" });
+  const splash = page.locator("#oops-splash");
+  await splash.waitFor({ state: "visible" });
+  await page.waitForTimeout(1_300);
+  await expect(splash).toBeVisible();
+
+  await page.waitForLoadState("load");
+  await expect(splash).toBeHidden();
+});
+
 test("mobile shell fits without horizontal overflow", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/", { waitUntil: "domcontentloaded" });

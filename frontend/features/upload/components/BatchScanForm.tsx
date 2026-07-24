@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import {
   AlertCircle,
+  AlertTriangle,
   ArrowLeft,
   Check,
   Contrast,
@@ -11,7 +12,6 @@ import {
   FileText,
   Maximize2,
   Minus,
-  MoreHorizontal,
   PanelLeft,
   PanelRight,
   Plus,
@@ -25,11 +25,15 @@ import {
   buildPageMetrics,
   clamp,
   compareDocumentRects,
+  MIN_CROP_SIZE,
   type ContinuousPageSource,
   type DocumentCropRect,
+  type SelectionReviewReason,
   type SelectionModel,
+  type SelectionStatus,
 } from "@/components/batch-continuous";
 import { PageHeader } from "@/components/layout/PageHeader";
+import { useTheme } from "@/components/providers/ThemeProvider";
 import { Box, Button, IconButton, Spinner, Text } from "@/components/ui/primitives";
 import { notify } from "@/lib/notify";
 import { exportSelectionImage } from "../adapters/batchSelectionExportAdapter";
@@ -61,6 +65,12 @@ type SaveState = "idle" | "saving" | "saved" | "failed";
 
 const FULL_CROP: DocumentCropRect = { x: 0, y: 0, width: 1, height: 1 };
 const PAGE_CACHE_LIMIT = 6;
+const REVIEW_REASON_LABELS: Record<SelectionReviewReason, string> = {
+  unreadable: "扫不到题",
+  incomplete: "题目区域不完整",
+  multiple_questions: "包含多道完整题目",
+  other: "其他异常",
+};
 
 function isPdf(file: File) {
   return file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
@@ -69,6 +79,10 @@ function isPdf(file: File) {
 async function hashFile(file: File) {
   const digest = await crypto.subtle.digest("SHA-256", await file.arrayBuffer());
   return Array.from(new Uint8Array(digest), (value) => value.toString(16).padStart(2, "0")).join("");
+}
+
+function selectionAssetFilename(sessionHash: string, segmentId: string, questionNo: number) {
+  return `batch-${sessionHash}-${segmentId}-q${questionNo}.png`;
 }
 
 async function toBase64(blob: Blob) {
@@ -125,8 +139,10 @@ function sortAndNumber(selections: SelectionModel[]) {
 
 export function BatchScanForm() {
   const searchParams = useSearchParams();
+  const { resolvedTheme } = useTheme();
   const inputRef = useRef<HTMLInputElement | null>(null);
   const viewportRef = useRef<HTMLDivElement | null>(null);
+  const zoomRef = useRef(1);
   const sourceFileRef = useRef<File | null>(null);
   const pdfRef = useRef<PdfResource | null>(null);
   const pageFilesRef = useRef(new Map<number, File>());
@@ -148,7 +164,7 @@ export function BatchScanForm() {
   const [selections, setSelections] = useState<SelectionModel[]>([]);
   const [activeSelectionId, setActiveSelectionId] = useState<string>();
   const [zoom, setZoom] = useState(1);
-  const [inverted, setInverted] = useState(false);
+  const [inverted, setInverted] = useState(resolvedTheme === "dark");
   const [leftOpen, setLeftOpen] = useState(true);
   const [rightOpen, setRightOpen] = useState(true);
   const [saveState, setSaveState] = useState<SaveState>("idle");
@@ -161,12 +177,17 @@ export function BatchScanForm() {
   const sessionHash = currentSession?.file_hash;
   const activeSelection = selections.find((selection) => selection.id === activeSelectionId);
   const pendingCount = selections.filter((selection) => selection.status === "pending").length;
+  const cropTooSmall = crop.width < MIN_CROP_SIZE || crop.height < MIN_CROP_SIZE;
 
   const refreshSavedSessions = useCallback(async () => {
     try { setSavedSessions(await listBatchSessions()); } catch { /* landing remains usable */ }
   }, []);
 
   useEffect(() => { void refreshSavedSessions(); }, [refreshSavedSessions]);
+
+  useEffect(() => {
+    setInverted(resolvedTheme === "dark");
+  }, [resolvedTheme]);
 
   useEffect(() => {
     if (!pages.length) return;
@@ -199,6 +220,7 @@ export function BatchScanForm() {
     setActivePageIndex(0);
     setVisiblePageIndex(0);
     setPageInput("1");
+    zoomRef.current = 1;
     setZoom(1);
     setError("");
   }, []);
@@ -285,7 +307,6 @@ export function BatchScanForm() {
     setActivePageIndex(pageIndex);
     setVisiblePageIndex(pageIndex);
     setPageInput(String(pageIndex + 1));
-    setInverted(window.matchMedia("(prefers-color-scheme: dark)").matches);
     notify.success({ title: session ? "已恢复批量扫描" : `已载入 ${nextPages.length} 页` });
   }, [clearWorkspace]);
 
@@ -432,7 +453,7 @@ export function BatchScanForm() {
           error_tags: [],
           user_tags: [],
           image_base64: await toBase64(blob),
-          filename: `question-${original.questionNo}.png`,
+          filename: selectionAssetFilename(currentSession.file_hash, original.id, original.questionNo),
           mime_type: "image/png",
           batch_session_hash: currentSession.file_hash,
           batch_segment_id: original.id,
@@ -460,7 +481,14 @@ export function BatchScanForm() {
 
   const retrySelection = useCallback(async (selection: SelectionModel) => {
     if (!selection.taskId) return;
-    const next = selectionsRef.current.map((item) => item.id === selection.id ? { ...item, status: "processing" as const, error: undefined } : item);
+    const next = selectionsRef.current.map((item) => item.id === selection.id ? {
+      ...item,
+      status: "processing" as const,
+      error: undefined,
+      reviewReason: undefined,
+      reviewPreviousStatus: undefined,
+      reviewResolved: false,
+    } : item);
     setSelections(next);
     try {
       await persistSession(next);
@@ -469,6 +497,28 @@ export function BatchScanForm() {
       setSelections((current) => current.map((item) => item.id === selection.id
         ? { ...item, status: "failed", error: reason instanceof Error ? reason.message : "重试失败" }
         : item));
+    }
+  }, [persistSession]);
+
+  const markSelectionReview = useCallback(async (selection: SelectionModel, reason: SelectionReviewReason | "") => {
+    const nextStatus: SelectionStatus = reason
+      ? "needs_review"
+      : (selection.reviewPreviousStatus ?? (selection.taskId ? "completed" : "pending"));
+    const next = selectionsRef.current.map((item) => item.id === selection.id
+      ? {
+          ...item,
+          status: nextStatus,
+          reviewReason: reason || undefined,
+          reviewPreviousStatus: reason ? (item.status === "needs_review" ? item.reviewPreviousStatus : item.status) : undefined,
+          reviewResolved: !reason,
+        }
+      : item);
+    setSelections(next);
+    selectionsRef.current = next;
+    try {
+      await persistSession(next);
+    } catch {
+      // Keep the local marker visible; autosave retry will persist it later.
     }
   }, [persistSession]);
 
@@ -481,6 +531,8 @@ export function BatchScanForm() {
   const setZoomAroundPointer = useCallback((nextZoom: number, clientX?: number, clientY?: number) => {
     const viewport = viewportRef.current;
     const bounded = clamp(nextZoom, 0.25, 3);
+    const previousZoom = zoomRef.current;
+    zoomRef.current = bounded;
     if (!viewport || clientX === undefined || clientY === undefined) {
       setZoom(bounded);
       return;
@@ -488,13 +540,43 @@ export function BatchScanForm() {
     const bounds = viewport.getBoundingClientRect();
     const x = clientX - bounds.left;
     const y = clientY - bounds.top;
-    const ratio = bounded / zoom;
+    const ratio = bounded / previousZoom;
     viewport.scrollLeft = (viewport.scrollLeft + x) * ratio - x;
     viewport.scrollTop = (viewport.scrollTop + y) * ratio - y;
     setZoom(bounded);
-  }, [zoom]);
+  }, []);
+
+  useEffect(() => {
+    const viewport = viewportRef.current;
+    if (!viewport) return;
+    const handleWheel = (event: WheelEvent) => {
+      if (!event.ctrlKey) return;
+      event.preventDefault();
+      setZoomAroundPointer(
+        zoomRef.current * (event.deltaY > 0 ? 0.9 : 1.1),
+        event.clientX,
+        event.clientY,
+      );
+    };
+    viewport.addEventListener("wheel", handleWheel, { passive: false });
+    return () => viewport.removeEventListener("wheel", handleWheel);
+  }, [pages.length, setZoomAroundPointer]);
 
   const renderDocument = cropConfirmed || cropView === "preview";
+  const cropOverlayScaleStyle = {
+    "--batch-crop-stroke": `${3 * zoom}px`,
+    "--batch-crop-offset": `${1.5 * zoom}px`,
+    "--batch-selection-radius": `${5 * zoom}px`,
+    "--batch-handle-stroke": `${3 * zoom}px`,
+    "--batch-handle-offset": `${1.5 * zoom}px`,
+    "--batch-handle-negative-offset": `${-1.5 * zoom}px`,
+    "--batch-handle-hit": `${16 * zoom}px`,
+    "--batch-handle-side-hit": `${44 * zoom}px`,
+    "--batch-handle-length": `${36 * zoom}px`,
+    "--batch-corner-hit": `${32 * zoom}px`,
+    "--batch-corner-length": `${22 * zoom}px`,
+    "--batch-corner-radius": `${5 * zoom}px`,
+  } as React.CSSProperties;
 
   return (
     <Box className={`batch-scan-page${pages.length ? " is-active" : ""}`}>
@@ -530,13 +612,10 @@ export function BatchScanForm() {
                     <Box className="batch-scan-history__meta"><span>{session.page_count} 页</span><span>{session.segments.length} 道</span></Box>
                   </Box>
                   <Button size="small" variant="default" onClick={() => void resumeSession(session)} disabled={isImporting}>继续</Button>
-                  <details className="batch-history-menu">
-                    <summary aria-label="文件菜单"><MoreHorizontal size={16} /></summary>
-                    <button type="button" onClick={() => {
+                  <IconButton icon={Trash2} size="small" variant="invisible" aria-label="删除最近文件" title="删除最近文件" onClick={() => {
                       if (!window.confirm("删除整次批量扫描记录？已生成的任务和题目会保留。")) return;
                       void deleteBatchSession(session.file_hash).then(refreshSavedSessions);
-                    }}><Trash2 size={14} />删除批量扫描记录</button>
-                  </details>
+                    }} />
                 </Box>
               ))}
             </Box>
@@ -561,10 +640,10 @@ export function BatchScanForm() {
                 </Button>
               </>
             )}
-            {!cropConfirmed && cropView === "edit" && <Button variant="default" onClick={() => setCropView("preview")}>检查裁剪</Button>}
+            {!cropConfirmed && cropView === "edit" && <Button variant="default" disabled={cropTooSmall} onClick={() => setCropView("preview")}>检查裁剪</Button>}
             {!cropConfirmed && cropView === "preview" && <Button variant="default" onClick={() => setCropView("edit")}>调整裁剪框</Button>}
             {!cropConfirmed && cropView === "preview" && (
-              <Button variant="primary" onClick={() => {
+              <Button variant="primary" disabled={cropTooSmall} onClick={() => {
                 setCropConfirmed(true);
                 void persistSession([], { crop_rect: crop, crop_confirmed: true }).catch(() => undefined);
               }}><Check size={16} />确认裁剪并开始框题</Button>
@@ -576,8 +655,8 @@ export function BatchScanForm() {
               <aside className="batch-page-rail" aria-label="页面导航">
                 <Text className="batch-rail-title">页面</Text>
                 <nav>{pages.map((page) => (
-                  <button type="button" key={page.id} className={(renderDocument ? visiblePageIndex : activePageIndex) === page.pageIndex ? "is-active" : ""} onClick={() => goToPage(page.pageIndex)}>
-                    <span>{page.pageIndex + 1}</span><small>{page.label}</small>
+                  <button type="button" key={page.id} aria-label={`第 ${page.pageIndex + 1} 页`} className={(renderDocument ? visiblePageIndex : activePageIndex) === page.pageIndex ? "is-active" : ""} onClick={() => goToPage(page.pageIndex)}>
+                    <span>{page.pageIndex + 1}</span>
                   </button>
                 ))}</nav>
               </aside>
@@ -594,11 +673,6 @@ export function BatchScanForm() {
               <div
                 ref={viewportRef}
                 className="batch-document-viewport"
-                onWheel={(event) => {
-                  if (!event.ctrlKey) return;
-                  event.preventDefault();
-                  setZoomAroundPointer(zoom * (event.deltaY > 0 ? 0.9 : 1.1), event.clientX, event.clientY);
-                }}
               >
                 {renderDocument ? (
                   <BatchContinuousSurface
@@ -619,9 +693,13 @@ export function BatchScanForm() {
                     selectionEnabled={cropConfirmed}
                   />
                 ) : (
-                  <div className="batch-crop-editor" style={{ width: `${Math.round(820 * zoom)}px`, aspectRatio: `${pages[activePageIndex].sourceWidth} / ${pages[activePageIndex].sourceHeight}` }}>
+                  <div className={`batch-crop-editor${inverted ? " is-inverted" : ""}`} style={{ ...cropOverlayScaleStyle, width: `${Math.round(820 * zoom)}px`, aspectRatio: `${pages[activePageIndex].sourceWidth} / ${pages[activePageIndex].sourceHeight}` }}>
                     {imageUrls[activePageIndex] ? <img src={imageUrls[activePageIndex]} alt={pages[activePageIndex].label} draggable={false} /> : <Spinner />}
-                    <BatchCropOverlay value={crop} onChange={setCrop} />
+                    <BatchCropOverlay
+                      value={crop}
+                      onChange={setCrop}
+                      onTooSmall={() => notify.error({ title: `裁剪区域过小，宽高至少为页面的 ${Math.round(MIN_CROP_SIZE * 100)}%` })}
+                    />
                   </div>
                 )}
               </div>
@@ -632,16 +710,38 @@ export function BatchScanForm() {
                 <Box className="batch-selection-rail__header"><Text className="batch-rail-title">题目选框</Text><Text>{selections.length}</Text></Box>
                 <div className="batch-selection-list">
                   {selections.map((selection) => (
-                    <button type="button" key={selection.id} className={selection.id === activeSelectionId ? "is-active" : ""} onClick={() => {
-                      setActiveSelectionId(selection.id);
-                      const y = selection.rect.top / Math.max(1, metrics.at(-1)?.documentBottom ?? 1);
-                      if (viewportRef.current) viewportRef.current.scrollTop = y * viewportRef.current.scrollHeight - 80;
-                    }}>
-                      <span className={`batch-selection-list__number is-${selection.status}`}>{selection.questionNo}</span>
-                      <span><strong>第 {selection.slices[0]?.pageIndex + 1}{selection.slices.length > 1 ? `–${selection.slices.at(-1)!.pageIndex + 1}` : ""} 页</strong><small>{selection.status === "pending" ? "待提交" : selection.status === "processing" ? "处理中" : selection.status === "completed" ? "已完成" : selection.error || "失败"}</small></span>
-                      {selection.status === "failed" && selection.taskId && <IconButton icon={RefreshCw} size="small" variant="invisible" aria-label="重试" title="使用同一截图重试" onClick={(event) => { event.stopPropagation(); void retrySelection(selection); }} />}
-                      {selection.status === "completed" && selection.taskId && <IconButton icon={ExternalLink} size="small" variant="invisible" aria-label="打开任务" title="打开任务" onClick={(event) => { event.stopPropagation(); window.open(`/tasks/${selection.taskId}`, "_blank", "noopener,noreferrer"); }} />}
-                    </button>
+                    <div
+                      key={selection.id}
+                      className={`batch-selection-list__item${selection.id === activeSelectionId ? " is-active" : ""}`}
+                    >
+                      <button
+                        type="button"
+                        className="batch-selection-list__primary"
+                        onClick={() => {
+                          setActiveSelectionId(selection.id);
+                          const y = selection.rect.top / Math.max(1, metrics.at(-1)?.documentBottom ?? 1);
+                          if (viewportRef.current) viewportRef.current.scrollTop = y * viewportRef.current.scrollHeight - 80;
+                        }}
+                      >
+                        <span className={`batch-selection-list__number is-${selection.status}`}>{selection.questionNo}</span>
+                        <span><strong>第 {selection.slices[0]?.pageIndex + 1}{selection.slices.length > 1 ? `–${selection.slices.at(-1)!.pageIndex + 1}` : ""} 页</strong><small>{selection.status === "pending" ? "待提交" : selection.status === "processing" ? "处理中" : selection.status === "completed" ? "已完成" : selection.status === "needs_review" ? `需人工复核：${selection.reviewReason ? REVIEW_REASON_LABELS[selection.reviewReason] : "异常"}` : selection.error || "失败"}</small></span>
+                      </button>
+                      <label className="batch-selection-list__review" title="标记或取消人工复核">
+                        <AlertTriangle size={14} aria-hidden="true" />
+                        <select
+                          aria-label={`第 ${selection.questionNo} 题异常状态`}
+                          value={selection.reviewReason ?? ""}
+                          onChange={(event) => void markSelectionReview(selection, event.target.value as SelectionReviewReason | "")}
+                        >
+                          <option value="">无异常</option>
+                          {(Object.keys(REVIEW_REASON_LABELS) as SelectionReviewReason[]).map((reason) => (
+                            <option key={reason} value={reason}>{REVIEW_REASON_LABELS[reason]}</option>
+                          ))}
+                        </select>
+                      </label>
+                      {(selection.status === "failed" || (selection.status === "needs_review" && selection.reviewPreviousStatus === "failed")) && selection.taskId && <IconButton icon={RefreshCw} size="small" variant="invisible" aria-label="重试" title="使用同一截图重试" onClick={() => void retrySelection(selection)} />}
+                      {(selection.status === "completed" || selection.status === "needs_review") && selection.taskId && <IconButton icon={ExternalLink} size="small" variant="invisible" aria-label="打开任务" title="打开任务" onClick={() => window.open(`/tasks/${selection.taskId}`, "_blank", "noopener,noreferrer")} />}
+                    </div>
                   ))}
                   {!selections.length && <Text className="batch-selection-list__empty">在页面上拖动以创建题目选框</Text>}
                 </div>

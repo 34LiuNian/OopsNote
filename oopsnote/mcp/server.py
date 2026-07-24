@@ -32,6 +32,22 @@ from oopsnote.obsidian.syncer import ObsidianSyncer
 # ── Server ───────────────────────────────────────────
 
 mcp = FastMCP("OopsNote", log_level="WARNING")
+INTAKE_REVIEW_REASONS = {
+    "unreadable",
+    "incomplete",
+    "multiple_questions",
+    "other",
+}
+
+
+def _task_metadata_with_review(task: TaskRecord, review_reason: str) -> dict:
+    metadata = dict(task.metadata)
+    metadata.pop("intake_review_reason", None)
+    if review_reason:
+        if review_reason not in INTAKE_REVIEW_REASONS:
+            raise ValueError(f"invalid review_reason: {review_reason}")
+        metadata["intake_review_reason"] = review_reason
+    return metadata
 
 # ── 存储实例（共享） ──────────────────────────────────
 
@@ -149,8 +165,13 @@ def report_task_stage(
 
 
 @mcp.tool()
-def fail_task(task_id: str, error: str, run_id: str = "") -> TaskRecord:
-    """以明确原因终止当前受管 AI 任务。"""
+def fail_task(
+    task_id: str,
+    error: str,
+    run_id: str = "",
+    review_reason: str = "",
+) -> TaskRecord:
+    """以明确原因终止当前受管 AI 任务，可同时标记需人工复核。"""
     task = TASK_STORE.get(task_id)
     if task.active_run_id and task.active_run_id != run_id:
         raise ValueError(f"run_id {run_id} is not active for task {task_id}")
@@ -162,6 +183,7 @@ def fail_task(task_id: str, error: str, run_id: str = "") -> TaskRecord:
         stage_message=error,
         active_run_id=None,
         last_error=error,
+        metadata=_task_metadata_with_review(task, review_reason),
     )
 
 
@@ -171,8 +193,9 @@ def finalize_task(
     problem_json: str,
     run_id: str = "",
     sync_to_obsidian: bool = True,
+    review_reason: str = "",
 ) -> TaskRecord:
-    """校验并原子提交 AI 结果；这是受管流水线唯一允许的最终写入口。"""
+    """校验并原子提交 AI 结果，可同时标记需人工复核。"""
     import json
 
     task = TASK_STORE.get(task_id)
@@ -207,6 +230,7 @@ def finalize_task(
         stage_message="AI 结果已校验并写入",
         active_run_id=None,
         last_error=None,
+        metadata=_task_metadata_with_review(task, review_reason),
     )
     if sync_to_obsidian:
         try:

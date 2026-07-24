@@ -1,4 +1,5 @@
 .batch-continuous-surface { position: relative; flex: 0 0 auto; min-width: 320px; background: #fff; box-shadow: 0 0 0 1px var(--borderColor-default); transform-origin: top center; }
+.batch-continuous-surface.is-inverted { background: #050505; }
 .batch-continuous-pages { position: absolute; inset: 0; display: flex; flex-direction: column; }
 .batch-continuous-page { position: relative; width: 100%; flex: 0 0 auto; overflow: hidden; background: #fff; box-shadow: inset 0 -1px color-mix(in srgb, var(--borderColor-default) 58%, transparent); }
 .batch-continuous-page.is-inverted { background: #050505; }
@@ -6,33 +7,57 @@
 .batch-continuous-page.is-inverted img { filter: invert(1) hue-rotate(180deg); }
 .batch-continuous-page__loading { position: absolute; inset: 0; display: grid; place-items: center; color: var(--fgColor-muted); font-size: 12px; }
 .batch-selection-overlay { position: absolute; z-index: 4; inset: 0; cursor: crosshair; touch-action: none; }
-.batch-selection { position: absolute; z-index: 2; padding: 0; border: 1px solid #8bcf72; border-radius: 0; color: inherit; background: transparent; cursor: pointer; font: inherit; }
-.batch-selection.is-active { z-index: 3; border-color: #11a94f; }
-.batch-selection.is-draft { border: 2px solid #11a94f; background: color-mix(in srgb, #11a94f 6%, transparent); pointer-events: none; }
-.batch-selection.is-processing { border-color: transparent; }
-.batch-selection.is-processing::before { position: absolute; inset: -2px; padding: 2px; background: linear-gradient(90deg, #0ca94f 0 20%, #b9edca 20% 40%, #0ca94f 40% 60%, #b9edca 60% 80%, #0ca94f 80%); background-size: 220% 100%; content: ""; pointer-events: none; -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude; animation: batch-selection-marquee 1.3s linear infinite; }
-.batch-selection.is-completed { border-color: #64748b; }
-.batch-selection.is-failed { border-color: var(--fgColor-danger); }
+.batch-selection { --selection-stroke: var(--batch-selection-stroke, 2px); --selection-offset: var(--batch-selection-offset, 1px); --selection-color: #8bcf72; position: absolute; z-index: 2; padding: 0; border: 0; border-radius: var(--batch-selection-radius, 5px); appearance: none; color: inherit; background: transparent; box-shadow: inset 0 0 0 var(--selection-stroke) var(--selection-color); cursor: pointer; font: inherit; }
+.batch-selection.is-active { --selection-color: #11a94f; z-index: 3; }
+.batch-selection.is-draft { --selection-color: #11a94f; background: color-mix(in srgb, #11a94f 6%, transparent); pointer-events: none; }
+.batch-selection.is-processing { box-shadow: none; }
+.batch-selection.is-processing::before { position: absolute; inset: var(--batch-selection-negative-stroke, -2px); padding: var(--selection-stroke); border-radius: inherit; background: linear-gradient(90deg, #0ca94f 0 20%, #b9edca 20% 40%, #0ca94f 40% 60%, #b9edca 60% 80%, #0ca94f 80%); background-size: 220% 100%; content: ""; pointer-events: none; -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude; animation: batch-selection-marquee 1.3s linear infinite; }
+.batch-selection.is-completed { --selection-color: #64748b; }
+.batch-selection.is-failed { --selection-color: var(--fgColor-danger); }
+.batch-selection.is-needs_review { --selection-color: #d97706; background: color-mix(in srgb, #f59e0b 6%, transparent); }
 .batch-selection__label { position: absolute; top: 3px; left: 3px; display: grid; min-width: 20px; height: 20px; place-items: center; padding: 0 4px; border-radius: 3px; color: #fff; background: #0c7f3e; font-size: 10px; font-weight: 700; line-height: 1; pointer-events: none; }
 .batch-selection.is-completed .batch-selection__label { background: #475569; }
 .batch-selection.is-failed .batch-selection__label { background: var(--fgColor-danger); }
-.batch-selection-handle { position: absolute; z-index: 5; display: block; border-color: #0caf50; pointer-events: auto; }
+.batch-selection.is-needs_review .batch-selection__label { background: #b45309; }
+.batch-selection-handle { position: absolute; z-index: 5; display: block; width: var(--batch-handle-hit, 16px); height: var(--batch-handle-hit, 16px); pointer-events: auto; }
+.batch-selection-handle::before,
+.batch-selection-handle::after { position: absolute; border-radius: 999px; background: #0caf50; content: ""; }
 .batch-selection-handle.is-n,
-.batch-selection-handle.is-s { left: 50%; width: 23%; height: 5px; background: #0caf50; transform: translateX(-50%); cursor: ns-resize; }
-.batch-selection-handle.is-n { top: -3px; }
-.batch-selection-handle.is-s { bottom: -3px; }
+.batch-selection-handle.is-s { left: 50%; width: var(--batch-handle-side-hit, 44px); height: var(--batch-handle-hit, 16px); cursor: ns-resize; }
+.batch-selection-handle.is-n { top: var(--selection-offset); transform: translate(-50%, -50%); }
+.batch-selection-handle.is-s { bottom: var(--selection-offset); transform: translate(-50%, 50%); }
+.batch-selection-handle.is-n::before,
+.batch-selection-handle.is-s::before { top: 50%; left: 50%; width: var(--batch-handle-length, 36px); height: var(--batch-handle-stroke, 3px); transform: translate(-50%, -50%); }
+.batch-selection-handle.is-n::after,
+.batch-selection-handle.is-s::after,
+.batch-selection-handle.is-e::after,
+.batch-selection-handle.is-w::after { display: none; }
 .batch-selection-handle.is-e,
-.batch-selection-handle.is-w { top: 50%; width: 5px; height: 23%; background: #0caf50; transform: translateY(-50%); cursor: ew-resize; }
-.batch-selection-handle.is-e { right: -3px; }
-.batch-selection-handle.is-w { left: -3px; }
+.batch-selection-handle.is-w { top: 50%; width: var(--batch-handle-hit, 16px); height: var(--batch-handle-side-hit, 44px); cursor: ew-resize; }
+.batch-selection-handle.is-e { right: var(--selection-offset); transform: translate(50%, -50%); }
+.batch-selection-handle.is-w { left: var(--selection-offset); transform: translate(-50%, -50%); }
+.batch-selection-handle.is-e::before,
+.batch-selection-handle.is-w::before { top: 50%; left: 50%; width: var(--batch-handle-stroke, 3px); height: var(--batch-handle-length, 36px); transform: translate(-50%, -50%); }
 .batch-selection-handle.is-nw,
 .batch-selection-handle.is-ne,
 .batch-selection-handle.is-se,
-.batch-selection-handle.is-sw { width: 42px; height: 42px; border-style: solid; border-width: 0; }
-.batch-selection-handle.is-nw { top: -3px; left: -3px; border-top-width: 5px; border-left-width: 5px; border-radius: 10px 0 0; cursor: nwse-resize; }
-.batch-selection-handle.is-ne { top: -3px; right: -3px; border-top-width: 5px; border-right-width: 5px; border-radius: 0 10px 0 0; cursor: nesw-resize; }
-.batch-selection-handle.is-se { right: -3px; bottom: -3px; border-right-width: 5px; border-bottom-width: 5px; border-radius: 0 0 10px; cursor: nwse-resize; }
-.batch-selection-handle.is-sw { bottom: -3px; left: -3px; border-bottom-width: 5px; border-left-width: 5px; border-radius: 0 0 0 10px; cursor: nesw-resize; }
+.batch-selection-handle.is-sw { width: var(--batch-corner-hit, 32px); height: var(--batch-corner-hit, 32px); }
+.batch-selection-handle.is-nw { top: var(--selection-offset); left: var(--selection-offset); transform: translate(-50%, -50%); cursor: nwse-resize; }
+.batch-selection-handle.is-ne { top: var(--selection-offset); right: var(--selection-offset); transform: translate(50%, -50%); cursor: nesw-resize; }
+.batch-selection-handle.is-se { right: var(--selection-offset); bottom: var(--selection-offset); transform: translate(50%, 50%); cursor: nwse-resize; }
+.batch-selection-handle.is-sw { bottom: var(--selection-offset); left: var(--selection-offset); transform: translate(-50%, 50%); cursor: nesw-resize; }
+.batch-selection-handle.is-nw::before,
+.batch-selection-handle.is-ne::before,
+.batch-selection-handle.is-se::before,
+.batch-selection-handle.is-sw::before { width: var(--batch-corner-length, 22px); height: var(--batch-corner-length, 22px); border-radius: 0; background: #0caf50; -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude; }
+.batch-selection-handle.is-nw::before { top: 50%; left: 50%; padding: var(--batch-handle-stroke, 3px) 0 0 var(--batch-handle-stroke, 3px); border-radius: var(--batch-corner-radius, 5px) 0 0; transform: translate(var(--batch-handle-negative-offset, -1.5px), var(--batch-handle-negative-offset, -1.5px)); }
+.batch-selection-handle.is-ne::before { top: 50%; right: 50%; padding: var(--batch-handle-stroke, 3px) var(--batch-handle-stroke, 3px) 0 0; border-radius: 0 var(--batch-corner-radius, 5px) 0 0; transform: translate(var(--batch-handle-offset, 1.5px), var(--batch-handle-negative-offset, -1.5px)); }
+.batch-selection-handle.is-se::before { right: 50%; bottom: 50%; padding: 0 var(--batch-handle-stroke, 3px) var(--batch-handle-stroke, 3px) 0; border-radius: 0 0 var(--batch-corner-radius, 5px); transform: translate(var(--batch-handle-offset, 1.5px), var(--batch-handle-offset, 1.5px)); }
+.batch-selection-handle.is-sw::before { bottom: 50%; left: 50%; padding: 0 0 var(--batch-handle-stroke, 3px) var(--batch-handle-stroke, 3px); border-radius: 0 0 0 var(--batch-corner-radius, 5px); transform: translate(var(--batch-handle-negative-offset, -1.5px), var(--batch-handle-offset, 1.5px)); }
+.batch-selection-handle.is-nw::after,
+.batch-selection-handle.is-ne::after,
+.batch-selection-handle.is-se::after,
+.batch-selection-handle.is-sw::after { display: none; }
 .batch-continuous-crosshair { position: absolute; z-index: 10; width: 20px; height: 20px; transform: translate(-50%, -50%); pointer-events: none; }
 .batch-continuous-crosshair::before,
 .batch-continuous-crosshair::after { position: absolute; background: #0caf50; content: ""; }
@@ -40,6 +65,18 @@
 .batch-continuous-crosshair::after { top: 0; left: 9px; width: 2px; height: 20px; }
 .batch-crop-overlay { position: absolute; z-index: 3; inset: 0; cursor: crosshair; touch-action: none; }
 .batch-crop-overlay__shade { display: none; }
-.batch-crop-overlay__rect { position: absolute; border: 3px solid #0ea5e9; background: transparent; box-shadow: 0 0 0 9999px rgb(0 0 0 / 42%); cursor: move; }
+.batch-crop-overlay__rect { --selection-stroke: var(--batch-crop-stroke, 3px); --selection-offset: var(--batch-crop-offset, 1.5px); --crop-frame-color: #0ea5e9; position: absolute; border: 0; border-radius: var(--batch-selection-radius, 5px); background: transparent; box-shadow: inset 0 0 0 var(--selection-stroke) var(--crop-frame-color), 0 0 0 9999px rgb(0 0 0 / 42%); cursor: move; }
+.batch-selection.is-compact-width .batch-selection-handle.is-n,
+.batch-selection.is-compact-width .batch-selection-handle.is-s,
+.batch-crop-overlay__rect.is-compact-width .batch-selection-handle.is-n,
+.batch-crop-overlay__rect.is-compact-width .batch-selection-handle.is-s {
+  display: none;
+}
+.batch-selection.is-compact-height .batch-selection-handle.is-e,
+.batch-selection.is-compact-height .batch-selection-handle.is-w,
+.batch-crop-overlay__rect.is-compact-height .batch-selection-handle.is-e,
+.batch-crop-overlay__rect.is-compact-height .batch-selection-handle.is-w {
+  display: none;
+}
 @keyframes batch-selection-marquee { to { background-position: 220% 0; } }
 @media (prefers-reduced-motion: reduce) { .batch-selection.is-processing::before { animation: none; } }

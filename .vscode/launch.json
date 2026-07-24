@@ -27,7 +27,7 @@
             "name": "OopsNote: Frontend Next.js",
             "type": "node-terminal",
             "request": "launch",
-            "command": "npm run dev -- -p 3000",
+            "command": "npm run dev -- -p 3005",
             "cwd": "${workspaceFolder}\\frontend",
             "serverReadyAction": {
                 "action": "debugWithEdge",
@@ -39,7 +39,7 @@
             "name": "OopsNote: Frontend Browser",
             "type": "pwa-msedge",
             "request": "launch",
-            "url": "http://127.0.0.1:3000",
+            "url": "http://127.0.0.1:3005",
             "webRoot": "${workspaceFolder}\\frontend"
         }
     ],

@@ -90,11 +90,30 @@ export function BatchContinuousSurface({
 }: Props) {
   const metrics = useMemo(() => buildPageMetrics(pages, crop), [crop, pages]);
   const totalHeight = metrics.at(-1)?.documentBottom ?? 0;
+  const overlayScaleStyle = {
+    "--batch-selection-stroke": `${2 * zoom}px`,
+    "--batch-selection-offset": `${zoom}px`,
+    "--batch-selection-negative-stroke": `${-2 * zoom}px`,
+    "--batch-selection-radius": `${5 * zoom}px`,
+    "--batch-handle-stroke": `${3 * zoom}px`,
+    "--batch-handle-offset": `${1.5 * zoom}px`,
+    "--batch-handle-negative-offset": `${-1.5 * zoom}px`,
+    "--batch-handle-hit": `${16 * zoom}px`,
+    "--batch-handle-side-hit": `${44 * zoom}px`,
+    "--batch-handle-length": `${36 * zoom}px`,
+    "--batch-corner-hit": `${32 * zoom}px`,
+    "--batch-corner-length": `${22 * zoom}px`,
+    "--batch-corner-radius": `${5 * zoom}px`,
+  } as React.CSSProperties;
   return (
     <div
-      className="batch-continuous-surface"
+      className={`batch-continuous-surface${inverted ? " is-inverted" : ""}`}
       data-testid="batch-continuous-surface"
-      style={{ width: `${Math.round(820 * zoom)}px`, height: `${Math.round(820 * zoom * totalHeight / 1000)}px` }}
+      style={{
+        ...overlayScaleStyle,
+        width: `${Math.round(820 * zoom)}px`,
+        height: `${Math.round(820 * zoom * totalHeight / 1000)}px`,
+      }}
     >
       <div className="batch-continuous-pages">
         {pages.map((page) => (

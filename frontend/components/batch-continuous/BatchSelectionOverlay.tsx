@@ -10,6 +10,7 @@ import {
 import type { DocumentPoint, PageMetric, ResizeHandle, SelectionModel } from "./batchContinuousTypes";
 
 const HANDLES: ResizeHandle[] = ["nw", "n", "ne", "e", "se", "s", "sw", "w"];
+const COMPACT_HANDLE_THRESHOLD = 64;
 
 type Props = {
   metrics: PageMetric[];
@@ -146,11 +147,13 @@ export function BatchSelectionOverlay({
       {selections.map((selection) => {
         const active = activeSelectionId === selection.id;
         const rect = selection.rect;
+        const compactWidth = rect.right - rect.left < COMPACT_HANDLE_THRESHOLD;
+        const compactHeight = rect.bottom - rect.top < COMPACT_HANDLE_THRESHOLD;
         return (
           <button
             type="button"
             key={selection.id}
-            className={`batch-selection is-${selection.status}${active ? " is-active" : ""}`}
+            className={`batch-selection is-${selection.status}${active ? " is-active" : ""}${compactWidth ? " is-compact-width" : ""}${compactHeight ? " is-compact-height" : ""}`}
             data-selection-id={selection.id}
             onPointerDown={(event) => event.stopPropagation()}
             onClick={(event) => { event.stopPropagation(); onActiveSelectionChange(selection.id); }}
