@@ -97,7 +97,7 @@ class TagStore:
         self,
         dimension: Optional[TagDimension] = None,
         query: Optional[str] = None,
-        limit: int = 50,
+        limit: Optional[int] = 50,
         *,
         subject: Optional[str] = None,
         scope: Optional[str] = None,
@@ -154,7 +154,106 @@ class TagStore:
                     seen_values.add(key)
                     unique.append(item)
             items = unique
+        if limit is None:
+            return items
         return items[:max(1, limit)]
+
+    def ai_values(
+        self,
+        dimension: TagDimension,
+        *,
+        subject: Optional[str] = None,
+        scope: Optional[str] = None,
+    ) -> list[str]:
+        """Return all compact values for a non-knowledge AI tag dimension."""
+
+        if dimension == TagDimension.KNOWLEDGE:
+            raise ValueError("knowledge tags require progressive branch loading")
+        items = self.search(
+            dimension=dimension,
+            limit=None,
+            subject=subject,
+            scope=scope,
+        )
+        return list(dict.fromkeys(item.value for item in items))
+
+    def _knowledge_subject_root(self, subject: str) -> dict[str, Any]:
+        document = self.knowledge_tree(subject)
+        tree = document.get("subjects", {}).get(subject)
+        if not isinstance(tree, dict) or not isinstance(tree.get("root"), dict):
+            raise ValueError(f"knowledge tree is unavailable for subject: {subject}")
+        return tree["root"]
+
+    @staticmethod
+    def _leaf_nodes(node: dict[str, Any], scope: Optional[str]) -> list[dict[str, Any]]:
+        if node.get("is_leaf"):
+            return [node] if not scope or node.get("scope") == scope else []
+        leaves: list[dict[str, Any]] = []
+        for child in node.get("children", []):
+            leaves.extend(TagStore._leaf_nodes(child, scope))
+        return leaves
+
+    def ai_knowledge_branches(
+        self,
+        subject: str,
+        *,
+        scope: Optional[str] = "core",
+    ) -> list[dict[str, Any]]:
+        """Return compact level-one groups and selectable level-two branches."""
+
+        root = self._knowledge_subject_root(subject)
+        groups: list[dict[str, Any]] = []
+        for level_one in root.get("children", []):
+            branches = [
+                {
+                    "id": str(level_two["source_id"]),
+                    "value": str(level_two["title"]),
+                }
+                for level_two in level_one.get("children", [])
+                if self._leaf_nodes(level_two, scope)
+            ]
+            if branches:
+                groups.append({"value": str(level_one["title"]), "children": branches})
+        return groups
+
+    def ai_knowledge_leaves(
+        self,
+        subject: str,
+        branch_ids: list[str],
+        *,
+        scope: Optional[str] = "core",
+    ) -> list[str]:
+        """Return leaf values below one to six selected level-two branches."""
+
+        selected_ids = list(dict.fromkeys(value.strip() for value in branch_ids if value.strip()))
+        if not 1 <= len(selected_ids) <= 6:
+            raise ValueError("branch_ids must contain between 1 and 6 unique level-two IDs")
+
+        root = self._knowledge_subject_root(subject)
+        level_two_by_id = {
+            str(level_two["source_id"]): level_two
+            for level_one in root.get("children", [])
+            for level_two in level_one.get("children", [])
+        }
+        unknown = [branch_id for branch_id in selected_ids if branch_id not in level_two_by_id]
+        if unknown:
+            raise ValueError(f"unknown level-two branch_ids: {', '.join(unknown)}")
+
+        leaves = [
+            leaf
+            for branch_id in selected_ids
+            for leaf in self._leaf_nodes(level_two_by_id[branch_id], scope)
+        ]
+        values = list(dict.fromkeys(str(leaf["title"]) for leaf in leaves))
+        if not values:
+            raise ValueError("selected branches contain no leaf tags in the requested scope")
+        return values
+
+    def knowledge_leaf_values(self, subject: str) -> set[str]:
+        """Return every valid leaf value for managed-AI finalization."""
+
+        root = self._knowledge_subject_root(subject)
+        return {str(node["title"]) for node in self._leaf_nodes(root, scope=None)}
 
     def knowledge_tree(self, subject: Optional[str] = None) -> dict[str, Any]:
         """Return the cleaned tracked knowledge tree, optionally for one subject."""

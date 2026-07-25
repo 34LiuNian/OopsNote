@@ -1,6 +1,7 @@
 """OopsNote Core 测试。"""
 
 import base64
+import json
 import tempfile
 import threading
 from datetime import datetime, timedelta, timezone
@@ -163,6 +164,89 @@ class TestTagStore:
         tag = tags.upsert(TagDimension.KNOWLEDGE, "要删除的标签")
         assert tags.delete(tag.id)
         assert not tags.delete("nonexistent")
+
+    def test_ai_progressively_loads_up_to_six_branches_and_only_leaves(self, tmp_path):
+        def leaf(node_id, title, scope="core"):
+            return {
+                "source_id": node_id,
+                "title": title,
+                "scope": scope,
+                "is_leaf": True,
+                "children": [],
+            }
+
+        level_two = [
+            {
+                "source_id": f"branch-{index}",
+                "title": f"二级分支{index}",
+                "scope": "core",
+                "is_leaf": False,
+                "children": [leaf(f"leaf-{index}", f"叶子标签{index}")],
+            }
+            for index in range(7)
+        ]
+        level_two[0]["children"].append(leaf("competition", "竞赛叶子", "competition"))
+        level_two[6]["is_leaf"] = True
+        level_two[6]["children"] = []
+        tree_path = tmp_path / "knowledge_trees.json"
+        tree_path.write_text(
+            json.dumps(
+                {
+                    "subjects": {
+                        "math": {
+                            "root": {
+                                "source_id": "root",
+                                "title": "数学",
+                                "scope": "core",
+                                "is_leaf": False,
+                                "children": [
+                                    {
+                                        "source_id": "level-one",
+                                        "title": "一级目录",
+                                        "scope": "core",
+                                        "is_leaf": False,
+                                        "children": level_two,
+                                    }
+                                ],
+                            }
+                        }
+                    }
+                },
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
+        tags = TagStore(
+            user_path=tmp_path / "tags_user.json",
+            builtin_path=tmp_path / "tags_builtin.json",
+            tree_path=tree_path,
+        )
+
+        groups = tags.ai_knowledge_branches("math", scope="core")
+        values = tags.ai_knowledge_leaves(
+            "math",
+            [f"branch-{index}" for index in range(6)],
+            scope="core",
+        )
+
+        assert groups == [{
+            "value": "一级目录",
+            "children": [
+                {"id": f"branch-{index}", "value": f"二级分支{index}"}
+                for index in range(7)
+            ],
+        }]
+        assert values == [f"叶子标签{index}" for index in range(6)]
+        assert "竞赛叶子" not in values
+        assert "竞赛叶子" in tags.knowledge_leaf_values("math")
+        assert tags.ai_knowledge_leaves("math", ["branch-6"]) == ["二级分支6"]
+        with pytest.raises(ValueError, match="between 1 and 6"):
+            tags.ai_knowledge_leaves(
+                "math",
+                [f"branch-{index}" for index in range(7)],
+            )
+        with pytest.raises(ValueError, match="unknown level-two"):
+            tags.ai_knowledge_leaves("math", ["level-one"])
 
     def test_instances_serialize_writes_to_shared_file(self, tmp_path):
         user_path = tmp_path / "tags_user.json"

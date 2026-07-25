@@ -353,6 +353,61 @@ class TagsResponse(BaseModel):
     items: list[TagItem]
 
 
+# ── 试卷草稿 ──────────────────────────────────────────
+
+class PaperDraftItem(BaseModel):
+    """A problem reference plus paper-local layout properties."""
+
+    id: str = Field(default_factory=lambda: uuid4().hex)
+    task_id: str
+    problem_id: str
+    question_type: str
+    difficulty_coefficient: Optional[float] = Field(default=None, ge=0, le=1)
+    points: Optional[float] = Field(default=None, ge=0)
+    answer_space: str = "standard"
+
+
+class PaperDraft(BaseModel):
+    """A persistent composition that keeps Core problems as its only content source."""
+
+    id: str = Field(default_factory=lambda: uuid4().hex)
+    title: str = "未命名试卷"
+    subject: str = "math"
+    knowledge_tags: list[str] = Field(default_factory=list)
+    knowledge_node_ids: list[str] = Field(default_factory=list)
+    difficulty_preset: str = "medium"
+    difficulty_distribution: dict[str, int] = Field(
+        default_factory=lambda: {"easy": 50, "medium": 45, "hard": 5}
+    )
+    requested_counts: dict[str, int] = Field(default_factory=dict)
+    items: list[PaperDraftItem] = Field(default_factory=list)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class PaperDraftCreateRequest(BaseModel):
+    title: str = "未命名试卷"
+    subject: str = "math"
+    knowledge_tags: list[str] = Field(default_factory=list)
+    knowledge_node_ids: list[str] = Field(default_factory=list)
+    difficulty_preset: str = "medium"
+    difficulty_distribution: dict[str, int] = Field(
+        default_factory=lambda: {"easy": 50, "medium": 45, "hard": 5}
+    )
+    requested_counts: dict[str, int] = Field(default_factory=dict)
+    auto_select: bool = True
+
+
+class PaperDraftUpdateRequest(BaseModel):
+    title: Optional[str] = None
+    knowledge_tags: Optional[list[str]] = None
+    knowledge_node_ids: Optional[list[str]] = None
+    difficulty_preset: Optional[str] = None
+    difficulty_distribution: Optional[dict[str, int]] = None
+    requested_counts: Optional[dict[str, int]] = None
+    items: Optional[list[PaperDraftItem]] = None
+
+
 # ── 搜索 ──────────────────────────────────────────────
 
 class SearchQuery(BaseModel):

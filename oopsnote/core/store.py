@@ -17,6 +17,9 @@ from uuid import uuid4
 from .models import (
     BatchSessionRecord,
     BatchSessionUpdateRequest,
+    PaperDraft,
+    PaperDraftCreateRequest,
+    PaperDraftUpdateRequest,
     Problem,
     RunStatus,
     StageRun,
@@ -387,3 +390,79 @@ class BatchSessionStore:
                 raise KeyError(file_hash)
             self._write(records)
             return record
+
+
+class PaperDraftStore:
+    """One atomic JSON document per persistent paper draft."""
+
+    _lock = threading.RLock()
+
+    def __init__(self, base_dir: Path) -> None:
+        self.base_dir = base_dir
+        self.base_dir.mkdir(parents=True, exist_ok=True)
+
+    def _path(self, draft_id: str) -> Path:
+        return self.base_dir / f"{draft_id}.json"
+
+    def _write(self, draft: PaperDraft) -> None:
+        path = self._path(draft.id)
+        tmp = path.with_name(f"{path.name}.{uuid4().hex}.tmp")
+        try:
+            tmp.write_text(
+                draft.model_dump_json(indent=2, ensure_ascii=False),
+                encoding="utf-8",
+            )
+            _replace_with_retry(tmp, path)
+        finally:
+            if tmp.exists():
+                tmp.unlink()
+
+    def create(self, payload: PaperDraftCreateRequest, *, items=None) -> PaperDraft:
+        with self._lock:
+            draft = PaperDraft(
+                title=payload.title.strip() or "未命名试卷",
+                subject=payload.subject,
+                knowledge_tags=payload.knowledge_tags,
+                knowledge_node_ids=payload.knowledge_node_ids,
+                difficulty_preset=payload.difficulty_preset,
+                difficulty_distribution=payload.difficulty_distribution,
+                requested_counts=payload.requested_counts,
+                items=list(items or []),
+            )
+            self._write(draft)
+            return draft
+
+    def get(self, draft_id: str) -> PaperDraft:
+        path = self._path(draft_id)
+        if not path.exists():
+            raise KeyError(draft_id)
+        return PaperDraft.model_validate_json(_read_text_with_retry(path))
+
+    def list_all(self) -> list[PaperDraft]:
+        drafts: list[PaperDraft] = []
+        for path in self.base_dir.glob("*.json"):
+            try:
+                drafts.append(PaperDraft.model_validate_json(_read_text_with_retry(path)))
+            except Exception:
+                continue
+        return sorted(drafts, key=lambda draft: draft.updated_at, reverse=True)
+
+    def update(self, draft_id: str, payload: PaperDraftUpdateRequest) -> PaperDraft:
+        with self._lock:
+            current = self.get(draft_id)
+            update = payload.model_dump(exclude_unset=True, exclude_none=True)
+            updated = PaperDraft.model_validate(
+                {
+                    **current.model_dump(),
+                    **update,
+                    "updated_at": datetime.now(timezone.utc),
+                }
+            )
+            self._write(updated)
+            return updated
+
+    def delete(self, draft_id: str) -> PaperDraft:
+        with self._lock:
+            draft = self.get(draft_id)
+            self._path(draft_id).unlink()
+            return draft

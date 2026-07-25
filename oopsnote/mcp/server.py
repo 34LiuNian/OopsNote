@@ -7,7 +7,7 @@ FastMCP stdio server，暴露 CRUD 工具供 Hermes skill 调用。
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 from mcp.server.fastmcp import FastMCP
 
@@ -223,6 +223,17 @@ def finalize_task(
     subject = task.subject
     if not subject or subject == "auto":
         subject = problem.subject
+    if problem.knowledge_points:
+        valid_leaf_values = TAG_STORE.knowledge_leaf_values(subject)
+        invalid_tags = list(dict.fromkeys(
+            value for value in problem.knowledge_points
+            if value not in valid_leaf_values
+        ))
+        if invalid_tags:
+            raise ValueError(
+                "knowledge_points must contain only knowledge-tree leaf tags; "
+                f"invalid: {', '.join(invalid_tags)}"
+            )
     completed = TASK_STORE.update(
         task_id,
         subject=subject,
@@ -272,23 +283,44 @@ def set_task_problem(
 
 @mcp.tool()
 def list_tags(
-    dimension: Optional[str] = None,
-    query: Optional[str] = None,
-    limit: int = 50,
+    dimension: str,
     subject: Optional[str] = None,
     scope: Optional[str] = "core",
-) -> list[TagItem]:
-    """列出标签，可按维度、查询词、学科和知识范围过滤。"""
-    dim = None
-    if dimension:
-        dim = TagDimension(dimension)
-    return TAG_STORE.search(
-        dimension=dim,
-        query=query,
-        limit=limit,
-        subject=subject,
-        scope=scope,
-    )
+    branch_ids: Optional[list[str]] = None,
+) -> dict[str, Any]:
+    """渐进列出 AI 标签；知识维度先列分支，再按最多六个分支列叶子。"""
+    dim = TagDimension(dimension)
+    if dim == TagDimension.KNOWLEDGE:
+        if not subject:
+            raise ValueError("subject is required when listing knowledge tags")
+        if branch_ids is None:
+            return {
+                "mode": "branches",
+                "max_branches": 6,
+                "items": TAG_STORE.ai_knowledge_branches(subject, scope=scope),
+            }
+        selected_branch_ids = list(dict.fromkeys(
+            value.strip() for value in branch_ids if value.strip()
+        ))
+        return {
+            "mode": "leaves",
+            "branch_ids": selected_branch_ids,
+            "items": TAG_STORE.ai_knowledge_leaves(
+                subject,
+                selected_branch_ids,
+                scope=scope,
+            ),
+        }
+    if branch_ids is not None:
+        raise ValueError("branch_ids are only supported for knowledge tags")
+    return {
+        "mode": "values",
+        "items": TAG_STORE.ai_values(
+            dimension=dim,
+            subject=subject,
+            scope=scope,
+        ),
+    }
 
 
 @mcp.tool()
@@ -298,9 +330,12 @@ def create_tag(
     aliases: Optional[list[str]] = None,
     subject: Optional[str] = None,
 ) -> TagItem:
-    """创建或更新标签。已存在则合并 aliases。"""
+    """创建或更新非知识标签。已存在则合并 aliases。"""
+    dim = TagDimension(dimension)
+    if dim == TagDimension.KNOWLEDGE:
+        raise ValueError("managed AI cannot create knowledge tags")
     return TAG_STORE.upsert(
-        dimension=TagDimension(dimension),
+        dimension=dim,
         value=value,
         aliases=aliases or [],
         subject=subject,

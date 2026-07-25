@@ -160,6 +160,32 @@ html[data-oopsnote-batch-scan="active"] .oops-page-enter {
   height: 100%;
 }
 
+html[data-oopsnote-paper-compose="active"],
+html[data-oopsnote-paper-compose="active"] body {
+  overflow: hidden;
+}
+
+html[data-oopsnote-paper-compose="active"] .app-sidebar,
+html[data-oopsnote-paper-compose="active"] .oops-glass,
+html[data-oopsnote-paper-compose="active"] .oops-mobile-tabbar {
+  display: none !important;
+}
+
+html[data-oopsnote-paper-compose="active"] main {
+  height: 100dvh !important;
+  min-height: 0 !important;
+  max-height: 100dvh;
+  flex: 0 0 100dvh !important;
+  padding: 0 !important;
+  overflow: hidden;
+}
+
+html[data-oopsnote-paper-compose="active"] .oops-page-enter {
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
 /* Application navigation ------------------------------------------------ */
 .app-sidebar {
   position: sticky;

@@ -6,17 +6,27 @@
 
 ### 1. 查询已有标签
 
-受管 Web 模式调用 `mcp__oopsnote_pipeline__list_tags`，交互模式调用 `mcp__oopsnote__list_tags` 获取标签候选：
+受管 Web 模式调用 `mcp__oopsnote_pipeline__list_tags`，交互模式调用 `mcp__oopsnote__list_tags` 渐进获取 AI 可选标签：
 
 ```python
-# 获取知识点标签
-mcp__oopsnote_pipeline__list_tags(dimension="knowledge", query="函数", subject="math", scope="core", limit=20)
+# 第一次：获取一级分组和二级分支
+branches = mcp__oopsnote_pipeline__list_tags(
+    dimension="knowledge", subject="math", scope="core"
+)
+
+# 从 branches.items 中选择 1-6 个二级分支 ID，再获取对应叶子标签
+leaves = mcp__oopsnote_pipeline__list_tags(
+    dimension="knowledge",
+    subject="math",
+    scope="core",
+    branch_ids=["27942", "27943"]
+)
 
 # 获取错因标签
-mcp__oopsnote_pipeline__list_tags(dimension="error", query="定义域", limit=20)
+mcp__oopsnote_pipeline__list_tags(dimension="error", subject="math")
 ```
 
-**优先使用已有标签**，避免创建同义标签。仅当确实没有匹配时才创建新的。
+知识点必须从第二次调用返回的 `mode="leaves"` 的 `items` 中选择。最多传 6 个二级分支 ID；不要传一级分组，也不要自由创建知识标签。
 
 ### 2. 分析题目
 
@@ -32,9 +42,9 @@ mcp__oopsnote_pipeline__list_tags(dimension="error", query="定义域", limit=20
 
 ```python
 mcp__oopsnote_pipeline__create_tag(
-    dimension="knowledge",
-    value="二次函数",
-    aliases=["一元二次函数", "二次函数图像"],
+    dimension="error",
+    value="忽略定义域",
+    aliases=["定义域遗忘", "忘记定义域限制"],
     subject="math"
 )
 ```
@@ -43,7 +53,7 @@ mcp__oopsnote_pipeline__create_tag(
 
 ```json
 {
-  "knowledge_points": ["二次函数", "最值问题", "分类讨论"],
+  "knowledge_points": ["判断元素能否构成集合"],
   "error_hypothesis": ["忽略定义域"],
   "difficulty": "中等"
 }
@@ -53,4 +63,4 @@ mcp__oopsnote_pipeline__create_tag(
 - `knowledge_points` 用标准术语，不超过 5 个
 - `error_hypothesis` 要具体（"忽略定义域" ✅ / "粗心" ❌）
 - 难度用中文：`简单` / `中等` / `较难`
-- 先查已有标签，后创建新标签
+- 最多选择 6 个二级分支，知识点只从随后加载的叶子标签中选择

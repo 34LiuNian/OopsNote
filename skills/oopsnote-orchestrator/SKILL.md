@@ -25,7 +25,7 @@ metadata:
 3. OCR 的 `review_reason` 为 `unreadable` 或 `incomplete`，或 `uncertain_regions` 非空且影响题干、选项、条件或图形时，调用 `fail_task(review_reason=...)`，不得补写猜测内容。若 `review_reason="multiple_questions"`，只继续处理 OCR 返回的第一道完整题目，不得创建第二个任务。
 4. 调用 `report_task_stage(stage="solving", run_id=run_id)`，按 `oopsnote-solve-problem` 生成解答。
 5. 调用 `report_task_stage(stage="verifying", run_id=run_id)`。独立检查答案、题设条件、定义域、单位、选项映射和题图一致性；再检查 `answer` 只含最终结论，证明、推导、理由和计算过程全部位于 `explanation`，修正后再继续。
-6. 调用 `report_task_stage(stage="tagging", run_id=run_id)`，按 `oopsnote-tag-problem` 先召回已有标签再排序；只保留直接考查且解答不可绕开的核心知识点，选择题不得从干扰项扩展标签。
+6. 调用 `report_task_stage(stage="tagging", run_id=run_id)`，按 `oopsnote-tag-problem` 先选择最多 6 个二级分支，再加载并选择叶子标签；只保留直接考查且解答不可绕开的核心知识点，选择题不得从干扰项扩展标签。
 7. 调用 `report_task_stage(stage="finalizing", run_id=run_id)`，将唯一的完整 `Problem` 对象 JSON 字符串传入 OopsNote 的 `finalize_task(task_id, problem_json, run_id=run_id, review_reason=...)` 工具。OCR 无异常时 `review_reason` 传空字符串；有 `multiple_questions` 或 `other` 时原样传递。禁止提交数组或多道独立题目。
 
 ## OopsMark v1 写入契约

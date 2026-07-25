@@ -16,7 +16,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from oopsnote.ai import HermesRunner, PiRpcBackend, PiRpcRunner
-from oopsnote.api.routes import batch, catalog, tasks
+from oopsnote.api.routes import batch, catalog, papers, tasks
 from oopsnote.api.schemas import TagInput, TagRenameInput, UploadRequest
 from oopsnote.catalog import KNOWLEDGE_TAGS_PATH, KNOWLEDGE_TREES_PATH
 from oopsnote.core import (
@@ -25,6 +25,7 @@ from oopsnote.core import (
     BatchSessionStore,
     BatchSessionUpdateRequest,
     Problem,
+    PaperDraftStore,
     RunStore,
     TagStore,
     TaskRecord,
@@ -46,6 +47,7 @@ BATCH_SESSION_STORE = BatchSessionStore(
     STORAGE_DIR / "settings" / "batch_sessions.json"
 )
 RUN_STORE = RunStore(STORAGE_DIR / "runs")
+PAPER_DRAFT_STORE = PaperDraftStore(STORAGE_DIR / "papers")
 MCP_HTTP_RUNTIME = SharedMcpHttpRuntime()
 
 
@@ -382,6 +384,7 @@ def health() -> dict[str, Any]:
 app.include_router(tasks.router)
 app.include_router(batch.router)
 app.include_router(catalog.router)
+app.include_router(papers.router)
 
 
 __all__ = [
@@ -389,6 +392,7 @@ __all__ = [
     "BATCH_SESSION_STORE",
     "HERMES_RUNNER",
     "PI_RUNNER",
+    "PAPER_DRAFT_STORE",
     "RUN_STORE",
     "STORAGE_DIR",
     "TAG_STORE",

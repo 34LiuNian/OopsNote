@@ -18,7 +18,8 @@ const NAV_ITEMS = [
   { href: "/", label: "新建题目", icon: PlusIcon, section: "main" },
   { href: "/batch-segment", label: "批量扫描", icon: ScanIcon, section: "main" },
   { href: "/library", label: "题库", icon: RepoIcon, section: "main" },
-  { href: "/paper-builder", label: "组卷", icon: ChecklistIcon, section: "main" },
+  { href: "/papers/new", label: "组卷", icon: ChecklistIcon, section: "main" },
+  { href: "/paper-builder", label: "快速重练", icon: BookIcon, section: "main" },
   { href: "/debug", label: "渲染调试", icon: BookIcon, section: "tools" },
 ];
 
@@ -31,6 +32,7 @@ export function Sidebar() {
 
   const isActive = (href: string) => {
     if (href === "/") return pathname === "/";
+    if (href === "/papers/new") return pathname.startsWith("/papers");
     return pathname.startsWith(href);
   };
 

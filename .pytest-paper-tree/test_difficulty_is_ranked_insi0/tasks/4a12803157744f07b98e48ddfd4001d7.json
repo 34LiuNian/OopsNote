@@ -1,0 +1,39 @@
+{
+  "id": "4a12803157744f07b98e48ddfd4001d7",
+  "subject": "math",
+  "status": "pending",
+  "problem": {
+    "id": "a2068f98c9d249c29eb2c414541f4c0a",
+    "subject": "math",
+    "question_type": "解答题",
+    "content_format": "legacy-markdown-latex",
+    "problem_text": "第 ? 题",
+    "options": [],
+    "answer": "",
+    "short_answer": "",
+    "explanation": "",
+    "difficulty": null,
+    "has_diagram": false,
+    "knowledge_points": [
+      "函数"
+    ],
+    "error_hypothesis": [],
+    "source": "",
+    "source_page": null,
+    "created_at": "2026-07-25T01:49:40.313881Z"
+  },
+  "asset_path": null,
+  "metadata": {
+    "question_no": null,
+    "trace": {
+      "kind": "batch_segment",
+      "question_no": null
+    }
+  },
+  "created_at": "2026-07-25T01:49:40.298858Z",
+  "updated_at": "2026-07-25T01:49:40.314870Z",
+  "last_error": null,
+  "stage": null,
+  "stage_message": null,
+  "active_run_id": null
+}

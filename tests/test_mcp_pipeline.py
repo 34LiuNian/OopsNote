@@ -29,7 +29,7 @@ def valid_problem():
         "short_answer": "$x=1$",
         "explanation": "移项得 $x=1$。",
         "difficulty": "简单",
-        "knowledge_points": ["一元一次方程"],
+        "knowledge_points": ["判断元素能否构成集合"],
         "error_hypothesis": [],
     }
 
@@ -105,3 +105,66 @@ def test_fail_task_persists_structured_review_reason(tmp_path, monkeypatch):
 
     with pytest.raises(ValueError, match="invalid review_reason"):
         server.fail_task(task.id, "bad", review_reason="unsupported")
+
+
+def test_ai_tag_tool_requires_subject_for_knowledge(tmp_path, monkeypatch):
+    configure_stores(tmp_path, monkeypatch)
+
+    with pytest.raises(ValueError, match="subject is required"):
+        server.list_tags(dimension="knowledge")
+
+
+def test_ai_tag_tool_progressively_returns_branches_then_leaves(tmp_path, monkeypatch):
+    configure_stores(tmp_path, monkeypatch)
+
+    catalog = server.list_tags(dimension="knowledge", subject="math")
+    branch_ids = [
+        child["id"]
+        for group in catalog["items"]
+        for child in group["children"]
+    ]
+    leaves = server.list_tags(
+        dimension="knowledge",
+        subject="math",
+        branch_ids=branch_ids[:6],
+    )
+
+    assert catalog["mode"] == "branches"
+    assert catalog["max_branches"] == 6
+    assert leaves["mode"] == "leaves"
+    assert leaves["items"]
+    assert all(isinstance(value, str) for value in leaves["items"])
+    with pytest.raises(ValueError, match="between 1 and 6"):
+        server.list_tags(
+            dimension="knowledge",
+            subject="math",
+            branch_ids=branch_ids[:7],
+        )
+
+
+def test_finalize_rejects_non_leaf_knowledge_tag(tmp_path, monkeypatch):
+    task_store = configure_stores(tmp_path, monkeypatch)
+    task = task_store.create(TaskCreateRequest(subject="math"))
+    task_store.update(task.id, active_run_id="run-1")
+    problem = valid_problem()
+    problem["knowledge_points"] = ["集合"]
+
+    with pytest.raises(ValueError, match="only knowledge-tree leaf tags"):
+        server.finalize_task(
+            task.id,
+            json.dumps(problem, ensure_ascii=False),
+            run_id="run-1",
+            sync_to_obsidian=False,
+        )
+
+
+def test_managed_ai_cannot_create_knowledge_tag(tmp_path, monkeypatch):
+    configure_stores(tmp_path, monkeypatch)
+
+    with pytest.raises(ValueError, match="cannot create knowledge tags"):
+        server.create_tag("knowledge", "自由生成标签", subject="math")
+
+    server.create_tag("error", "忽略约束条件", subject="math")
+    response = server.list_tags("error", subject="math")
+    assert response["mode"] == "values"
+    assert "忽略约束条件" in response["items"]

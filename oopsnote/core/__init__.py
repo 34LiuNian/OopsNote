@@ -11,6 +11,10 @@ from .models import (
     BatchSessionRecord,
     BatchSessionUpdateRequest,
     ContentFormat,
+    PaperDraft,
+    PaperDraftCreateRequest,
+    PaperDraftItem,
+    PaperDraftUpdateRequest,
     Problem,
     QuestionType,
     RunStatus,
@@ -28,7 +32,7 @@ from .models import (
     TaskStatus,
 )
 from .search import Searcher
-from .store import BatchSessionStore, RunStore, TaskStore
+from .store import BatchSessionStore, PaperDraftStore, RunStore, TaskStore
 from .tags import TagStore
 
 __all__ = [
@@ -40,6 +44,11 @@ __all__ = [
     "BatchSessionStore",
     "BatchSessionUpdateRequest",
     "ContentFormat",
+    "PaperDraft",
+    "PaperDraftCreateRequest",
+    "PaperDraftItem",
+    "PaperDraftStore",
+    "PaperDraftUpdateRequest",
     "Problem",
     "QuestionType",
     "RunStatus",

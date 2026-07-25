@@ -4,6 +4,7 @@ import type {
   TagDimensionsResponse,
   TagDimensionsUpdateRequest,
   TagsResponse,
+  KnowledgeTreeResponse,
 } from "../../types/api";
 
 export async function getTagDimensions(): Promise<TagDimensionsResponse> {
@@ -35,6 +36,11 @@ export async function searchTags(params: {
   if (params.scope) sp.set("scope", params.scope);
   sp.set("limit", String(params.limit ?? 100));
   return fetchJson<TagsResponse>(`/tags?${sp.toString()}`);
+}
+
+export async function getKnowledgeTree(subject: string): Promise<KnowledgeTreeResponse> {
+  const sp = new URLSearchParams({ subject });
+  return fetchJson<KnowledgeTreeResponse>(`/tags/tree?${sp.toString()}`);
 }
 
 export async function createTag(payload: {

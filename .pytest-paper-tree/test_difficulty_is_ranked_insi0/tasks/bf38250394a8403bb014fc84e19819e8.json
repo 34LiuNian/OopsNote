@@ -1,0 +1,40 @@
+{
+  "id": "bf38250394a8403bb014fc84e19819e8",
+  "subject": "math",
+  "status": "pending",
+  "problem": {
+    "id": "4f1d53fc523d46f7acaf108b3063b6ec",
+    "subject": "math",
+    "question_type": "填空题",
+    "content_format": "legacy-markdown-latex",
+    "problem_text": "第 4 题",
+    "options": [],
+    "answer": "",
+    "short_answer": "",
+    "explanation": "",
+    "difficulty": null,
+    "has_diagram": false,
+    "knowledge_points": [
+      "函数"
+    ],
+    "error_hypothesis": [],
+    "source": "",
+    "source_page": null,
+    "created_at": "2026-07-25T01:49:40.291839Z"
+  },
+  "asset_path": null,
+  "metadata": {
+    "question_no": "4",
+    "trace": {
+      "kind": "batch_segment",
+      "question_no": 4,
+      "source_file_hash": "source-1"
+    }
+  },
+  "created_at": "2026-07-25T01:49:40.283777Z",
+  "updated_at": "2026-07-25T01:49:40.291839Z",
+  "last_error": null,
+  "stage": null,
+  "stage_message": null,
+  "active_run_id": null
+}

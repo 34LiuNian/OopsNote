@@ -150,6 +150,62 @@ export interface ProblemsResponse {
   items: ProblemSummary[];
 }
 
+export interface KnowledgeTreeNode {
+  id: string;
+  source_id?: string | null;
+  parent_id?: string | null;
+  title: string;
+  depth: number;
+  scope?: string | null;
+  selectable: boolean;
+  is_leaf: boolean;
+  children: KnowledgeTreeNode[];
+}
+
+export interface KnowledgeTreeResponse {
+  schema_version: string;
+  subjects: Record<string, {
+    subject: string;
+    subject_label: string;
+    root: KnowledgeTreeNode;
+  }>;
+}
+
+export type DifficultyBand = "easy" | "medium" | "hard";
+
+export interface PaperDraftItem {
+  id: string;
+  task_id: string;
+  problem_id: string;
+  question_type: string;
+  difficulty_coefficient?: number | null;
+  points?: number | null;
+  answer_space: string;
+  problem?: (ProblemSummary & { difficulty_coefficient?: number | null }) | null;
+}
+
+export interface PaperDraft {
+  id: string;
+  title: string;
+  subject: string;
+  knowledge_tags: string[];
+  knowledge_node_ids: string[];
+  difficulty_preset: string;
+  difficulty_distribution: Record<DifficultyBand, number>;
+  requested_counts: Record<string, number>;
+  items: PaperDraftItem[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PaperDraftResponse {
+  paper: PaperDraft;
+}
+
+export interface PaperDraftsResponse {
+  items: PaperDraft[];
+}
+
 export interface ModelSummary {
   id: string;
   provider?: string | null;
