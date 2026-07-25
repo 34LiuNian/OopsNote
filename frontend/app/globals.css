@@ -145,9 +145,17 @@ html[data-oopsnote-batch-scan="active"] body {
 }
 
 html[data-oopsnote-batch-scan="active"] .app-sidebar,
+html[data-oopsnote-batch-scan="active"] .oops-titlebar,
 html[data-oopsnote-batch-scan="active"] .oops-glass,
 html[data-oopsnote-batch-scan="active"] .oops-mobile-tabbar {
   display: none !important;
+}
+
+html[data-oopsnote-batch-scan="active"] .oops-app-body,
+html[data-oopsnote-batch-scan="active"] .oops-content-surface {
+  min-height: 100dvh;
+  border: 0;
+  border-radius: 0;
 }
 
 html[data-oopsnote-batch-scan="active"] main {
@@ -166,9 +174,17 @@ html[data-oopsnote-paper-compose="active"] body {
 }
 
 html[data-oopsnote-paper-compose="active"] .app-sidebar,
+html[data-oopsnote-paper-compose="active"] .oops-titlebar,
 html[data-oopsnote-paper-compose="active"] .oops-glass,
 html[data-oopsnote-paper-compose="active"] .oops-mobile-tabbar {
   display: none !important;
+}
+
+html[data-oopsnote-paper-compose="active"] .oops-app-body,
+html[data-oopsnote-paper-compose="active"] .oops-content-surface {
+  min-height: 100dvh;
+  border: 0;
+  border-radius: 0;
 }
 
 html[data-oopsnote-paper-compose="active"] main {
@@ -187,16 +203,83 @@ html[data-oopsnote-paper-compose="active"] .oops-page-enter {
 }
 
 /* Application navigation ------------------------------------------------ */
-.app-sidebar {
+.oops-app-shell {
+  --oops-titlebar-height: 44px;
+  display: flex;
+  min-height: 100vh;
+  flex-direction: column;
+  background: var(--sidebar-bg);
+}
+
+.oops-titlebar {
   position: sticky;
   top: 0;
+  z-index: 30;
+  display: flex;
+  height: var(--oops-titlebar-height);
+  min-height: var(--oops-titlebar-height);
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 14px;
+  color: var(--sidebar-text);
+  background: var(--sidebar-bg);
+}
+
+.oops-titlebar__sidebar-toggle {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  place-items: center;
+  border: 0;
+  border-radius: 6px;
+  color: var(--sidebar-text);
+  background: transparent;
+  cursor: pointer;
+  transition: color var(--oops-transition-fast), background-color var(--oops-transition-fast);
+}
+
+.oops-titlebar__sidebar-toggle:hover {
+  color: var(--sidebar-text-strong);
+  background: var(--sidebar-hover);
+}
+
+.oops-titlebar__sidebar-toggle:focus-visible {
+  outline: 2px solid var(--fgColor-accent);
+  outline-offset: 2px;
+}
+
+.oops-titlebar__mobile-brand { display: none; }
+
+.oops-app-body {
+  display: flex;
+  min-width: 0;
+  min-height: calc(100dvh - var(--oops-titlebar-height));
+  flex: 1;
+  align-items: stretch;
+}
+
+.oops-content-surface {
+  display: flex;
+  min-width: 0;
+  min-height: calc(100dvh - var(--oops-titlebar-height));
+  flex: 1;
+  flex-direction: column;
+  border-top: 1px solid var(--sidebar-border);
+  border-left: 1px solid var(--sidebar-border);
+  border-radius: 16px 0 0 0;
+  background: var(--bgColor-default);
+}
+
+.app-sidebar {
+  position: sticky;
+  top: var(--oops-titlebar-height);
   display: flex;
   width: 208px;
-  height: 100vh;
+  height: calc(100dvh - var(--oops-titlebar-height));
   flex: 0 0 208px;
   flex-direction: column;
   overflow: hidden;
-  border-right: 1px solid var(--sidebar-border);
   color: var(--sidebar-text);
   background: var(--sidebar-bg);
   transition: width var(--oops-transition-normal), flex-basis var(--oops-transition-normal);
@@ -204,25 +287,19 @@ html[data-oopsnote-paper-compose="active"] .oops-page-enter {
 
 .app-sidebar.is-collapsed { width: 58px; flex-basis: 58px; }
 
-.app-sidebar__brand,
-.app-sidebar__collapse {
+.app-sidebar__brand {
   display: flex;
   width: 100%;
+  min-height: 58px;
   align-items: center;
-  border: 0;
-  color: inherit;
-  background: transparent;
-  font: inherit;
-  cursor: pointer;
-}
-
-.app-sidebar__brand {
-  min-height: 48px;
   gap: 10px;
   padding: 0 16px;
-  border-bottom: 1px solid var(--sidebar-border);
+  border: 0;
   color: var(--sidebar-text-strong);
+  background: transparent;
+  font: inherit;
   text-align: left;
+  text-decoration: none;
 }
 
 .app-sidebar__brand p {
@@ -266,16 +343,6 @@ html[data-oopsnote-paper-compose="active"] .oops-page-enter {
 .app-sidebar__divider { height: 1px; margin: 9px 2px 7px; background: var(--sidebar-border); }
 .app-sidebar__label { padding: 0 10px 5px; color: var(--sidebar-text); font-size: 11px; font-weight: 600; }
 
-.app-sidebar__collapse {
-  min-height: 42px;
-  gap: 8px;
-  justify-content: center;
-  border-top: 1px solid var(--sidebar-border);
-  color: var(--sidebar-text);
-  font-size: 12px;
-}
-.app-sidebar__collapse:hover { color: var(--sidebar-text-strong); background: var(--sidebar-hover); }
-
 .mantine-Button-root {
   min-height: 32px;
   --button-height: 32px;
@@ -285,6 +352,24 @@ html[data-oopsnote-paper-compose="active"] .oops-page-enter {
 
 @media (max-width: 543px) {
   .app-sidebar { display: none !important; }
+  .oops-app-shell { --oops-titlebar-height: 50px; background: var(--bgColor-default); }
+  .oops-titlebar {
+    padding-inline: 16px;
+    border-bottom: 1px solid var(--borderColor-muted);
+    background: var(--bgColor-overlay);
+    backdrop-filter: blur(12px) saturate(180%);
+    -webkit-backdrop-filter: blur(12px) saturate(180%);
+  }
+  .oops-titlebar__sidebar-toggle { display: none; }
+  .oops-titlebar__mobile-brand {
+    display: block;
+    margin: 0;
+    color: var(--fgColor-default);
+    font-family: 'OopsNoteFont', Inter, 'Noto Sans SC', sans-serif;
+    font-size: 24px;
+    line-height: 1;
+  }
+  .oops-content-surface { border: 0; border-radius: 0; }
 }
 
 /* Capture workspace ------------------------------------------------------ */
@@ -466,14 +551,17 @@ html[data-oopsnote-paper-compose="active"] .oops-page-enter {
 .batch-scan-history__header { display: flex; min-height: 28px; align-items: center; justify-content: space-between; padding: 0 2px; }
 .batch-scan-history__header > p:last-child { margin: 0; color: var(--fgColor-muted); font-size: 11px; font-variant-numeric: tabular-nums; }
 .batch-scan-history__title { margin: 0; color: var(--fgColor-default); font-size: 13px; font-weight: 650; }
-.batch-scan-history__item { display: grid; min-height: 64px; grid-template-columns: 34px minmax(0, 1fr) auto auto; align-items: center; gap: 10px; padding: 9px 10px; border: 1px solid var(--borderColor-default); border-radius: 8px; background: var(--bgColor-default); transition: border-color var(--oops-transition-fast), background-color var(--oops-transition-fast); }
+.batch-scan-history__item { display: grid; min-height: 64px; grid-template-columns: 34px minmax(0, 1fr) auto auto auto; align-items: center; gap: 10px; padding: 9px 10px; border: 1px solid var(--borderColor-default); border-radius: 8px; background: var(--bgColor-default); transition: border-color var(--oops-transition-fast), background-color var(--oops-transition-fast); }
 .batch-scan-history__item:hover { border-color: color-mix(in srgb, var(--borderColor-default) 62%, var(--fgColor-muted)); background: var(--bgColor-muted); }
 .batch-scan-history__mark { display: grid; width: 32px; height: 32px; place-items: center; border-radius: 6px; color: var(--fgColor-muted); background: var(--bgColor-muted); }
 .batch-scan-history__body { min-width: 0; }
 .batch-scan-history__body > p { overflow: hidden; margin: 0; color: var(--fgColor-default); font-size: 13px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
-.batch-scan-history__meta { display: flex; gap: 10px; margin-top: 4px; color: var(--fgColor-muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+.batch-scan-history__meta { display: grid; grid-template-columns: 3.5em 3.5em 4.5em 5.5em 5.5em 4em; column-gap: 10px; margin-top: 4px; color: var(--fgColor-muted); font-size: 11px; font-variant-numeric: tabular-nums; }
 .batch-scan-history__meta span { white-space: nowrap; }
+.batch-scan-history__meta strong { color: var(--fgColor-default); font-weight: 600; font-variant-numeric: tabular-nums; }
 .batch-scan-history__item button { flex: 0 0 auto; }
+.batch-scan-history__delete:hover,
+.batch-scan-history__delete:focus-visible { color: var(--fgColor-danger); }
 .batch-workflow-toolbar { position: relative; z-index: 20; display: flex; min-height: 52px; align-items: center; gap: 6px; padding: 7px 12px; border-bottom: 1px solid var(--borderColor-default); background: var(--bgColor-default); }
 .batch-workflow-toolbar__spacer { min-width: 8px; flex: 1; }
 .batch-save-state { display: inline-flex; min-width: 112px; align-items: center; gap: 6px; color: var(--fgColor-muted); font-size: 12px; white-space: nowrap; }

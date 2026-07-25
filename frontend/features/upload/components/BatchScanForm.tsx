@@ -10,11 +10,13 @@ import {
   Contrast,
   ExternalLink,
   FileText,
+  Eye,
   Maximize2,
   Minus,
   PanelLeft,
   PanelRight,
   Plus,
+  Pencil,
   RefreshCw,
   Trash2,
   Upload,
@@ -83,6 +85,19 @@ async function hashFile(file: File) {
 
 function selectionAssetFilename(sessionHash: string, segmentId: string, questionNo: number) {
   return `batch-${sessionHash}-${segmentId}-q${questionNo}.png`;
+}
+
+function summarizeBatchSession(session: BatchSession) {
+  return session.segments.reduce(
+    (counts, segment) => {
+      if (segment.status === "completed") counts.completed += 1;
+      else if (segment.status === "processing") counts.processing += 1;
+      else if (segment.status === "pending") counts.pending += 1;
+      else if (segment.status === "failed" || segment.status === "needs_review") counts.failed += 1;
+      return counts;
+    },
+    { completed: 0, processing: 0, pending: 0, failed: 0 },
+  );
 }
 
 async function toBase64(blob: Blob) {
@@ -182,6 +197,25 @@ export function BatchScanForm() {
   const refreshSavedSessions = useCallback(async () => {
     try { setSavedSessions(await listBatchSessions()); } catch { /* landing remains usable */ }
   }, []);
+
+  const renameSession = useCallback(async (session: BatchSession) => {
+    const filename = window.prompt("重命名最近文件", session.filename)?.trim();
+    if (!filename || filename === session.filename) return;
+    try {
+      await updateBatchSession(session.file_hash, {
+        filename,
+        page_count: session.page_count,
+        active_page: session.active_page,
+        crop_rect: session.crop_rect,
+        crop_confirmed: session.crop_confirmed,
+        segments: session.segments,
+      });
+      await refreshSavedSessions();
+      notify.success({ title: "文件已重命名" });
+    } catch (reason) {
+      notify.error({ title: reason instanceof Error ? reason.message : "重命名文件失败" });
+    }
+  }, [refreshSavedSessions]);
 
   useEffect(() => { void refreshSavedSessions(); }, [refreshSavedSessions]);
 
@@ -604,20 +638,31 @@ export function BatchScanForm() {
           {savedSessions.length > 0 && (
             <Box className="batch-scan-history">
               <Box className="batch-scan-history__header"><Text className="batch-scan-history__title">最近文件</Text><Text>{savedSessions.length}</Text></Box>
-              {savedSessions.slice(0, 8).map((session) => (
-                <Box key={session.file_hash} className="batch-scan-history__item">
-                  <Box className="batch-scan-history__mark"><FileText size={17} /></Box>
-                  <Box className="batch-scan-history__body">
-                    <Text>{session.filename}</Text>
-                    <Box className="batch-scan-history__meta"><span>{session.page_count} 页</span><span>{session.segments.length} 道</span></Box>
-                  </Box>
-                  <Button size="small" variant="default" onClick={() => void resumeSession(session)} disabled={isImporting}>继续</Button>
-                  <IconButton icon={Trash2} size="small" variant="invisible" aria-label="删除最近文件" title="删除最近文件" onClick={() => {
+              {savedSessions.slice(0, 8).map((session) => {
+                const counts = summarizeBatchSession(session);
+                return (
+                  <Box key={session.file_hash} className="batch-scan-history__item">
+                    <Box className="batch-scan-history__mark"><FileText size={17} /></Box>
+                    <Box className="batch-scan-history__body">
+                      <Text>{session.filename}</Text>
+                      <Box className="batch-scan-history__meta">
+                        <span><strong>{session.page_count}</strong> 页</span>
+                        <span><strong>{session.segments.length}</strong> 道</span>
+                        <span><strong>{counts.completed}</strong> 录入</span>
+                        <span><strong>{counts.processing}</strong> 进行中</span>
+                        <span><strong>{counts.pending}</strong> 未提交</span>
+                        <span title="包含待复核项目"><strong>{counts.failed}</strong> 失败</span>
+                      </Box>
+                    </Box>
+                    <IconButton icon={Pencil} size="small" variant="invisible" aria-label="重命名最近文件" title="重命名最近文件" onClick={() => void renameSession(session)} />
+                    <IconButton className="batch-scan-history__delete" icon={Trash2} size="small" variant="invisible" aria-label="删除最近文件" title="删除最近文件" onClick={() => {
                       if (!window.confirm("删除整次批量扫描记录？已生成的任务和题目会保留。")) return;
                       void deleteBatchSession(session.file_hash).then(refreshSavedSessions);
                     }} />
-                </Box>
-              ))}
+                    <Button size="small" variant="default" onClick={() => void resumeSession(session)} disabled={isImporting}><Eye size={16} />查看</Button>
+                  </Box>
+                );
+              })}
             </Box>
           )}
         </>

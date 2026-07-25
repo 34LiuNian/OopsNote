@@ -309,6 +309,7 @@ class BatchSessionRecord(BaseModel):
 
 
 class BatchSessionUpdateRequest(BaseModel):
+    filename: Optional[str] = Field(default=None, min_length=1, max_length=255)
     page_count: Optional[int] = Field(default=None, ge=0)
     subject: Optional[str] = None
     notes: Optional[str] = None

@@ -83,6 +83,8 @@ def update_batch_session(
         record = api.BATCH_SESSION_STORE.update(file_hash, payload)
     except KeyError:
         raise HTTPException(status_code=404, detail="Batch session not found")
+    if payload.filename is not None:
+        api._sync_batch_source_references(file_hash, record.filename)
     return {"session": api._batch_session_view(record)}
 
 

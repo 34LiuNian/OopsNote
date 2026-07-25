@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 import { usePathname } from "next/navigation";
 import { Text } from "@/components/ui/primitives";
 import {
@@ -9,8 +8,6 @@ import {
   BookIcon,
   ChecklistIcon,
   ScanIcon,
-  SidebarCollapseIcon,
-  SidebarExpandIcon,
 } from "@/components/ui/icons";
 import Link from "next/link";
 
@@ -23,9 +20,8 @@ const NAV_ITEMS = [
   { href: "/debug", label: "渲染调试", icon: BookIcon, section: "tools" },
 ];
 
-export function Sidebar() {
+export function Sidebar({ collapsed }: { collapsed: boolean }) {
   const pathname = usePathname();
-  const [collapsed, setCollapsed] = useState(false);
 
   const mainItems = NAV_ITEMS.filter((i) => i.section === "main");
   const toolItems = NAV_ITEMS.filter((i) => i.section === "tools");
@@ -37,16 +33,15 @@ export function Sidebar() {
   };
 
   return (
-    <aside className={`app-sidebar oops-desktop-sidebar${collapsed ? " is-collapsed" : ""}`}>
-      <button
+    <aside id="oops-primary-sidebar" className={`app-sidebar oops-desktop-sidebar${collapsed ? " is-collapsed" : ""}`}>
+      <Link
+        href="/"
         className="app-sidebar__brand"
-        type="button"
-        onClick={() => setCollapsed(!collapsed)}
-        aria-label={collapsed ? "展开侧栏" : "收起侧栏"}
+        aria-label="OopsNote 首页"
       >
         <span className="app-sidebar__mark" aria-hidden="true" />
         {!collapsed && <Text>OopsNote</Text>}
-      </button>
+      </Link>
 
       <nav className="app-sidebar__nav" aria-label="主导航">
         {mainItems.map((item) => {
@@ -72,11 +67,6 @@ export function Sidebar() {
           );
         })}
       </nav>
-
-      <button className="app-sidebar__collapse" type="button" onClick={() => setCollapsed(!collapsed)} aria-label={collapsed ? "展开侧栏" : "收起侧栏"}>
-        {collapsed ? <SidebarExpandIcon size={16} /> : <SidebarCollapseIcon size={16} />}
-        {!collapsed && <span>收起侧栏</span>}
-      </button>
     </aside>
   );
 }

@@ -49,7 +49,7 @@ metadata:
 }
 ```
 
-- 数学仅使用 `$...$` 或独立 `$$...$$`；多小问使用 Markdown 有序列表。
+- 数学仅使用 `$...$` 或独立 `$$...$$`；多小问使用 Markdown 有序列表，序号项必须连续书写，序号之间不要插入空行（避免被渲染为松散列表）。
 - 禁止 `array`、`tabular`、`enumerate`、`chemfig`、`tikzpicture` 和文档级 LaTeX 命令。
 - 选择题的选项只放在 `options`，不混入 `problem_text`；无法确定的字段不能伪造。
 - `review_reason` 不是 Problem/OopsMark 内容字段，只能作为 `finalize_task` 或 `fail_task` 的独立参数传递。合法值为 `unreadable`、`incomplete`、`multiple_questions`、`other` 或空字符串。

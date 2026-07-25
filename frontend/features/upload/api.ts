@@ -114,7 +114,7 @@ export async function uploadBatchSource(fileHash: string, file: File): Promise<B
 
 export async function updateBatchSession(
   fileHash: string,
-  payload: Pick<BatchSession, "page_count" | "active_page" | "crop_rect" | "crop_confirmed" | "segments">,
+  payload: Partial<Pick<BatchSession, "filename">> & Pick<BatchSession, "page_count" | "active_page" | "crop_rect" | "crop_confirmed" | "segments">,
 ): Promise<BatchSession> {
   return (await fetchJson<{ session: BatchSession }>(`/batch-sessions/${encodeURIComponent(fileHash)}`, {
     method: "PATCH",

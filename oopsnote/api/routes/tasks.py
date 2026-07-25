@@ -226,6 +226,7 @@ def upload_task(payload: UploadRequest) -> dict[str, Any]:
         except KeyError:
             session = None
         if session:
+            source_label = api._batch_source_label(session.filename, payload.batch_page_index)
             trace = {
                 "kind": "batch_segment",
                 "source_file_hash": session.file_hash,
@@ -237,6 +238,8 @@ def upload_task(payload: UploadRequest) -> dict[str, Any]:
                 "screenshot_path": path,
                 "screenshot_filename": payload.filename,
             }
+            metadata["source"] = source_label
+            metadata["source_page"] = payload.batch_page_index + 1 if payload.batch_page_index is not None else None
     metadata["trace"] = trace
     task = api.TASK_STORE.create(
         TaskCreateRequest(
@@ -252,7 +255,7 @@ def upload_task(payload: UploadRequest) -> dict[str, Any]:
     )
     api.TAG_STORE.ensure(
         TagDimension.META,
-        [payload.source] if payload.source else [],
+        [metadata.get("source") or payload.source] if (metadata.get("source") or payload.source) else [],
     )
     api.TAG_STORE.ensure(TagDimension.KNOWLEDGE, payload.knowledge_tags)
     api.TAG_STORE.ensure(TagDimension.ERROR, payload.error_tags)

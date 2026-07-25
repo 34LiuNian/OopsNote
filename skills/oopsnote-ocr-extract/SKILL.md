@@ -36,7 +36,7 @@ OCR 结果必须能转换为以下 JSON，JSON 之外不输出任何题面内容
 
 - 数学公式使用 `$...$`；仅完整多行推导使用独立 `$$...$$`。
 - 选择题选项逐项放入 `options`，不得混在 `problem_text` 中；填空位置使用 `\$\underline{\hspace{2cm}}\$`。
-- 多小问用 Markdown 有序列表；普通表格使用 GFM 表格。
+- 多小问用 Markdown 有序列表；序号项必须连续书写，序号之间不要插入空行（避免被渲染为松散列表）；普通表格使用 GFM 表格。
 - 不写 `array`、`tabular`、`enumerate`、`chemfig`、`tikzpicture` 或任何文档级 LaTeX 命令。
 - `subject` 仅为 `math`、`physics` 或 `chemistry`；题型仅为单选题、多选题、填空题、解答题。
 

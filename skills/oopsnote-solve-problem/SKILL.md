@@ -25,7 +25,7 @@ metadata:
 ## 通用 OopsMark v1
 
 - 行内公式使用 `$...$`，多行方程才用独立 `$$...$$`；不使用 `\displaystyle`。
-- 多小问使用 Markdown 有序列表；不写 `enumerate`、`array`、`tabular`、`chemfig`、`tikzpicture` 或文档级 LaTeX 命令。
+- 多小问使用 Markdown 有序列表；序号项必须连续书写，序号之间不要插入空行（避免被渲染为松散列表）；不写 `enumerate`、`array`、`tabular`、`chemfig`、`tikzpicture` 或文档级 LaTeX 命令。
 - 选择题答案必须核对选项文本与字母映射；物理核对单位、对象和过程；化学先写配平方程或离子方程，并明确守恒关系。
 
 ## 数学解题与验证

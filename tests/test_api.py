@@ -143,6 +143,13 @@ def test_batch_session_deduplicates_source_and_persists_progress(tmp_path, monke
     )
     assert updated.status_code == 200
 
+    renamed = client.patch(
+        f"/batch-sessions/{digest}",
+        json={"filename": "renamed.pdf"},
+    )
+    assert renamed.status_code == 200
+    assert renamed.json()["session"]["filename"] == "renamed.pdf"
+
     duplicate = client.put(
         f"/batch-sessions/{digest}/source",
         content=source,
@@ -150,7 +157,7 @@ def test_batch_session_deduplicates_source_and_persists_progress(tmp_path, monke
     )
     assert duplicate.status_code == 200
     restored = client.get(f"/batch-sessions/{digest}").json()["session"]
-    assert restored["filename"] == "mock.pdf"
+    assert restored["filename"] == "renamed.pdf"
     assert restored["active_page"] == 4
     assert restored["segments"][0]["page_index"] == 3
     assert restored["segments"][0]["continuation"]["page_index"] == 4
@@ -237,6 +244,14 @@ def test_batch_session_persists_parts_crop_and_deletes_without_tasks(tmp_path, m
         problem=Problem(subject="math", problem_text="第一道完整题"),
         metadata={**task_store.get(task["id"]).metadata, "intake_review_reason": "multiple_questions"},
     )
+    renamed = client.patch(
+        f"/batch-sessions/{digest}",
+        json={"filename": "renamed-continuous.pdf"},
+    )
+    assert renamed.status_code == 200
+    renamed_task = client.get(f"/tasks/{task['id']}").json()["task"]
+    assert renamed_task["problem"]["source"] == "renamed-continuous.pdf · 第 1 页"
+    assert renamed_task["trace"]["source_file_name"] == "renamed-continuous.pdf"
     linked_segment = {
         **session["segments"][0],
         "task_id": task["id"],

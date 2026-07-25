@@ -27,6 +27,7 @@ from oopsnote.core import (
     Problem,
     PaperDraftStore,
     RunStore,
+    TagDimension,
     TagStore,
     TaskRecord,
     TaskStatus,
@@ -113,6 +114,43 @@ def _batch_session_view(record: BatchSessionRecord) -> dict[str, Any]:
     }
 
 
+def _batch_source_label(filename: str, page_index: Any) -> str:
+    if isinstance(page_index, int) and page_index >= 0:
+        return f"{filename} · 第 {page_index + 1} 页"
+    return filename
+
+
+def _sync_batch_source_references(file_hash: str, filename: str) -> None:
+    """Keep persisted task/problem source labels aligned with a renamed batch file."""
+    for task in TASK_STORE.list_all():
+        metadata = task.metadata
+        trace = metadata.get("trace")
+        if not isinstance(trace, dict) or trace.get("kind") != "batch_segment":
+            continue
+        if trace.get("source_file_hash") != file_hash:
+            continue
+        page_index = trace.get("page_index")
+        source = _batch_source_label(filename, page_index)
+        next_trace = {**trace, "source_file_name": filename}
+        next_metadata = {
+            **metadata,
+            "source": source,
+            "source_page": page_index + 1 if isinstance(page_index, int) and page_index >= 0 else None,
+            "trace": next_trace,
+        }
+        next_problem = task.problem
+        if next_problem:
+            next_problem = next_problem.model_copy(
+                update={
+                    "source": source,
+                    "source_page": next_metadata["source_page"],
+                }
+            )
+        if next_metadata != metadata or next_problem != task.problem:
+            TASK_STORE.update(task.id, metadata=next_metadata, problem=next_problem)
+        TAG_STORE.ensure(TagDimension.META, [source])
+
+
 def _trace_view(trace: Any) -> Any:
     if not isinstance(trace, dict) or trace.get("kind") != "batch_segment":
         return trace
@@ -125,7 +163,28 @@ def _trace_view(trace: Any) -> Any:
             pass
         else:
             available = True
-    return {**trace, "batch_session_available": available}
+    current = {**trace, "batch_session_available": available}
+    if file_hash and available:
+        try:
+            current["source_file_name"] = BATCH_SESSION_STORE.get(file_hash).filename
+        except KeyError:
+            pass
+    return current
+
+
+def _problem_source(task: TaskRecord, problem: Problem) -> Optional[str]:
+    metadata = task.metadata
+    trace = metadata.get("trace")
+    if isinstance(trace, dict) and trace.get("kind") == "batch_segment":
+        file_hash = trace.get("source_file_hash")
+        if file_hash:
+            try:
+                session = BATCH_SESSION_STORE.get(file_hash)
+            except KeyError:
+                pass
+            else:
+                return _batch_source_label(session.filename, trace.get("page_index"))
+    return problem.source or metadata.get("source")
 
 
 def _sync_batch_session_tasks(record: BatchSessionRecord) -> BatchSessionRecord:
@@ -203,7 +262,7 @@ def _problem_view(task: TaskRecord, problem: Problem) -> dict[str, Any]:
         "problem_id": problem.id,
         "question_no": metadata.get("question_no"),
         "question_type": problem.question_type.value,
-        "source": problem.source or metadata.get("source"),
+        "source": _problem_source(task, problem),
         "content_format": problem.content_format.value,
         "problem_text": problem.problem_text,
         "options": [
@@ -312,7 +371,7 @@ def _problem_summary(task: TaskRecord, problem: Problem) -> dict[str, Any]:
         "difficulty": problem.difficulty,
         "has_diagram": problem.has_diagram,
         "subject": problem.subject or task.subject,
-        "source": problem.source or metadata.get("source"),
+        "source": _problem_source(task, problem),
         "knowledge_points": problem.knowledge_points,
         "knowledge_tags": problem.knowledge_points,
         "error_tags": problem.error_hypothesis,

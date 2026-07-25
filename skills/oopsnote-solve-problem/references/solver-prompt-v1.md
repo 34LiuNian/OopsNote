@@ -19,7 +19,7 @@
 - 行内 `$...$`，**优先使用行内公式**
 - 仅当多行方程（如方程组、矩阵、长推导）或无法在一行内放下时才用 `$$...$$`
 - 短公式（如 $f(x)=ax^2+bx+c$、$\Delta >0$、$x=3$）一律用行内
-- 多小问使用 Markdown 有序列表；表格使用 GFM Markdown 表格
+- 多小问使用 Markdown 有序列表；序号项必须连续书写，序号之间不要插入空行（避免被渲染为松散列表）；表格使用 GFM Markdown 表格
 - 不输出 `enumerate`、`tabular`、`array`、`chemfig` 等原始 LaTeX 环境
 - 化学式和方程式在数学环境内使用 `\ce{...}`；分子结构使用 `molecule` fenced block
 
