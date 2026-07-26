@@ -8,12 +8,12 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 from uuid import uuid4
 
 from pydantic import BaseModel, Field, model_validator
 
-from oopsnote.content import normalize_oopsmark, validate_oopsmark
+from oopsnote.content import normalize_oopsmark, normalize_option_text, validate_oopsmark
 
 
 # ── 枚举 ──────────────────────────────────────────────
@@ -105,7 +105,7 @@ class Problem(BaseModel):
         self.answer = normalize_oopsmark(self.answer)
         self.short_answer = normalize_oopsmark(self.short_answer)
         self.explanation = normalize_oopsmark(self.explanation)
-        self.options = [normalize_oopsmark(o) for o in self.options]
+        self.options = [normalize_option_text(o) for o in self.options]
         # Validate
         fields = {
             "problem_text": self.problem_text,
@@ -187,8 +187,10 @@ class TaskRun(BaseModel):
     duration_ms: Optional[int] = None
     rpc_log_path: Optional[str] = None
     retry_count: int = 0
+    retry_of_run_id: Optional[str] = None
+    retry_root_run_id: Optional[str] = None
     retryable: bool = False
-    prompt_version: str = "orchestrator-v3"
+    prompt_version: str = "unversioned"
     queued_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     started_at: Optional[datetime] = None
     heartbeat_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
@@ -224,10 +226,18 @@ class BatchCropRect(BaseModel):
         return self
 
 
+class BatchColumnLayout(BaseModel):
+    """One document-wide fixed column layout for batch selection."""
+
+    column_count: int = Field(default=1, ge=1, le=8)
+    overlap_ratio: float = Field(default=0.5, ge=0, le=0.5)
+
+
 class BatchSegmentPart(BaseModel):
     """One page-local projection of a document-space selection."""
 
     page_index: int = Field(ge=0)
+    column_index: int = Field(default=0, ge=0)
     x: float = Field(ge=0, le=1)
     y: float = Field(ge=0, le=1)
     width: float = Field(gt=0, le=1)
@@ -254,9 +264,13 @@ class BatchSegment(BaseModel):
     height: Optional[float] = Field(default=None, gt=0, le=1)
     continuation: Optional[BatchSegmentContinuation] = None
     question_no: Optional[int] = Field(default=None, ge=1)
-    status: str = "pending"
-    review_reason: Optional[str] = None
-    review_previous_status: Optional[str] = None
+    status: Literal["pending", "processing", "completed", "failed", "needs_review"] = "pending"
+    review_reason: Optional[
+        Literal["unreadable", "incomplete", "multiple_questions", "other"]
+    ] = None
+    review_previous_status: Optional[
+        Literal["pending", "processing", "completed", "failed"]
+    ] = None
     review_resolved: bool = False
     task_id: Optional[str] = None
     problem_ids: list[str] = Field(default_factory=list)
@@ -303,9 +317,21 @@ class BatchSessionRecord(BaseModel):
     active_page: int = 0
     crop_rect: BatchCropRect = Field(default_factory=BatchCropRect)
     crop_confirmed: bool = False
+    column_layout: BatchColumnLayout = Field(default_factory=BatchColumnLayout)
+    excluded_page_indices: list[int] = Field(default_factory=list)
     segments: list[BatchSegment] = Field(default_factory=list)
+    revision: int = Field(default=0, ge=0)
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+    @model_validator(mode="after")
+    def validate_excluded_pages(self) -> "BatchSessionRecord":
+        self.excluded_page_indices = sorted(set(self.excluded_page_indices))
+        if any(index < 0 or (self.page_count > 0 and index >= self.page_count) for index in self.excluded_page_indices):
+            raise ValueError("Excluded page index is outside the source document")
+        if self.page_count > 0 and len(self.excluded_page_indices) >= self.page_count:
+            raise ValueError("Batch session must retain at least one page")
+        return self
 
 
 class BatchSessionUpdateRequest(BaseModel):
@@ -316,7 +342,41 @@ class BatchSessionUpdateRequest(BaseModel):
     active_page: Optional[int] = Field(default=None, ge=0)
     crop_rect: Optional[BatchCropRect] = None
     crop_confirmed: Optional[bool] = None
+    column_layout: Optional[BatchColumnLayout] = None
+    excluded_page_indices: Optional[list[int]] = None
     segments: Optional[list[BatchSegment]] = None
+
+
+class BatchProcessSegmentState(BaseModel):
+    """Durable checkpoint for one segment in a batch-processing command."""
+
+    segment_id: str
+    question_no: Optional[int] = None
+    status: Literal[
+        "pending",
+        "rendering",
+        "asset_saved",
+        "task_created",
+        "processing",
+        "completed",
+        "failed",
+    ] = "pending"
+    asset_path: Optional[str] = None
+    task_id: Optional[str] = None
+    run_id: Optional[str] = None
+    error: Optional[str] = None
+
+
+class BatchProcessJob(BaseModel):
+    """Recoverable manifest for the single-command batch pipeline."""
+
+    id: str = Field(default_factory=lambda: uuid4().hex)
+    file_hash: str
+    backend: str
+    status: Literal["pending", "running", "submitted", "partial", "failed"] = "pending"
+    segments: list[BatchProcessSegmentState] = Field(default_factory=list)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 # ── 标签 ──────────────────────────────────────────────

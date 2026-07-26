@@ -1,8 +1,8 @@
 "use client";
 
-import { Fragment } from "react";
+import { Fragment, useState } from "react";
 import { Box, Text, Spinner, Octicon } from "@/components/ui/primitives";
-import { CheckIcon, XIcon, SkipIcon } from "@/components/ui/icons";
+import { CheckIcon, ChevronDownIcon, ChevronUpIcon, XIcon, SkipIcon } from "@/components/ui/icons";
 import { PROGRESS_STEPS, UseTaskProgressResult } from "@/hooks/useTaskProgress";
 
 interface TaskProgressBarProps {
@@ -10,6 +10,7 @@ interface TaskProgressBarProps {
   latestLine?: string;
   error?: string;
   statusMessage?: string;
+  embedded?: boolean;
 }
 
 // 状态颜色规范（使用 Primer 语义化 token，适配亮暗模式）
@@ -87,11 +88,35 @@ function NodeDot({ status }: { status: keyof typeof STATUS_COLORS }) {
   );
 }
 
-export function TaskProgressBar({ progressState, latestLine, error, statusMessage }: TaskProgressBarProps) {
+export function TaskProgressBar({ progressState, latestLine, error, statusMessage, embedded = false }: TaskProgressBarProps) {
   const isCancelled = progressState.isCancelled;
+  const [showCompletedSteps, setShowCompletedSteps] = useState(false);
+  const showDetailedProgress = !progressState.isCompleted || showCompletedSteps;
 
   return (
-    <Box sx={{ p: 2, border: "1px solid", borderColor: "border.default", borderRadius: 2, mb: 3 }}>
+    <Box sx={{ p: embedded ? 0 : 2, borderWidth: embedded ? 0 : 1, borderStyle: "solid", borderColor: "border.default", borderRadius: embedded ? 0 : 2 }}>
+      {progressState.isCompleted && (
+        <button
+          type="button"
+          className="task-progress-summary"
+          aria-expanded={showCompletedSteps}
+          onClick={() => setShowCompletedSteps((value) => !value)}
+        >
+          <span className="task-progress-summary__status">
+            <span className="task-progress-summary__icon" aria-hidden="true">
+              <CheckIcon size={14} />
+            </span>
+            <span>处理完成</span>
+          </span>
+          <span className="task-progress-summary__meta">
+            5/5 个阶段
+            {showCompletedSteps ? <ChevronUpIcon size={16} /> : <ChevronDownIcon size={16} />}
+          </span>
+        </button>
+      )}
+
+      {showDetailedProgress && (
+        <Box sx={{ pt: progressState.isCompleted ? 2 : 0 }}>
       {/* ── Desktop horizontal layout ── */}
       <Box sx={{ display: ["none", "block"] }}>
         <Box sx={{ display: "flex", alignItems: "center", mb: 2 }}>
@@ -236,6 +261,8 @@ export function TaskProgressBar({ progressState, latestLine, error, statusMessag
           );
         })}
       </Box>
+        </Box>
+      )}
     </Box>
   );
 }

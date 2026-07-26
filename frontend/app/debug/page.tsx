@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Box, Button, Heading, Text, Textarea } from "@/components/ui/primitives";
 import { MarkdownRenderer } from "../../components/renderers/MarkdownRenderer";
+import { ProblemContent } from "../../components/ProblemContent";
 import { TaskProgressBar } from "../../components/task/TaskProgressBar";
 import { useTaskProgress, ProgressStepKey } from "../../hooks/useTaskProgress";
 
@@ -156,6 +157,31 @@ export default function DebugPage() {
 
       <Box sx={{ display: "flex", gap: 2 }}>
         <Button size="small" onClick={() => setText(DEFAULT_TEXT)}>恢复默认示例</Button>
+      </Box>
+
+      <Box id="problem-illustration-fixtures" sx={{ display: "grid", gridTemplateColumns: ["1fr", "1fr 1fr"], gap: 3 }}>
+        <Box id="problem-illustration-auto" sx={{ p: 3, border: "1px solid", borderColor: "border.default", borderRadius: 2 }}>
+          <Heading as="h3" sx={{ fontSize: 2, mb: 2 }}>TikZ/SVG 右侧自适应</Heading>
+          <ProblemContent
+            problemText={"已知函数 $f(x)=x^2$，观察右图并回答。\n图形默认位于右侧，高度与这段题干文本一致。"}
+            contentFormat="oopsmark-v1"
+            diagramDetected
+            diagramKind="tikz"
+            diagramSvg={'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 80"><path d="M10 70H110M20 75V5M25 65Q55 60 100 15" fill="none" stroke="currentColor" stroke-width="3"/></svg>'}
+          />
+        </Box>
+        <Box id="problem-illustration-custom" sx={{ p: 3, border: "1px solid", borderColor: "border.default", borderRadius: 2 }}>
+          <Heading as="h3" sx={{ fontSize: 2, mb: 2 }}>题图左侧 125%</Heading>
+          <ProblemContent
+            problemText={"题图与 TikZ 二选一。\n这个样例使用手动大小。"}
+            contentFormat="oopsmark-v1"
+            diagramDetected
+            diagramKind="image"
+            diagramImagePath="/favicon.svg"
+            diagramPosition="left"
+            diagramScalePercent={125}
+          />
+        </Box>
       </Box>
 
       <Box

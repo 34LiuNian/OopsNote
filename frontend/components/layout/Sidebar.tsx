@@ -1,13 +1,13 @@
 "use client";
 
 import { usePathname } from "next/navigation";
-import { Text } from "@/components/ui/primitives";
 import {
   PlusIcon,
   RepoIcon,
   BookIcon,
   ChecklistIcon,
   ScanIcon,
+  GearIcon,
 } from "@/components/ui/icons";
 import Link from "next/link";
 
@@ -18,6 +18,7 @@ const NAV_ITEMS = [
   { href: "/papers/new", label: "组卷", icon: ChecklistIcon, section: "main" },
   { href: "/paper-builder", label: "快速重练", icon: BookIcon, section: "main" },
   { href: "/debug", label: "渲染调试", icon: BookIcon, section: "tools" },
+  { href: "/settings", label: "设置", icon: GearIcon, section: "tools" },
 ];
 
 export function Sidebar({ collapsed }: { collapsed: boolean }) {
@@ -34,15 +35,6 @@ export function Sidebar({ collapsed }: { collapsed: boolean }) {
 
   return (
     <aside id="oops-primary-sidebar" className={`app-sidebar oops-desktop-sidebar${collapsed ? " is-collapsed" : ""}`}>
-      <Link
-        href="/"
-        className="app-sidebar__brand"
-        aria-label="OopsNote 首页"
-      >
-        <span className="app-sidebar__mark" aria-hidden="true" />
-        {!collapsed && <Text>OopsNote</Text>}
-      </Link>
-
       <nav className="app-sidebar__nav" aria-label="主导航">
         {mainItems.map((item) => {
           const active = isActive(item.href);

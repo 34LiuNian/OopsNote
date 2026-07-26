@@ -97,7 +97,34 @@ class ManagedTaskDispatcher:
                 if item is None:
                     return
                 task_id, run_id = item
-                self.runner.run(task_id, run_id)
+                try:
+                    self.runner.run(task_id, run_id)
+                except Exception as error:
+                    # One malformed/deleted task must not permanently shrink the
+                    # fixed dispatcher pool. Persist the failure when possible,
+                    # then continue with the next queued run.
+                    try:
+                        self.runner.run_store.finish(
+                            run_id,
+                            RunStatus.FAILED,
+                            error_code="dispatcher_error",
+                            error_message=str(error),
+                        )
+                    except KeyError:
+                        pass
+                    try:
+                        task = self.runner.task_store.get(task_id)
+                        if task.active_run_id == run_id:
+                            self.runner.task_store.transition(
+                                task_id,
+                                expected_statuses={TaskStatus.PROCESSING},
+                                expected_active_run_id=run_id,
+                                status=TaskStatus.FAILED,
+                                active_run_id=None,
+                                last_error=str(error),
+                            )
+                    except (KeyError, RuntimeError):
+                        pass
             finally:
                 if item is not None:
                     with self._lock:

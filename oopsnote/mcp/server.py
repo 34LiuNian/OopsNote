@@ -7,7 +7,7 @@ FastMCP stdio server，暴露 CRUD 工具供 Hermes skill 调用。
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 
 from mcp.server.fastmcp import FastMCP
 
@@ -28,7 +28,7 @@ from oopsnote.core import (
     TaskStatus,
     TaskStore,
 )
-from oopsnote.obsidian.syncer import ObsidianSyncer
+from oopsnote.obsidian.syncer import OBSIDIAN_SYNC_QUEUE, ObsidianSyncer
 
 # ── Server ───────────────────────────────────────────
 
@@ -39,16 +39,74 @@ INTAKE_REVIEW_REASONS = {
     "multiple_questions",
     "other",
 }
+PIPELINE_STAGE_PREDECESSORS = {
+    TaskStage.OCR: {None, TaskStage.STARTING},
+    TaskStage.SOLVING: {TaskStage.OCR},
+    TaskStage.VERIFYING: {TaskStage.SOLVING},
+    TaskStage.TAGGING: {TaskStage.VERIFYING},
+    TaskStage.FINALIZING: {TaskStage.TAGGING},
+}
+ManagedStage = Literal["ocr", "solving", "verifying", "tagging", "finalizing"]
+ManagedReviewReason = Literal[
+    "",
+    "unreadable",
+    "incomplete",
+    "multiple_questions",
+    "other",
+]
+
+
+def _require_active_run(task_id: str, run_id: str) -> TaskRecord:
+    task = TASK_STORE.get(task_id)
+    if not run_id or task.active_run_id != run_id:
+        raise ValueError(f"run_id {run_id} is not active for task {task_id}")
+    return task
 
 
 def _task_metadata_with_review(task: TaskRecord, review_reason: str) -> dict:
     metadata = dict(task.metadata)
+    metadata.pop("_managed_tag_selection", None)
     metadata.pop("intake_review_reason", None)
     if review_reason:
         if review_reason not in INTAKE_REVIEW_REASONS:
             raise ValueError(f"invalid review_reason: {review_reason}")
         metadata["intake_review_reason"] = review_reason
     return metadata
+
+
+def _managed_task_context(task: TaskRecord) -> dict[str, Any]:
+    """Return only task fields the managed agent can act on."""
+
+    metadata = task.metadata
+    return {
+        "task_id": task.id,
+        "status": task.status.value,
+        "subject": task.subject,
+        "asset_path": task.asset_path,
+        "question_no": metadata.get("question_no"),
+        "source": metadata.get("source"),
+        "notes": metadata.get("notes") or "",
+        "hints": {
+            key: metadata.get(key)
+            for key in (
+                "question_type",
+                "difficulty",
+                "knowledge_tags",
+                "error_tags",
+                "user_tags",
+            )
+            if metadata.get(key)
+        },
+    }
+
+
+def _task_ack(task: TaskRecord, **fields: Any) -> dict[str, Any]:
+    return {
+        "ok": True,
+        "task_id": task.id,
+        "status": task.status.value,
+        **fields,
+    }
 
 # ── 存储实例（共享） ──────────────────────────────────
 
@@ -91,12 +149,9 @@ def create_task(
 
 
 @mcp.tool()
-def get_task(task_id: str) -> Optional[TaskRecord]:
-    """按 ID 获取任务。"""
-    try:
-        return TASK_STORE.get(task_id)
-    except KeyError:
-        return None
+def get_task(task_id: str, run_id: str) -> dict[str, Any]:
+    """Get only the task bound to the currently active managed run."""
+    return _managed_task_context(_require_active_run(task_id, run_id))
 
 
 @mcp.tool()
@@ -149,62 +204,71 @@ def mark_task_status(
 @mcp.tool()
 def report_task_stage(
     task_id: str,
-    stage: str,
-    run_id: str = "",
+    stage: ManagedStage,
+    run_id: str,
     message: Optional[str] = None,
-) -> TaskRecord:
-    """上报受管 AI 任务阶段。stage: ocr/solving/verifying/tagging/finalizing/syncing。"""
-    task = TASK_STORE.get(task_id)
-    if task.active_run_id and task.active_run_id != run_id:
-        raise ValueError(f"run_id {run_id} is not active for task {task_id}")
-    if run_id and not task.active_run_id:
-        raise ValueError(f"task {task_id} has no active managed run")
-    return TASK_STORE.update(
+) -> dict[str, Any]:
+    """上报受管 AI 任务阶段。stage: ocr/solving/verifying/tagging/finalizing。"""
+    current = _require_active_run(task_id, run_id)
+    requested_stage = TaskStage(stage)
+    if current.stage == requested_stage:
+        return _task_ack(current, stage=requested_stage.value)
+    expected = PIPELINE_STAGE_PREDECESSORS.get(requested_stage)
+    if expected is not None and current.stage not in expected:
+        previous = current.stage.value if current.stage else "none"
+        raise ValueError(
+            f"stage {requested_stage.value} cannot follow {previous}"
+        )
+    task = TASK_STORE.transition(
         task_id,
-        stage=TaskStage(stage),
+        expected_statuses={TaskStatus.PROCESSING},
+        expected_active_run_id=run_id,
+        stage=requested_stage,
         stage_message=message,
     )
+    return _task_ack(task, stage=task.stage.value if task.stage else None)
 
 
 @mcp.tool()
 def fail_task(
     task_id: str,
     error: str,
-    run_id: str = "",
-    review_reason: str = "",
-) -> TaskRecord:
+    run_id: str,
+    review_reason: ManagedReviewReason = "",
+) -> dict[str, Any]:
     """以明确原因终止当前受管 AI 任务，可同时标记需人工复核。"""
-    task = TASK_STORE.get(task_id)
-    if task.active_run_id and task.active_run_id != run_id:
-        raise ValueError(f"run_id {run_id} is not active for task {task_id}")
-    if run_id and not task.active_run_id:
-        raise ValueError(f"task {task_id} has no active managed run")
-    return TASK_STORE.update(
+    task = _require_active_run(task_id, run_id)
+    failed = TASK_STORE.transition(
         task_id,
+        expected_statuses={TaskStatus.PROCESSING},
+        expected_active_run_id=run_id,
         status=TaskStatus.FAILED,
         stage_message=error,
         active_run_id=None,
         last_error=error,
         metadata=_task_metadata_with_review(task, review_reason),
     )
+    return _task_ack(failed, review_reason=review_reason or None)
 
 
 @mcp.tool()
 def finalize_task(
     task_id: str,
     problem_json: str,
-    run_id: str = "",
+    run_id: str,
     sync_to_obsidian: bool = True,
-    review_reason: str = "",
-) -> TaskRecord:
+    review_reason: ManagedReviewReason = "",
+) -> dict[str, Any]:
     """校验并原子提交 AI 结果，可同时标记需人工复核。"""
     import json
 
-    task = TASK_STORE.get(task_id)
-    if task.active_run_id and task.active_run_id != run_id:
-        raise ValueError(f"run_id {run_id} is not active for task {task_id}")
-    if run_id and not task.active_run_id:
-        raise ValueError(f"task {task_id} has no active managed run")
+    task = _require_active_run(task_id, run_id)
+    if task.stage != TaskStage.FINALIZING:
+        current_stage = task.stage.value if task.stage else "none"
+        raise ValueError(
+            "finalize_task requires the ordered pipeline to reach finalizing; "
+            f"current stage is {current_stage}"
+        )
     raw = json.loads(problem_json)
     if not isinstance(raw, dict):
         raise ValueError("problem_json must be a JSON object")
@@ -223,8 +287,34 @@ def finalize_task(
     subject = task.subject
     if not subject or subject == "auto":
         subject = problem.subject
+    elif problem.subject != subject:
+        raise ValueError(
+            f"problem subject {problem.subject} does not match task subject {subject}"
+        )
+    trusted_source = str(task.metadata.get("source") or "").strip()
+    trusted_source_page = task.metadata.get("source_page")
+    problem = problem.model_copy(
+        update={
+            "subject": subject,
+            "source": trusted_source or problem.source,
+            "source_page": (
+                trusted_source_page
+                if isinstance(trusted_source_page, int) and trusted_source_page > 0
+                else problem.source_page
+            ),
+        }
+    )
     if problem.knowledge_points:
-        valid_leaf_values = TAG_STORE.knowledge_leaf_values(subject)
+        selection = task.metadata.get("_managed_tag_selection")
+        if not isinstance(selection, dict) or selection.get("run_id") != run_id:
+            raise ValueError("knowledge_points require branches selected by this managed run")
+        if selection.get("subject") != subject:
+            raise ValueError("knowledge tag selection subject does not match the problem")
+        valid_leaf_values = set(TAG_STORE.ai_knowledge_leaves(
+            subject,
+            list(selection.get("branch_ids") or []),
+            scope=selection.get("scope"),
+        ))
         invalid_tags = list(dict.fromkeys(
             value for value in problem.knowledge_points
             if value not in valid_leaf_values
@@ -234,8 +324,25 @@ def finalize_task(
                 "knowledge_points must contain only knowledge-tree leaf tags; "
                 f"invalid: {', '.join(invalid_tags)}"
             )
-    completed = TASK_STORE.update(
+    if problem.error_hypothesis:
+        valid_error_values = set(TAG_STORE.ai_values(
+            dimension=TagDimension.ERROR,
+            subject=subject,
+            scope="core",
+        ))
+        invalid_errors = list(dict.fromkeys(
+            value for value in problem.error_hypothesis
+            if value not in valid_error_values
+        ))
+        if invalid_errors:
+            raise ValueError(
+                "error_hypothesis must contain existing error tags; create missing tags first; "
+                f"invalid: {', '.join(invalid_errors)}"
+            )
+    completed = TASK_STORE.transition(
         task_id,
+        expected_statuses={TaskStatus.PROCESSING},
+        expected_active_run_id=run_id,
         subject=subject,
         problem=problem,
         status=TaskStatus.COMPLETED,
@@ -245,6 +352,7 @@ def finalize_task(
         last_error=None,
         metadata=_task_metadata_with_review(task, review_reason),
     )
+    sync_queued = False
     if sync_to_obsidian:
         try:
             syncer = ObsidianSyncer(
@@ -252,13 +360,23 @@ def finalize_task(
                 tag_store=TAG_STORE,
                 vault_root=STORAGE_DIR.parent / "vaults",
             )
-            syncer.sync_for_subject(subject)
+            OBSIDIAN_SYNC_QUEUE.enqueue(syncer, problem, task_id=task_id)
+            sync_queued = True
+            completed = TASK_STORE.update(
+                task_id,
+                stage_message="AI 结果已写入；Obsidian 增量同步已排队",
+            )
         except Exception as error:
             completed = TASK_STORE.update(
                 task_id,
                 stage_message=f"AI 结果已写入；Obsidian 同步失败：{error}",
             )
-    return completed
+    return _task_ack(
+        completed,
+        problem_id=problem.id,
+        review_reason=review_reason or None,
+        sync_queued=sync_queued,
+    )
 
 
 @mcp.tool()
@@ -405,12 +523,12 @@ def sync_to_obsidian(subject: Optional[str] = None) -> str:
 
 
 @mcp.tool()
-def get_asset_path(asset_path: str) -> Optional[str]:
-    """获取资产文件的绝对路径（供 Hermes vision_analyze 加载图片）。"""
-    full = STORAGE_DIR / asset_path.lstrip("/")
-    if full.exists():
-        return str(full.resolve())
-    return None
+def get_asset_path(task_id: str, run_id: str) -> str:
+    """Return only the asset bound to the currently active managed run."""
+    task = _require_active_run(task_id, run_id)
+    if not task.asset_path:
+        raise ValueError(f"task {task_id} has no image asset")
+    return str(ASSET_STORE.resolve(task.asset_path))
 
 
 # ═════════════════════════════════════════════════════

@@ -5,6 +5,7 @@ from fastapi.testclient import TestClient
 from oopsnote.api import main
 from oopsnote.api.routes.papers import _expanded_knowledge_tags
 from oopsnote.core import (
+    ContentFormat,
     PaperDraftCreateRequest,
     PaperDraftStore,
     Problem,
@@ -13,6 +14,7 @@ from oopsnote.core import (
     TaskStore,
 )
 from oopsnote.paper import infer_difficulty_coefficients, select_paper_items
+from oopsnote.paper import build_paper_tex
 
 
 def test_top_level_knowledge_node_includes_its_descendants(monkeypatch):
@@ -170,3 +172,64 @@ def test_paper_draft_api_persists_updates_and_deletes(tmp_path, monkeypatch):
     deleted = client.delete(f"/papers/{paper['id']}")
     assert deleted.status_code == 200
     assert client.get(f"/papers/{paper['id']}").status_code == 404
+
+
+def test_build_paper_tex_uses_oopsmark_export_and_escapes_heading():
+    problem = Problem(
+        subject="math",
+        question_type=QuestionType.SINGLE_CHOICE,
+        content_format=ContentFormat.OOPSMARK_V1,
+        problem_text="求 $x^2$，并计算 $\\frac{1}{2}$。",
+        options=["$x$", "$x^2$"],
+        answer="B",
+        explanation="因为 $x \\cdot x=x^2$。",
+    )
+
+    tex = build_paper_tex(
+        [problem],
+        title="函数_练习",
+        subtitle="第一组 & 第二组",
+        show_answers=True,
+    )
+
+    assert r"函数\_练习" in tex
+    assert r"第一组 \& 第二组" in tex
+    assert r"\frac{1}{2}" in tex
+    assert r"\textbf{答案：}B" in tex
+    assert "\\begin{enumerate}\n\\renewcommand" in tex
+
+
+def test_compile_paper_api_returns_pdf_and_unicode_filename(tmp_path, monkeypatch):
+    from oopsnote.api.routes import papers as paper_routes
+
+    task_store = TaskStore(tmp_path / "tasks")
+    task = _add_problem(
+        task_store,
+        question_no=1,
+        question_type=QuestionType.SINGLE_CHOICE,
+    )
+    monkeypatch.setattr(main, "TASK_STORE", task_store)
+    observed = {}
+
+    def fake_compile(problems, **kwargs):
+        observed["problems"] = problems
+        observed.update(kwargs)
+        return b"%PDF-1.7\n"
+
+    monkeypatch.setattr(paper_routes, "compile_paper_pdf", fake_compile)
+    response = TestClient(main.app).post(
+        "/papers/compile",
+        json={
+            "items": [{"task_id": task.id, "problem_id": task.problem.id}],
+            "title": "函数练习",
+            "subtitle": "第一组",
+            "show_answers": True,
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.content == b"%PDF-1.7\n"
+    assert response.headers["content-type"] == "application/pdf"
+    assert "filename*=UTF-8''" in response.headers["content-disposition"]
+    assert observed["subtitle"] == "第一组"
+    assert observed["show_answers"] is True

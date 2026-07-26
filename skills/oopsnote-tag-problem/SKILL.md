@@ -1,7 +1,7 @@
 ---
 name: oopsnote-tag-problem
 description: "打标 — 为题目标注知识点、错因、题型等多维标签。"
-version: 1.1.0
+version: 1.2.0
 license: MIT
 metadata:
   hermes:
@@ -34,10 +34,11 @@ metadata:
 ### 1. 查询标签候选
 调用 Pi 暴露的 OopsNote `list_tags` 直连工具渐进获取 AI 可选标签。查询知识点时必须传入题目的英文 `subject`，普通题默认使用 `scope=core`。
 
-1. 调用 `list_tags(dimension="knowledge", subject=<题目学科>, scope="core")`，读取 `mode="branches"` 下的一级分组和二级分支。
+1. 调用 `list_tags(task_id=<当前任务>, run_id=<当前运行>, dimension="knowledge", subject=<题目学科>, scope="core")`，读取 `mode="branches"` 下的一级分组和二级分支。
 2. 根据题目直接考查内容选择 **1-6 个**最相关的二级分支 ID。禁止传一级分组名称或 ID。
-3. 再调用 `list_tags(dimension="knowledge", subject=<题目学科>, scope="core", branch_ids=[...])`，读取 `mode="leaves"` 的 `items`。
-4. 调用 `list_tags(dimension="error", subject=<题目学科>)` 获取 `mode="values"` 下的已有错因标签。
+3. 在同一轮并行调用以下两个互不依赖的查询：
+   - `list_tags(task_id=<当前任务>, run_id=<当前运行>, dimension="knowledge", subject=<题目学科>, scope="core", branch_ids=[...])`，读取 `mode="leaves"` 的 `items`；
+   - `list_tags(task_id=<当前任务>, run_id=<当前运行>, dimension="error", subject=<题目学科>)`，读取 `mode="values"` 下的已有错因标签。
 
 知识点必须从第二次调用返回的叶子标签中选择。父级目录、未加载标签和自由生成标签会被最终提交校验拒绝。
 
@@ -48,7 +49,7 @@ metadata:
 - **difficulty**：简单/中等/较难
 
 ### 3. 创建新标签（如果需要）
-禁止创建知识标签。仅在确实缺少合适的错因标签时，才调用 Pi 暴露的 OopsNote `create_tag` 直连工具创建错因标签。
+禁止创建知识标签。仅在确实缺少合适的错因标签时，才调用 Pi 暴露的 OopsNote `create_tag(task_id=<当前任务>, run_id=<当前运行>, dimension="error", ...)` 直连工具创建错因标签。
 
 ### 4. 返回结果
 将标签字段返回给 orchestrator，由 `finalize_task` 与完整 Problem 一次性提交。

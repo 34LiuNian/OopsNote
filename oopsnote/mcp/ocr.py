@@ -6,24 +6,47 @@ import base64
 import json
 import mimetypes
 import os
+import threading
+from collections import OrderedDict
+from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
 import httpx
 
+from oopsnote.mcp.ocr_contract import OCR_INSTRUCTION, normalize_ocr_result
+
 
 MAX_IMAGE_BYTES = 12 * 1024 * 1024
-OCR_ENDPOINT = "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions"
-OCR_INSTRUCTION = (
-    "Extract only printed question content. Return one strict JSON object: "
-    "{content_format:'oopsmark-v1', subject:'math|physics|chemistry', "
-    "question_type:'单选题|多选题|填空题|解答题', problem_text:string, "
-    "options:string[], has_diagram:boolean, uncertain_regions:string[], "
-    "confidence:number}. Use OopsMark v1: inline math is $...$, display math "
-    "is $$...$$, options never appear in problem_text, and never emit raw LaTeX "
-    "environments such as array, tabular, enumerate, or tikzpicture. Do not solve "
-    "or invent unreadable text."
-)
+DEFAULT_OCR_ENDPOINT = "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions"
+# Backward-compatible public name used by integrations and tests.
+OCR_ENDPOINT = DEFAULT_OCR_ENDPOINT
+_OCR_CLIENT: httpx.Client | None = None
+_OCR_CLIENT_LOCK = threading.Lock()
+_OCR_RESULT_LOCK = threading.Lock()
+_OCR_RESULTS: OrderedDict[tuple[str, str, str], dict[str, Any]] = OrderedDict()
+_OCR_RESULT_LIMIT = 128
+
+
+def _ocr_client() -> httpx.Client:
+    global _OCR_CLIENT
+    with _OCR_CLIENT_LOCK:
+        if _OCR_CLIENT is None:
+            _OCR_CLIENT = httpx.Client(timeout=90)
+        return _OCR_CLIENT
+
+
+def close_ocr_client() -> None:
+    """Close pooled provider connections and clear per-run OCR memoization."""
+
+    global _OCR_CLIENT
+    with _OCR_CLIENT_LOCK:
+        client = _OCR_CLIENT
+        _OCR_CLIENT = None
+    if client is not None:
+        client.close()
+    with _OCR_RESULT_LOCK:
+        _OCR_RESULTS.clear()
 
 
 def _load_ocr_config() -> dict[str, Any]:
@@ -43,9 +66,8 @@ def _load_ocr_config() -> dict[str, Any]:
     return config
 
 
-def ocr_image(path: str) -> dict[str, Any]:
-    """Extract one managed task image into strict OopsMark-oriented OCR JSON."""
-    image_path = Path(path).expanduser().resolve()
+def _ocr_image_path(image_path: Path) -> dict[str, Any]:
+    """Send one already-authorized managed image to the OCR provider."""
     mime, _ = mimetypes.guess_type(image_path.name)
     if mime not in {"image/jpeg", "image/png", "image/webp", "image/gif"}:
         raise ValueError("Unsupported OCR image type")
@@ -59,6 +81,7 @@ def ocr_image(path: str) -> dict[str, Any]:
     config = _load_ocr_config()
     api_key = str(config.get("dashscope_api_key") or "")
     model = str(config.get("model") or "")
+    endpoint = str(config.get("endpoint") or DEFAULT_OCR_ENDPOINT)
     if not api_key or not model:
         raise RuntimeError("OCR key and model are required in .pi/extensions.json")
 
@@ -85,21 +108,66 @@ def ocr_image(path: str) -> dict[str, Any]:
         "response_format": {"type": "json_object"},
     }
     try:
-        response = httpx.post(
-            OCR_ENDPOINT,
+        response = _ocr_client().post(
+            endpoint,
             headers={
                 "Authorization": f"Bearer {api_key}",
                 "Content-Type": "application/json",
             },
             json=payload,
-            timeout=90,
         )
         response.raise_for_status()
         body = response.json()
         content = body["choices"][0]["message"]["content"]
         parsed = json.loads(content)
-    except (httpx.HTTPError, KeyError, IndexError, TypeError, json.JSONDecodeError) as error:
-        raise RuntimeError("DashScope OCR request or response failed") from error
+    except httpx.HTTPStatusError as error:
+        status = error.response.status_code
+        category = "rate_limit" if status == 429 else "provider_error"
+        raise RuntimeError(f"DashScope OCR {category}: HTTP {status}") from error
+    except httpx.TimeoutException as error:
+        raise RuntimeError("DashScope OCR timeout") from error
+    except httpx.TransportError as error:
+        raise RuntimeError(f"DashScope OCR network error: {error}") from error
+    except (KeyError, IndexError, TypeError, json.JSONDecodeError) as error:
+        raise RuntimeError("DashScope OCR returned an invalid response") from error
     if not isinstance(parsed, dict):
         raise RuntimeError("DashScope OCR returned a non-object result")
     return parsed
+
+
+def ocr_image(task_id: str, run_id: str) -> dict[str, Any]:
+    """OCR only the asset bound to the currently active managed task run."""
+    # Imported lazily to keep the provider client independent from store setup
+    # and to let tests replace the shared MCP stores.
+    from oopsnote.mcp import server
+
+    task = server.TASK_STORE.get(task_id)
+    if not run_id or task.active_run_id != run_id:
+        raise ValueError(f"run_id {run_id} is not active for task {task_id}")
+    if not task.asset_path:
+        raise ValueError(f"task {task_id} has no image asset")
+    cache_key = (task_id, run_id, task.asset_path)
+    with _OCR_RESULT_LOCK:
+        cached = _OCR_RESULTS.get(cache_key)
+        if cached is not None:
+            _OCR_RESULTS.move_to_end(cache_key)
+            return deepcopy(cached)
+    image_path = server.ASSET_STORE.resolve(task.asset_path)
+    parsed = _ocr_image_path(image_path)
+    expected_question_no = (
+        task.metadata.get("question_no")
+        or task.metadata.get("batch_question_no")
+    )
+    result = normalize_ocr_result(
+        parsed,
+        expected_question_no=expected_question_no,
+    )
+    with _OCR_RESULT_LOCK:
+        _OCR_RESULTS[cache_key] = deepcopy(result)
+        _OCR_RESULTS.move_to_end(cache_key)
+        while len(_OCR_RESULTS) > _OCR_RESULT_LIMIT:
+            _OCR_RESULTS.popitem(last=False)
+    return result
+
+
+__all__ = ["OCR_ENDPOINT", "close_ocr_client", "ocr_image"]

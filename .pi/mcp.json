@@ -1,28 +1,3 @@
 {
-  "mcpServers": {
-    "oopsnote_pipeline": {
-      "url": "${OOPSNOTE_MCP_URL}",
-      "headers": {
-        "Authorization": "Bearer ${OOPSNOTE_MCP_TOKEN}"
-      },
-      "lifecycle": "eager",
-      "directTools": [
-        "get_task",
-        "get_asset_path",
-        "list_tags",
-        "create_tag",
-        "report_task_stage",
-        "finalize_task",
-        "fail_task"
-      ],
-      "excludeTools": [
-        "create_task",
-        "list_tasks",
-        "update_task",
-        "mark_task_status",
-        "set_task_problems",
-        "delete_tag"
-      ]
-    }
-  }
+  "mcpServers": {}
 }

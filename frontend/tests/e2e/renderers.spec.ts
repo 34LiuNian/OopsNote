@@ -79,3 +79,26 @@ test("GFM tables show a cell grid and are centered", async ({ page }) => {
   expect(layout.cellBorderWidth).not.toBe("0px");
   expect(layout.centerOffset).toBeLessThan(1);
 });
+
+test("problem illustrations support mutually exclusive right-side auto sizing and custom sizing", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto("/debug", { waitUntil: "domcontentloaded" });
+
+  const automatic = page.locator("#problem-illustration-auto .problem-content__lead");
+  await expect(automatic).toHaveClass(/is-right/);
+  await expect(automatic.locator('[role="img"]')).toBeVisible();
+  const automaticSizes = await automatic.evaluate((element) => ({
+    text: element.querySelector<HTMLElement>(".problem-content__text")!.getBoundingClientRect().height,
+    figure: element.querySelector<HTMLElement>(".problem-content__illustration")!.getBoundingClientRect().height,
+  }));
+  expect(automaticSizes.figure).toBeCloseTo(automaticSizes.text, 0);
+
+  const custom = page.locator("#problem-illustration-custom .problem-content__lead");
+  await expect(custom).toHaveClass(/is-left/);
+  await expect(custom.getByRole("img", { name: "题图" })).toBeVisible();
+  const customSizes = await custom.evaluate((element) => ({
+    text: element.querySelector<HTMLElement>(".problem-content__text")!.getBoundingClientRect().height,
+    figure: element.querySelector<HTMLElement>(".problem-content__illustration")!.getBoundingClientRect().height,
+  }));
+  expect(customSizes.figure / customSizes.text).toBeCloseTo(1.25, 1);
+});

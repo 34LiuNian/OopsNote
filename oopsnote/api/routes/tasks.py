@@ -69,9 +69,14 @@ def create_task(payload: TaskCreateRequest) -> dict[str, Any]:
 def delete_task(task_id: str) -> dict[str, Any]:
     api = _api()
     try:
-        api.TASK_STORE.get(task_id)
+        task = api.TASK_STORE.get(task_id)
     except KeyError:
         raise HTTPException(status_code=404, detail="Task not found")
+    if task.active_run_id or task.status == TaskStatus.PROCESSING:
+        raise HTTPException(
+            status_code=409,
+            detail="Cancel the active task before deleting it",
+        )
     api.TASK_STORE.delete(task_id)
     return {"success": True}
 
@@ -84,9 +89,12 @@ def cancel_task(task_id: str) -> dict[str, Any]:
     except KeyError:
         raise HTTPException(status_code=404, detail="Task not found")
     run = api.RUN_STORE.active_for_task(task_id)
-    api._runner_for(run.backend if run else api._configured_backend(None)).cancel(
-        task_id
-    )
+    try:
+        api._runner_for(run.backend if run else api._configured_backend(None)).cancel(
+            task_id
+        )
+    except RuntimeError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
     return {"task": api._task_view(api.TASK_STORE.get(task_id))}
 
 
@@ -135,7 +143,7 @@ def list_task_runs(task_id: str) -> dict[str, list[dict[str, Any]]]:
         api.TASK_STORE.get(task_id)
     except KeyError:
         raise HTTPException(status_code=404, detail="Task not found")
-    runs = [run for run in api.RUN_STORE.list_all() if run.task_id == task_id]
+    runs = api.RUN_STORE.list_for_task(task_id)
     runs.sort(key=lambda run: run.heartbeat_at, reverse=True)
     return {"items": [api._run_view(run) for run in runs]}
 
@@ -158,8 +166,8 @@ def override_problem(
     if payload.get("question_type"):
         try:
             question_type = QuestionType(payload["question_type"])
-        except ValueError:
-            pass
+        except ValueError as error:
+            raise HTTPException(status_code=422, detail="Unsupported question_type") from error
     options = payload.get("options", problem.options)
     if options and isinstance(options[0], dict):
         options = [item.get("text", "") for item in options]
@@ -172,6 +180,94 @@ def override_problem(
                 status_code=422,
                 detail="Unsupported content_format",
             )
+    next_metadata = dict(task.metadata)
+    if "question_no" in payload:
+        next_metadata["question_no"] = payload.get("question_no")
+    if "user_tags" in payload:
+        next_metadata["user_tags"] = list(payload.get("user_tags") or [])
+    if "source" in payload:
+        next_metadata["source"] = payload.get("source") or ""
+    diagram_fields = {
+        "diagram_detected",
+        "diagram_kind",
+        "diagram_tikz_source",
+        "diagram_svg",
+        "diagram_image_path",
+        "diagram_position",
+        "diagram_scale_percent",
+        "diagram_render_status",
+        "diagram_error",
+        "diagram_needs_review",
+    }
+    if diagram_fields.intersection(payload):
+        diagram_detected = bool(payload.get("diagram_detected", next_metadata.get("diagram_detected", problem.has_diagram)))
+        diagram_kind = payload.get("diagram_kind", next_metadata.get("diagram_kind"))
+        if not diagram_detected:
+            diagram_kind = None
+        if diagram_kind not in {None, "tikz", "image"}:
+            raise HTTPException(status_code=422, detail="diagram_kind must be tikz, image, or null")
+
+        diagram_position = payload.get("diagram_position", next_metadata.get("diagram_position", "right"))
+        if diagram_position not in {"left", "right"}:
+            raise HTTPException(status_code=422, detail="diagram_position must be left or right")
+
+        diagram_scale = payload.get("diagram_scale_percent", next_metadata.get("diagram_scale_percent"))
+        if diagram_scale is not None:
+            if isinstance(diagram_scale, bool) or not isinstance(diagram_scale, (int, float)):
+                raise HTTPException(status_code=422, detail="diagram_scale_percent must be a number or null")
+            diagram_scale = round(diagram_scale)
+            if diagram_scale < 50 or diagram_scale > 200:
+                raise HTTPException(status_code=422, detail="diagram_scale_percent must be between 50 and 200")
+
+        next_metadata.update(
+            {
+                "diagram_detected": diagram_detected,
+                "diagram_kind": diagram_kind,
+                "diagram_position": diagram_position,
+                "diagram_scale_percent": diagram_scale,
+            }
+        )
+        if diagram_kind == "tikz":
+            tikz_source = str(payload.get("diagram_tikz_source") or "").strip()
+            if diagram_detected and not tikz_source:
+                raise HTTPException(status_code=422, detail="TikZ diagrams require diagram_tikz_source")
+            next_metadata.update(
+                {
+                    "diagram_tikz_source": tikz_source or None,
+                    "diagram_svg": payload.get("diagram_svg"),
+                    "diagram_image_path": None,
+                    "diagram_render_status": payload.get("diagram_render_status"),
+                    "diagram_error": payload.get("diagram_error"),
+                    "diagram_needs_review": bool(payload.get("diagram_needs_review", False)),
+                }
+            )
+        elif diagram_kind == "image":
+            image_path = payload.get("diagram_image_path") or task.asset_path
+            if diagram_detected and not image_path:
+                raise HTTPException(status_code=422, detail="Image diagrams require a task image asset")
+            if image_path and image_path != task.asset_path:
+                raise HTTPException(status_code=422, detail="Image diagrams currently use the task source asset")
+            next_metadata.update(
+                {
+                    "diagram_tikz_source": None,
+                    "diagram_svg": None,
+                    "diagram_image_path": image_path,
+                    "diagram_render_status": "ready" if image_path else None,
+                    "diagram_error": None,
+                    "diagram_needs_review": False,
+                }
+            )
+        else:
+            next_metadata.update(
+                {
+                    "diagram_tikz_source": None,
+                    "diagram_svg": None,
+                    "diagram_image_path": None,
+                    "diagram_render_status": None,
+                    "diagram_error": None,
+                    "diagram_needs_review": False,
+                }
+            )
     try:
         updated_problem = Problem.model_validate(
             {
@@ -180,7 +276,15 @@ def override_problem(
                 "problem_text": payload.get("problem_text", problem.problem_text),
                 "options": options,
                 "question_type": question_type,
-                "source": payload.get("source") or problem.source,
+                "source": (
+                    payload.get("source") or ""
+                    if "source" in payload
+                    else problem.source
+                ),
+                "has_diagram": payload.get(
+                    "diagram_detected",
+                    problem.has_diagram,
+                ),
                 "knowledge_points": payload.get(
                     "knowledge_tags",
                     problem.knowledge_points,
@@ -193,7 +297,14 @@ def override_problem(
         )
     except ValueError as error:
         raise HTTPException(status_code=422, detail=str(error))
-    task = api.TASK_STORE.set_problem(task_id, updated_problem)
+    api.TAG_STORE.ensure(TagDimension.KNOWLEDGE, updated_problem.knowledge_points)
+    api.TAG_STORE.ensure(TagDimension.ERROR, updated_problem.error_hypothesis)
+    api.TAG_STORE.ensure(TagDimension.CUSTOM, list(next_metadata.get("user_tags") or []))
+    task = api.TASK_STORE.update(
+        task_id,
+        problem=updated_problem,
+        metadata=next_metadata,
+    )
     return {"task": api._task_view(task)}
 
 
@@ -206,15 +317,33 @@ def rerender_problem_diagram(task_id: str) -> dict[str, Any]:
         raise HTTPException(status_code=404, detail="Task not found")
     if not task.problem:
         raise HTTPException(status_code=404, detail="Problem not found")
+    if not task.metadata.get("diagram_tikz_source"):
+        raise HTTPException(status_code=422, detail="Problem has no persisted TikZ source")
+    task = api.TASK_STORE.update(
+        task_id,
+        metadata={
+            **task.metadata,
+            "diagram_svg": None,
+            "diagram_render_status": "pending",
+            "diagram_error": None,
+            "diagram_needs_review": False,
+        },
+    )
     return {"task": api._task_view(task)}
 
 
 @router.post("/upload")
 def upload_task(payload: UploadRequest) -> dict[str, Any]:
     api = _api()
-    path = api.ASSET_STORE.save_base64(payload.image_base64, payload.filename)
+    try:
+        path, detected_mime_type = api.ASSET_STORE.save_uploaded_image(
+            payload.image_base64,
+            payload.filename,
+        )
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
     metadata = payload.model_dump(exclude={"image_base64", "filename", "mime_type"})
-    metadata["mime_type"] = payload.mime_type
+    metadata["mime_type"] = detected_mime_type
     trace: dict[str, Any] = {
         "kind": "single_image",
         "screenshot_path": path,
@@ -226,7 +355,7 @@ def upload_task(payload: UploadRequest) -> dict[str, Any]:
         except KeyError:
             session = None
         if session:
-            source_label = api._batch_source_label(session.filename, payload.batch_page_index)
+            source_label = session.filename
             trace = {
                 "kind": "batch_segment",
                 "source_file_hash": session.file_hash,
@@ -252,10 +381,6 @@ def upload_task(payload: UploadRequest) -> dict[str, Any]:
             ],
             metadata=metadata,
         )
-    )
-    api.TAG_STORE.ensure(
-        TagDimension.META,
-        [metadata.get("source") or payload.source] if (metadata.get("source") or payload.source) else [],
     )
     api.TAG_STORE.ensure(TagDimension.KNOWLEDGE, payload.knowledge_tags)
     api.TAG_STORE.ensure(TagDimension.ERROR, payload.error_tags)

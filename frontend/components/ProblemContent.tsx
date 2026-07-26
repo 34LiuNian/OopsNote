@@ -1,5 +1,6 @@
 "use client";
 
+import { useLayoutEffect, useRef, useState } from "react";
 import { Box } from "@/components/ui/primitives";
 import { Button, Spinner } from "@/components/ui/primitives";
 import { Text } from "@/components/ui/primitives";
@@ -22,6 +23,9 @@ type ProblemContentProps = {
   diagramKind?: string | null;
   diagramTikzSource?: string | null;
   diagramSvg?: string | null;
+  diagramImagePath?: string | null;
+  diagramPosition?: "left" | "right";
+  diagramScalePercent?: number | null;
   diagramRenderStatus?: string | null;
   diagramError?: string | null;
   diagramNeedsReview?: boolean;
@@ -39,6 +43,9 @@ export function ProblemContent({
   diagramKind,
   diagramTikzSource,
   diagramSvg,
+  diagramImagePath,
+  diagramPosition = "right",
+  diagramScalePercent = null,
   diagramRenderStatus,
   diagramError,
   diagramNeedsReview = false,
@@ -47,28 +54,58 @@ export function ProblemContent({
   itemKeyPrefix,
   fontSize,
 }: ProblemContentProps) {
+  const textRef = useRef<HTMLDivElement | null>(null);
+  const [textHeight, setTextHeight] = useState(0);
+  const hasTikz = diagramKind === "tikz" && Boolean(diagramSvg || diagramTikzSource);
+  const hasImage = diagramKind === "image" && Boolean(diagramImagePath);
+  const hasIllustration = diagramDetected && (hasTikz || hasImage);
+  const safeScale = diagramScalePercent == null
+    ? 100
+    : Math.min(200, Math.max(50, diagramScalePercent));
+
+  useLayoutEffect(() => {
+    const element = textRef.current;
+    if (!element || !hasIllustration) {
+      setTextHeight(0);
+      return;
+    }
+    const update = () => setTextHeight(element.getBoundingClientRect().height);
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [hasIllustration, problemText, fontSize]);
+
+  const imageUrl = diagramImagePath
+    ? diagramImagePath.startsWith("/assets/") ? `/api${diagramImagePath}` : diagramImagePath
+    : "";
+  const figureHeight = textHeight > 0 ? `${textHeight * safeScale / 100}px` : undefined;
+
   return (
     <Box>
-      <MarkdownRenderer text={problemText || ""} format={contentFormat} fontSize={fontSize} />
+      <Box className={`problem-content__lead is-${diagramPosition}${hasIllustration ? " has-illustration" : ""}`}>
+        <Box ref={textRef} className="problem-content__text">
+          <MarkdownRenderer text={problemText || ""} format={contentFormat} fontSize={fontSize} />
+        </Box>
+        {hasIllustration ? (
+          <Box
+            as="figure"
+            className="problem-content__illustration"
+            style={{ height: figureHeight }}
+            sx={{ m: 0 }}
+          >
+            {diagramKind === "image" && imageUrl ? (
+              <img src={imageUrl} alt="题图" />
+            ) : diagramSvg ? (
+              <SvgMarkup svg={diagramSvg} label="题目图形" fit />
+            ) : diagramTikzSource ? (
+              <TikzRenderer code={diagramTikzSource} fit />
+            ) : null}
+          </Box>
+        ) : null}
+      </Box>
       {diagramDetected ? (
-        <Box sx={{ mt: 2, mb: 2 }}>
-          {diagramSvg ? (
-            <Box
-              sx={{
-                p: 2,
-                border: "1px solid",
-                borderColor: "border.default",
-                borderRadius: 1,
-                bg: "canvas.subtle",
-                "& svg": { maxWidth: "100%", height: "auto" },
-              }}
-            >
-              <SvgMarkup svg={diagramSvg} label="题目图形" />
-            </Box>
-          ) : diagramKind === "tikz" && diagramTikzSource ? (
-            <TikzRenderer code={diagramTikzSource} />
-          ) : null}
-
+        <Box sx={{ mb: 2 }}>
           {(diagramRenderStatus === "failed" || diagramNeedsReview) && (
             <Box sx={{ mt: 2, p: 2, border: "1px solid", borderColor: "attention.emphasis", borderRadius: 1, bg: "attention.subtle" }}>
               <Text sx={{ color: "attention.fg", fontSize: 1 }}>
@@ -85,10 +122,10 @@ export function ProblemContent({
                     {isRetryingDiagram ? (
                       <>
                         <Spinner size="small" sx={{ mr: 1 }} />
-                        重试识图中...
+                        重试渲染中...
                       </>
                     ) : (
-                      "重试自动识图"
+                      "重试图形渲染"
                     )}
                   </Button>
                 </Box>

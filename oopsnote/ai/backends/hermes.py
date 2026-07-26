@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Optional
 
 from oopsnote.ai.managed import ManagedAiRunner
-from oopsnote.core import RunStatus, TaskStage, TaskStatus
+from oopsnote.core import RunStatus, StateConflict, TaskStage, TaskStatus
 
 
 class HermesRunner(ManagedAiRunner):
@@ -24,6 +24,9 @@ class HermesRunner(ManagedAiRunner):
             "oopsnote-tag-problem",
         )
     )
+
+    def _run_metadata(self) -> dict[str, str]:
+        return {"prompt_version": "hermes-legacy"}
 
     def build_command(self, task_id: str, run_id: str) -> list[str]:
         task = self.task_store.get(task_id)
@@ -86,11 +89,17 @@ class HermesRunner(ManagedAiRunner):
                     if time.monotonic() - started >= self.timeout_seconds:
                         self._terminate(process)
                         message = f"Hermes exceeded {self.timeout_seconds}s timeout"
-                        self.task_store.mark_status(
-                            task_id,
-                            TaskStatus.FAILED,
-                            message,
-                        )
+                        try:
+                            self.task_store.transition(
+                                task_id,
+                                expected_statuses={TaskStatus.PROCESSING},
+                                expected_active_run_id=run_id,
+                                status=TaskStatus.FAILED,
+                                active_run_id=None,
+                                last_error=message,
+                            )
+                        except StateConflict:
+                            pass
                         self.run_store.finish(
                             run_id,
                             RunStatus.TIMED_OUT,
@@ -124,7 +133,17 @@ class HermesRunner(ManagedAiRunner):
                 )
             elif exit_code != 0:
                 message = f"Hermes exited with code {exit_code}; see {log_path}"
-                self.task_store.mark_status(task_id, TaskStatus.FAILED, message)
+                try:
+                    self.task_store.transition(
+                        task_id,
+                        expected_statuses={TaskStatus.PROCESSING},
+                        expected_active_run_id=run_id,
+                        status=TaskStatus.FAILED,
+                        active_run_id=None,
+                        last_error=message,
+                    )
+                except StateConflict:
+                    pass
                 self.run_store.finish(
                     run_id,
                     RunStatus.FAILED,
@@ -134,7 +153,17 @@ class HermesRunner(ManagedAiRunner):
                 )
             elif task.status != TaskStatus.COMPLETED:
                 message = "Hermes exited without finalizing the task"
-                self.task_store.mark_status(task_id, TaskStatus.FAILED, message)
+                try:
+                    self.task_store.transition(
+                        task_id,
+                        expected_statuses={TaskStatus.PROCESSING},
+                        expected_active_run_id=run_id,
+                        status=TaskStatus.FAILED,
+                        active_run_id=None,
+                        last_error=message,
+                    )
+                except StateConflict:
+                    pass
                 self.run_store.finish(
                     run_id,
                     RunStatus.FAILED,

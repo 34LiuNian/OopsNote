@@ -19,21 +19,24 @@ from oopsnote.ai import HermesRunner, PiRpcBackend, PiRpcRunner
 from oopsnote.api.routes import batch, catalog, papers, tasks
 from oopsnote.api.schemas import TagInput, TagRenameInput, UploadRequest
 from oopsnote.catalog import KNOWLEDGE_TAGS_PATH, KNOWLEDGE_TREES_PATH
+from oopsnote.content import option_label
 from oopsnote.core import (
     AssetStore,
+    AppSettingsStore,
     BatchSessionRecord,
     BatchSessionStore,
+    BatchProcessJobStore,
     BatchSessionUpdateRequest,
     Problem,
     PaperDraftStore,
     RunStore,
-    TagDimension,
     TagStore,
     TaskRecord,
     TaskStatus,
     TaskStore,
 )
 from oopsnote.mcp.http_runtime import SharedMcpHttpRuntime
+from oopsnote.mcp.ocr import close_ocr_client
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 STORAGE_DIR = PROJECT_ROOT / "storage"
@@ -47,6 +50,8 @@ ASSET_STORE = AssetStore(base_dir=STORAGE_DIR / "assets")
 BATCH_SESSION_STORE = BatchSessionStore(
     STORAGE_DIR / "settings" / "batch_sessions.json"
 )
+BATCH_PROCESS_JOB_STORE = BatchProcessJobStore(STORAGE_DIR / "batch_jobs")
+APP_SETTINGS_STORE = AppSettingsStore(STORAGE_DIR / "settings" / "app_settings.json")
 RUN_STORE = RunStore(STORAGE_DIR / "runs")
 PAPER_DRAFT_STORE = PaperDraftStore(STORAGE_DIR / "papers")
 MCP_HTTP_RUNTIME = SharedMcpHttpRuntime()
@@ -73,20 +78,27 @@ PI_RUNNER = PiRpcRunner(
     project_root=PROJECT_ROOT,
     task_store=TASK_STORE,
     run_store=RUN_STORE,
-    max_concurrent_tasks=int(
-        os.getenv(
-            "OOPSNOTE_RPC_MAX_WORKERS",
-            os.getenv("OOPSNOTE_PI_MAX_CONCURRENT_TASKS", "3"),
-        )
-    ),
+    max_concurrent_tasks=int(APP_SETTINGS_STORE.get().get("pi_concurrency", os.getenv(
+        "OOPSNOTE_RPC_MAX_WORKERS", os.getenv("OOPSNOTE_PI_MAX_CONCURRENT_TASKS", "3")
+    ))),
     **_runner_settings(),
 )
 
-TAG_DIMENSIONS = {
+_DEFAULT_TAG_DIMENSIONS = {
     "knowledge": {"label": "知识体系", "label_variant": "default"},
     "error": {"label": "错题归因", "label_variant": "default"},
     "meta": {"label": "来源", "label_variant": "default"},
     "custom": {"label": "自定义标签", "label_variant": "default"},
+}
+_saved_tag_dimensions = APP_SETTINGS_STORE.get().get("tag_dimensions")
+TAG_DIMENSIONS = {
+    key: (
+        _saved_tag_dimensions.get(key, default)
+        if isinstance(_saved_tag_dimensions, dict)
+        and isinstance(_saved_tag_dimensions.get(key, default), dict)
+        else default
+    )
+    for key, default in _DEFAULT_TAG_DIMENSIONS.items()
 }
 BATCH_REVIEW_REASONS = {
     "unreadable",
@@ -108,16 +120,13 @@ def _batch_session_view(record: BatchSessionRecord) -> dict[str, Any]:
         "active_page": record.active_page,
         "crop_rect": record.crop_rect.model_dump(),
         "crop_confirmed": record.crop_confirmed,
+        "column_layout": record.column_layout.model_dump(),
+        "excluded_page_indices": record.excluded_page_indices,
         "segments": [segment.model_dump() for segment in record.segments],
+        "revision": record.revision,
         "created_at": record.created_at.isoformat(),
         "updated_at": record.updated_at.isoformat(),
     }
-
-
-def _batch_source_label(filename: str, page_index: Any) -> str:
-    if isinstance(page_index, int) and page_index >= 0:
-        return f"{filename} · 第 {page_index + 1} 页"
-    return filename
 
 
 def _sync_batch_source_references(file_hash: str, filename: str) -> None:
@@ -130,7 +139,7 @@ def _sync_batch_source_references(file_hash: str, filename: str) -> None:
         if trace.get("source_file_hash") != file_hash:
             continue
         page_index = trace.get("page_index")
-        source = _batch_source_label(filename, page_index)
+        source = filename
         next_trace = {**trace, "source_file_name": filename}
         next_metadata = {
             **metadata,
@@ -148,7 +157,6 @@ def _sync_batch_source_references(file_hash: str, filename: str) -> None:
             )
         if next_metadata != metadata or next_problem != task.problem:
             TASK_STORE.update(task.id, metadata=next_metadata, problem=next_problem)
-        TAG_STORE.ensure(TagDimension.META, [source])
 
 
 def _trace_view(trace: Any) -> Any:
@@ -177,18 +185,25 @@ def _problem_source(task: TaskRecord, problem: Problem) -> Optional[str]:
     trace = metadata.get("trace")
     if isinstance(trace, dict) and trace.get("kind") == "batch_segment":
         file_hash = trace.get("source_file_hash")
+        trace_filename = trace.get("source_file_name")
         if file_hash:
             try:
                 session = BATCH_SESSION_STORE.get(file_hash)
             except KeyError:
                 pass
             else:
-                return _batch_source_label(session.filename, trace.get("page_index"))
+                return session.filename
+        if isinstance(trace_filename, str) and trace_filename.strip():
+            return trace_filename.strip()
     return problem.source or metadata.get("source")
 
 
 def _sync_batch_session_tasks(record: BatchSessionRecord) -> BatchSessionRecord:
-    """Refresh task-derived segment state without losing manual crop data."""
+    """Project current task state into a read-only batch-session view."""
+    return _sync_batch_session_tasks_locked(record)
+
+
+def _sync_batch_session_tasks_locked(record: BatchSessionRecord) -> BatchSessionRecord:
     changed = False
     segments = []
     for segment in record.segments:
@@ -236,10 +251,7 @@ def _sync_batch_session_tasks(record: BatchSessionRecord) -> BatchSessionRecord:
         segments.append(next_segment)
     if not changed:
         return record
-    return BATCH_SESSION_STORE.update(
-        record.file_hash,
-        BatchSessionUpdateRequest(segments=segments),
-    )
+    return record.model_copy(update={"segments": segments})
 
 
 def _asset_view(record: TaskRecord) -> Optional[dict[str, Any]]:
@@ -266,11 +278,21 @@ def _problem_view(task: TaskRecord, problem: Problem) -> dict[str, Any]:
         "content_format": problem.content_format.value,
         "problem_text": problem.problem_text,
         "options": [
-            {"key": str(index + 1), "text": option}
+            {"key": option_label(index), "text": option}
             for index, option in enumerate(problem.options)
         ],
         "difficulty": problem.difficulty,
         "has_diagram": problem.has_diagram,
+        "diagram_detected": bool(metadata.get("diagram_detected", problem.has_diagram)),
+        "diagram_kind": metadata.get("diagram_kind"),
+        "diagram_tikz_source": metadata.get("diagram_tikz_source"),
+        "diagram_svg": metadata.get("diagram_svg"),
+        "diagram_image_path": metadata.get("diagram_image_path"),
+        "diagram_position": metadata.get("diagram_position", "right"),
+        "diagram_scale_percent": metadata.get("diagram_scale_percent"),
+        "diagram_render_status": metadata.get("diagram_render_status"),
+        "diagram_error": metadata.get("diagram_error"),
+        "diagram_needs_review": metadata.get("diagram_needs_review"),
         "knowledge_tags": problem.knowledge_points,
         "error_tags": problem.error_hypothesis,
         "user_tags": metadata.get("user_tags", []),
@@ -365,11 +387,21 @@ def _problem_summary(task: TaskRecord, problem: Problem) -> dict[str, Any]:
         "content_format": problem.content_format.value,
         "problem_text": problem.problem_text,
         "options": [
-            {"key": str(index + 1), "text": option}
+            {"key": option_label(index), "text": option}
             for index, option in enumerate(problem.options)
         ],
         "difficulty": problem.difficulty,
         "has_diagram": problem.has_diagram,
+        "diagram_detected": bool(metadata.get("diagram_detected", problem.has_diagram)),
+        "diagram_kind": metadata.get("diagram_kind"),
+        "diagram_tikz_source": metadata.get("diagram_tikz_source"),
+        "diagram_svg": metadata.get("diagram_svg"),
+        "diagram_image_path": metadata.get("diagram_image_path"),
+        "diagram_position": metadata.get("diagram_position", "right"),
+        "diagram_scale_percent": metadata.get("diagram_scale_percent"),
+        "diagram_render_status": metadata.get("diagram_render_status"),
+        "diagram_error": metadata.get("diagram_error"),
+        "diagram_needs_review": metadata.get("diagram_needs_review"),
         "subject": problem.subject or task.subject,
         "source": _problem_source(task, problem),
         "knowledge_points": problem.knowledge_points,
@@ -415,6 +447,7 @@ async def lifespan(_: FastAPI):
         PI_RUNNER.shutdown_dispatcher()
         PI_RUNNER.shutdown()
         MCP_HTTP_RUNTIME.shutdown()
+        close_ocr_client()
 
 
 app = FastAPI(title="OopsNote", version="0.3.0", lifespan=lifespan)
@@ -448,6 +481,7 @@ app.include_router(papers.router)
 
 __all__ = [
     "ASSET_STORE",
+    "APP_SETTINGS_STORE",
     "BATCH_SESSION_STORE",
     "HERMES_RUNNER",
     "PI_RUNNER",

@@ -22,6 +22,9 @@ type ProblemCardProps = {
   diagramKind?: string | null;
   diagramTikzSource?: string | null;
   diagramSvg?: string | null;
+  diagramImagePath?: string | null;
+  diagramPosition?: "left" | "right";
+  diagramScalePercent?: number | null;
   diagramRenderStatus?: string | null;
   diagramError?: string | null;
   diagramNeedsReview?: boolean;
@@ -52,6 +55,9 @@ export const ProblemCard = memo(function ProblemCard({
   diagramKind,
   diagramTikzSource,
   diagramSvg,
+  diagramImagePath,
+  diagramPosition,
+  diagramScalePercent,
   diagramRenderStatus,
   diagramError,
   diagramNeedsReview,
@@ -87,6 +93,9 @@ export const ProblemCard = memo(function ProblemCard({
         diagramKind={diagramKind}
         diagramTikzSource={diagramTikzSource}
         diagramSvg={diagramSvg}
+        diagramImagePath={diagramImagePath}
+        diagramPosition={diagramPosition}
+        diagramScalePercent={diagramScalePercent}
         diagramRenderStatus={diagramRenderStatus}
         diagramError={diagramError}
         diagramNeedsReview={diagramNeedsReview}

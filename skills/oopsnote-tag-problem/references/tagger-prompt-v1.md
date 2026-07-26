@@ -11,11 +11,14 @@
 ```python
 # 第一次：获取一级分组和二级分支
 branches = mcp__oopsnote_pipeline__list_tags(
+    task_id=task_id, run_id=run_id,
     dimension="knowledge", subject="math", scope="core"
 )
 
 # 从 branches.items 中选择 1-6 个二级分支 ID，再获取对应叶子标签
 leaves = mcp__oopsnote_pipeline__list_tags(
+    task_id=task_id,
+    run_id=run_id,
     dimension="knowledge",
     subject="math",
     scope="core",
@@ -23,7 +26,9 @@ leaves = mcp__oopsnote_pipeline__list_tags(
 )
 
 # 获取错因标签
-mcp__oopsnote_pipeline__list_tags(dimension="error", subject="math")
+mcp__oopsnote_pipeline__list_tags(
+    task_id=task_id, run_id=run_id, dimension="error", subject="math"
+)
 ```
 
 知识点必须从第二次调用返回的 `mode="leaves"` 的 `items` 中选择。最多传 6 个二级分支 ID；不要传一级分组，也不要自由创建知识标签。
@@ -42,6 +47,8 @@ mcp__oopsnote_pipeline__list_tags(dimension="error", subject="math")
 
 ```python
 mcp__oopsnote_pipeline__create_tag(
+    task_id=task_id,
+    run_id=run_id,
     dimension="error",
     value="忽略定义域",
     aliases=["定义域遗忘", "忘记定义域限制"],

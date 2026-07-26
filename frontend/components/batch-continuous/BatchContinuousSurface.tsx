@@ -1,20 +1,20 @@
 "use client";
 
-import { useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { buildPageMetrics } from "./batchContinuousGeometry";
-import type { ContinuousPageSource, DocumentCropRect, SelectionModel } from "./batchContinuousTypes";
+import type { ColumnLayout, ContinuousPageSource, DocumentCropRect, PageMetric, SelectionModel } from "./batchContinuousTypes";
 import { BatchSelectionOverlay } from "./BatchSelectionOverlay";
 
 type LazyPageProps = {
-  page: ContinuousPageSource;
-  crop: DocumentCropRect;
+  page: PageMetric;
   inverted: boolean;
+  hoveredBorrowMask?: string;
   imageUrl?: string;
   loadPage: (pageIndex: number) => void;
   onVisible: (pageIndex: number) => void;
 };
 
-function LazyPage({ page, crop, inverted, imageUrl, loadPage, onVisible }: LazyPageProps) {
+function LazyPage({ page, inverted, hoveredBorrowMask, imageUrl, loadPage, onVisible }: LazyPageProps) {
   const ref = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     const element = ref.current;
@@ -28,27 +28,62 @@ function LazyPage({ page, crop, inverted, imageUrl, loadPage, onVisible }: LazyP
     return () => observer.disconnect();
   }, [loadPage, onVisible, page.pageIndex]);
 
-  const croppedAspect = (page.sourceWidth * crop.width) / (page.sourceHeight * crop.height);
+  const renderedSourceWidth = page.sourceWidth * page.sourceScale;
+  const renderedSourceHeight = page.sourceHeight * page.sourceScale;
+  const imageLeft = page.coreDisplayLeft - page.coreRect.x * renderedSourceWidth;
+  const imageTop = -page.crop.y * renderedSourceHeight;
+  const leftBorrowWidth = Math.max(0, page.coreDisplayLeft - page.contentLeft);
+  const rightBorrowLeft = page.coreDisplayLeft + page.coreDisplayWidth;
+  const rightBorrowWidth = Math.max(0, page.contentRight - rightBorrowLeft);
+  const leftBorrowMaskId = `${page.id}:left`;
+  const rightBorrowMaskId = `${page.id}:right`;
   return (
     <div
       ref={ref}
-      className={`batch-continuous-page${inverted ? " is-inverted" : ""}`}
+      className={`batch-continuous-page${page.columnCount > 1 ? " has-columns" : ""}${inverted ? " is-inverted" : ""}`}
       data-page-index={page.pageIndex}
-      style={{ aspectRatio: String(croppedAspect) }}
+      data-column-index={page.columnIndex}
+      style={{ aspectRatio: String(page.displayWidth / page.displayHeight) }}
     >
       {imageUrl ? (
-        <img
-          src={imageUrl}
-          alt={page.label}
-          draggable={false}
+        <div
+          className="batch-continuous-page__content"
+          style={{ left: `${page.contentLeft / page.displayWidth * 100}%`, width: `${(page.contentRight - page.contentLeft) / page.displayWidth * 100}%` }}
+        >
+          <img
+            src={imageUrl}
+            alt={page.label}
+            draggable={false}
+            style={{
+              width: `${renderedSourceWidth / (page.contentRight - page.contentLeft) * 100}%`,
+              height: `${renderedSourceHeight / page.displayHeight * 100}%`,
+              left: `${(imageLeft - page.contentLeft) / (page.contentRight - page.contentLeft) * 100}%`,
+              top: `${imageTop / page.displayHeight * 100}%`,
+            }}
+          />
+        </div>
+      ) : <span className="batch-continuous-page__loading">正在载入第 {page.pageIndex + 1} 页</span>}
+      {page.columnCount > 1 && page.columnIndex > 0 && leftBorrowWidth > 0 && (
+        <span
+          aria-hidden="true"
+          className={`batch-continuous-page__borrow-mask is-left${hoveredBorrowMask === leftBorrowMaskId ? " is-hovered" : ""}`}
           style={{
-            width: `${100 / crop.width}%`,
-            height: `${100 / crop.height}%`,
-            left: `${-crop.x / crop.width * 100}%`,
-            top: `${-crop.y / crop.height * 100}%`,
+            left: `${page.contentLeft / page.displayWidth * 100}%`,
+            width: `${leftBorrowWidth / page.displayWidth * 100}%`,
           }}
         />
-      ) : <span className="batch-continuous-page__loading">正在载入第 {page.pageIndex + 1} 页</span>}
+      )}
+      {page.columnCount > 1 && page.columnIndex < page.columnCount - 1 && rightBorrowWidth > 0 && (
+        <span
+          aria-hidden="true"
+          className={`batch-continuous-page__borrow-mask is-right${hoveredBorrowMask === rightBorrowMaskId ? " is-hovered" : ""}`}
+          style={{
+            left: `${rightBorrowLeft / page.displayWidth * 100}%`,
+            width: `${rightBorrowWidth / page.displayWidth * 100}%`,
+          }}
+        />
+      )}
+      {page.columnCount > 1 && <span className="batch-continuous-page__column-label">第 {page.pageIndex + 1} 页 · 第 {page.columnIndex + 1} 栏</span>}
     </div>
   );
 }
@@ -56,6 +91,7 @@ function LazyPage({ page, crop, inverted, imageUrl, loadPage, onVisible }: LazyP
 type Props = {
   pages: ContinuousPageSource[];
   crop: DocumentCropRect;
+  columnLayout: ColumnLayout;
   imageUrls: Record<number, string>;
   loadPage: (pageIndex: number) => void;
   selections: SelectionModel[];
@@ -74,6 +110,7 @@ type Props = {
 export function BatchContinuousSurface({
   pages,
   crop,
+  columnLayout,
   imageUrls,
   loadPage,
   selections,
@@ -88,8 +125,27 @@ export function BatchContinuousSurface({
   onTooSmall,
   selectionEnabled = true,
 }: Props) {
-  const metrics = useMemo(() => buildPageMetrics(pages, crop), [crop, pages]);
+  const metrics = useMemo(() => buildPageMetrics(pages, crop, columnLayout), [columnLayout, crop, pages]);
   const totalHeight = metrics.at(-1)?.documentBottom ?? 0;
+  const [hoveredBorrowMask, setHoveredBorrowMask] = useState<string>();
+  const updateBorrowMaskHover = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    if (columnLayout.columnCount <= 1 || !metrics.length || totalHeight <= 0) {
+      setHoveredBorrowMask(undefined);
+      return;
+    }
+    const bounds = event.currentTarget.getBoundingClientRect();
+    const x = (event.clientX - bounds.left) / bounds.width * metrics[0].displayWidth;
+    const y = (event.clientY - bounds.top) / bounds.height * totalHeight;
+    const unit = metrics.find((metric) => y >= metric.documentTop && y < metric.documentBottom);
+    let next: string | undefined;
+    if (unit && unit.columnIndex > 0 && x >= unit.contentLeft && x < unit.coreDisplayLeft) {
+      next = `${unit.id}:left`;
+    } else if (unit && unit.columnIndex < unit.columnCount - 1) {
+      const coreRight = unit.coreDisplayLeft + unit.coreDisplayWidth;
+      if (x > coreRight && x <= unit.contentRight) next = `${unit.id}:right`;
+    }
+    setHoveredBorrowMask((current) => current === next ? current : next);
+  }, [columnLayout.columnCount, metrics, totalHeight]);
   const overlayScaleStyle = {
     "--batch-selection-stroke": `${2 * zoom}px`,
     "--batch-selection-offset": `${zoom}px`,
@@ -107,8 +163,10 @@ export function BatchContinuousSurface({
   } as React.CSSProperties;
   return (
     <div
-      className={`batch-continuous-surface${inverted ? " is-inverted" : ""}`}
+      className={`batch-continuous-surface${columnLayout.columnCount > 1 ? " is-column-layout" : ""}${inverted ? " is-inverted" : ""}`}
       data-testid="batch-continuous-surface"
+      onPointerMoveCapture={updateBorrowMaskHover}
+      onPointerLeave={() => setHoveredBorrowMask(undefined)}
       style={{
         ...overlayScaleStyle,
         width: `${Math.round(820 * zoom)}px`,
@@ -116,12 +174,12 @@ export function BatchContinuousSurface({
       }}
     >
       <div className="batch-continuous-pages">
-        {pages.map((page) => (
+        {metrics.map((page) => (
           <LazyPage
             key={page.id}
             page={page}
-            crop={crop}
             inverted={inverted}
+            hoveredBorrowMask={hoveredBorrowMask}
             imageUrl={imageUrls[page.pageIndex]}
             loadPage={loadPage}
             onVisible={onVisiblePageChange}

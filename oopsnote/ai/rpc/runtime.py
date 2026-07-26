@@ -6,6 +6,9 @@ import json
 import os
 from pathlib import Path
 from typing import Any, ClassVar, Optional
+from uuid import uuid4
+
+from oopsnote.mcp.tool_registry import AI_TOOL_NAMES
 
 
 class RpcRuntimeAdapter:
@@ -90,6 +93,9 @@ class RpcRuntimeAdapter:
         """Return runtime-specific environment overrides for a child process."""
         return {}
 
+    def cleanup(self) -> None:
+        """Remove runtime-owned ephemeral configuration."""
+
     def is_settled_event(self, event: dict[str, Any]) -> bool:
         raise NotImplementedError
 
@@ -107,18 +113,60 @@ class PiRuntimeAdapter(RpcRuntimeAdapter):
     default_command = "pi"
     serialize_startup = True
 
+    def __init__(self, project_root: Path, model: Optional[str] = None) -> None:
+        super().__init__(project_root, model=model)
+        self._managed_mcp_config_path: Optional[Path] = None
+
     def restricted_cli_args(self) -> list[str]:
         return ["--no-builtin-tools", "--no-extensions"]
 
     def extension_cli_args(self) -> list[str]:
         args: list[str] = []
-        extension = self.config_dir / "extensions" / "ocr_image.js"
-        if extension.exists():
-            args.extend(["--extension", str(extension)])
         mcp_adapter = self.config_dir / "node_modules" / "pi-mcp-adapter" / "index.ts"
         if mcp_adapter.exists():
             args.extend(["--extension", str(mcp_adapter)])
+            if self._managed_mcp_config_path is not None:
+                args.extend(["--mcp-config", str(self._managed_mcp_config_path)])
         return args
+
+    def configure_child_environment(self, values: dict[str, str]) -> None:
+        url = values.get("OOPSNOTE_MCP_URL")
+        token = values.get("OOPSNOTE_MCP_TOKEN")
+        if not url or not token:
+            raise ValueError("Managed upstream Pi requires MCP URL and token")
+        runtime_dir = self.project_root / "storage" / "runs"
+        runtime_dir.mkdir(parents=True, exist_ok=True)
+        if self._managed_mcp_config_path is None:
+            self._managed_mcp_config_path = (
+                runtime_dir / f".pi-mcp-{os.getpid()}-{uuid4().hex}.json"
+            )
+        payload = {
+            "mcpServers": {
+                "oopsnote_pipeline": {
+                    "url": url,
+                    "headers": {"Authorization": f"Bearer {token}"},
+                    "lifecycle": "eager",
+                    "directTools": list(AI_TOOL_NAMES),
+                }
+            }
+        }
+        self._managed_mcp_config_path.write_text(
+            json.dumps(payload, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+
+    @property
+    def managed_mcp_config_path(self) -> Optional[Path]:
+        return self._managed_mcp_config_path
+
+    def cleanup(self) -> None:
+        path = self._managed_mcp_config_path
+        self._managed_mcp_config_path = None
+        if path is not None:
+            try:
+                path.unlink(missing_ok=True)
+            except OSError:
+                pass
 
     def is_settled_event(self, event: dict[str, Any]) -> bool:
         return event.get("type") == "agent_settled"

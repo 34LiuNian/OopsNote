@@ -9,7 +9,9 @@ from __future__ import annotations
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
+from uuid import uuid4
 
+from oopsnote.content import option_label
 from oopsnote.core import Problem
 
 
@@ -51,6 +53,8 @@ def render_problem(problem: Problem) -> str:
 
     # frontmatter
     lines.append("---")
+    lines.append("oopsnote_managed: true")
+    lines.append(f"problem_id: {problem.id}")
     if problem.source:
         lines.append(f"source: \"{problem.source}\"")
     if problem.source_page is not None:
@@ -66,8 +70,8 @@ def render_problem(problem: Problem) -> str:
 
     # 选项
     if problem.options:
-        for opt in problem.options:
-            lines.append(f"- {opt}")
+        for index, opt in enumerate(problem.options):
+            lines.append(f"- {option_label(index)}. {opt}")
         lines.append("")
 
     # 答案
@@ -118,7 +122,7 @@ def write_problem(
 
     filename = problem_filename(problem)
     path = problems_dir / filename
-    path.write_text(render_problem(problem), encoding="utf-8")
+    _atomic_write(path, render_problem(problem))
     return path
 
 
@@ -133,6 +137,7 @@ def render_tag_index(
     lines: list[str] = []
 
     lines.append("---")
+    lines.append("oopsnote_managed: true")
     lines.append("type: index")
     lines.append(f"ref_count: {len(problem_refs)}")
     if aliases:
@@ -169,8 +174,15 @@ def write_tag_index(
     # 标签名中的特殊字符处理
     safe_name = tag_name.replace("/", "／").replace("\\", "／")
     path = indexes_dir / f"{safe_name}.md"
-    path.write_text(
-        render_tag_index(tag_name, problem_refs, aliases),
-        encoding="utf-8",
-    )
+    _atomic_write(path, render_tag_index(tag_name, problem_refs, aliases))
     return path
+
+
+def _atomic_write(path: Path, content: str) -> None:
+    temporary = path.with_name(f"{path.name}.{uuid4().hex}.tmp")
+    try:
+        temporary.write_text(content, encoding="utf-8")
+        temporary.replace(path)
+    finally:
+        if temporary.exists():
+            temporary.unlink()

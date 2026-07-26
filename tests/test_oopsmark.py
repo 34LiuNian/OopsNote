@@ -2,7 +2,16 @@ from __future__ import annotations
 
 import pytest
 
-from oopsnote.content import ContentExportError, OopsMarkBlockKind, parse_oopsmark, to_latex, validate_oopsmark
+from oopsnote.content import (
+    ContentExportError,
+    OopsMarkBlockKind,
+    normalize_oopsmark,
+    normalize_option_text,
+    option_label,
+    parse_oopsmark,
+    to_latex,
+    validate_oopsmark,
+)
 from oopsnote.core import ContentFormat, Problem
 
 
@@ -72,8 +81,6 @@ def test_problem_validates_only_declared_oopsmark_content():
 
 
 def test_normalize_oopsmark_collapses_excessive_newlines():
-    from oopsnote.content import normalize_oopsmark
-
     # Three newlines → one blank line
     assert normalize_oopsmark("line1\n\n\nline2") == "line1\n\nline2"
     # Four newlines → one blank line
@@ -92,6 +99,35 @@ def test_normalize_oopsmark_collapses_excessive_newlines():
     assert normalize_oopsmark("") == ""
 
 
+def test_normalize_oopsmark_canonicalizes_only_consecutive_subquestion_lists():
+    source = "19. 题干\n\n1. 第一问\n\n2. 第二问"
+    assert normalize_oopsmark(source) == "19. 题干\n\n（1）第一问\n\n（2）第二问"
+    assert normalize_oopsmark("19. 一道题") == "19. 一道题"
+    assert normalize_oopsmark("```text\n1. 原样\n2. 原样\n```") == (
+        "```text\n1. 原样\n2. 原样\n```"
+    )
+
+
+@pytest.mark.parametrize(
+    ("source", "expected"),
+    [
+        ("A. $x$", "$x$"),
+        ("B] $y$", "$y$"),
+        ("（C）$z$", "$z$"),
+        ("4、$w$", "$w$"),
+        ("$\\frac{1}{3}$", "$\\frac{1}{3}$"),
+    ],
+)
+def test_option_text_is_marker_free(source, expected):
+    assert normalize_option_text(source) == expected
+
+
+def test_option_labels_are_derived_from_array_order():
+    assert [option_label(index) for index in (0, 1, 3, 25, 26)] == [
+        "A", "B", "D", "Z", "AA"
+    ]
+
+
 def test_problem_normalizes_newlines_on_validation():
     prob = Problem(
         content_format=ContentFormat.OOPSMARK_V1,
@@ -107,3 +143,12 @@ def test_problem_normalizes_newlines_on_validation():
     # Leading/trailing stripped, internal triple → double
     assert prob.answer == "42"
     assert prob.explanation == "由\n\n$a+b$\n\n得结果。"
+
+
+def test_problem_normalizes_oopsmark_option_bodies():
+    problem = Problem(
+        content_format=ContentFormat.OOPSMARK_V1,
+        question_type="单选题",
+        options=["A. $x$", "B] $y$"],
+    )
+    assert problem.options == ["$x$", "$y$"]

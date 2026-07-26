@@ -279,8 +279,9 @@ export default function LibraryPage() {
                 sx={{
                   px: 2,
                   py: 2,
-                  borderBottom: idx < items.length - 1 ? '1px solid' : 'none',
-                  borderColor: 'border.muted',
+                  borderBottomWidth: idx < items.length - 1 ? 1 : 0,
+                  borderBottomStyle: 'solid',
+                  borderBottomColor: 'border.muted',
                 }}
               >
                 <ProblemListItem

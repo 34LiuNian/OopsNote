@@ -1,6 +1,7 @@
 {
   "ocr_image": {
     "dashscope_api_key": "paste-local-key-here",
-    "model": "qwen-vl-max"
+    "model": "qwen-vl-max",
+    "endpoint": "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions"
   }
 }

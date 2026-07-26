@@ -282,6 +282,16 @@ export default function PaperEditorPage() {
                     problemText={item.problem.problem_text || "（无题干）"}
                     contentFormat={item.problem.content_format}
                     options={item.problem.options}
+                    diagramDetected={item.problem.diagram_detected}
+                    diagramKind={item.problem.diagram_kind}
+                    diagramTikzSource={item.problem.diagram_tikz_source}
+                    diagramSvg={item.problem.diagram_svg}
+                    diagramImagePath={item.problem.diagram_image_path}
+                    diagramPosition={item.problem.diagram_position}
+                    diagramScalePercent={item.problem.diagram_scale_percent}
+                    diagramRenderStatus={item.problem.diagram_render_status}
+                    diagramError={item.problem.diagram_error}
+                    diagramNeedsReview={item.problem.diagram_needs_review}
                     itemKeyPrefix={item.problem_id}
                     showTitle={false}
                     fontSize={2}

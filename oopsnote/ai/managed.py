@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any, Optional, Protocol
 
 from oopsnote.ai.dispatcher import ManagedTaskDispatcher
-from oopsnote.core import RunStatus, RunStore, TaskRun, TaskStage, TaskStatus, TaskStore
+from oopsnote.core import RunStatus, RunStore, StateConflict, TaskRun, TaskStage, TaskStatus, TaskStore
 
 
 class AgentBackend(Protocol):
@@ -52,7 +52,12 @@ class ManagedAiRunner:
     def _run_metadata(self) -> dict[str, Any]:
         return {}
 
-    def enqueue(self, task_id: str) -> TaskRun:
+    def enqueue(
+        self,
+        task_id: str,
+        *,
+        retry_of: Optional[TaskRun] = None,
+    ) -> TaskRun:
         """Create a run and move a task into the managed processing state."""
         # One local API process may receive concurrent requests for the same
         # task through different runtime runners. Admission is one transaction
@@ -67,16 +72,33 @@ class ManagedAiRunner:
             run = self.run_store.create(
                 task_id,
                 backend=self.backend_name,
+                retry_of=retry_of,
                 **self._run_metadata(),
             )
-            self.task_store.update(
-                task.id,
-                status=TaskStatus.PROCESSING,
-                stage=TaskStage.QUEUED,
-                stage_message=f"Waiting for {self.backend_name} worker",
-                active_run_id=run.id,
-                last_error=None,
-            )
+            try:
+                self.task_store.transition(
+                    task.id,
+                    expected_statuses={
+                        TaskStatus.PENDING,
+                        TaskStatus.FAILED,
+                        TaskStatus.COMPLETED,
+                        TaskStatus.CANCELLED,
+                    },
+                    expected_active_run_id=None,
+                    status=TaskStatus.PROCESSING,
+                    stage=TaskStage.QUEUED,
+                    stage_message=f"Waiting for {self.backend_name} worker",
+                    active_run_id=run.id,
+                    last_error=None,
+                )
+            except (KeyError, StateConflict) as error:
+                self.run_store.finish(
+                    run.id,
+                    RunStatus.FAILED,
+                    error_code="admission_conflict",
+                    error_message=str(error),
+                )
+                raise RuntimeError(str(error)) from error
             return run
 
     def submit(self, task_id: str) -> TaskRun:
@@ -107,12 +129,28 @@ class ManagedAiRunner:
         if process and process.poll() is None:
             self._terminate(process)
         active = self.run_store.active_for_task(task_id)
-        self.task_store.mark_status(task_id, TaskStatus.CANCELLED)
         if active:
+            self.task_store.transition(
+                task_id,
+                expected_statuses={TaskStatus.PROCESSING},
+                expected_active_run_id=active.id,
+                status=TaskStatus.CANCELLED,
+                active_run_id=None,
+                last_error=None,
+            )
             self.run_store.finish(
                 active.id,
                 RunStatus.CANCELLED,
                 exit_code=process.poll() if process else None,
+            )
+        else:
+            self.task_store.transition(
+                task_id,
+                expected_statuses={TaskStatus.PENDING},
+                expected_active_run_id=None,
+                status=TaskStatus.CANCELLED,
+                active_run_id=None,
+                last_error=None,
             )
 
     def recover_stale(self) -> int:
@@ -237,7 +275,16 @@ class ManagedAiRunner:
         error_code: str,
     ) -> None:
         try:
-            self.task_store.mark_status(task_id, TaskStatus.FAILED, message)
+            self.task_store.transition(
+                task_id,
+                expected_statuses={TaskStatus.PROCESSING},
+                expected_active_run_id=run_id,
+                status=TaskStatus.FAILED,
+                active_run_id=None,
+                last_error=message,
+            )
+        except (KeyError, StateConflict):
+            pass
         finally:
             self.run_store.finish(
                 run_id,
@@ -267,6 +314,7 @@ class ManagedAiRunner:
                 "rate limit",
                 "429",
                 "503",
+                "rpc_protocol",
             )
         )
 

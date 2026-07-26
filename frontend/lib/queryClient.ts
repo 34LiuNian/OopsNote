@@ -59,5 +59,6 @@ export const queryKeys = {
     gateway: () => [...queryKeys.settings.all, 'gateway'] as const,
     debug: () => [...queryKeys.settings.all, 'debug'] as const,
     systemInfo: () => [...queryKeys.settings.all, 'systemInfo'] as const,
+    pi: () => [...queryKeys.settings.all, 'pi'] as const,
   },
 };

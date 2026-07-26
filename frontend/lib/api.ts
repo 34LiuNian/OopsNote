@@ -12,6 +12,13 @@ export type ApiRequestInit = RequestInit & {
   skipAuth?: boolean;
 };
 
+export class ApiError extends Error {
+  constructor(message: string, readonly status: number) {
+    super(message);
+    this.name = "ApiError";
+  }
+}
+
 function parseErrorMessage(rawText: string, status: number): string {
   if (!rawText) return `请求失败：${status}`;
   try {
@@ -58,7 +65,7 @@ export async function fetchJson<T>(path: string, init?: ApiRequestInit): Promise
 
   if (!response.ok) {
     const errorText = await response.text();
-    throw new Error(parseErrorMessage(errorText, response.status));
+    throw new ApiError(parseErrorMessage(errorText, response.status), response.status);
   }
 
   return (await response.json()) as T;

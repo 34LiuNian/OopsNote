@@ -126,6 +126,11 @@ export function BatchSelectionOverlay({
       onPointerDown={(event) => {
         if (event.button !== 0 || event.target !== event.currentTarget) return;
         const start = clientToDocument(event.clientX, event.clientY);
+        const unit = metrics.find((metric, index) => (
+          start.y >= metric.documentTop
+          && (start.y < metric.documentBottom || (index === metrics.length - 1 && start.y <= metric.documentBottom))
+        ));
+        if (!unit || start.x < unit.contentLeft || start.x > unit.contentRight) return;
         setDraft({ pointerId: event.pointerId, start, end: start });
         onActiveSelectionChange(undefined);
         event.currentTarget.setPointerCapture(event.pointerId);

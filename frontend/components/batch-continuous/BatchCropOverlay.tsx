@@ -8,11 +8,12 @@ const HANDLES: ResizeHandle[] = ["nw", "n", "ne", "e", "se", "s", "sw", "w"];
 
 type Props = {
   value: DocumentCropRect;
+  columnCount?: number;
   onChange: (value: DocumentCropRect) => void;
   onTooSmall: () => void;
 };
 
-export function BatchCropOverlay({ value, onChange, onTooSmall }: Props) {
+export function BatchCropOverlay({ value, columnCount = 1, onChange, onTooSmall }: Props) {
   const rootRef = useRef<HTMLDivElement | null>(null);
   const [drawing, setDrawing] = useState<{
     pointerId: number;
@@ -133,6 +134,14 @@ export function BatchCropOverlay({ value, onChange, onTooSmall }: Props) {
         onPointerDown={startMove}
         style={{ left: `${value.x * 100}%`, top: `${value.y * 100}%`, width: `${value.width * 100}%`, height: `${value.height * 100}%` }}
       >
+        {Array.from({ length: Math.max(0, columnCount - 1) }, (_, index) => (
+          <span
+            key={index}
+            className="batch-crop-overlay__column-guide"
+            style={{ left: `${(index + 1) / columnCount * 100}%` }}
+            aria-hidden="true"
+          />
+        ))}
         {HANDLES.map((handle) => (
           <span key={handle} className={`batch-selection-handle is-${handle}`} onPointerDown={(event) => startResize(event, handle)} />
         ))}

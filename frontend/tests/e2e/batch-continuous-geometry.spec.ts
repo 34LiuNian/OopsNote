@@ -2,10 +2,15 @@ import { expect, test } from "@playwright/test";
 import {
   buildPageMetrics,
   compareDocumentRects,
+  documentRectFromSlices,
   mapCroppedRectToOriginalSource,
   resizeDocumentRect,
   splitSelectionAcrossPages,
 } from "../../components/batch-continuous/batchContinuousGeometry";
+import {
+  selectionsToSessionSegments,
+  sessionSegmentsToSelections,
+} from "../../features/upload/adapters/batchSessionSelectionAdapter";
 
 const pages = [
   { id: "a", pageIndex: 0, label: "A", sourceWidth: 600, sourceHeight: 800 },
@@ -20,6 +25,73 @@ test("global proportional crop creates equal-width pages with gapless document c
   expect(metrics[1].documentBottom).toBe(metrics[2].documentTop);
   expect(metrics[0].displayHeight).toBeCloseTo(metrics[1].displayHeight);
   expect(metrics[2].displayHeight).toBeGreaterThan(metrics[1].displayHeight);
+});
+
+test("two-column layout keeps the current column aligned and borrows half of its neighbor", () => {
+  const metrics = buildPageMetrics([pages[0]], { x: 0, y: 0, width: 1, height: 1 }, { columnCount: 2, overlapRatio: 0.5 });
+  expect(metrics).toHaveLength(2);
+  expect(metrics.map((unit) => unit.columnIndex)).toEqual([0, 1]);
+  expect(metrics.map((unit) => unit.coreDisplayLeft)).toEqual([250, 250]);
+  expect(metrics.map((unit) => unit.coreDisplayWidth)).toEqual([500, 500]);
+  expect(metrics[0].contentLeft).toBeCloseTo(250);
+  expect(metrics[0].contentRight).toBeCloseTo(1000);
+  expect(metrics[1].contentLeft).toBeCloseTo(0);
+  expect(metrics[1].contentRight).toBeCloseTo(750);
+  expect(metrics[0].viewRect).toMatchObject({ x: 0, width: 0.75 });
+  expect(metrics[1].viewRect).toMatchObject({ x: 0.25, width: 0.75 });
+  expect(metrics[0].documentBottom).toBe(metrics[1].documentTop);
+});
+
+test("middle columns show both half-neighbors while edge columns leave the missing side empty", () => {
+  const metrics = buildPageMetrics([pages[0]], { x: 0, y: 0, width: 1, height: 1 }, { columnCount: 3, overlapRatio: 0.5 });
+  expect(metrics).toHaveLength(3);
+  expect(metrics[0].contentLeft).toBeCloseTo(250);
+  expect(metrics[0].contentRight).toBeCloseTo(1000);
+  expect(metrics[1].contentLeft).toBeCloseTo(0);
+  expect(metrics[1].contentRight).toBeCloseTo(1000);
+  expect(metrics[2].contentLeft).toBeCloseTo(0);
+  expect(metrics[2].contentRight).toBeCloseTo(750);
+  expect(metrics[1].viewRect.x).toBeCloseTo(1 / 6);
+  expect(metrics[1].viewRect.width).toBeCloseTo(2 / 3);
+});
+
+test("a cross-column document rectangle becomes ordered same-page parts and restores exactly", () => {
+  const metrics = buildPageMetrics([pages[0]], { x: 0, y: 0, width: 1, height: 1 }, { columnCount: 2, overlapRatio: 0.5 });
+  const rect = {
+    left: 300,
+    right: 700,
+    top: metrics[0].documentBottom - 100,
+    bottom: metrics[1].documentTop + 120,
+  };
+  const slices = splitSelectionAcrossPages(rect, metrics);
+  expect(slices.map((slice) => [slice.pageIndex, slice.columnIndex, slice.order])).toEqual([[0, 0, 0], [0, 1, 1]]);
+  const restored = documentRectFromSlices(slices, metrics);
+  expect(restored?.left).toBeCloseTo(rect.left);
+  expect(restored?.right).toBeCloseTo(rect.right);
+  expect(restored?.top).toBeCloseTo(rect.top);
+  expect(restored?.bottom).toBeCloseTo(rect.bottom);
+});
+
+test("cross-column session persistence keeps same-page part ownership", () => {
+  const metrics = buildPageMetrics([pages[0]], { x: 0, y: 0, width: 1, height: 1 }, { columnCount: 2, overlapRatio: 0.5 });
+  const rect = { left: 320, right: 680, top: metrics[0].documentBottom - 80, bottom: metrics[1].documentTop + 110 };
+  const slices = splitSelectionAcrossPages(rect, metrics);
+  const persisted = selectionsToSessionSegments([{
+    id: "cross-column",
+    start: { x: rect.left, y: rect.top },
+    end: { x: rect.right, y: rect.bottom },
+    rect,
+    slices,
+    questionNo: 1,
+    status: "pending",
+  }]);
+  expect(persisted[0].parts.map((part) => [part.page_index, part.column_index, part.order])).toEqual([[0, 0, 0], [0, 1, 1]]);
+  const restored = sessionSegmentsToSelections(persisted, metrics)[0];
+  expect(restored.slices.map((slice) => slice.columnIndex)).toEqual([0, 1]);
+  expect(restored.rect.left).toBeCloseTo(rect.left);
+  expect(restored.rect.right).toBeCloseTo(rect.right);
+  expect(restored.rect.top).toBeCloseTo(rect.top);
+  expect(restored.rect.bottom).toBeCloseTo(rect.bottom);
 });
 
 test("one document rectangle splits across three pages and maps back to source", () => {

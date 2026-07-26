@@ -2,14 +2,22 @@ from __future__ import annotations
 
 import io
 import json
+import os
 import queue
+import sys
 import threading
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
+
+import pytest
 
 from oopsnote.ai import HermesRunner, PiRpcBackend, PiRpcRunner
 from oopsnote.ai import runner as runner_module
+from oopsnote.ai.backends.pi_rpc import RpcProtocolError
 from oopsnote.ai.pi_skills import ACTIVE_PI_SKILLS
+from oopsnote.ai.rpc.probe import probe_new_session
 from oopsnote.core import RunStatus, RunStore, TaskCreateRequest, TaskStage, TaskStatus, TaskStore
+from oopsnote.mcp.tool_registry import AI_TOOL_NAMES
 
 
 class CompletingProcess:
@@ -55,7 +63,7 @@ def make_runner(tmp_path, **kwargs):
 
 def write_pi_skill_pack(project_root):
     for name in ACTIVE_PI_SKILLS:
-        path = project_root / ".pi" / "skills" / name / "SKILL.md"
+        path = project_root / "skills" / name / "SKILL.md"
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(f"# {name}\n", encoding="utf-8")
 
@@ -214,13 +222,27 @@ class RpcStdin:
 class SettlingRpcProcess:
     pid = 9876
 
-    def __init__(self, on_prompt, *, settle_prompt=True, settle_event="agent_settled"):
+    def __init__(
+        self,
+        on_prompt,
+        *,
+        settle_prompt=True,
+        settle_event="agent_settled",
+        settle_repetitions=1,
+        settle_abort=True,
+        terminal_tool_event=False,
+        cost=0.02,
+    ):
         self.stdout = RpcOutput()
         self.stderr = io.StringIO("")
         self.stdin = RpcStdin(self.handle_command)
         self.on_prompt = on_prompt
         self.settle_prompt = settle_prompt
         self.settle_event = settle_event
+        self.settle_repetitions = settle_repetitions
+        self.settle_abort = settle_abort
+        self.terminal_tool_event = terminal_tool_event
+        self.cost = cost
         self.commands = []
         self.returncode = None
 
@@ -247,6 +269,13 @@ class SettlingRpcProcess:
                 "type": "message_update",
                 "message": {"content": "must-not-be-persisted"},
             })
+            if self.terminal_tool_event:
+                self.stdout.emit({
+                    "type": "tool_execution_end",
+                    "toolName": "mcp__oopsnote_pipeline_finalize_task",
+                    "toolCallId": "finalize-call",
+                    "isError": False,
+                })
             if self.settle_prompt:
                 self.stdout.emit({"type": self.settle_event})
         elif command == "get_session_stats":
@@ -262,7 +291,7 @@ class SettlingRpcProcess:
                         "cacheRead": 3,
                         "cacheWrite": 1,
                     },
-                    "cost": 0.02,
+                    "cost": self.cost,
                 },
             })
         elif command == "abort":
@@ -271,7 +300,9 @@ class SettlingRpcProcess:
                 "command": command,
                 "success": True,
             })
-            self.stdout.emit({"type": self.settle_event})
+            if self.settle_abort:
+                for _ in range(self.settle_repetitions):
+                    self.stdout.emit({"type": self.settle_event})
 
     def poll(self):
         return self.returncode
@@ -283,6 +314,31 @@ class SettlingRpcProcess:
         self.returncode = 1
         self.stdin.close()
         self.stdout.close()
+
+    def kill(self):
+        self.terminate()
+
+
+class StartupFailureRpcProcess:
+    pid = 9877
+
+    def __init__(self, message: str):
+        self.stdout = io.StringIO("")
+        self.stderr = io.StringIO(f"{message}\n")
+        self.stdin = RpcStdin(self.handle_command)
+        self.returncode = None
+
+    def handle_command(self, _payload):
+        self.returncode = 1
+
+    def poll(self):
+        return self.returncode
+
+    def wait(self, timeout=None):
+        return self.returncode
+
+    def terminate(self):
+        self.returncode = 1
 
     def kill(self):
         self.terminate()
@@ -338,6 +394,39 @@ def test_pi_rpc_runner_persists_jsonl_and_stats(tmp_path, monkeypatch):
     assert captured["encoding"] == "utf-8"
     assert captured["errors"] == "replace"
     assert captured["process"].poll() is None
+    runner.shutdown()
+
+
+def test_pi_rpc_runner_preserves_startup_stderr_and_log_paths(tmp_path, monkeypatch):
+    task_store = TaskStore(tmp_path / "storage")
+    run_store = RunStore(tmp_path / "storage" / "runs")
+    write_pi_skill_pack(tmp_path)
+    runner = PiRpcRunner(
+        backend=PiRpcBackend(tmp_path),
+        project_root=tmp_path,
+        task_store=task_store,
+        run_store=run_store,
+        poll_seconds=0.01,
+    )
+    task = task_store.create(TaskCreateRequest(subject="math"))
+    run = runner.enqueue(task.id)
+    process = StartupFailureRpcProcess("extension sandbox denied contract path")
+    monkeypatch.setattr(runner_module.subprocess, "Popen", lambda *_a, **_k: process)
+
+    runner.run(task.id, run.id)
+
+    failed_task = task_store.get(task.id)
+    failed_run = run_store.get(run.id)
+    assert failed_task.status == TaskStatus.FAILED
+    assert "extension sandbox denied contract path" in (failed_task.last_error or "")
+    assert failed_run.status == RunStatus.FAILED
+    assert failed_run.error_code == "runner_error"
+    assert "extension sandbox denied contract path" in (failed_run.error_message or "")
+    assert failed_run.log_path == f"runs/{run.id}.log"
+    assert failed_run.rpc_log_path == f"runs/{run.id}.rpc.jsonl"
+    assert (run_store.base_dir / f"{run.id}.log").read_text(encoding="utf-8") == (
+        "extension sandbox denied contract path\n"
+    )
     runner.shutdown()
 
 
@@ -464,6 +553,101 @@ def test_pi_rpc_runner_reuses_process_with_clean_session_per_task(tmp_path, monk
     runner.shutdown()
 
 
+def test_pi_rpc_runner_aborts_unused_summary_after_terminal_tool(tmp_path, monkeypatch):
+    task_store = TaskStore(tmp_path / "storage")
+    run_store = RunStore(tmp_path / "storage" / "runs")
+    write_pi_skill_pack(tmp_path)
+    runner = PiRpcRunner(
+        backend=PiRpcBackend(tmp_path),
+        project_root=tmp_path,
+        task_store=task_store,
+        run_store=run_store,
+        poll_seconds=0.01,
+    )
+    task = task_store.create(TaskCreateRequest(subject="math"))
+    run = runner.enqueue(task.id)
+
+    def finish_task(_payload):
+        task_store.update(task.id, status=TaskStatus.COMPLETED, active_run_id=None)
+
+    process = SettlingRpcProcess(
+        finish_task,
+        settle_prompt=False,
+        settle_repetitions=2,
+        terminal_tool_event=True,
+        cost=0,
+    )
+    monkeypatch.setattr(runner_module.subprocess, "Popen", lambda *_a, **_k: process)
+
+    runner.run(task.id, run.id)
+
+    assert run_store.get(run.id).status == RunStatus.COMPLETED
+    assert run_store.get(run.id).cost is None
+    commands = [command["type"] for command in process.commands]
+    assert commands == ["new_session", "prompt", "abort", "get_session_stats"]
+    assert process.poll() is None
+    runner.shutdown()
+
+
+def test_pi_rpc_terminal_cleanup_failure_cannot_downgrade_completed_task(
+    tmp_path,
+    monkeypatch,
+):
+    task_store = TaskStore(tmp_path / "storage")
+    run_store = RunStore(tmp_path / "storage" / "runs")
+    write_pi_skill_pack(tmp_path)
+    runner = PiRpcRunner(
+        backend=PiRpcBackend(tmp_path),
+        project_root=tmp_path,
+        task_store=task_store,
+        run_store=run_store,
+        poll_seconds=0.01,
+        terminal_cleanup_seconds=0.05,
+    )
+    task = task_store.create(TaskCreateRequest(subject="math"))
+    run = runner.enqueue(task.id)
+
+    def finish_task(_payload):
+        task_store.update(task.id, status=TaskStatus.COMPLETED, active_run_id=None)
+
+    process = SettlingRpcProcess(
+        finish_task,
+        settle_prompt=False,
+        settle_abort=False,
+        terminal_tool_event=True,
+    )
+    monkeypatch.setattr(runner_module.subprocess, "Popen", lambda *_a, **_k: process)
+
+    runner.run(task.id, run.id)
+
+    completed = run_store.get(run.id)
+    assert completed.status == RunStatus.COMPLETED
+    assert completed.duration_ms is not None
+    assert [command["type"] for command in process.commands] == [
+        "new_session",
+        "prompt",
+        "abort",
+    ]
+    assert process.poll() == 1
+    runner.shutdown()
+
+
+def test_pi_rpc_invalid_json_is_a_protocol_error(tmp_path):
+    write_pi_skill_pack(tmp_path)
+    runner = PiRpcRunner(
+        backend=PiRpcBackend(tmp_path),
+        project_root=tmp_path,
+        task_store=TaskStore(tmp_path / "storage"),
+        run_store=RunStore(tmp_path / "storage" / "runs"),
+    )
+    rpc_log = io.StringIO()
+
+    with pytest.raises(RpcProtocolError, match="invalid JSON"):
+        runner._decode_event("not-json", rpc_log)
+
+    assert '"type": "invalid_json"' in rpc_log.getvalue()
+
+
 def test_pi_rpc_cancel_aborts_task_without_killing_shared_worker(tmp_path, monkeypatch):
     task_store = TaskStore(tmp_path / "storage")
     run_store = RunStore(tmp_path / "storage" / "runs")
@@ -515,6 +699,7 @@ def test_pi_runner_single_worker_skips_cancelled_queue_item(
 ):
     task_store = TaskStore(tmp_path / "storage")
     run_store = RunStore(tmp_path / "storage" / "runs")
+    write_pi_skill_pack(tmp_path)
     runner = PiRpcRunner(
         backend=PiRpcBackend(tmp_path),
         project_root=tmp_path,
@@ -556,6 +741,7 @@ def test_pi_runner_single_worker_skips_cancelled_queue_item(
 def test_pi_runner_pool_executes_on_distinct_workers(tmp_path, monkeypatch):
     task_store = TaskStore(tmp_path / "storage")
     run_store = RunStore(tmp_path / "storage" / "runs")
+    write_pi_skill_pack(tmp_path)
     runner = PiRpcRunner(
         backend=PiRpcBackend(tmp_path),
         project_root=tmp_path,
@@ -621,20 +807,65 @@ def test_pi_backend_reads_non_secret_local_runtime_config(tmp_path):
         '{"command":["node","C:/pi/dist/cli.js"],"provider":"deepseek","model":"deepseek-v4-flash"}',
         encoding="utf-8",
     )
+    legacy_ocr = tmp_path / ".pi" / "extensions" / "ocr_image.js"
+    legacy_ocr.parent.mkdir(parents=True)
+    legacy_ocr.write_text("throw new Error('legacy OCR loaded')\n", encoding="utf-8")
+    mcp_adapter = tmp_path / ".pi" / "node_modules" / "pi-mcp-adapter" / "index.ts"
+    mcp_adapter.parent.mkdir(parents=True)
+    mcp_adapter.write_text("export {}\n", encoding="utf-8")
 
     backend = PiRpcBackend(tmp_path)
+    backend.runtime.configure_child_environment(
+        {
+            "OOPSNOTE_MCP_URL": "http://127.0.0.1:43123/mcp",
+            "OOPSNOTE_MCP_TOKEN": "ephemeral-test-token",
+        }
+    )
 
     assert backend.build_command("task", "run")[:2] == ["node", "C:/pi/dist/cli.js"]
     assert backend.provider == "deepseek"
     command = backend.build_command("task", "run")
     assert "--no-builtin-tools" in command
     assert "--no-extensions" in command
+    assert str(mcp_adapter) in command
+    assert str(legacy_ocr) not in command
     assert "--no-session" not in backend.build_command("task", "run")
+    config_path = Path(command[command.index("--mcp-config") + 1])
+    managed_config = json.loads(config_path.read_text(encoding="utf-8"))
+    server = managed_config["mcpServers"]["oopsnote_pipeline"]
+    assert server["url"] == "http://127.0.0.1:43123/mcp"
+    assert server["headers"]["Authorization"] == "Bearer ephemeral-test-token"
+    assert server["directTools"] == list(AI_TOOL_NAMES)
+
+    backend.runtime.cleanup()
+    assert not config_path.exists()
+
+
+def test_rpc_startup_probe_keeps_stdin_open_until_response(tmp_path):
+    program = (
+        "import json,sys; "
+        "command=json.loads(sys.stdin.readline()); "
+        "print(json.dumps({'type':'extension_ui_request'}), flush=True); "
+        "print(json.dumps({'type':'response','id':command['id'],"
+        "'success':True,'data':{}}), flush=True); "
+        "sys.stdin.readline()"
+    )
+
+    result = probe_new_session(
+        [sys.executable, "-u", "-c", program],
+        cwd=tmp_path,
+        environment=os.environ,
+        timeout_seconds=5,
+    )
+
+    assert result.success is True
+    assert result.events[-1]["id"] == "setup-probe"
 
 
 def test_pi_retries_only_retryable_failures_in_new_run(tmp_path, monkeypatch):
     task_store = TaskStore(tmp_path / "storage")
     run_store = RunStore(tmp_path / "storage" / "runs")
+    write_pi_skill_pack(tmp_path)
     runner = PiRpcRunner(
         backend=PiRpcBackend(tmp_path),
         project_root=tmp_path,
@@ -656,3 +887,28 @@ def test_pi_retries_only_retryable_failures_in_new_run(tmp_path, monkeypatch):
     assert retry.backend == "pi"
     assert retry.attempt == 2
     assert retry.retry_count == 1
+    assert retry.retry_of_run_id == first.id
+    assert retry.retry_root_run_id == first.id
+
+
+def test_manual_rerun_starts_a_new_retry_budget(tmp_path):
+    task_store = TaskStore(tmp_path / "storage")
+    run_store = RunStore(tmp_path / "storage" / "runs")
+    write_pi_skill_pack(tmp_path)
+    runner = PiRpcRunner(
+        backend=PiRpcBackend(tmp_path),
+        project_root=tmp_path,
+        task_store=task_store,
+        run_store=run_store,
+    )
+    task = task_store.create(TaskCreateRequest(subject="math"))
+    for _ in range(3):
+        run = runner.enqueue(task.id)
+        task_store.mark_status(task.id, TaskStatus.FAILED, "historical failure")
+        run_store.finish(run.id, RunStatus.FAILED)
+
+    manual = runner.enqueue(task.id)
+
+    assert manual.attempt == 4
+    assert manual.retry_count == 0
+    assert manual.retry_of_run_id is None

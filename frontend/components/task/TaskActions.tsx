@@ -41,11 +41,12 @@ export const TaskActions = memo(function TaskActions({
       {(status === "failed" || status === "completed" || status === "cancelled") && (
         <Button
           size="small"
+          variant={status === "completed" ? "invisible" : "default"}
           onClick={onRetry}
           disabled={isRetrying || isLoading || isCancelling}
           leadingVisual={SyncIcon}
         >
-          {isRetrying ? "重试中..." : "重试"}
+          {isRetrying ? "处理中..." : status === "completed" ? "重新处理" : "重试"}
         </Button>
       )}
       <Tooltip text="刷新状态" direction="s">

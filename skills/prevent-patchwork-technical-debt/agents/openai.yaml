@@ -1,0 +1,4 @@
+interface:
+  display_name: "Prevent Patchwork Technical Debt"
+  short_description: "Design durable fixes instead of accumulating patches"
+  default_prompt: "Use $prevent-patchwork-technical-debt to assess this proposed fix and redesign it around the violated invariant and owning layer."

@@ -20,7 +20,15 @@ import zipfile
 from pathlib import Path
 
 from oopsnote.ai import PiRpcBackend
-from oopsnote.mcp.restricted import AI_TOOL_NAMES
+from oopsnote.ai.rpc.probe import probe_new_session
+from oopsnote.mcp.contracts import (
+    AI_TOOL_NAMES,
+    CONTRACT_PATH,
+    build_tool_contract,
+    load_tool_contract,
+    sync_tool_contract,
+)
+from oopsnote.mcp.http_runtime import SharedMcpHttpRuntime
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -36,16 +44,9 @@ PI_RUST_WINDOWS_X64_EXE_SHA256 = (
     "e898f4732ce139ea5cfaf41bb41ab792a58007ab626a657cd830c407a8d4ec51"
 )
 PI_RUST_BINARY = ROOT / ".pi-rust" / "bin" / "pi.exe"
-EXPECTED_TOOLS = {
-    "ocr_image",
-    "get_task",
-    "get_asset_path",
-    "list_tags",
-    "create_tag",
-    "report_task_stage",
-    "finalize_task",
-    "fail_task",
-}
+GENERATED_CONTRACT_MODULE = (
+    ROOT / ".pi-rust" / "extensions" / "oopsnote_tool_contracts.js"
+)
 
 
 def check(condition: bool, label: str) -> bool:
@@ -108,6 +109,25 @@ def sync_local_config() -> None:
         target_auth.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(source_auth, target_auth)
         print("[sync] Pi auth -> .pi-rust/agent/auth.json")
+    if sync_tool_contract():
+        print("[sync] Python MCP signatures -> oopsnote/mcp/tool_contracts.json")
+    generated_contract = render_contract_module()
+    if (
+        not GENERATED_CONTRACT_MODULE.exists()
+        or GENERATED_CONTRACT_MODULE.read_text(encoding="utf-8") != generated_contract
+    ):
+        GENERATED_CONTRACT_MODULE.write_text(generated_contract, encoding="utf-8")
+        print("[sync] canonical MCP contract -> .pi-rust/extensions/")
+
+
+def render_contract_module() -> str:
+    tools = build_tool_contract()["tools"]
+    payload = json.dumps(tools, ensure_ascii=False, separators=(",", ":"))
+    return (
+        "// Generated from oopsnote/mcp/tool_contracts.json by "
+        "setup_pi_rust.py --sync.\n"
+        f"export const TOOL_SPECS = {payload};\n"
+    )
 
 
 def validate() -> bool:
@@ -133,8 +153,10 @@ def validate() -> bool:
         except (OSError, subprocess.TimeoutExpired) as error:
             valid &= check(False, f"pi_agent_rust version check: {error}")
 
+    mcp_runtime = SharedMcpHttpRuntime()
     try:
         backend = PiRpcBackend(ROOT, runtime="pi-rust")
+        backend.runtime.configure_child_environment(mcp_runtime.start())
         command = backend.build_command("setup", "setup")
         environment = backend.build_environment()
         valid &= check(backend.runtime_kind == "pi-rust", "Rust runtime adapter")
@@ -150,14 +172,64 @@ def validate() -> bool:
             == str((ROOT / ".pi-rust" / "agent").resolve()),
             "Rust project-local agent directory",
         )
-    except (OSError, ValueError) as error:
+        probe = probe_new_session(
+            command,
+            cwd=ROOT,
+            environment=environment,
+            timeout_seconds=30,
+        )
+        startup_detail = "" if probe.success else probe.failure_detail
+        valid &= check(
+            probe.success,
+            "Rust restricted extension startup"
+            + (f": {startup_detail}" if startup_detail else ""),
+        )
+    except (OSError, ValueError, subprocess.TimeoutExpired) as error:
         valid &= check(False, f"pi_agent_rust runtime config: {error}")
+    finally:
+        try:
+            backend.runtime.cleanup()
+        except (NameError, AttributeError):
+            pass
+        mcp_runtime.shutdown()
 
-    valid &= check(set(AI_TOOL_NAMES) == EXPECTED_TOOLS, "exact eight-tool surface")
+    try:
+        contract = load_tool_contract()
+        valid &= check(len(contract["tools"]) == 8, "exact eight-tool surface")
+        valid &= check(
+            tuple(tool["remoteName"] for tool in contract["tools"]) == AI_TOOL_NAMES,
+            "canonical Python tool surface",
+        )
+        active_run_tools = {
+            "ocr_image", "get_task", "get_asset_path", "list_tags", "create_tag",
+            "report_task_stage", "finalize_task", "fail_task"
+        }
+        for tool in contract["tools"]:
+            if tool["remoteName"] in active_run_tools:
+                valid &= check(
+                    "run_id" in tool["parameters"].get("required", []),
+                    f"{tool['remoteName']} requires run_id",
+                )
+    except (OSError, ValueError, json.JSONDecodeError) as error:
+        valid &= check(False, f"canonical MCP contract: {error}")
+    bridge_path = ROOT / ".pi-rust" / "extensions" / "oopsnote_mcp.js"
+    valid &= check(bridge_path.exists(), "Rust MCP bridge extension")
+    valid &= check(CONTRACT_PATH.exists(), "canonical MCP tool contract")
     valid &= check(
-        (ROOT / ".pi-rust" / "extensions" / "oopsnote_mcp.js").exists(),
-        "Rust MCP bridge extension",
+        GENERATED_CONTRACT_MODULE.exists()
+        and GENERATED_CONTRACT_MODULE.read_text(encoding="utf-8")
+        == render_contract_module(),
+        "Rust generated MCP contract is synchronized",
     )
+    if bridge_path.exists():
+        try:
+            bridge_source = bridge_path.read_text(encoding="utf-8")
+            valid &= check(
+                "oopsnote_tool_contracts.js" in bridge_source and "TOOL_SPECS" in bridge_source,
+                "Rust bridge loads canonical MCP contract",
+            )
+        except (OSError, ValueError) as error:
+            valid &= check(False, f"read Rust MCP bridge schema: {error}")
     auth_path = ROOT / ".pi-rust" / "agent" / "auth.json"
     if auth_path.exists():
         try:

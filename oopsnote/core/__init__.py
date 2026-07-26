@@ -4,8 +4,12 @@
 """
 
 from .assets import AssetStore
+from .app_settings import AppSettingsStore
+from .batch_render import BatchSourceRenderer
 from .models import (
     BatchCropRect,
+    BatchProcessJob,
+    BatchProcessSegmentState,
     BatchSegment,
     BatchSegmentPart,
     BatchSessionRecord,
@@ -32,12 +36,25 @@ from .models import (
     TaskStatus,
 )
 from .search import Searcher
-from .store import BatchSessionStore, PaperDraftStore, RunStore, TaskStore
+from .store import (
+    BatchSessionStore,
+    BatchProcessJobStore,
+    PaperDraftStore,
+    RunStore,
+    StateConflict,
+    StorageCorruptionError,
+    TaskStore,
+)
 from .tags import TagStore
 
 __all__ = [
     "AssetStore",
+    "AppSettingsStore",
+    "BatchSourceRenderer",
     "BatchCropRect",
+    "BatchProcessJob",
+    "BatchProcessJobStore",
+    "BatchProcessSegmentState",
     "BatchSegment",
     "BatchSegmentPart",
     "BatchSessionRecord",
@@ -53,6 +70,8 @@ __all__ = [
     "QuestionType",
     "RunStatus",
     "RunStore",
+    "StateConflict",
+    "StorageCorruptionError",
     "Searcher",
     "SearchQuery",
     "StageRun",

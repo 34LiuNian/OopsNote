@@ -6,6 +6,11 @@ export type DocumentRect = { left: number; top: number; right: number; bottom: n
 
 export type DocumentCropRect = NormalizedRect;
 
+export type ColumnLayout = {
+  columnCount: number;
+  overlapRatio: number;
+};
+
 export type ContinuousPageSource = {
   id: string;
   pageIndex: number;
@@ -15,18 +20,30 @@ export type ContinuousPageSource = {
 };
 
 export type PageMetric = ContinuousPageSource & {
+  sourcePageId: string;
+  columnIndex: number;
+  columnCount: number;
+  readingIndex: number;
   crop: DocumentCropRect;
+  coreRect: NormalizedRect;
+  viewRect: NormalizedRect;
   croppedSourceWidth: number;
   croppedSourceHeight: number;
   documentTop: number;
   documentBottom: number;
   displayWidth: number;
   displayHeight: number;
+  coreDisplayLeft: number;
+  coreDisplayWidth: number;
+  contentLeft: number;
+  contentRight: number;
+  sourceScale: number;
 };
 
 export type SelectionSlice = {
   pageId: string;
   pageIndex: number;
+  columnIndex: number;
   rect: NormalizedRect;
   order: number;
 };

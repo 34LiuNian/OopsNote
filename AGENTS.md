@@ -50,6 +50,20 @@ vaults/              user-owned source and Obsidian data; never delete
 - A failed Pi run may be retried only as a fresh run. Never switch backend inside a run.
 - Raw RPC logs and task data remain local under `storage/`.
 
+## Durable fix requirements
+
+Use `skills/prevent-patchwork-technical-debt/SKILL.md` when designing, implementing, or reviewing bug fixes, hotfixes, fallbacks, retries, compatibility layers, and reliability changes.
+
+- State the intended invariant and identify the earliest layer that violates it before choosing a fix.
+- Fix the violated invariant in its owning layer. Do not hide an upstream defect with downstream retries, guards, duplicated state, silent coercion, or catch-all fallback behavior.
+- Keep one authoritative source for each contract and piece of state. Derive adapters and generated representations from it, or enforce parity with contract tests.
+- Prefer removing invalid states and redundant branches over adding special cases. Do not introduce a second lifecycle, shadow state, or runtime-specific behavior without a demonstrated boundary need.
+- Classify failures before retrying. Retry only bounded transient failures; surface deterministic contract, validation, authorization, and state errors directly.
+- Preserve failure evidence and explicit terminal states. Do not convert partial failure into apparent success or overwrite useful diagnostics with empty, stale, or generic state.
+- Test the invariant and the failure transition, not only the observed example. Include interruption, repetition/idempotency, boundary inputs, and stale/partial-state cases where relevant.
+- Treat a compensating workaround as temporary architecture, not as completion. Accept it only when bounded, observable, reversible, regression-tested, and accompanied by an owner, removal condition, and durable follow-up direction.
+- Before declaring a fix complete, report whether it removes the root cause or merely contains it, what new states or branches it adds, and what technical debt remains.
+
 ## Verification
 
 ```powershell

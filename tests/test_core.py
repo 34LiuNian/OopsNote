@@ -18,6 +18,8 @@ from oopsnote.core import (
     RunStore,
     Searcher,
     SearchQuery,
+    StateConflict,
+    StorageCorruptionError,
     TagDimension,
     TagStore,
     TaskCreateRequest,
@@ -41,6 +43,35 @@ class TestTaskStore:
         store.delete(t.id)
         with pytest.raises(KeyError):
             store.get(t.id)
+
+    def test_transition_uses_status_and_active_run_compare_and_set(self):
+        store = TaskStore(base_dir=Path(tempfile.mkdtemp()))
+        task = store.create(TaskCreateRequest(subject="math"))
+        claimed = store.transition(
+            task.id,
+            expected_statuses={TaskStatus.PENDING},
+            expected_active_run_id=None,
+            status=TaskStatus.PROCESSING,
+            active_run_id="run-1",
+        )
+        assert claimed.active_run_id == "run-1"
+
+        with pytest.raises(StateConflict):
+            store.transition(
+                task.id,
+                expected_statuses={TaskStatus.PROCESSING},
+                expected_active_run_id="old-run",
+                status=TaskStatus.COMPLETED,
+            )
+        assert store.get(task.id).status == TaskStatus.PROCESSING
+
+    def test_corrupt_task_is_reported_instead_of_silently_disappearing(self):
+        base = Path(tempfile.mkdtemp())
+        store = TaskStore(base_dir=base)
+        (base / "broken.json").write_text("{not-json", encoding="utf-8")
+
+        with pytest.raises(StorageCorruptionError, match="broken.json"):
+            store.list_all()
 
     def test_list_all(self):
         store = TaskStore(base_dir=Path(tempfile.mkdtemp()))
@@ -343,6 +374,25 @@ class TestAssetStore:
         data = base64.b64encode(b"raw bytes").decode()
         path = store.save_base64(data)
         assert path.startswith("/assets/")
+
+    def test_same_original_filename_never_overwrites_existing_asset(self):
+        store = AssetStore(base_dir=Path(tempfile.mkdtemp()))
+        first = "data:text/plain;base64," + base64.b64encode(b"first").decode()
+        second = "data:text/plain;base64," + base64.b64encode(b"second").decode()
+
+        first_path = store.save_base64(first, "image.png")
+        second_path = store.save_base64(second, "image.png")
+
+        assert first_path != second_path
+        assert store.resolve(first_path).read_bytes() == b"first"
+        assert store.resolve(second_path).read_bytes() == b"second"
+
+    def test_stable_asset_is_repaired_when_existing_content_differs(self):
+        store = AssetStore(base_dir=Path(tempfile.mkdtemp()))
+        path = store.save_bytes(b"old", "source.png", stable_name="stable")
+
+        assert store.save_bytes(b"new", "source.png", stable_name="stable") == path
+        assert store.resolve(path).read_bytes() == b"new"
 
 
 class TestSearcherExtra:

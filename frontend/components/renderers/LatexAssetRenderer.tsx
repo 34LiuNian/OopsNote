@@ -10,6 +10,7 @@ type LatexAssetRendererProps = {
   inline?: boolean;
   loadingLabel?: string;
   errorLabel?: string;
+  fit?: boolean;
 };
 
 export function LatexAssetRenderer({
@@ -18,6 +19,7 @@ export function LatexAssetRenderer({
   inline,
   loadingLabel = "渲染中...",
   errorLabel = "渲染失败",
+  fit = false,
 }: LatexAssetRendererProps) {
   const { status, data, error } = useLatexAsset({ kind, content, inline });
 
@@ -44,9 +46,11 @@ export function LatexAssetRenderer({
       sx={{
         display: inline ? "inline-flex" : "block",
         alignItems: "center",
+        width: fit ? "100%" : undefined,
+        height: fit ? "100%" : undefined,
       }}
     >
-      <SvgMarkup svg={data} label="后端生成的 TikZ 图形" />
+      <SvgMarkup svg={data} label="后端生成的 TikZ 图形" fit={fit} />
     </Box>
   );
 }

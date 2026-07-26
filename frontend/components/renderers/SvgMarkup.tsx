@@ -55,7 +55,7 @@ export function sanitizeSvgMarkup(markup: string): string {
   return new XMLSerializer().serializeToString(svg);
 }
 
-export function SvgMarkup({ svg, label }: { svg: string; label?: string }) {
+export function SvgMarkup({ svg, label, fit = false }: { svg: string; label?: string; fit?: boolean }) {
   const [result, setResult] = useState<{ source: string; sanitized: string } | null>(null);
 
   useEffect(() => {
@@ -73,9 +73,18 @@ export function SvgMarkup({ svg, label }: { svg: string; label?: string }) {
       role="img"
       aria-label={label}
       sx={{
+        width: fit ? "100%" : undefined,
+        height: fit ? "100%" : undefined,
         maxWidth: "100%",
-        overflowX: "auto",
-        "& svg": { display: "block", maxWidth: "100%", height: "auto", marginInline: "auto" },
+        overflow: fit ? "hidden" : undefined,
+        overflowX: fit ? undefined : "auto",
+        "& svg": {
+          display: "block",
+          width: fit ? "100%" : undefined,
+          maxWidth: "100%",
+          height: fit ? "100%" : "auto",
+          marginInline: "auto",
+        },
       }}
       dangerouslySetInnerHTML={{ __html: result.sanitized }}
     />

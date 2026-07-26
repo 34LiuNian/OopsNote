@@ -73,6 +73,9 @@ export interface TaskResponse {
       diagram_kind?: string | null;
       diagram_tikz_source?: string | null;
       diagram_svg?: string | null;
+      diagram_image_path?: string | null;
+      diagram_position?: "left" | "right";
+      diagram_scale_percent?: number | null;
       diagram_render_status?: string | null;
       diagram_error?: string | null;
       diagram_needs_review?: boolean;
@@ -138,6 +141,16 @@ export interface ProblemSummary {
   source?: string | null;
   difficulty?: string | null;
   has_diagram?: boolean;
+  diagram_detected?: boolean;
+  diagram_kind?: "tikz" | "image" | null;
+  diagram_tikz_source?: string | null;
+  diagram_svg?: string | null;
+  diagram_image_path?: string | null;
+  diagram_position?: "left" | "right";
+  diagram_scale_percent?: number | null;
+  diagram_render_status?: string | null;
+  diagram_error?: string | null;
+  diagram_needs_review?: boolean;
   knowledge_points: string[];
   knowledge_tags?: string[];
   error_tags?: string[];
@@ -332,4 +345,14 @@ export interface TagDimensionsResponse {
 
 export interface TagDimensionsUpdateRequest {
   dimensions: Record<string, TagDimensionStyle>;
+}
+
+export interface PiSettingsResponse {
+  pi_concurrency: number;
+  workers: number;
+  applies_on_restart: boolean;
+}
+
+export interface PiSettingsUpdateRequest {
+  pi_concurrency: number;
 }

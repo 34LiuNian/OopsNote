@@ -1,6 +1,5 @@
 import {
   documentRectFromSlices,
-  splitSelectionAcrossPages,
   type PageMetric,
   type SelectionModel,
 } from "@/components/batch-continuous";
@@ -13,12 +12,13 @@ export function sessionSegmentsToSelections(
   return segments.flatMap((segment) => {
     const slices = (segment.parts?.length ? segment.parts : [
       segment.page_index !== null && segment.page_index !== undefined && segment.x !== null && segment.x !== undefined
-        ? { page_index: segment.page_index, x: segment.x, y: segment.y ?? 0, width: segment.width ?? 0, height: segment.height ?? 0, order: 0 }
+        ? { page_index: segment.page_index, column_index: 0, x: segment.x, y: segment.y ?? 0, width: segment.width ?? 0, height: segment.height ?? 0, order: 0 }
         : null,
-      segment.continuation ? { ...segment.continuation, order: 1 } : null,
+      segment.continuation ? { ...segment.continuation, column_index: 0, order: 1 } : null,
     ].filter(Boolean)).map((part) => ({
-      pageId: metrics.find((metric) => metric.pageIndex === part!.page_index)?.id ?? `page-${part!.page_index}`,
+      pageId: metrics.find((metric) => metric.pageIndex === part!.page_index && metric.columnIndex === (part!.column_index ?? 0))?.sourcePageId ?? `page-${part!.page_index}`,
       pageIndex: part!.page_index,
+      columnIndex: part!.column_index ?? 0,
       rect: { x: part!.x, y: part!.y, width: part!.width, height: part!.height },
       order: part!.order,
     }));
@@ -29,7 +29,7 @@ export function sessionSegmentsToSelections(
       start: { x: rect.left, y: rect.top },
       end: { x: rect.right, y: rect.bottom },
       rect,
-      slices: splitSelectionAcrossPages(rect, metrics),
+      slices,
       questionNo: segment.question_no ?? 0,
       status: segment.status,
       reviewReason: segment.review_reason ?? undefined,
@@ -47,6 +47,7 @@ export function selectionsToSessionSegments(selections: SelectionModel[]): Batch
     id: selection.id,
     parts: selection.slices.map((slice) => ({
       page_index: slice.pageIndex,
+      column_index: slice.columnIndex,
       x: slice.rect.x,
       y: slice.rect.y,
       width: slice.rect.width,

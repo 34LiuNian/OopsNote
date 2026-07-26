@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import errno
+import hashlib
 import json
 import threading
 import time
@@ -15,6 +16,7 @@ from typing import Optional
 from uuid import uuid4
 
 from .models import (
+    BatchProcessJob,
     BatchSessionRecord,
     BatchSessionUpdateRequest,
     PaperDraft,
@@ -30,6 +32,21 @@ from .models import (
     TaskStage,
     TaskStatus,
 )
+
+
+class StateConflict(RuntimeError):
+    """A persisted record no longer matches the caller's expected state."""
+
+
+class StorageCorruptionError(RuntimeError):
+    """Persisted JSON exists but cannot be decoded or validated safely."""
+
+    def __init__(self, path: Path, error: Exception) -> None:
+        super().__init__(f"Persisted JSON is corrupt: {path}: {error}")
+        self.path = path
+
+
+_UNSET = object()
 
 
 def _is_transient_file_lock(error: OSError) -> bool:
@@ -104,7 +121,10 @@ class TaskStore:
         path = self._path(task_id)
         if not path.exists():
             raise KeyError(f"Task {task_id} not found")
-        return TaskRecord.model_validate_json(_read_text_with_retry(path))
+        try:
+            return TaskRecord.model_validate_json(_read_text_with_retry(path))
+        except Exception as error:
+            raise StorageCorruptionError(path, error) from error
 
     def list_all(self) -> list[TaskRecord]:
         records: list[TaskRecord] = []
@@ -113,13 +133,42 @@ class TaskStore:
                 records.append(
                     TaskRecord.model_validate_json(_read_text_with_retry(path))
                 )
-            except Exception:
-                continue
+            except Exception as error:
+                raise StorageCorruptionError(path, error) from error
         return records
 
     def update(self, task_id: str, **fields) -> TaskRecord:
         with self._lock:
             record = self.get(task_id)
+            updated = record.model_copy(
+                update={"updated_at": datetime.now(timezone.utc), **fields}
+            )
+            self._write(updated)
+            return updated
+
+    def transition(
+        self,
+        task_id: str,
+        *,
+        expected_statuses: Optional[set[TaskStatus]] = None,
+        expected_active_run_id: object = _UNSET,
+        **fields,
+    ) -> TaskRecord:
+        """Atomically compare task state and apply one state transition."""
+        with self._lock:
+            record = self.get(task_id)
+            if expected_statuses is not None and record.status not in expected_statuses:
+                raise StateConflict(
+                    f"Task {task_id} status is {record.status.value}, expected one of "
+                    f"{', '.join(sorted(status.value for status in expected_statuses))}"
+                )
+            if (
+                expected_active_run_id is not _UNSET
+                and record.active_run_id != expected_active_run_id
+            ):
+                raise StateConflict(
+                    f"Run {expected_active_run_id!s} is not active for task {task_id}"
+                )
             updated = record.model_copy(
                 update={"updated_at": datetime.now(timezone.utc), **fields}
             )
@@ -149,6 +198,7 @@ class RunStore:
     def __init__(self, base_dir: Path) -> None:
         self.base_dir = base_dir
         self.base_dir.mkdir(parents=True, exist_ok=True)
+        self._task_index: dict[str, list[str]] | None = None
 
     def _path(self, run_id: str) -> Path:
         return self.base_dir / f"{run_id}.json"
@@ -166,21 +216,18 @@ class RunStore:
     def create(
         self,
         task_id: str,
-        prompt_version: str = "orchestrator-v3",
+        prompt_version: str = "unversioned",
         *,
         backend: str = "hermes",
         runtime_kind: Optional[str] = None,
         runtime_version: Optional[str] = None,
         provider: Optional[str] = None,
         model: Optional[str] = None,
+        retry_of: Optional[TaskRun] = None,
     ) -> TaskRun:
         with self._lock:
-            attempt = 1 + max(
-                (run.attempt for run in self.list_all() if run.task_id == task_id),
-                default=0,
-            )
-            previous_runs = [run for run in self.list_all() if run.task_id == task_id]
-            retry_count = sum(1 for run in previous_runs if run.status in {RunStatus.FAILED, RunStatus.TIMED_OUT})
+            previous_runs = self.list_for_task(task_id)
+            attempt = 1 + max((run.attempt for run in previous_runs), default=0)
             run = TaskRun(
                 task_id=task_id,
                 attempt=attempt,
@@ -190,25 +237,52 @@ class RunStore:
                 runtime_version=runtime_version,
                 provider=provider,
                 model=model,
-                retry_count=retry_count,
+                retry_count=(retry_of.retry_count + 1 if retry_of else 0),
+                retry_of_run_id=(retry_of.id if retry_of else None),
+                retry_root_run_id=(
+                    retry_of.retry_root_run_id or retry_of.id
+                    if retry_of
+                    else None
+                ),
             )
             self._write(run)
+            if self._task_index is not None:
+                self._task_index.setdefault(task_id, []).append(run.id)
             return run
 
     def get(self, run_id: str) -> TaskRun:
         path = self._path(run_id)
         if not path.exists():
             raise KeyError(f"Run {run_id} not found")
-        return TaskRun.model_validate_json(_read_text_with_retry(path))
+        try:
+            return TaskRun.model_validate_json(_read_text_with_retry(path))
+        except Exception as error:
+            raise StorageCorruptionError(path, error) from error
 
     def list_all(self) -> list[TaskRun]:
         runs: list[TaskRun] = []
+        index: dict[str, list[str]] = {}
         for path in self.base_dir.glob("*.json"):
             try:
-                runs.append(TaskRun.model_validate_json(_read_text_with_retry(path)))
-            except Exception:
-                continue
+                run = TaskRun.model_validate_json(_read_text_with_retry(path))
+                runs.append(run)
+                index.setdefault(run.task_id, []).append(run.id)
+            except Exception as error:
+                raise StorageCorruptionError(path, error) from error
+        self._task_index = index
         return runs
+
+    def list_for_task(self, task_id: str) -> list[TaskRun]:
+        """Use the in-process reverse index after its one authoritative scan."""
+        with self._lock:
+            if self._task_index is None:
+                self.list_all()
+            run_ids = list((self._task_index or {}).get(task_id, []))
+            try:
+                return [self.get(run_id) for run_id in run_ids]
+            except KeyError:
+                # A manually removed run invalidates only the derived cache.
+                return [run for run in self.list_all() if run.task_id == task_id]
 
     def update(self, run_id: str, **fields) -> TaskRun:
         with self._lock:
@@ -219,13 +293,13 @@ class RunStore:
 
     def active_for_task(self, task_id: str) -> Optional[TaskRun]:
         active = [
-            run for run in self.list_all()
-            if run.task_id == task_id and run.status in {RunStatus.QUEUED, RunStatus.RUNNING}
+            run for run in self.list_for_task(task_id)
+            if run.status in {RunStatus.QUEUED, RunStatus.RUNNING}
         ]
         return max(active, key=lambda run: run.heartbeat_at, default=None)
 
     def latest_for_task(self, task_id: str) -> Optional[TaskRun]:
-        runs = [run for run in self.list_all() if run.task_id == task_id]
+        runs = self.list_for_task(task_id)
         return max(runs, key=lambda run: run.heartbeat_at, default=None)
 
     def start(
@@ -283,6 +357,16 @@ class RunStore:
     ) -> TaskRun:
         with self._lock:
             run = self.get(run_id)
+            terminal = {
+                RunStatus.COMPLETED,
+                RunStatus.FAILED,
+                RunStatus.CANCELLED,
+                RunStatus.TIMED_OUT,
+            }
+            # The first terminal transition wins. A late worker callback must
+            # never turn a cancelled run into failed/completed or vice versa.
+            if run.status in terminal:
+                return run
             now = datetime.now(timezone.utc)
             stages = list(run.stage_runs)
             if stages and stages[-1].status == StageStatus.RUNNING:
@@ -317,18 +401,25 @@ class BatchSessionStore:
     def __init__(self, path: Path) -> None:
         self.path = path
         self.path.parent.mkdir(parents=True, exist_ok=True)
+        self._record_locks_guard = threading.Lock()
+        self._record_locks: dict[str, threading.RLock] = {}
+
+    def session_lock(self, file_hash: str) -> threading.RLock:
+        """Return the per-session lock shared by PATCH, processing, and status refresh."""
+        with self._record_locks_guard:
+            return self._record_locks.setdefault(file_hash, threading.RLock())
 
     def _read(self) -> dict[str, BatchSessionRecord]:
         if not self.path.exists():
             return {}
         try:
-            payload = json.loads(self.path.read_text(encoding="utf-8"))
+            payload = json.loads(_read_text_with_retry(self.path))
             return {
                 item["file_hash"]: BatchSessionRecord.model_validate(item)
                 for item in payload.get("items", [])
             }
-        except Exception:
-            return {}
+        except Exception as error:
+            raise StorageCorruptionError(self.path, error) from error
 
     def _write(self, records: dict[str, BatchSessionRecord]) -> None:
         tmp = self.path.with_name(f"{self.path.name}.{uuid4().hex}.tmp")
@@ -367,15 +458,44 @@ class BatchSessionStore:
             self._write(records)
             return record
 
-    def update(self, file_hash: str, payload: BatchSessionUpdateRequest) -> BatchSessionRecord:
-        with self._lock:
+    def update(
+        self,
+        file_hash: str,
+        payload: BatchSessionUpdateRequest,
+        *,
+        expected_revision: int,
+    ) -> BatchSessionRecord:
+        with self.session_lock(file_hash), self._lock:
             records = self._read()
             current = records.get(file_hash)
             if not current:
                 raise KeyError(file_hash)
+            if current.revision != expected_revision:
+                raise StateConflict(
+                    f"Batch session {file_hash} revision is {current.revision}, "
+                    f"expected {expected_revision}"
+                )
             update = payload.model_dump(exclude_unset=True)
+            proposed_segments = (
+                payload.segments if "segments" in payload.model_fields_set else None
+            )
+            if proposed_segments is not None:
+                proposed_by_id = {segment.id: segment for segment in proposed_segments}
+                for segment in current.segments:
+                    if not segment.task_id:
+                        continue
+                    proposed = proposed_by_id.get(segment.id)
+                    if proposed is None or proposed.task_id != segment.task_id:
+                        raise StateConflict(
+                            f"Task-bound batch segment {segment.id} cannot be removed or rebound"
+                        )
             updated = BatchSessionRecord.model_validate(
-                {**current.model_dump(), "updated_at": datetime.now(timezone.utc), **update}
+                {
+                    **current.model_dump(),
+                    "updated_at": datetime.now(timezone.utc),
+                    "revision": current.revision + 1,
+                    **update,
+                }
             )
             records[file_hash] = updated
             self._write(records)
@@ -383,7 +503,7 @@ class BatchSessionStore:
 
     def delete(self, file_hash: str) -> BatchSessionRecord:
         """Delete only the batch workspace record; task assets remain untouched."""
-        with self._lock:
+        with self.session_lock(file_hash), self._lock:
             records = self._read()
             record = records.pop(file_hash, None)
             if not record:
@@ -391,6 +511,42 @@ class BatchSessionStore:
             self._write(records)
             return record
 
+
+class BatchProcessJobStore:
+    """One atomic manifest per source hash for crash-safe batch processing."""
+
+    _lock = threading.RLock()
+
+    def __init__(self, base_dir: Path) -> None:
+        self.base_dir = base_dir
+        self.base_dir.mkdir(parents=True, exist_ok=True)
+
+    def _path(self, file_hash: str) -> Path:
+        safe_key = hashlib.sha256(file_hash.encode("utf-8")).hexdigest()
+        return self.base_dir / f"{safe_key}.json"
+
+    def get(self, file_hash: str) -> BatchProcessJob:
+        path = self._path(file_hash)
+        with self._lock:
+            if not path.exists():
+                raise KeyError(file_hash)
+            try:
+                return BatchProcessJob.model_validate_json(_read_text_with_retry(path))
+            except Exception as error:
+                raise StorageCorruptionError(path, error) from error
+
+    def save(self, job: BatchProcessJob) -> BatchProcessJob:
+        updated = job.model_copy(update={"updated_at": datetime.now(timezone.utc)})
+        path = self._path(job.file_hash)
+        tmp = path.with_name(f"{path.name}.{uuid4().hex}.tmp")
+        with self._lock:
+            try:
+                tmp.write_text(updated.model_dump_json(indent=2), encoding="utf-8")
+                _replace_with_retry(tmp, path)
+            finally:
+                if tmp.exists():
+                    tmp.unlink()
+        return updated
 
 class PaperDraftStore:
     """One atomic JSON document per persistent paper draft."""
@@ -436,15 +592,18 @@ class PaperDraftStore:
         path = self._path(draft_id)
         if not path.exists():
             raise KeyError(draft_id)
-        return PaperDraft.model_validate_json(_read_text_with_retry(path))
+        try:
+            return PaperDraft.model_validate_json(_read_text_with_retry(path))
+        except Exception as error:
+            raise StorageCorruptionError(path, error) from error
 
     def list_all(self) -> list[PaperDraft]:
         drafts: list[PaperDraft] = []
         for path in self.base_dir.glob("*.json"):
             try:
                 drafts.append(PaperDraft.model_validate_json(_read_text_with_retry(path)))
-            except Exception:
-                continue
+            except Exception as error:
+                raise StorageCorruptionError(path, error) from error
         return sorted(drafts, key=lambda draft: draft.updated_at, reverse=True)
 
     def update(self, draft_id: str, payload: PaperDraftUpdateRequest) -> PaperDraft:

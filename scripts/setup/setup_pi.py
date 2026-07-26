@@ -14,19 +14,16 @@ import subprocess
 import sys
 from pathlib import Path
 
+from oopsnote.ai import PiRpcBackend
 from oopsnote.ai.pi_skills import ACTIVE_PI_SKILLS
+from oopsnote.ai.rpc.probe import probe_new_session
+from oopsnote.mcp.contracts import AI_TOOL_NAMES
+from oopsnote.mcp.http_runtime import SharedMcpHttpRuntime
 
 
 ROOT = Path(__file__).resolve().parents[2]
-REQUIRED_PIPELINE_TOOLS = {
-    "get_task",
-    "get_asset_path",
-    "list_tags",
-    "create_tag",
-    "report_task_stage",
-    "finalize_task",
-    "fail_task",
-}
+REQUIRED_PIPELINE_TOOLS = set(AI_TOOL_NAMES)
+
 
 def check(condition: bool, label: str) -> bool:
     print(f"[{'ok' if condition else 'missing'}] {label}")
@@ -64,6 +61,46 @@ def check_skills_synced() -> bool:
     return valid
 
 
+def check_rpc_startup() -> bool:
+    """Start a clean upstream session against the real restricted MCP transport."""
+
+    runtime = SharedMcpHttpRuntime()
+    backend = None
+    try:
+        mcp_environment = runtime.start()
+        backend = PiRpcBackend(ROOT, runtime="pi")
+        backend.runtime.configure_child_environment(mcp_environment)
+        managed_config_path = backend.runtime.managed_mcp_config_path
+        managed_config = json.loads(managed_config_path.read_text(encoding="utf-8"))
+        configured = set(
+            managed_config["mcpServers"]["oopsnote_pipeline"]["directTools"]
+        )
+        surface_valid = check(
+            configured == REQUIRED_PIPELINE_TOOLS,
+            "ephemeral upstream MCP whitelist matches expected tools",
+        )
+        environment = os.environ.copy()
+        environment.update(mcp_environment)
+        result = probe_new_session(
+            backend.build_command("setup", "setup"),
+            cwd=ROOT,
+            environment=environment,
+            timeout_seconds=30,
+        )
+        detail = "" if result.success else result.failure_detail
+        return surface_valid and check(
+            result.success,
+            "upstream Pi restricted MCP startup"
+            + (f": {detail}" if detail else ""),
+        )
+    except (OSError, ValueError, subprocess.TimeoutExpired) as error:
+        return check(False, f"upstream Pi restricted MCP startup: {error}")
+    finally:
+        if backend is not None:
+            backend.runtime.cleanup()
+        runtime.shutdown()
+
+
 def main() -> int:
     runtime_path = ROOT / ".pi" / "runtime.json"
     command_parts = [os.getenv("OOPSNOTE_PI_COMMAND", "pi")]
@@ -98,11 +135,13 @@ def main() -> int:
         valid &= check(False, "read .pi/package.json")
     try:
         mcp = json.loads(mcp_path.read_text(encoding="utf-8"))
-        configured = set(mcp["mcpServers"]["oopsnote_pipeline"]["directTools"])
-        valid &= check(configured == REQUIRED_PIPELINE_TOOLS, "MCP pipeline whitelist matches expected tools")
+        valid &= check(
+            mcp.get("mcpServers") == {},
+            "project MCP config contains no persistent runtime endpoint",
+        )
     except (KeyError, OSError, json.JSONDecodeError):
         valid &= check(False, "read .pi/mcp.json")
-    valid &= check((ROOT / ".pi" / "extensions" / "ocr_image.js").exists(), "ocr_image extension")
+    valid &= check_rpc_startup()
     valid &= check_skills_synced()
     ext_cfg_path = ROOT / ".pi" / "extensions.json"
     ext_cfg = {}

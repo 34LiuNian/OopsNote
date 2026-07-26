@@ -23,6 +23,7 @@ import { ErrorBanner } from "./ui/ErrorBanner";
 import { TaskLiveStream } from "./task/TaskLiveStream";
 import { TaskMathRenderer } from "./task/TaskMathRenderer";
 import { TaskStatusToaster } from "./task/TaskStatusToaster";
+import { ChevronDownIcon, ChevronUpIcon } from "./ui/icons";
 
 // Format duration between two dates
 function formatDuration(start: string, end: string): string {
@@ -60,6 +61,7 @@ export function TaskLiveView({ taskId }: { taskId: string }) {
   const { effectiveDimensions: tagStyles } = useTagDimensions();
   const [editingKey, setEditingKey] = useState<string>("");
   const [isScreenshotOpen, setIsScreenshotOpen] = useState(false);
+  const [showTaskDetails, setShowTaskDetails] = useState(false);
 
   const loadOnce = useCallback(async () => {
     setIsLoading(true);
@@ -161,9 +163,10 @@ export function TaskLiveView({ taskId }: { taskId: string }) {
     statusMessage,
     streamProgress,
   });
+  const isCompleted = data?.task?.status === "completed";
 
   return (
-    <Box sx={{ display: "flex", flexDirection: "column", gap: 4 }}>
+    <Box sx={{ display: "flex", flexDirection: "column", gap: 4, width: "100%", maxWidth: 1320, mx: "auto" }}>
       {/* Math renderer */}
       <TaskMathRenderer data={data} />
 
@@ -173,7 +176,7 @@ export function TaskLiveView({ taskId }: { taskId: string }) {
       {/* Task header card */}
       <Box
         className="oops-card"
-        sx={{ p: 4, position: "relative", overflow: "hidden" }}
+        sx={{ p: isCompleted ? 3 : 4, position: "relative", overflow: "hidden" }}
       >
         {/* Subtle gradient accent bar at top */}
         <Box
@@ -194,8 +197,8 @@ export function TaskLiveView({ taskId }: { taskId: string }) {
 
         <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 3, flexWrap: "wrap" }}>
           <Box sx={{ flex: 1, minWidth: 200 }}>
-            <Box sx={{ display: "flex", alignItems: "center", gap: 2, mb: 1 }}>
-              <Heading as="h2" sx={{ fontSize: 3, m: 0 }}>任务详情</Heading>
+            <Box sx={{ display: "flex", alignItems: "center", gap: 2, mb: 1, flexWrap: "wrap" }}>
+              <Heading as="h2" sx={{ fontSize: isCompleted ? 2 : 3, m: 0 }}>任务详情</Heading>
               <Box
                 className={`oops-badge ${
                   data?.task?.status === "completed" ? "oops-badge-success"
@@ -211,17 +214,33 @@ export function TaskLiveView({ taskId }: { taskId: string }) {
                         : data?.task?.status === "cancelled" ? "已取消"
                           : data?.task?.status ?? "加载中"}
               </Box>
+              {isCompleted && (
+                <Button
+                  size="small"
+                  variant="invisible"
+                  onClick={() => setShowTaskDetails((value) => !value)}
+                  aria-expanded={showTaskDetails}
+                  sx={{ px: 0, color: "fg.muted" }}
+                >
+                  {showTaskDetails ? "收起任务信息" : "查看任务信息"}
+                  {showTaskDetails ? <ChevronUpIcon size={14} /> : <ChevronDownIcon size={14} />}
+                </Button>
+              )}
             </Box>
-            <Text sx={{ fontSize: 0, color: "fg.muted", fontFamily: "mono" }}>{taskId}</Text>
-            {data?.task?.created_at && (
-              <Box sx={{ mt: 2, display: "flex", gap: 3, flexWrap: "wrap" }}>
-                <Text sx={{ fontSize: 0, color: "fg.muted" }}>
-                  创建：{new Date(data.task.created_at).toLocaleString("zh-CN")}
-                </Text>
-                {(data.task.status === "completed" || data.task.status === "failed" || data.task.status === "cancelled") && data.task.updated_at && (
-                  <Text sx={{ fontSize: 0, color: "fg.muted" }}>
-                    用时：{formatDuration(data.task.created_at, data.task.updated_at)}
-                  </Text>
+            {(!isCompleted || showTaskDetails) && (
+              <Box sx={{ mt: 1 }}>
+                <Text sx={{ fontSize: 0, color: "fg.muted", fontFamily: "mono" }}>{taskId}</Text>
+                {data?.task?.created_at && (
+                  <Box sx={{ mt: 2, display: "flex", gap: 3, flexWrap: "wrap" }}>
+                    <Text sx={{ fontSize: 0, color: "fg.muted" }}>
+                      创建：{new Date(data.task.created_at).toLocaleString("zh-CN")}
+                    </Text>
+                    {(data.task.status === "completed" || data.task.status === "failed" || data.task.status === "cancelled") && data.task.updated_at && (
+                      <Text sx={{ fontSize: 0, color: "fg.muted" }}>
+                        用时：{formatDuration(data.task.created_at, data.task.updated_at)}
+                      </Text>
+                    )}
+                  </Box>
                 )}
               </Box>
             )}
@@ -237,33 +256,15 @@ export function TaskLiveView({ taskId }: { taskId: string }) {
             onDelete={removeTask}
           />
         </Box>
-        {data?.task.trace && (
-          <Box sx={{ display: "flex", alignItems: "center", gap: 2, flexWrap: "wrap", mt: 3, pt: 3, borderTop: "1px solid", borderColor: "border.muted", color: "fg.muted" }}>
-          <Text sx={{ fontSize: 0, fontWeight: 600 }}>来源</Text>
-          {data.task.trace.kind === "batch_segment" && (
-            <Text sx={{ fontSize: 0 }}>
-              {data.task.trace.source_file_name} · 第 {(data.task.trace.page_index ?? 0) + 1} 页 · 题目 {data.task.trace.question_no}
-            </Text>
-          )}
-          {data.task.trace.kind === "batch_segment" && data.task.trace.source_file_hash && (
-            data.task.trace.batch_session_available === false ? (
-              <span className="task-trace-link is-disabled" aria-disabled="true" title="原批量扫描记录已删除">
-                定位到批量扫描
-              </span>
-            ) : (
-              <Link
-                href={`/batch-segment?session=${encodeURIComponent(data.task.trace.source_file_hash)}&page=${(data.task.trace.page_index ?? 0) + 1}`}
-                className="task-trace-link"
-              >
-                定位到批量扫描
-              </Link>
-            )
-          )}
-          <Button size="small" variant="invisible" onClick={() => setIsScreenshotOpen(true)}>
-            {data.task.trace.kind === "batch_segment" ? "查看选框截图" : "查看原图"}
-          </Button>
-          </Box>
-        )}
+        <Box sx={{ mt: 3, pt: 3, borderTopWidth: 1, borderTopStyle: "solid", borderTopColor: "border.muted" }}>
+          <TaskProgressBar
+            progressState={progressState}
+            latestLine={progressState.latestLine}
+            error={error}
+            statusMessage={statusMessage}
+            embedded
+          />
+        </Box>
       </Box>
 
       {data?.task.trace && (
@@ -271,14 +272,6 @@ export function TaskLiveView({ taskId }: { taskId: string }) {
           <img className="task-trace-image" src={`/api${data.task.trace.screenshot_path}`} alt={data.task.trace.screenshot_filename ?? "题目图片"} />
         </Modal>
       )}
-
-      {/* Progress bar */}
-      <TaskProgressBar
-        progressState={progressState}
-        latestLine={progressState.latestLine}
-        error={error}
-        statusMessage={statusMessage}
-      />
 
       <ErrorBanner message={error} />
 
@@ -297,6 +290,8 @@ export function TaskLiveView({ taskId }: { taskId: string }) {
         <TaskProblemDetail
           taskId={taskId}
           taskDifficulty={data.task.payload?.difficulty}
+          taskAssetPath={data.task.asset?.path}
+          taskTrace={data.task.trace}
           problem={data.task.problem}
           solution={data.task.solution}
           tag={data.task.tag}
@@ -307,11 +302,12 @@ export function TaskLiveView({ taskId }: { taskId: string }) {
           tagStyles={tagStyles}
           onStatusMessage={setStatusMessage}
           onError={setError}
+          onOpenSourceImage={() => setIsScreenshotOpen(true)}
         />
       )}
 
       {/* Bottom navigation */}
-      <Box sx={{ display: "flex", gap: 3, pt: 2, borderTop: "1px solid", borderColor: "border.muted", fontSize: 1 }}>
+      <Box sx={{ display: "flex", gap: 3, pt: 2, borderTopWidth: 1, borderTopStyle: "solid", borderTopColor: "border.muted", fontSize: 1 }}>
         <Link href="/" style={{ textDecoration: "none" }}>
           <Text as="span" sx={{ color: "accent.fg", fontWeight: 500, "&:hover": { textDecoration: "underline" } }}>← 采集面板</Text>
         </Link>

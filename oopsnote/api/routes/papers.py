@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 from typing import Any, Optional
+from urllib.parse import quote
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Response
 
+from oopsnote.api.schemas import PaperCompileRequest
 from oopsnote.core import PaperDraft, PaperDraftCreateRequest, PaperDraftUpdateRequest
-from oopsnote.paper import candidate_tasks, select_paper_items
+from oopsnote.paper import PaperCompileError, candidate_tasks, compile_paper_pdf, select_paper_items
 
 router = APIRouter()
 
@@ -104,6 +106,45 @@ def create_paper(payload: PaperDraftCreateRequest) -> dict[str, Any]:
     )
     draft = _api().PAPER_DRAFT_STORE.create(payload, items=items)
     return {"paper": _paper_view(draft)}
+
+
+@router.post("/papers/compile")
+def compile_paper(payload: PaperCompileRequest) -> Response:
+    tasks = _task_lookup()
+    problems = []
+    for item in payload.items:
+        task = tasks.get(item.task_id)
+        if not task or not task.problem or task.problem.id != item.problem_id:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Problem {item.problem_id} was not found on task {item.task_id}",
+            )
+        problems.append(task.problem)
+    try:
+        content = compile_paper_pdf(
+            problems,
+            title=payload.title,
+            subtitle=payload.subtitle or "",
+            show_answers=payload.show_answers,
+        )
+    except PaperCompileError as error:
+        status = 503 if "not installed" in str(error) else 422
+        raise HTTPException(
+            status_code=status,
+            detail={"message": str(error), "log": error.log},
+        ) from error
+    safe_name = "".join(char for char in payload.title if char not in '\\/:*?"<>|').strip() or "paper"
+    encoded_name = quote(f"{safe_name}.pdf")
+    return Response(
+        content=content,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": (
+                "attachment; filename=oopsnote-paper.pdf; "
+                f"filename*=UTF-8''{encoded_name}"
+            )
+        },
+    )
 
 
 @router.get("/papers/{draft_id}")

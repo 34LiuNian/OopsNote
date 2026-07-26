@@ -3,6 +3,16 @@
 import { useQuery } from '@tanstack/react-query';
 import { fetchJson } from '../lib/api';
 import { queryKeys } from '../lib/queryClient';
+import type { PiSettingsResponse } from '../types/api';
+
+export type PiSettings = PiSettingsResponse;
+
+export function usePiSettings() {
+  return useQuery({
+    queryKey: queryKeys.settings.pi(),
+    queryFn: () => fetchJson<PiSettingsResponse>('/settings/pi'),
+  });
+}
 
 /**
  * 获取可用的 Agent 模型列表

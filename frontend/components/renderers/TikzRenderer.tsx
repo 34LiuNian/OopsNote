@@ -28,7 +28,7 @@ function normalizeTikzSource(input: string): string {
   return `\\begin{document}\n${source}\n\\end{document}`;
 }
 
-async function renderTikz(source: string): Promise<string> {
+export async function renderTikz(source: string): Promise<string> {
   const cached = SVG_CACHE.get(source);
   if (cached) return cached;
 
@@ -67,7 +67,15 @@ async function renderTikz(source: string): Promise<string> {
   });
 }
 
-export function TikzRenderer({ code, allowBackendFallback = true }: { code: string; allowBackendFallback?: boolean }) {
+export function TikzRenderer({
+  code,
+  allowBackendFallback = true,
+  fit = false,
+}: {
+  code: string;
+  allowBackendFallback?: boolean;
+  fit?: boolean;
+}) {
   const source = useMemo(() => code.trim(), [code]);
   const [svg, setSvg] = useState("");
   const [error, setError] = useState("");
@@ -96,7 +104,7 @@ export function TikzRenderer({ code, allowBackendFallback = true }: { code: stri
     };
   }, [source]);
 
-  if (svg) return <SvgMarkup svg={svg} label="TikZ 图形" />;
+  if (svg) return <SvgMarkup svg={svg} label="TikZ 图形" fit={fit} />;
   if (error && allowBackendFallback) {
     return (
       <Box data-tikz-client-error={error}>
@@ -105,6 +113,7 @@ export function TikzRenderer({ code, allowBackendFallback = true }: { code: stri
           content={source}
           loadingLabel="客户端不兼容，正在请求后端渲染..."
           errorLabel={error}
+          fit={fit}
         />
       </Box>
     );

@@ -44,6 +44,7 @@ export type BatchSessionSegment = {
   id: string;
   parts: Array<{
     page_index: number;
+    column_index: number;
     x: number;
     y: number;
     width: number;
@@ -83,9 +84,28 @@ export type BatchSession = {
   active_page: number;
   crop_rect: { x: number; y: number; width: number; height: number };
   crop_confirmed: boolean;
+  column_layout: { column_count: number; overlap_ratio: number };
+  excluded_page_indices: number[];
   segments: BatchSessionSegment[];
+  revision: number;
   created_at: string;
   updated_at: string;
+};
+
+export type BatchProcessResult = {
+  requested: number;
+  created: number;
+  queued: number;
+  failed: number;
+  items: Array<{
+    segment_id: string;
+    question_no?: number | null;
+    task_id: string;
+    run_id?: string | null;
+    status: "processing" | "completed" | "failed";
+    error?: string | null;
+  }>;
+  session: BatchSession;
 };
 
 export async function listBatchSessions(): Promise<BatchSession[]> {
@@ -99,12 +119,13 @@ export async function getBatchSession(fileHash: string): Promise<BatchSession | 
   return (await response.json() as { session: BatchSession }).session;
 }
 
-export async function uploadBatchSource(fileHash: string, file: File): Promise<BatchSession> {
+export async function uploadBatchSource(fileHash: string, file: File, pageCount: number): Promise<BatchSession> {
   const response = await fetchRawUpload(`/batch-sessions/${encodeURIComponent(fileHash)}/source`, {
     method: "PUT",
     headers: {
       "Content-Type": file.type || "application/octet-stream",
       "X-OopsNote-Filename": encodeURIComponent(file.name),
+      "X-OopsNote-Page-Count": String(pageCount),
     },
     body: file,
   });
@@ -114,12 +135,20 @@ export async function uploadBatchSource(fileHash: string, file: File): Promise<B
 
 export async function updateBatchSession(
   fileHash: string,
-  payload: Partial<Pick<BatchSession, "filename">> & Pick<BatchSession, "page_count" | "active_page" | "crop_rect" | "crop_confirmed" | "segments">,
+  expectedRevision: number,
+  payload: Partial<Pick<BatchSession, "filename">> & Pick<BatchSession, "page_count" | "active_page" | "crop_rect" | "crop_confirmed" | "column_layout" | "excluded_page_indices" | "segments">,
 ): Promise<BatchSession> {
   return (await fetchJson<{ session: BatchSession }>(`/batch-sessions/${encodeURIComponent(fileHash)}`, {
     method: "PATCH",
-    body: JSON.stringify(payload),
+    body: JSON.stringify({ ...payload, expected_revision: expectedRevision }),
   })).session;
+}
+
+export async function processBatchSession(fileHash: string, expectedRevision: number): Promise<BatchProcessResult> {
+  return fetchJson<BatchProcessResult>(`/batch-sessions/${encodeURIComponent(fileHash)}/process`, {
+    method: "POST",
+    body: JSON.stringify({ expected_revision: expectedRevision }),
+  });
 }
 
 export async function deleteBatchSession(fileHash: string): Promise<void> {

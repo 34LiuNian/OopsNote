@@ -49,6 +49,15 @@ _TABLE_SEPARATOR = re.compile(r"^\s*\|?\s*:?-{3,}:?\s*(?:\|\s*:?-{3,}:?\s*)+\|?\
 _LIST_ITEM = re.compile(r"^(?P<indent>\s*)(?:(?P<number>\d+)[.)]|(?P<bullet>[-+*]))\s+(?P<text>.+)$")
 _RAW_ENVIRONMENT = re.compile(r"\\(?:begin|end)\{(?P<name>tabular|array|tblr|enumerate|itemize|tikzpicture|document)\}")
 _DOCUMENT_COMMAND = re.compile(r"\\(?:documentclass|usepackage|input|include|write18|openout|read)\b")
+_OPTION_MARKER = re.compile(
+    r"^\s*(?:"
+    r"[（(]\s*(?:[A-Za-z]|\d{1,2})\s*[）)]"
+    r"|(?:[A-Za-z]|\d{1,2})\s*[.．、:：)）\]】]"
+    r")\s*"
+)
+_ORDERED_ITEM = re.compile(
+    r"^(?P<indent>\s*)(?P<number>\d{1,2})[.．、)）]\s+(?P<text>.+)$"
+)
 
 
 def _split_table_row(line: str) -> tuple[str, ...]:
@@ -257,6 +266,7 @@ def normalize_oopsmark(source: str) -> str:
     """Normalize newlines in OopsMark v1 content.
 
     - Replaces CRLF/CR with LF.
+    - Converts consecutive Markdown 1./2. items to canonical （1）/（2） subquestion paragraphs.
     - Collapses 3+ consecutive newlines to exactly \n\n (one blank line) outside fenced code blocks.
     - Strips leading/trailing whitespace.
 
@@ -267,6 +277,7 @@ def normalize_oopsmark(source: str) -> str:
     """
     normalized = source.replace("\r\n", "\n").replace("\r", "\n")
     lines = normalized.split("\n")
+    _normalize_ordered_subquestions(lines)
     result: list[str] = []
     in_fence = False
     need_blank = False  # emit one blank line before next non-blank non-fence line
@@ -295,6 +306,61 @@ def normalize_oopsmark(source: str) -> str:
         result.pop()
 
     return "\n".join(result)
+
+
+def _normalize_ordered_subquestions(lines: list[str]) -> None:
+    """Canonicalize consecutive 1./2. subquestions without touching a lone question number."""
+
+    in_fence = False
+    candidates: list[tuple[int, re.Match[str]]] = []
+
+    def flush() -> None:
+        nonlocal candidates
+        numbers = [int(match.group("number")) for _, match in candidates]
+        if len(numbers) >= 2 and numbers == list(range(1, len(numbers) + 1)):
+            for line_index, match in candidates:
+                lines[line_index] = (
+                    f'{match.group("indent")}（{match.group("number")}）'
+                    f'{match.group("text")}'
+                )
+        candidates = []
+
+    for index, line in enumerate(lines):
+        if line.strip().startswith("```"):
+            flush()
+            in_fence = not in_fence
+            continue
+        if in_fence or not line.strip():
+            continue
+        match = _ORDERED_ITEM.match(line)
+        if match:
+            expected = len(candidates) + 1
+            if int(match.group("number")) == expected:
+                candidates.append((index, match))
+                continue
+        flush()
+        if match and match.group("number") == "1":
+            candidates.append((index, match))
+    flush()
+
+
+def normalize_option_text(source: str) -> str:
+    """Return canonical marker-free OopsMark for one ordered choice body."""
+
+    return _OPTION_MARKER.sub("", normalize_oopsmark(source), count=1).strip()
+
+
+def option_label(index: int) -> str:
+    """Map a zero-based choice position to its canonical A, B, ..., AA label."""
+
+    if index < 0:
+        raise ValueError("option index must be non-negative")
+    value = index + 1
+    label = ""
+    while value:
+        value, remainder = divmod(value - 1, 26)
+        label = chr(ord("A") + remainder) + label
+    return label
 
 
 _LATEX_ESCAPES = {

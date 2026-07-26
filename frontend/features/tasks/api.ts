@@ -95,6 +95,9 @@ export type OverrideProblemPayload = {
   diagram_kind?: string | null;
   diagram_tikz_source?: string | null;
   diagram_svg?: string | null;
+  diagram_image_path?: string | null;
+  diagram_position?: "left" | "right";
+  diagram_scale_percent?: number | null;
   diagram_render_status?: string | null;
   diagram_error?: string | null;
   diagram_needs_review?: boolean;
@@ -150,35 +153,4 @@ export async function compilePaper(payload: PaperCompilePayload): Promise<Respon
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
-}
-
-export async function compileTikzToSvg(content: string): Promise<string> {
-  const response = await fetchApi("/latex/tikz", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ content, inline: false }),
-  });
-
-  if (!response.ok) {
-    const rawText = await response.text();
-    let message = rawText;
-    try {
-      const parsed = JSON.parse(rawText) as {
-        detail?: string | { message?: string; log?: string };
-      };
-      if (typeof parsed.detail === "string") {
-        message = parsed.detail;
-      } else if (parsed.detail && typeof parsed.detail === "object") {
-        const detailMessage = parsed.detail.message || "TikZ 编译失败";
-        const detailLog = parsed.detail.log || "";
-        message = detailLog ? `${detailMessage}\n${detailLog}` : detailMessage;
-      }
-    } catch {
-      message = rawText;
-    }
-
-    throw new Error(message.replace(/\\n/g, "\n"));
-  }
-
-  return await response.text();
 }

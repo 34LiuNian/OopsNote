@@ -1,9 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { Box, Heading, IconButton, Label, Text, Tooltip } from "@/components/ui/primitives";
+import Link from "next/link";
+import { Box, Button, Heading, IconButton, Label, Text, Tooltip } from "@/components/ui/primitives";
 import { PencilIcon, CopyIcon, ChevronDownIcon, ChevronUpIcon } from "@/components/ui/icons";
-import type { ContentFormat, TagDimensionStyle } from "@/types/api";
+import type { ContentFormat, SourceTrace, TagDimensionStyle } from "@/types/api";
 import { MarkdownRenderer } from "../renderers/MarkdownRenderer";
 import { ProblemCard } from "../ProblemCard";
 import { ProblemEditPanel } from "../ProblemEditPanel";
@@ -18,6 +19,9 @@ type TaskProblem = {
   diagram_kind?: string | null;
   diagram_tikz_source?: string | null;
   diagram_svg?: string | null;
+  diagram_image_path?: string | null;
+  diagram_position?: "left" | "right";
+  diagram_scale_percent?: number | null;
   diagram_render_status?: string | null;
   diagram_error?: string | null;
   diagram_needs_review?: boolean;
@@ -38,6 +42,8 @@ type TaskSolution = {
 type TaskProblemDetailProps = {
   taskId: string;
   taskDifficulty?: string | null;
+  taskAssetPath?: string | null;
+  taskTrace?: SourceTrace | null;
   problem: TaskProblem | null;
   solution: TaskSolution | null;
   tag: { problem_id: string; knowledge_points: string[] } | null;
@@ -48,11 +54,14 @@ type TaskProblemDetailProps = {
   tagStyles: Record<string, TagDimensionStyle>;
   onStatusMessage?: (message: string) => void;
   onError?: (message: string) => void;
+  onOpenSourceImage?: () => void;
 };
 
 export function TaskProblemDetail({
   taskId,
   taskDifficulty,
+  taskAssetPath,
+  taskTrace,
   problem,
   solution,
   tag,
@@ -63,6 +72,7 @@ export function TaskProblemDetail({
   tagStyles,
   onStatusMessage,
   onError,
+  onOpenSourceImage,
 }: TaskProblemDetailProps) {
   const copyMarkdown = async () => {
     if (!problem) return;
@@ -74,6 +84,8 @@ export function TaskProblemDetail({
 
       if (problem.diagram_detected && problem.diagram_tikz_source) {
         lines.push("## 识别图 (TikZ)", "```tikz", problem.diagram_tikz_source, "```", "");
+      } else if (problem.diagram_detected && problem.diagram_kind === "image" && problem.diagram_image_path) {
+        lines.push("## 题图", `![题图](${problem.diagram_image_path})`, "");
       }
 
       const knowledgeTags = Array.isArray(problem.knowledge_tags) ? problem.knowledge_tags : [];
@@ -105,12 +117,12 @@ export function TaskProblemDetail({
   const retryDiagram = async () => {
     if (!problem) return;
     try {
-      onStatusMessage?.("开始重试自动识图...");
+      onStatusMessage?.("开始重试图形渲染...");
       await rerenderProblemDiagram(taskId);
       await onSaved();
-      onStatusMessage?.("自动识图重试完成");
+      onStatusMessage?.("图形渲染已重新排队");
     } catch (err) {
-      onError?.(err instanceof Error ? err.message : "自动识图重试失败");
+      onError?.(err instanceof Error ? err.message : "图形渲染重试失败");
     }
   };
 
@@ -121,10 +133,12 @@ export function TaskProblemDetail({
   const allTags = Array.from(new Set([...knowledgeTags, ...errorTags, ...userTags, ...aiKnowledge]));
 
   return (
-    <Box sx={{ mt: 3 }}>
-      <Heading as="h3" sx={{ fontSize: 2, m: 0, mb: 3 }}>
-        题目与解答
-      </Heading>
+    <Box>
+      {(!problem || editingKey !== problem.problem_id) && (
+        <Heading as="h3" sx={{ fontSize: 2, m: 0, mb: 3 }}>
+          题目与解答
+        </Heading>
+      )}
 
       {!problem ? (
         <Box className="oops-empty-state" sx={{ py: 5 }}>
@@ -139,12 +153,15 @@ export function TaskProblemDetail({
           taskDifficulty={taskDifficulty}
           isEditing={editingKey === problem.problem_id}
           taskId={taskId}
+          taskAssetPath={taskAssetPath}
+          taskTrace={taskTrace}
           tagStyles={tagStyles}
           onEdit={() => onEdit(problem.problem_id)}
           onCloseEdit={onCloseEdit}
           onSaved={onSaved}
           onCopy={copyMarkdown}
           onRetryDiagram={retryDiagram}
+          onOpenSourceImage={onOpenSourceImage}
         />
       )}
     </Box>
@@ -158,12 +175,15 @@ function ProblemDetailCard({
   taskDifficulty,
   isEditing,
   taskId,
+  taskAssetPath,
+  taskTrace,
   tagStyles,
   onEdit,
   onCloseEdit,
   onSaved,
   onCopy,
   onRetryDiagram,
+  onOpenSourceImage,
 }: {
   problem: TaskProblem;
   solution: TaskSolution | null;
@@ -171,12 +191,15 @@ function ProblemDetailCard({
   taskDifficulty?: string | null;
   isEditing: boolean;
   taskId: string;
+  taskAssetPath?: string | null;
+  taskTrace?: SourceTrace | null;
   tagStyles: Record<string, TagDimensionStyle>;
   onEdit: () => void;
   onCloseEdit: () => void;
   onSaved: () => Promise<void> | void;
   onCopy: () => void;
   onRetryDiagram: () => Promise<void>;
+  onOpenSourceImage?: () => void;
 }) {
   const [showAnswer, setShowAnswer] = useState(true);
   const [isRetryingDiagram, setIsRetryingDiagram] = useState(false);
@@ -191,6 +214,19 @@ function ProblemDetailCard({
     }
   };
 
+  if (isEditing) {
+    return (
+      <ProblemEditPanel
+        taskId={taskId}
+        problem={problem}
+        taskAssetPath={taskAssetPath}
+        tagStyles={tagStyles}
+        onClose={onCloseEdit}
+        onSaved={onSaved}
+      />
+    );
+  }
+
   return (
     <Box className="oops-card" sx={{ overflow: "hidden", animation: "slideUp 0.3s ease-out" }}>
       <Box
@@ -200,18 +236,43 @@ function ProblemDetailCard({
           justifyContent: "space-between",
           px: 3,
           py: 2,
-          borderBottom: "1px solid",
-          borderColor: "border.muted",
+          borderBottomWidth: 1,
+          borderBottomStyle: "solid",
+          borderBottomColor: "border.muted",
           bg: "canvas.subtle",
         }}
       >
         <Box sx={{ display: "flex", alignItems: "center", gap: 2, flexWrap: "wrap", flex: 1, minWidth: 0 }}>
           <Text sx={{ fontWeight: 600, fontSize: 2 }}>
-            {problem.question_no ? `题 ${problem.question_no}` : "题目"}
+          {problem.question_no ? `题 ${problem.question_no}` : "题目"}
           </Text>
           {problem.question_type && <Box className="oops-badge oops-badge-accent">{problem.question_type}</Box>}
-          {problem.source && <Text sx={{ fontSize: 0, color: "fg.muted" }}>{problem.source}</Text>}
+          {(problem.source || taskTrace?.source_file_name) && (
+            <Text sx={{ fontSize: 0, color: "fg.muted" }}>{problem.source || taskTrace?.source_file_name}</Text>
+          )}
+          {taskTrace?.kind === "batch_segment" && typeof taskTrace.page_index === "number" && (
+            <Text sx={{ fontSize: 0, color: "fg.muted" }}>第 {taskTrace.page_index + 1} 页</Text>
+          )}
           {taskDifficulty && <Text sx={{ fontSize: 0, color: "fg.muted" }}>难度：{taskDifficulty}</Text>}
+          {taskTrace?.kind === "batch_segment" && taskTrace.source_file_hash && (
+            taskTrace.batch_session_available === false ? (
+              <span className="task-trace-link is-disabled" aria-disabled="true" title="原批量扫描记录已删除">
+                定位到批量扫描
+              </span>
+            ) : (
+              <Link
+                href={`/batch-segment?session=${encodeURIComponent(taskTrace.source_file_hash)}&page=${(taskTrace.page_index ?? 0) + 1}`}
+                className="task-trace-link"
+              >
+                定位到批量扫描
+              </Link>
+            )
+          )}
+          {taskTrace && onOpenSourceImage && (
+            <Button size="small" variant="invisible" onClick={onOpenSourceImage}>
+              {taskTrace.kind === "batch_segment" ? "查看选框截图" : "查看原图"}
+            </Button>
+          )}
         </Box>
         <Box sx={{ display: "flex", gap: 1, flexShrink: 0 }}>
           <Tooltip text="编辑" direction="s">
@@ -222,16 +283,6 @@ function ProblemDetailCard({
           </Tooltip>
         </Box>
       </Box>
-
-      {isEditing && (
-        <ProblemEditPanel
-          taskId={taskId}
-          problem={problem}
-          tagStyles={tagStyles}
-          onClose={onCloseEdit}
-          onSaved={onSaved}
-        />
-      )}
 
       <Box sx={{ px: 3, py: 3 }}>
         <ProblemCard
@@ -244,6 +295,9 @@ function ProblemDetailCard({
           diagramKind={problem.diagram_kind}
           diagramTikzSource={problem.diagram_tikz_source}
           diagramSvg={problem.diagram_svg}
+          diagramImagePath={problem.diagram_image_path}
+          diagramPosition={problem.diagram_position}
+          diagramScalePercent={problem.diagram_scale_percent}
           diagramRenderStatus={problem.diagram_render_status}
           diagramError={problem.diagram_error}
           diagramNeedsReview={problem.diagram_needs_review}
@@ -264,7 +318,7 @@ function ProblemDetailCard({
       )}
 
       {solution && (
-        <Box sx={{ borderTop: "1px solid", borderColor: "border.muted" }}>
+        <Box sx={{ borderTopWidth: 1, borderTopStyle: "solid", borderTopColor: "border.muted" }}>
           <Box
             onClick={() => setShowAnswer(!showAnswer)}
             sx={{

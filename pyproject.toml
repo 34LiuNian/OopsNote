@@ -9,6 +9,8 @@ dependencies = [
     "uvicorn>=0.20",
     "httpx>=0.27",
     "mcp>=1.28.1",
+    "pillow>=11.0",
+    "pymupdf>=1.26",
     "pyyaml>=6.0",
 ]
 

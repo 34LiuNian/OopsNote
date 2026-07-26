@@ -6,7 +6,7 @@ from typing import Optional
 
 from pydantic import BaseModel, Field
 
-from oopsnote.core import TagDimension
+from oopsnote.core import BatchSessionUpdateRequest, TagDimension
 
 
 class UploadRequest(BaseModel):
@@ -39,4 +39,32 @@ class TagRenameInput(BaseModel):
     value: str
 
 
-__all__ = ["TagInput", "TagRenameInput", "UploadRequest"]
+class BatchSessionPatchRequest(BatchSessionUpdateRequest):
+    expected_revision: int = Field(ge=0)
+
+
+class BatchProcessRequest(BaseModel):
+    expected_revision: int = Field(ge=0)
+
+
+class PaperCompileItem(BaseModel):
+    task_id: str
+    problem_id: str
+
+
+class PaperCompileRequest(BaseModel):
+    items: list[PaperCompileItem] = Field(min_length=1, max_length=500)
+    title: str = Field(default="试卷", min_length=1, max_length=200)
+    subtitle: Optional[str] = Field(default=None, max_length=200)
+    show_answers: bool = False
+
+
+__all__ = [
+    "BatchProcessRequest",
+    "BatchSessionPatchRequest",
+    "PaperCompileItem",
+    "PaperCompileRequest",
+    "TagInput",
+    "TagRenameInput",
+    "UploadRequest",
+]
