@@ -133,8 +133,9 @@ test("completed task stays compact and editing replaces the reading card", async
   await expect(page.getByText("未选择", { exact: true })).toHaveCount(0);
   await problemText.fill("求函数 $f(x)=x^2+1$ 的最小值。");
   await page.getByRole("button", { name: "图片附图" }).click();
-  const figureOverlay = page.locator(".figure-cropper .normalized-crop-overlay");
-  await expect(figureOverlay.locator(".normalized-crop-overlay__rect")).toBeVisible();
+  const figureStage = page.locator(".figure-cropper .image-selection-stage");
+  const figureOverlay = figureStage.locator(".normalized-rect-editor");
+  await expect(figureOverlay.locator(".normalized-rect-editor__selection")).toBeVisible();
   await expect(page.getByRole("button", { name: "自动适配" })).toBeVisible();
   await figureOverlay.scrollIntoViewIfNeeded();
   const overlayBox = await figureOverlay.boundingBox();
@@ -142,12 +143,25 @@ test("completed task stays compact and editing replaces the reading card", async
   const drawTargetClass = await page.evaluate(({ x, y }) => (
     document.elementFromPoint(x, y)?.className || ""
   ), { x: overlayBox.x + overlayBox.width * 0.2, y: overlayBox.y + overlayBox.height * 0.2 });
-  expect(String(drawTargetClass)).toContain("normalized-crop-overlay__rect");
+  expect(String(drawTargetClass)).toContain("normalized-rect-editor__selection");
+  const figureGeometry = await figureStage.evaluate((element) => {
+    const bounds = (target: Element | null) => {
+      const rect = target!.getBoundingClientRect();
+      return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
+    };
+    return {
+      stage: bounds(element),
+      media: bounds(element.querySelector(".image-selection-stage__media")),
+      editor: bounds(element.querySelector(".normalized-rect-editor")),
+    };
+  });
+  expect(figureGeometry.media).toEqual(figureGeometry.stage);
+  expect(figureGeometry.editor).toEqual(figureGeometry.stage);
   await page.mouse.move(overlayBox.x + overlayBox.width * 0.2, overlayBox.y + overlayBox.height * 0.2);
   await page.mouse.down();
   await page.mouse.move(overlayBox.x + overlayBox.width * 0.8, overlayBox.y + overlayBox.height * 0.75);
   await page.mouse.up();
-  await expect(figureOverlay.locator(".normalized-crop-overlay__rect")).toHaveAttribute("style", /left: 20/);
+  await expect(figureOverlay.locator(".normalized-rect-editor__selection")).toHaveAttribute("style", /left: 20/);
   await expect(page.getByText("未保存", { exact: true })).toBeVisible();
 
   await page.getByRole("button", { name: "保存修改" }).click();
@@ -156,6 +170,17 @@ test("completed task stays compact and editing replaces the reading card", async
   expect(task.problem.diagram_image_tone).toBe("auto");
   await expect(page.getByRole("heading", { name: "题目与解答" })).toBeVisible();
   await expect(page.getByText("求函数", { exact: false })).toBeVisible();
+  const readingLayout = await page.locator(".problem-content__lead.has-illustration").evaluate((element) => {
+    const body = element.querySelector<HTMLElement>(".problem-content__body")!;
+    const figure = element.querySelector<HTMLElement>(".problem-content__illustration")!;
+    return {
+      bodyHeight: body.getBoundingClientRect().height,
+      figureHeight: figure.getBoundingClientRect().height,
+      optionsInsideBody: Boolean(body.querySelector("[data-option-item='true']")),
+    };
+  });
+  expect(readingLayout.optionsInsideBody).toBe(true);
+  expect(Math.abs(readingLayout.figureHeight - readingLayout.bodyHeight)).toBeLessThan(1);
 
   await page.getByRole("button", { name: "编辑" }).click();
   await page.locator("textarea").first().fill("尚未保存的题干");

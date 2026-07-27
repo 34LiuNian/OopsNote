@@ -228,6 +228,22 @@
 .emptyPaper { padding: 64px 20px; border: 1px dashed var(--borderColor-default); border-radius: 11px; color: var(--fgColor-muted); text-align: center; }
 .saveState { color: var(--fgColor-muted); font-size: 13px; }
 
+.previewPanel { overflow: hidden; border: 1px solid var(--borderColor-default); border-radius: 11px; background: var(--bgColor-default); }
+.previewHeader { display: flex; min-height: 46px; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 12px 8px 16px; border-bottom: 1px solid var(--borderColor-default); }
+.previewActions { display: flex; align-items: center; gap: 8px; }
+.previewDownload { display: inline-flex; align-items: center; gap: 6px; padding: 6px 9px; border-radius: 7px; color: var(--fgColor-accent); text-decoration: none; font-size: 13px; font-weight: 600; }
+.previewDownload:hover { background: var(--bgColor-muted); }
+.previewClose { display: grid; width: 30px; height: 30px; place-items: center; border: 0; border-radius: 7px; color: var(--fgColor-muted); background: transparent; cursor: pointer; }
+.previewClose:hover { color: var(--fgColor-default); background: var(--bgColor-muted); }
+.previewFrame { display: block; width: 100%; height: min(72dvh, 820px); border: 0; background: white; }
+
+.exportControls { display: flex; flex-direction: column; gap: 10px; margin-bottom: 14px; padding: 12px; border-radius: 9px; background: var(--bgColor-muted); }
+.exportControls > strong { font-size: 13px; }
+.exportControls label:not(.answerToggle) { display: flex; flex-direction: column; gap: 5px; color: var(--fgColor-muted); font-size: 12px; }
+.exportControls label:not(.answerToggle) input { min-width: 0; padding: 6px 8px; border: 1px solid var(--borderColor-default); border-radius: 6px; color: var(--fgColor-default); background: var(--bgColor-default); font: inherit; }
+.answerToggle { display: flex; align-items: center; gap: 7px; color: var(--fgColor-default); font-size: 13px; }
+.answerToggle input { margin: 0; accent-color: var(--fgColor-accent); }
+
 @media (max-width: 900px) {
   .composePage { overflow: auto; }
   .composePage .builderShell { min-height: 100dvh; }

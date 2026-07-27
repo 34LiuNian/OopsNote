@@ -18,7 +18,6 @@ import {
 } from "lucide-react";
 import {
   BatchContinuousSurface,
-  BatchCropOverlay,
   buildPageMetrics,
   clamp,
   DEFAULT_COLUMN_LAYOUT,
@@ -31,10 +30,10 @@ import {
   type SelectionModel,
   type SelectionStatus,
 } from "@/components/batch-continuous";
+import { ImageSelectionStage, NormalizedRectEditor } from "@/components/image-selection";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { useTheme } from "@/components/providers/ThemeProvider";
 import { Box, Button, IconButton, Spinner, Text } from "@/components/ui/primitives";
-import { NativeImage } from "@/components/ui/NativeImage";
 import { notify } from "@/lib/notify";
 import { ApiError } from "@/lib/api";
 import { selectionsToSessionSegments, sessionSegmentsToSelections } from "../adapters/batchSessionSelectionAdapter";
@@ -694,21 +693,6 @@ export function BatchScanForm() {
   }, [pages.length, setZoomAroundPointer]);
 
   const renderDocument = cropConfirmed || cropView === "preview";
-  const cropOverlayScaleStyle = {
-    "--batch-crop-stroke": `${2 * zoom}px`,
-    "--batch-crop-offset": `${zoom}px`,
-    "--batch-selection-radius": `${5 * zoom}px`,
-    "--batch-handle-stroke": `${5 * zoom}px`,
-    "--batch-handle-offset": `${2.5 * zoom}px`,
-    "--batch-handle-negative-offset": `${-2.5 * zoom}px`,
-    "--batch-handle-hit": `${16 * zoom}px`,
-    "--batch-handle-side-hit": `${48 * zoom}px`,
-    "--batch-handle-length": `${42 * zoom}px`,
-    "--batch-corner-hit": `${32 * zoom}px`,
-    "--batch-corner-length": `${26 * zoom}px`,
-    "--batch-corner-radius": `${6 * zoom}px`,
-  } as React.CSSProperties;
-
   return (
     <Box className={`batch-scan-page${pages.length ? " is-active" : ""}`}>
       <input
@@ -862,15 +846,21 @@ export function BatchScanForm() {
                     selectionEnabled={cropConfirmed}
                   />
                 ) : (
-                  <div className={`batch-crop-editor${inverted ? " is-inverted" : ""}`} style={{ ...cropOverlayScaleStyle, width: `${Math.round(820 * zoom)}px`, aspectRatio: `${pages[activePageIndex].sourceWidth} / ${pages[activePageIndex].sourceHeight}` }}>
-                    {imageUrls[activePageIndex] ? <NativeImage src={imageUrls[activePageIndex]} alt={pages[activePageIndex].label} draggable={false} /> : <Spinner />}
-                    <BatchCropOverlay
+                  <ImageSelectionStage
+                    src={imageUrls[activePageIndex]}
+                    alt={pages[activePageIndex].label}
+                    layout="fixed"
+                    tone={inverted ? "inverted" : "original"}
+                    fallback={<Spinner />}
+                    style={{ width: `${Math.round(820 * zoom)}px`, aspectRatio: `${pages[activePageIndex].sourceWidth} / ${pages[activePageIndex].sourceHeight}` }}
+                  >
+                    <NormalizedRectEditor
                       value={crop}
-                      columnCount={columnLayout.columnCount}
+                      verticalGuides={columnLayout.columnCount}
                       onChange={setCrop}
                       onTooSmall={() => notify.error({ title: `裁剪区域过小，宽高至少为页面的 ${Math.round(MIN_CROP_SIZE * 100)}%` })}
                     />
-                  </div>
+                  </ImageSelectionStage>
                 )}
               </div>
             </main>

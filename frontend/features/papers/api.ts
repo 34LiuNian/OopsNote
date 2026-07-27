@@ -1,4 +1,4 @@
-import { fetchJson } from "../../lib/api";
+import { fetchApi, fetchJson } from "../../lib/api";
 import type {
   DifficultyBand,
   PaperDraft,
@@ -61,4 +61,15 @@ export async function listPaperCandidates(params: {
   params.knowledgeTags?.forEach((tag) => sp.append("knowledge_tag", tag));
   params.knowledgeNodeIds?.forEach((id) => sp.append("knowledge_node_id", id));
   return (await fetchJson<ProblemsResponse>(`/papers/candidates?${sp.toString()}`)).items;
+}
+
+export async function compilePaperDraft(
+  draftId: string,
+  payload: { subtitle?: string; show_answers?: boolean },
+): Promise<Response> {
+  return fetchApi(`/papers/${encodeURIComponent(draftId)}/compile`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
 }

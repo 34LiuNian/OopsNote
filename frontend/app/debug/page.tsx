@@ -9,18 +9,6 @@ import { useTaskProgress, ProgressStepKey } from "../../hooks/useTaskProgress";
 
 const DEFAULT_TEXT = [
   "# Debug 页面",
-  "",
-  "这是一段普通文本，包含 **加粗**、*斜体*，以及行内公式 $a^2 + b^2 = c^2$。",
-  "",
-  "## 题干",
-  "给定直角三角形，已知 $a=3, b=4$，求 $c$。",
-  "",
-  "## 选项",
-  "- A. 5",
-  "- B. 6",
-  "- C. 7",
-  "- D. 8",
-  "",
   "## 公式块",
   "$$\\frac{1}{2}mv^2 = mgh$$",
   "",
@@ -63,9 +51,6 @@ const DEFAULT_TEXT = [
   "Answer: 5",
   "Reason: 3^2 + 4^2 = 5^2",
   "```",
-  "",
-  "## 解析",
-  "因为 $3^2 + 4^2 = 9 + 16 = 25$，所以 $c=5$。",
 ].join("\n");
 
 const STEP_KEYS: ProgressStepKey[] = ["queued", "ocr", "solving", "tagging"];
@@ -163,8 +148,9 @@ export default function DebugPage() {
         <Box id="problem-illustration-auto" sx={{ p: 3, border: "1px solid", borderColor: "border.default", borderRadius: 2 }}>
           <Heading as="h3" sx={{ fontSize: 2, mb: 2 }}>TikZ/SVG 右侧自适应</Heading>
           <ProblemContent
-            problemText={"已知函数 $f(x)=x^2$，观察右图并回答。\n图形默认位于右侧，高度与这段题干文本一致。"}
+            problemText={"已知函数 $f(x)=x^2$，观察右图并回答。\n图形默认位于右侧，高度与完整作答内容栏一致。"}
             contentFormat="oopsmark-v1"
+            options={[{ key: "A", text: "$1$" }, { key: "B", text: "$2$" }, { key: "C", text: "$3$" }, { key: "D", text: "$4$" }]}
             diagramDetected
             diagramKind="tikz"
             diagramSvg={'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 80"><rect id="theme-background" width="120" height="80" fill="#fff"/><path id="theme-axis" d="M10 70H110M20 75V5" fill="none" stroke="#000" stroke-width="3"/><path id="theme-series" d="M25 65Q55 60 100 15" fill="none" stroke="#0ea5e9" stroke-width="3"/></svg>'}

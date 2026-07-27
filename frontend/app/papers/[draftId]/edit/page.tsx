@@ -2,11 +2,11 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { GripVertical, MoreHorizontal, Plus, Trash2 } from "lucide-react";
+import { Download, Eye, GripVertical, MoreHorizontal, Plus, Trash2, X } from "lucide-react";
 import { Box, Button, FormControl, Spinner, Text, TextInput } from "@/components/ui/primitives";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { ProblemCard } from "@/components/ProblemCard";
-import { getPaper, listPaperCandidates, updatePaper } from "@/features/papers";
+import { compilePaperDraft, getPaper, listPaperCandidates, updatePaper } from "@/features/papers";
 import type { PaperDraft, PaperDraftItem, ProblemSummary } from "@/types/api";
 import styles from "../../paperWorkflow.module.css";
 
@@ -18,6 +18,19 @@ const QUESTION_TYPE_ORDER: Record<string, number> = {
 };
 
 type Candidate = ProblemSummary & { difficulty_coefficient?: number | null };
+
+async function compileErrorMessage(response: Response): Promise<string> {
+  const fallback = `试卷编译失败：${response.status}`;
+  const text = await response.text();
+  if (!text) return fallback;
+  try {
+    const payload = JSON.parse(text) as { detail?: string | { message?: string } };
+    if (typeof payload.detail === "string") return payload.detail;
+    return payload.detail?.message || fallback;
+  } catch {
+    return text;
+  }
+}
 
 function storedItems(items: PaperDraftItem[]): Array<Omit<PaperDraftItem, "problem">> {
   return items.map(({ problem: _problem, ...item }) => item);
@@ -65,6 +78,18 @@ export default function PaperEditorPage() {
   const [saveState, setSaveState] = useState<"saved" | "saving" | "error">("saved");
   const [pickerMode, setPickerMode] = useState<{ kind: "add" } | { kind: "replace"; itemId: string } | null>(null);
   const [draggedId, setDraggedId] = useState<string | null>(null);
+  const [subtitle, setSubtitle] = useState("");
+  const [showAnswers, setShowAnswers] = useState(false);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState("");
+
+  function clearFormalPreview() {
+    setPreviewUrl((current) => {
+      if (current) URL.revokeObjectURL(current);
+      return null;
+    });
+  }
 
   useEffect(() => {
     let active = true;
@@ -106,6 +131,12 @@ export default function PaperEditorPage() {
       .finally(() => setCandidateLoading(false));
   }, [paper]);
 
+  useEffect(() => {
+    return () => {
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
+    };
+  }, [previewUrl]);
+
   const usedProblemIds = useMemo(
     () => new Set(paper?.items.map((item) => item.problem_id) ?? []),
     [paper?.items],
@@ -126,6 +157,7 @@ export default function PaperEditorPage() {
 
   async function saveItems(items: PaperDraftItem[]) {
     if (!paper) return;
+    clearFormalPreview();
     setPaper({ ...paper, items });
     setSaveState("saving");
     try {
@@ -190,6 +222,28 @@ export default function PaperEditorPage() {
     void saveItems(next);
   }
 
+  async function generateFormalPreview() {
+    if (!paper || saveState !== "saved") return;
+    setPreviewLoading(true);
+    setPreviewError("");
+    try {
+      const response = await compilePaperDraft(draftId, {
+        subtitle: subtitle.trim() || undefined,
+        show_answers: showAnswers,
+      });
+      if (!response.ok) throw new Error(await compileErrorMessage(response));
+      const nextUrl = URL.createObjectURL(await response.blob());
+      setPreviewUrl((current) => {
+        if (current) URL.revokeObjectURL(current);
+        return nextUrl;
+      });
+    } catch (reason) {
+      setPreviewError(reason instanceof Error ? reason.message : "试卷编译失败");
+    } finally {
+      setPreviewLoading(false);
+    }
+  }
+
   if (loading) return <Box sx={{ p: 6, textAlign: "center" }}><Spinner /></Box>;
   if (!paper) return <Text sx={{ color: "danger.fg" }}>{error || "试卷不存在"}</Text>;
 
@@ -201,6 +255,14 @@ export default function PaperEditorPage() {
         action={(
           <Box sx={{ display: "flex", gap: 2 }}>
             <Button size="small" onClick={() => router.push("/papers")}>返回草稿</Button>
+            <Button
+              size="small"
+              leadingVisual={Eye}
+              disabled={!paper.items.length || saveState !== "saved" || previewLoading}
+              onClick={() => void generateFormalPreview()}
+            >
+              {previewLoading ? "正在编译…" : "正式预览"}
+            </Button>
             <Button variant="primary" size="small" leadingVisual={Plus} onClick={() => setPickerMode({ kind: "add" })}>添加题目</Button>
           </Box>
         )}
@@ -212,6 +274,7 @@ export default function PaperEditorPage() {
           <TextInput
             value={title}
             onChange={(event) => {
+              clearFormalPreview();
               setTitle(event.target.value);
               setSaveState("saving");
             }}
@@ -223,6 +286,29 @@ export default function PaperEditorPage() {
         </span>
       </Box>
       {error ? <Text sx={{ color: "danger.fg" }}>{error}</Text> : null}
+      {previewError ? <Text sx={{ color: "danger.fg" }}>{previewError}</Text> : null}
+
+      {previewUrl ? (
+        <section className={styles.previewPanel}>
+          <div className={styles.previewHeader}>
+            <strong>{showAnswers ? "答案版正式预览" : "学生版正式预览"}</strong>
+            <div className={styles.previewActions}>
+              <a className={styles.previewDownload} href={previewUrl} download={`${paper.title || "试卷"}.pdf`}>
+                <Download size={15} /> 下载 PDF
+              </a>
+              <button
+                type="button"
+                className={styles.previewClose}
+                aria-label="关闭正式预览"
+                onClick={clearFormalPreview}
+              >
+                <X size={17} />
+              </button>
+            </div>
+          </div>
+          <iframe title="试卷 PDF 正式预览" src={previewUrl} className={styles.previewFrame} />
+        </section>
+      ) : null}
 
       <div className={styles.editorGrid}>
         <div className={styles.paperList}>
@@ -331,6 +417,31 @@ export default function PaperEditorPage() {
               )
             ) : (
               <>
+                <div className={styles.exportControls}>
+                  <strong>正式导出</strong>
+                  <label>
+                    <span>副标题</span>
+                    <input value={subtitle} onChange={(event) => {
+                      clearFormalPreview();
+                      setSubtitle(event.target.value);
+                    }} placeholder="可选" />
+                  </label>
+                  <label className={styles.answerToggle}>
+                    <input type="checkbox" checked={showAnswers} onChange={(event) => {
+                      clearFormalPreview();
+                      setShowAnswers(event.target.checked);
+                    }} />
+                    <span>包含答案与解析</span>
+                  </label>
+                  <Button
+                    size="small"
+                    leadingVisual={Eye}
+                    disabled={!paper.items.length || saveState !== "saved" || previewLoading}
+                    onClick={() => void generateFormalPreview()}
+                  >
+                    {previewLoading ? "正在编译…" : "生成正式预览"}
+                  </Button>
+                </div>
                 <div className={styles.statGrid}>
                   <div className={styles.statCard}><strong>{stats.total}</strong><span>题目总数</span></div>
                   <div className={styles.statCard}><strong>{paper.knowledge_tags.length}</strong><span>知识点范围</span></div>

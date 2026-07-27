@@ -128,17 +128,19 @@ test("problem illustrations support mutually exclusive right-side auto sizing an
   await expect(automatic).toHaveClass(/is-right/);
   await expect(automatic.locator('[role="img"]')).toBeVisible();
   const automaticSizes = await automatic.evaluate((element) => ({
-    text: element.querySelector<HTMLElement>(".problem-content__text")!.getBoundingClientRect().height,
+    content: element.querySelector<HTMLElement>(".problem-content__body")!.getBoundingClientRect().height,
     figure: element.querySelector<HTMLElement>(".problem-content__illustration")!.getBoundingClientRect().height,
+    optionsInsideContent: Boolean(element.querySelector(".problem-content__body [data-option-item='true']")),
   }));
-  expect(automaticSizes.figure).toBeCloseTo(automaticSizes.text, 0);
+  expect(automaticSizes.optionsInsideContent).toBe(true);
+  expect(automaticSizes.figure).toBeCloseTo(automaticSizes.content, 0);
 
   const custom = page.locator("#problem-illustration-custom .problem-content__lead");
   await expect(custom).toHaveClass(/is-left/);
   await expect(custom.getByRole("img", { name: "附图" })).toBeVisible();
   const customSizes = await custom.evaluate((element) => ({
-    text: element.querySelector<HTMLElement>(".problem-content__text")!.getBoundingClientRect().height,
+    content: element.querySelector<HTMLElement>(".problem-content__body")!.getBoundingClientRect().height,
     figure: element.querySelector<HTMLElement>(".problem-content__illustration")!.getBoundingClientRect().height,
   }));
-  expect(customSizes.figure / customSizes.text).toBeCloseTo(1.25, 1);
+  expect(customSizes.figure / customSizes.content).toBeCloseTo(1.25, 1);
 });

@@ -121,7 +121,7 @@ async function openWorkspace(page: Page, options: {
   await page.goto("/batch-segment", { waitUntil: "domcontentloaded" });
   await expect(page.locator("#oops-splash")).toBeHidden();
   await page.locator('input[type="file"]').setInputFiles({ name: "continuous.pdf", mimeType: "application/pdf", buffer: createPdf(3) });
-  await expect(page.locator(".batch-crop-editor")).toBeVisible({ timeout: 30_000 });
+  await expect(page.locator(".batch-document-viewport > .image-selection-stage")).toBeVisible({ timeout: 30_000 });
   await expect(page.locator(".batch-page-rail__page")).toHaveCount(3);
   await expect(page.locator(".batch-page-rail__page small")).toHaveCount(0);
 }
@@ -193,9 +193,9 @@ test("uniform crop rejects undersized regions and compacts resize handles", asyn
   await page.setViewportSize({ width: 1200, height: 800 });
   await openWorkspace(page, { cropRect: { x: 0.1, y: 0.1, width: 0.04, height: 0.04 } });
   await expect(page.getByRole("button", { name: "检查裁剪与分栏" })).toBeDisabled();
-  await expect(page.locator(".normalized-crop-overlay__rect .normalized-crop-handle.is-n")).toBeHidden();
-  await expect(page.locator(".normalized-crop-overlay__rect .normalized-crop-handle.is-e")).toBeHidden();
-  await expect(page.locator(".normalized-crop-overlay__rect .normalized-crop-handle.is-se")).toBeVisible();
+  await expect(page.locator(".normalized-rect-editor__selection .normalized-rect-editor__handle.is-n")).toBeHidden();
+  await expect(page.locator(".normalized-rect-editor__selection .normalized-rect-editor__handle.is-e")).toBeHidden();
+  await expect(page.locator(".normalized-rect-editor__selection .normalized-rect-editor__handle.is-se")).toBeVisible();
 });
 
 test("crop setup shows equal column guides and previews half-neighbor reading units", async ({ page }) => {
@@ -206,34 +206,49 @@ test("crop setup shows equal column guides and previews half-neighbor reading un
   await expect(pdfDarkToggle).toBeVisible();
   await expect(pdfDarkToggle).toHaveAttribute("aria-pressed", "false");
   await pdfDarkToggle.click();
-  await expect(page.locator(".batch-crop-editor")).toHaveClass(/is-inverted/);
+  await expect(page.locator(".image-selection-stage")).toHaveClass(/is-tone-inverted/);
   await expect(pdfDarkToggle).toHaveAttribute("aria-pressed", "true");
   await pdfDarkToggle.click();
-  await expect(page.locator(".batch-crop-editor")).not.toHaveClass(/is-inverted/);
+  await expect(page.locator(".image-selection-stage")).toHaveClass(/is-tone-original/);
   await page.getByRole("combobox", { name: "分栏数量" }).selectOption("2");
 
-  const guide = page.locator(".normalized-crop-overlay__column-guide");
+  const guide = page.locator(".normalized-rect-editor__guide");
   await expect(guide).toHaveCount(1);
   const guideLeft = await guide.evaluate((element) => Number.parseFloat(getComputedStyle(element).left));
-  const cropWidth = await page.locator(".normalized-crop-overlay__rect").evaluate((element) => element.getBoundingClientRect().width);
+  const cropWidth = await page.locator(".normalized-rect-editor__selection").evaluate((element) => element.getBoundingClientRect().width);
   expect(guideLeft / cropWidth).toBeCloseTo(0.5, 1);
 
-  const cropHandleColor = await page.locator(".normalized-crop-overlay__rect .normalized-crop-handle.is-nw").evaluate(
+  const cropHandleColor = await page.locator(".normalized-rect-editor__selection .normalized-rect-editor__handle.is-nw").evaluate(
     (element) => getComputedStyle(element, "::before").borderTopColor,
   );
-  expect(cropHandleColor).toBe("rgb(14, 165, 233)");
-  const cropStrokeGeometry = await page.locator(".normalized-crop-overlay__rect").evaluate((element) => {
+  expect(cropHandleColor).toBe("rgb(22, 163, 74)");
+  const cropStrokeGeometry = await page.locator(".normalized-rect-editor__selection").evaluate((element) => {
     const frameRect = element.getBoundingClientRect();
-    const handleRect = element.querySelector(".normalized-crop-handle.is-nw")!.getBoundingClientRect();
+    const handleRect = element.querySelector(".normalized-rect-editor__handle.is-nw")!.getBoundingClientRect();
     return {
-      frame: Number.parseFloat(getComputedStyle(element).getPropertyValue("--crop-frame-stroke")),
-      handleInside: handleRect.left >= frameRect.left && handleRect.top >= frameRect.top,
-      editorShadow: getComputedStyle(element.closest(".batch-crop-editor")!).boxShadow,
+      frame: Number.parseFloat(getComputedStyle(element).getPropertyValue("--rect-editor-stroke")),
+      handleInside: handleRect.left >= frameRect.left && handleRect.top >= frameRect.top
+        && handleRect.right <= frameRect.right && handleRect.bottom <= frameRect.bottom,
+      stageShadow: getComputedStyle(element.closest(".image-selection-stage")!).boxShadow,
     };
   });
-  expect(cropStrokeGeometry.frame).toBeGreaterThan(0);
+  expect(cropStrokeGeometry.frame).toBe(2);
   expect(cropStrokeGeometry.handleInside).toBe(true);
-  expect(cropStrokeGeometry.editorShadow).toBe("none");
+  expect(cropStrokeGeometry.stageShadow).toBe("none");
+
+  const sharedStageGeometry = await page.locator(".image-selection-stage").evaluate((element) => {
+    const bounds = (target: Element | null) => {
+      const rect = target!.getBoundingClientRect();
+      return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
+    };
+    return {
+      stage: bounds(element),
+      media: bounds(element.querySelector(".image-selection-stage__media")),
+      editor: bounds(element.querySelector(".normalized-rect-editor")),
+    };
+  });
+  expect(sharedStageGeometry.media).toEqual(sharedStageGeometry.stage);
+  expect(sharedStageGeometry.editor).toEqual(sharedStageGeometry.stage);
 
   await page.getByRole("button", { name: "检查裁剪与分栏" }).click();
   const units = page.locator(".batch-continuous-page");
@@ -391,24 +406,24 @@ test("viewer follows live color scheme and can scroll fully above the bottom saf
   await page.emulateMedia({ colorScheme: "light" });
   await page.setViewportSize({ width: 1200, height: 700 });
   await openWorkspace(page);
-  const editor = page.locator(".batch-crop-editor");
+  const editor = page.locator(".batch-document-viewport > .image-selection-stage");
   const workspace = page.locator(".batch-continuous-workspace");
   const controls = page.locator(".batch-pdf-controls");
   const pageInput = page.locator(".batch-page-input input");
 
-  await expect(editor).not.toHaveClass(/is-inverted/);
+  await expect(editor).toHaveClass(/is-tone-original/);
   await expect(workspace).toHaveCSS("background-color", "rgb(228, 228, 231)");
   await expect(controls).toHaveCSS("background-color", "rgb(244, 244, 245)");
   await expect(pageInput).toHaveCSS("background-color", "rgb(255, 255, 255)");
 
   await page.emulateMedia({ colorScheme: "dark" });
-  await expect(editor).toHaveClass(/is-inverted/);
+  await expect(editor).toHaveClass(/is-tone-inverted/);
   await expect(workspace).toHaveCSS("background-color", "rgb(32, 33, 36)");
   await expect(controls).toHaveCSS("background-color", "rgb(42, 44, 48)");
   await expect(pageInput).toHaveCSS("background-color", "rgb(31, 32, 35)");
   const darkStyles = await editor.evaluate((element) => {
     const image = element.querySelector("img");
-    const overlay = element.querySelector<HTMLElement>(".normalized-crop-overlay__rect");
+    const overlay = element.querySelector<HTMLElement>(".normalized-rect-editor__selection");
     return {
       background: getComputedStyle(element).backgroundColor,
       imageFilter: image ? getComputedStyle(image).filter : "",
@@ -420,13 +435,13 @@ test("viewer follows live color scheme and can scroll fully above the bottom saf
   expect(darkStyles.overlayShadow).toContain("rgba(255, 255, 255, 0.16)");
 
   await page.emulateMedia({ colorScheme: "light" });
-  await expect(editor).not.toHaveClass(/is-inverted/);
+  await expect(editor).toHaveClass(/is-tone-original/);
   await expect(workspace).toHaveCSS("background-color", "rgb(228, 228, 231)");
 
   const viewport = page.locator(".batch-document-viewport");
   await viewport.evaluate((element) => { element.scrollTop = element.scrollHeight; });
   const bottomGeometry = await viewport.evaluate((element) => {
-    const editorElement = element.querySelector<HTMLElement>(".batch-crop-editor")!;
+    const editorElement = element.querySelector<HTMLElement>(".image-selection-stage")!;
     const viewportBounds = element.getBoundingClientRect();
     const editorBounds = editorElement.getBoundingClientRect();
     return {
@@ -441,7 +456,7 @@ test("viewer follows live color scheme and can scroll fully above the bottom saf
 test("one crop produces a lazy, single-column, gapless selection surface", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await openWorkspace(page);
-  const editor = (await page.locator(".batch-crop-editor").boundingBox())!;
+  const editor = (await page.locator(".batch-document-viewport > .image-selection-stage").boundingBox())!;
   await page.mouse.move(editor.x + editor.width * 0.08, editor.y + editor.height * 0.08);
   await page.mouse.down();
   await page.mouse.move(editor.x + editor.width * 0.92, editor.y + editor.height * 0.9, { steps: 8 });

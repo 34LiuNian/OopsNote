@@ -7,9 +7,23 @@ from urllib.parse import quote
 
 from fastapi import APIRouter, HTTPException, Query, Response
 
-from oopsnote.api.schemas import PaperCompileRequest
-from oopsnote.core import PaperDraft, PaperDraftCreateRequest, PaperDraftUpdateRequest
-from oopsnote.paper import PaperCompileError, candidate_tasks, compile_paper_pdf, select_paper_items
+from oopsnote.api.schemas import PaperCompileRequest, PaperDraftCompileRequest
+from oopsnote.core import (
+    PaperDraft,
+    PaperDraftCreateRequest,
+    PaperDraftItem,
+    PaperDraftUpdateRequest,
+)
+from oopsnote.paper import (
+    PaperCompileError,
+    PaperCompileFailure,
+    PaperDocument,
+    PaperDocumentError,
+    build_paper_document,
+    candidate_tasks,
+    compile_paper_pdf,
+    select_paper_items,
+)
 
 router = APIRouter()
 
@@ -57,6 +71,53 @@ def _paper_view(draft: PaperDraft) -> dict[str, Any]:
             problem_view["difficulty_coefficient"] = item.difficulty_coefficient
         items.append({**item.model_dump(mode="json"), "problem": problem_view})
     return {**draft.model_dump(mode="json"), "items": items}
+
+
+def _compile_error_response(error: PaperCompileError) -> HTTPException:
+    if error.code == PaperCompileFailure.MISSING_ENGINE:
+        status = 503
+    elif error.code == PaperCompileFailure.ENGINE_TIMEOUT:
+        status = 504
+    else:
+        status = 422
+    return HTTPException(
+        status_code=status,
+        detail={"code": error.code.value, "message": str(error), "log": error.log},
+    )
+
+
+def _document_error_response(error: PaperDocumentError) -> HTTPException:
+    status = 409 if error.code in {"missing-task", "missing-problem"} else 422
+    return HTTPException(
+        status_code=status,
+        detail={"code": error.code, "message": str(error), "item_id": error.item_id},
+    )
+
+
+def _pdf_response(content: bytes, title: str) -> Response:
+    safe_name = "".join(char for char in title if char not in '\\/:*?"<>|').strip() or "paper"
+    encoded_name = quote(f"{safe_name}.pdf")
+    return Response(
+        content=content,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": (
+                "attachment; filename=oopsnote-paper.pdf; "
+                f"filename*=UTF-8''{encoded_name}"
+            )
+        },
+    )
+
+
+def _compile_document(document: PaperDocument) -> Response:
+    try:
+        content = compile_paper_pdf(
+            document,
+            asset_path_resolver=_api().ASSET_STORE.resolve,
+        )
+    except PaperCompileError as error:
+        raise _compile_error_response(error) from error
+    return _pdf_response(content, document.title)
 
 
 @router.get("/papers")
@@ -111,7 +172,7 @@ def create_paper(payload: PaperDraftCreateRequest) -> dict[str, Any]:
 @router.post("/papers/compile")
 def compile_paper(payload: PaperCompileRequest) -> Response:
     tasks = _task_lookup()
-    problems = []
+    draft_items = []
     for item in payload.items:
         task = tasks.get(item.task_id)
         if not task or not task.problem or task.problem.id != item.problem_id:
@@ -119,32 +180,42 @@ def compile_paper(payload: PaperCompileRequest) -> Response:
                 status_code=404,
                 detail=f"Problem {item.problem_id} was not found on task {item.task_id}",
             )
-        problems.append(task.problem)
+        draft_items.append(
+            PaperDraftItem(
+                task_id=item.task_id,
+                problem_id=item.problem_id,
+                question_type=task.problem.question_type.value,
+            )
+        )
+    draft_subject = tasks[draft_items[0].task_id].subject if draft_items else ""
     try:
-        content = compile_paper_pdf(
-            problems,
-            title=payload.title,
+        document = build_paper_document(
+            PaperDraft(title=payload.title, subject=draft_subject, items=draft_items),
+            tasks,
             subtitle=payload.subtitle or "",
             show_answers=payload.show_answers,
         )
-    except PaperCompileError as error:
-        status = 503 if "not installed" in str(error) else 422
-        raise HTTPException(
-            status_code=status,
-            detail={"message": str(error), "log": error.log},
-        ) from error
-    safe_name = "".join(char for char in payload.title if char not in '\\/:*?"<>|').strip() or "paper"
-    encoded_name = quote(f"{safe_name}.pdf")
-    return Response(
-        content=content,
-        media_type="application/pdf",
-        headers={
-            "Content-Disposition": (
-                "attachment; filename=oopsnote-paper.pdf; "
-                f"filename*=UTF-8''{encoded_name}"
-            )
-        },
-    )
+    except PaperDocumentError as error:
+        raise _document_error_response(error) from error
+    return _compile_document(document)
+
+
+@router.post("/papers/{draft_id}/compile")
+def compile_paper_draft(draft_id: str, payload: PaperDraftCompileRequest) -> Response:
+    try:
+        draft = _api().PAPER_DRAFT_STORE.get(draft_id)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Paper draft not found")
+    try:
+        document = build_paper_document(
+            draft,
+            _task_lookup(),
+            subtitle=payload.subtitle or "",
+            show_answers=payload.show_answers,
+        )
+    except PaperDocumentError as error:
+        raise _document_error_response(error) from error
+    return _compile_document(document)
 
 
 @router.get("/papers/{draft_id}")

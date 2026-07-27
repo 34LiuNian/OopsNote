@@ -6,7 +6,7 @@ import { AlertTriangle, ListChecks, RefreshCw, Trash2 } from "lucide-react";
 import { useCallback, useState } from "react";
 
 import { SUBJECT_OPTIONS } from "@/config/subjects";
-import { deleteTask, retryTask } from "@/features/tasks";
+import { deleteTask, deleteTasks, retryTask } from "@/features/tasks";
 import { API_BASE } from "@/lib/api";
 import { formatApiError } from "@/lib/errorFormatter";
 import { notify } from "@/lib/notify";
@@ -136,7 +136,7 @@ export function FailedTaskPanel({
 
     setIsBatchDeleting(true);
     try {
-      const results = await Promise.allSettled(taskIds.map((taskId) => deleteTask(taskId)));
+      const results = await deleteTasks(taskIds);
       const successCount = results.filter((result) => result.status === "fulfilled").length;
       const failedCount = results.length - successCount;
       if (successCount > 0) notify.success({ title: `已删除 ${successCount} 个失败任务` });

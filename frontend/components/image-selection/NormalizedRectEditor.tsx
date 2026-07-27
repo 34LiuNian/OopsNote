@@ -4,6 +4,7 @@ import { useCallback, useRef, useState } from "react";
 import type { NormalizedRect } from "@/types/api";
 
 type ResizeHandle = "nw" | "n" | "ne" | "e" | "se" | "s" | "sw" | "w";
+type InteractionMode = "move" | "redraw";
 
 const HANDLES: ResizeHandle[] = ["nw", "n", "ne", "e", "se", "s", "sw", "w"];
 
@@ -11,18 +12,18 @@ function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value));
 }
 
-export function NormalizedCropOverlay({
+export function NormalizedRectEditor({
   value,
-  columnCount = 1,
+  verticalGuides = 1,
   minSize = 0.05,
-  redrawInside = false,
+  interaction = "move",
   onChange,
   onTooSmall,
 }: {
   value: NormalizedRect;
-  columnCount?: number;
+  verticalGuides?: number;
   minSize?: number;
-  redrawInside?: boolean;
+  interaction?: InteractionMode;
   onChange: (value: NormalizedRect) => void;
   onTooSmall?: () => void;
 }) {
@@ -36,7 +37,7 @@ export function NormalizedCropOverlay({
 
   const point = useCallback((clientX: number, clientY: number) => {
     const bounds = rootRef.current?.getBoundingClientRect();
-    if (!bounds) return { x: 0, y: 0 };
+    if (!bounds || bounds.width <= 0 || bounds.height <= 0) return { x: 0, y: 0 };
     return {
       x: clamp((clientX - bounds.left) / bounds.width, 0, 1),
       y: clamp((clientY - bounds.top) / bounds.height, 0, 1),
@@ -108,11 +109,12 @@ export function NormalizedCropOverlay({
   return (
     <div
       ref={rootRef}
-      className={`normalized-crop-overlay${redrawInside ? " is-redrawable" : ""}`}
+      className={`normalized-rect-editor is-${interaction}`}
+      data-testid="normalized-rect-editor"
       onPointerDown={(event) => {
         const target = event.target as HTMLElement;
         const canStartDrawing = event.target === event.currentTarget
-          || (redrawInside && target.classList.contains("normalized-crop-overlay__rect"));
+          || (interaction === "redraw" && target.classList.contains("normalized-rect-editor__selection"));
         if (event.button !== 0 || !canStartDrawing) return;
         const start = point(event.clientX, event.clientY);
         setDrawing({ pointerId: event.pointerId, ...start, original: value });
@@ -140,22 +142,21 @@ export function NormalizedCropOverlay({
         setDrawing(null);
       }}
     >
-      <div className="normalized-crop-overlay__shade" aria-hidden="true" />
       <div
-        className={`normalized-crop-overlay__rect${value.width < 0.08 ? " is-compact-width" : ""}${value.height < 0.08 ? " is-compact-height" : ""}`}
-        onPointerDown={redrawInside ? undefined : startMove}
+        className={`normalized-rect-editor__selection${value.width < 0.08 ? " is-compact-width" : ""}${value.height < 0.08 ? " is-compact-height" : ""}`}
+        onPointerDown={interaction === "move" ? startMove : undefined}
         style={{ left: `${value.x * 100}%`, top: `${value.y * 100}%`, width: `${value.width * 100}%`, height: `${value.height * 100}%` }}
       >
-        {Array.from({ length: Math.max(0, columnCount - 1) }, (_, index) => (
+        {Array.from({ length: Math.max(0, verticalGuides - 1) }, (_, index) => (
           <span
             key={index}
-            className="normalized-crop-overlay__column-guide"
-            style={{ left: `${(index + 1) / columnCount * 100}%` }}
+            className="normalized-rect-editor__guide"
+            style={{ left: `${(index + 1) / verticalGuides * 100}%` }}
             aria-hidden="true"
           />
         ))}
         {HANDLES.map((handle) => (
-          <span key={handle} className={`normalized-crop-handle is-${handle}`} onPointerDown={(event) => startResize(event, handle)} />
+          <span key={handle} className={`normalized-rect-editor__handle is-${handle}`} onPointerDown={(event) => startResize(event, handle)} />
         ))}
       </div>
     </div>

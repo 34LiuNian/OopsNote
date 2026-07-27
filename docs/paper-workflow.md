@@ -1,8 +1,8 @@
 # 组卷两阶段工作流
 
-状态：首轮实施完成；PDF 编译与最终导出仍在 backlog
+状态：正式组卷与受控 XeLaTeX PDF 预览/导出已接通
 
-更新：2026-07-25
+更新：2026-07-27
 
 ## 1. 产品边界
 
@@ -88,3 +88,28 @@ OopsNote 区分两类任务：
 - 知识树使用 XKW 清洗后的 `oopsnote/catalog/data/knowledge_trees.json`，正式组卷只显示 `core` 范围。
 - 难度区间为容易 `0～0.5`、适中 `0.5～0.8`、困难 `0.8～1.0`。
 - 容易预设为 `80% / 20% / 0%`，适中预设为 `50% / 45% / 5%`，困难预设为 `35% / 40% / 25%`。
+
+## 7. 正式导出边界
+
+正式导出以持久化 `PaperDraft` 和 Core OopsMark 为唯一真相：
+
+```text
+PaperDraft + TaskRecord / Problem
+             |
+             v
+       PaperDocument
+             |
+             v
+   paper.tex + managed assets
+             |
+             v
+      controlled XeLaTeX
+```
+
+- `/papers/{draft_id}/compile` 只从服务端保存的草稿构建试卷，消费草稿顺序、连续题型分组、分值和答题空间。
+- `/papers/compile` 保留给快速重组，但也先构建临时草稿并复用同一个 `PaperDocument` 与 LaTeX 适配器。
+- 正式导出只接受 `oopsmark-v1`；旧内容、失效题目引用、待审核或缺少源的题图会在启动 XeLaTeX 前明确失败。
+- 题图资产由受限 `AssetStore` 解析并复制进一次性编译目录；不允许任意文件路径。
+- XeLaTeX 使用 `-no-shell-escape`、受限文件读写、120 秒总时限和两个固定编译 pass。第二个 pass 仅用于解析总页数等交叉引用，不是失败重试。
+- 编译失败返回稳定错误码和截断后的原始日志，不会切换排版后端或返回旧 PDF。
+- `PaperBundle`（主 TeX 与内容寻址资产）是未来本地编译器和远程 Docker 编译服务的共同输入；远程服务不得重新解释 OopsMark。

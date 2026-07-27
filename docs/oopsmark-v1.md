@@ -116,7 +116,7 @@ C1=CC=CC=C1
 
 - `diagram_kind`: `tikz` / `image` / `null`，同一题不得同时启用 TikZ 和图片附图。
 - `diagram_position`: `right` / `left`，缺省为 `right`。
-- `diagram_scale_percent`: `null` 表示旁图与题干文本等高；手动值范围为 50–200。
+- `diagram_scale_percent`: `null` 表示旁图与题干正文及选项组成的作答内容栏等高；手动值范围为 50–200。
 - `image` 表示题目中的附图，不表示整道题的截图。`diagram_image_path` 指向由任务原图裁剪得到的本地派生资产；原图仍是唯一校对依据。
 - `diagram_image_crop` 是相对任务原图的归一化矩形 `{x, y, width, height}`；服务端据此生成稳定、幂等的 PNG 派生资产。
 - `diagram_image_tone`: `auto` / `original`。Web 缺省使用 `auto`，仅在深色界面对黑白附图反相；打印、试卷导出和原始资产始终保留原像素。需要保持颜色语义时使用 `original`。

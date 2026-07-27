@@ -27,7 +27,7 @@ build-backend = "setuptools.build_meta"
 include = ["oopsnote*"]
 
 [tool.setuptools.package-data]
-oopsnote = ["catalog/data/*.json"]
+oopsnote = ["catalog/data/*.json", "paper/templates/*.tex"]
 
 [dependency-groups]
 dev = [

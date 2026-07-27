@@ -59,11 +59,17 @@ class PaperCompileRequest(BaseModel):
     show_answers: bool = False
 
 
+class PaperDraftCompileRequest(BaseModel):
+    subtitle: Optional[str] = Field(default=None, max_length=200)
+    show_answers: bool = False
+
+
 __all__ = [
     "BatchProcessRequest",
     "BatchSessionPatchRequest",
     "PaperCompileItem",
     "PaperCompileRequest",
+    "PaperDraftCompileRequest",
     "TagInput",
     "TagRenameInput",
     "UploadRequest",

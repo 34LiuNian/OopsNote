@@ -94,8 +94,18 @@ export async function rerenderProblemDiagram(taskId: string): Promise<TaskRespon
   });
 }
 
-export async function deleteTask(taskId: string): Promise<TaskResponse> {
-  return fetchJson<TaskResponse>(`/tasks/${encodeURIComponent(taskId)}`, { method: "DELETE" });
+export async function deleteTask(taskId: string): Promise<void> {
+  await fetchJson(`/tasks/${encodeURIComponent(taskId)}`, { method: "DELETE" });
+}
+
+export async function deleteTasks(taskIds: string[]): Promise<PromiseSettledResult<void>[]> {
+  const results: PromiseSettledResult<void>[] = [];
+  const batchSize = 6;
+  for (let offset = 0; offset < taskIds.length; offset += batchSize) {
+    const batch = taskIds.slice(offset, offset + batchSize);
+    results.push(...await Promise.allSettled(batch.map((taskId) => deleteTask(taskId))));
+  }
+  return results;
 }
 
 export type ListProblemsParams = {

@@ -57,8 +57,8 @@ export function ProblemContent({
   itemKeyPrefix,
   fontSize,
 }: ProblemContentProps) {
-  const textRef = useRef<HTMLDivElement | null>(null);
-  const [textHeight, setTextHeight] = useState(0);
+  const contentRef = useRef<HTMLDivElement | null>(null);
+  const [contentHeight, setContentHeight] = useState(0);
   const hasTikz = diagramKind === "tikz" && Boolean(diagramSvg || diagramTikzSource);
   const hasImage = diagramKind === "image" && Boolean(diagramImagePath);
   const hasIllustration = diagramDetected && (hasTikz || hasImage);
@@ -67,12 +67,12 @@ export function ProblemContent({
     : Math.min(200, Math.max(50, diagramScalePercent));
 
   useLayoutEffect(() => {
-    const element = textRef.current;
+    const element = contentRef.current;
     if (!element || !hasIllustration) {
-      setTextHeight(0);
+      setContentHeight(0);
       return;
     }
-    const update = () => setTextHeight(element.getBoundingClientRect().height);
+    const update = () => setContentHeight(element.getBoundingClientRect().height);
     update();
     const observer = new ResizeObserver(update);
     observer.observe(element);
@@ -82,13 +82,22 @@ export function ProblemContent({
   const imageUrl = diagramImagePath
     ? diagramImagePath.startsWith("/assets/") ? `/api${diagramImagePath}` : diagramImagePath
     : "";
-  const figureHeight = textHeight > 0 ? `${textHeight * safeScale / 100}px` : undefined;
+  const figureHeight = contentHeight > 0 ? `${contentHeight * safeScale / 100}px` : undefined;
 
   return (
     <Box>
       <Box className={`problem-content__lead is-${diagramPosition}${hasIllustration ? " has-illustration" : ""}`}>
-        <Box ref={textRef} className="problem-content__text">
+        <Box ref={contentRef} className="problem-content__body">
           <MarkdownRenderer text={problemText || ""} format={contentFormat} fontSize={fontSize} />
+          {options && options.length > 0 ? (
+            <OptionsList
+              options={options}
+              itemKeyPrefix={itemKeyPrefix ?? "problem"}
+              renderOptionText={(opt) => (
+                <MarkdownRenderer text={opt.text || ""} format={contentFormat} fontSize={fontSize} />
+              )}
+            />
+          ) : null}
         </Box>
         {hasIllustration ? (
           <Box
@@ -136,15 +145,6 @@ export function ProblemContent({
             </Box>
           )}
         </Box>
-      ) : null}
-      {options && options.length > 0 ? (
-        <OptionsList
-          options={options}
-          itemKeyPrefix={itemKeyPrefix ?? "problem"}
-          renderOptionText={(opt) => (
-            <MarkdownRenderer text={opt.text || ""} format={contentFormat} fontSize={fontSize} />
-          )}
-        />
       ) : null}
     </Box>
   );

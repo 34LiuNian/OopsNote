@@ -52,9 +52,9 @@ test("source filtering uses document names and does not emit border style warnin
   await expect(page.locator("#oops-splash")).toBeHidden();
   await expect(page.getByText("第 2 道题", { exact: true })).toBeVisible();
 
-  const sourceInput = page.locator('input[placeholder="输入后回车添加"]').first();
+  const sourceInput = page.getByRole("textbox", { name: "来源标签输入" });
   await sourceInput.focus();
-  await page.getByRole("button", { name: /questions\.pdf/ }).click();
+  await page.getByRole("option", { name: /questions\.pdf/ }).click();
   await expect(page.getByText("第 2 道题", { exact: true })).toHaveCount(0);
 
   const styleWarnings = consoleErrors.filter((message) => message.includes("Updating a style property during rerender"));

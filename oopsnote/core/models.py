@@ -425,7 +425,7 @@ class PaperDraftItem(BaseModel):
     question_type: str
     difficulty_coefficient: Optional[float] = Field(default=None, ge=0, le=1)
     points: Optional[float] = Field(default=None, ge=0)
-    answer_space: str = "standard"
+    answer_space: Literal["compact", "standard", "large"] = "standard"
 
 
 class PaperDraft(BaseModel):
