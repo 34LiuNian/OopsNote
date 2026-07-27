@@ -94,9 +94,6 @@ export default function NewPaperPage() {
 
   useEffect(() => {
     let active = true;
-    setRoot(null);
-    setTreeError("");
-    setSelectedLeafIds(new Set());
     void getKnowledgeTree(subject)
       .then((response) => {
         if (active) setRoot(response.subjects[subject]?.root ?? null);
@@ -107,9 +104,13 @@ export default function NewPaperPage() {
     return () => { active = false; };
   }, [subject]);
 
-  useEffect(() => {
-    if (!titleCustomized) setTitle(defaultTitle(subject));
-  }, [subject, titleCustomized]);
+  function handleSubjectChange(nextSubject: string) {
+    setSubject(nextSubject);
+    setRoot(null);
+    setTreeError("");
+    setSelectedLeafIds(new Set());
+    if (!titleCustomized) setTitle(defaultTitle(nextSubject));
+  }
 
   const selectedItems = useMemo(
     () => compactSelectedNodes(root, selectedLeafIds),
@@ -196,7 +197,7 @@ export default function NewPaperPage() {
           subjectOptions={SUBJECTS}
           selectedLeafIds={selectedLeafIds}
           onBack={() => router.push("/papers")}
-          onSubjectChange={setSubject}
+          onSubjectChange={handleSubjectChange}
           onToggle={toggleNode}
         />
         <div className={styles.configColumn}>

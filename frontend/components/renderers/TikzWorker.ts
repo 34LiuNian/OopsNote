@@ -3,7 +3,10 @@
 import { Buffer } from "buffer";
 import tex2svg from "isomorphic-tikzjax";
 
-const context = self as DedicatedWorkerGlobalScope;
+// The app tsconfig includes DOM types for React and Serwist worker typings;
+// this file is loaded only as a dedicated worker, so bridge the two lib views
+// at this execution boundary instead of weakening the project-wide types.
+const context = self as unknown as DedicatedWorkerGlobalScope;
 const TEX_RESOURCES = "/vendor/tikzjax/tex";
 const browserTex2svg = tex2svg as unknown as (
   source: string,

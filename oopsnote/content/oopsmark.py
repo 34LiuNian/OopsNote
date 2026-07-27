@@ -55,6 +55,8 @@ _OPTION_MARKER = re.compile(
     r"|(?:[A-Za-z]|\d{1,2})\s*[.．、:：)）\]】]"
     r")\s*"
 )
+_BARE_OPTION_MATH_COMMAND = re.compile(r"\\[A-Za-z]+")
+_BARE_OPTION_MATH_BODY = re.compile(r"[A-Za-z0-9\\{}()[\]^_+\-*/=<>.,:;|!'\s]+")
 _ORDERED_ITEM = re.compile(
     r"^(?P<indent>\s*)(?P<number>\d{1,2})[.．、)）]\s+(?P<text>.+)$"
 )
@@ -347,7 +349,15 @@ def _normalize_ordered_subquestions(lines: list[str]) -> None:
 def normalize_option_text(source: str) -> str:
     """Return canonical marker-free OopsMark for one ordered choice body."""
 
-    return _OPTION_MARKER.sub("", normalize_oopsmark(source), count=1).strip()
+    normalized = _OPTION_MARKER.sub("", normalize_oopsmark(source), count=1).strip()
+    if (
+        "$" not in normalized
+        and "\n" not in normalized
+        and _BARE_OPTION_MATH_COMMAND.search(normalized)
+        and _BARE_OPTION_MATH_BODY.fullmatch(normalized)
+    ):
+        return f"${normalized}$"
+    return normalized
 
 
 def option_label(index: int) -> str:

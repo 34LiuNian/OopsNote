@@ -35,6 +35,7 @@ export const ProblemListItem = memo(function ProblemListItem(props: {
       diagramTikzSource={item.diagram_tikz_source}
       diagramSvg={item.diagram_svg}
       diagramImagePath={item.diagram_image_path}
+      diagramImageTone={item.diagram_image_tone}
       diagramPosition={item.diagram_position}
       diagramScalePercent={item.diagram_scale_percent}
       diagramRenderStatus={item.diagram_render_status}

@@ -2,6 +2,8 @@ export type TaskStatus = "pending" | "processing" | "completed" | "failed" | "ca
 export type TaskStage = "queued" | "starting" | "ocr" | "solving" | "verifying" | "tagging" | "finalizing" | "syncing";
 export type RunStatus = "queued" | "running" | "completed" | "failed" | "cancelled" | "timed_out";
 export type ContentFormat = "legacy-markdown-latex" | "oopsmark-v1";
+export type NormalizedRect = { x: number; y: number; width: number; height: number };
+export type DiagramImageTone = "auto" | "original";
 
 export interface TaskRunSummary {
   id: string;
@@ -11,6 +13,7 @@ export interface TaskRunSummary {
   exit_code?: number | null;
   log_path?: string | null;
   prompt_version: string;
+  duration_ms?: number | null;
   started_at?: string | null;
   heartbeat_at: string;
   ended_at?: string | null;
@@ -74,6 +77,8 @@ export interface TaskResponse {
       diagram_tikz_source?: string | null;
       diagram_svg?: string | null;
       diagram_image_path?: string | null;
+      diagram_image_crop?: NormalizedRect | null;
+      diagram_image_tone?: DiagramImageTone;
       diagram_position?: "left" | "right";
       diagram_scale_percent?: number | null;
       diagram_render_status?: string | null;
@@ -146,6 +151,8 @@ export interface ProblemSummary {
   diagram_tikz_source?: string | null;
   diagram_svg?: string | null;
   diagram_image_path?: string | null;
+  diagram_image_crop?: NormalizedRect | null;
+  diagram_image_tone?: DiagramImageTone;
   diagram_position?: "left" | "right";
   diagram_scale_percent?: number | null;
   diagram_render_status?: string | null;

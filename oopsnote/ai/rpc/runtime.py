@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Any, ClassVar, Optional
 from uuid import uuid4
@@ -11,7 +12,7 @@ from uuid import uuid4
 from oopsnote.mcp.tool_registry import AI_TOOL_NAMES
 
 
-class RpcRuntimeAdapter:
+class RpcRuntimeAdapter(ABC):
     """Base adapter for a JSONL RPC executable."""
 
     kind: ClassVar[str]
@@ -79,8 +80,10 @@ class RpcRuntimeAdapter:
             *self.extension_cli_args(),
         ]
 
+    @abstractmethod
     def restricted_cli_args(self) -> list[str]:
-        raise NotImplementedError
+        """Return the runtime's restricted capability flags."""
+        ...
 
     def extension_cli_args(self) -> list[str]:
         return []
@@ -96,8 +99,10 @@ class RpcRuntimeAdapter:
     def cleanup(self) -> None:
         """Remove runtime-owned ephemeral configuration."""
 
+    @abstractmethod
     def is_settled_event(self, event: dict[str, Any]) -> bool:
-        raise NotImplementedError
+        """Identify the runtime event that closes an agent turn."""
+        ...
 
     @property
     def startup_lock_name(self) -> str:

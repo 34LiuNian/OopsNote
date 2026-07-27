@@ -167,7 +167,7 @@ export default function DebugPage() {
             contentFormat="oopsmark-v1"
             diagramDetected
             diagramKind="tikz"
-            diagramSvg={'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 80"><path d="M10 70H110M20 75V5M25 65Q55 60 100 15" fill="none" stroke="currentColor" stroke-width="3"/></svg>'}
+            diagramSvg={'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 80"><rect id="theme-background" width="120" height="80" fill="#fff"/><path id="theme-axis" d="M10 70H110M20 75V5" fill="none" stroke="#000" stroke-width="3"/><path id="theme-series" d="M25 65Q55 60 100 15" fill="none" stroke="#0ea5e9" stroke-width="3"/></svg>'}
           />
         </Box>
         <Box id="problem-illustration-custom" sx={{ p: 3, border: "1px solid", borderColor: "border.default", borderRadius: 2 }}>

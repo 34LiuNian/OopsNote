@@ -50,7 +50,7 @@ export function LatexAssetRenderer({
         height: fit ? "100%" : undefined,
       }}
     >
-      <SvgMarkup svg={data} label="后端生成的 TikZ 图形" fit={fit} />
+      <SvgMarkup svg={data} label="后端生成的 TikZ 图形" colorMode="themed" fit={fit} />
     </Box>
   );
 }

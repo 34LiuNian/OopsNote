@@ -164,6 +164,73 @@ def test_finalize_rejects_multiple_independent_problems(tmp_path, monkeypatch):
         )
 
 
+def test_finalize_rejects_invented_error_for_unanswered_question(tmp_path, monkeypatch):
+    task_store = configure_stores(tmp_path, monkeypatch)
+    task = task_store.create(TaskCreateRequest(subject="math"))
+    task_store.update(task.id, status=TaskStatus.PROCESSING, active_run_id="run-1")
+    problem = valid_problem()
+    problem["knowledge_points"] = []
+    problem["error_hypothesis"] = ["计算失误"]
+    advance_to_finalizing(task.id)
+
+    with pytest.raises(ValueError, match="readable student response"):
+        server.finalize_task(
+            task.id,
+            json.dumps(problem, ensure_ascii=False),
+            run_id="run-1",
+            sync_to_obsidian=False,
+            student_response_status="unanswered",
+        )
+
+
+def test_finalize_allows_no_error_for_unanswered_question(tmp_path, monkeypatch):
+    task_store = configure_stores(tmp_path, monkeypatch)
+    task = task_store.create(TaskCreateRequest(subject="math"))
+    task_store.update(task.id, status=TaskStatus.PROCESSING, active_run_id="run-1")
+    problem = valid_problem()
+    problem["knowledge_points"] = []
+    advance_to_finalizing(task.id)
+
+    server.finalize_task(
+        task.id,
+        json.dumps(problem, ensure_ascii=False),
+        run_id="run-1",
+        sync_to_obsidian=False,
+        student_response_status="unanswered",
+    )
+
+    completed = task_store.get(task.id)
+    assert completed.problem is not None
+    assert completed.problem.error_hypothesis == []
+    assert completed.metadata["student_response_status"] == "unanswered"
+
+
+def test_finalize_preserves_user_provided_error_for_unanswered_question(tmp_path, monkeypatch):
+    task_store = configure_stores(tmp_path, monkeypatch)
+    task = task_store.create(TaskCreateRequest(
+        subject="math",
+        metadata={"error_tags": ["计算失误"]},
+    ))
+    task_store.update(task.id, status=TaskStatus.PROCESSING, active_run_id="run-1")
+    server.create_tag("error", "计算失误", subject="math")
+    problem = valid_problem()
+    problem["knowledge_points"] = []
+    problem["error_hypothesis"] = ["计算失误"]
+    advance_to_finalizing(task.id)
+
+    server.finalize_task(
+        task.id,
+        json.dumps(problem, ensure_ascii=False),
+        run_id="run-1",
+        sync_to_obsidian=False,
+        student_response_status="unanswered",
+    )
+
+    completed = task_store.get(task.id)
+    assert completed.problem is not None
+    assert completed.problem.error_hypothesis == ["计算失误"]
+
+
 def test_fail_task_persists_structured_review_reason(tmp_path, monkeypatch):
     task_store = configure_stores(tmp_path, monkeypatch)
     task = task_store.create(TaskCreateRequest(subject="auto"))

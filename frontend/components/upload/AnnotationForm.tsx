@@ -89,25 +89,14 @@ export function AnnotationForm({
                             borderRadius: 2,
                             overflow: 'hidden',
                             ':focus-within': {
-                                // TODO: 需要修复
                                 boxShadow: '0 0 0 2px var(--borderColor-accent-emphasis)',
-                                // border: '2px solid',
-                                // borderColor: 'accent.fg',
-                                // borderColor: 'border.accent',
                             },
                         }}
                     >
                         <TextInput
                             placeholder="得分"
                             value={difficultyLeft}
-                            ref={(el) => {
-                                if (el && difficultyLeftRef) {
-                                    const input = el.querySelector('input')
-                                    if (input) {
-                                        (difficultyLeftRef as any).current = input
-                                    }
-                                }
-                            }}
+                            ref={difficultyLeftRef}
                             onChange={(e) => {
                                 const next = e.target.value;
                                 if (next.includes("/")) {
@@ -154,14 +143,7 @@ export function AnnotationForm({
                             placeholder="总分"
                             value={difficultyRight}
                             onChange={(e) => onDifficultyRightChange(e.target.value)}
-                            ref={(el) => {
-                                if (el && difficultyRightRef) {
-                                    const input = el.querySelector('input')
-                                    if (input) {
-                                        (difficultyRightRef as any).current = input
-                                    }
-                                }
-                            }}
+                            ref={difficultyRightRef}
                             sx={{
                                 flex: 1,
                                 border: '0px solid',

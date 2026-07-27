@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from typing import Literal, Optional
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from oopsnote.content import normalize_oopsmark, normalize_option_text
 
@@ -17,12 +17,15 @@ ReviewReason = Literal[
     "other",
 ]
 
+StudentResponseStatus = Literal["answered", "unanswered", "unknown"]
+
 OCR_INSTRUCTION = (
     "Extract only printed content for one independent question. Return one strict JSON object "
     "with exactly these fields: content_format='oopsmark-v1'; "
     "subject='math'|'physics'|'chemistry'; "
     "question_type='单选题'|'多选题'|'填空题'|'解答题'; problem_text:string; "
     "options:string[]; has_diagram:boolean; "
+    "student_response_status:'answered'|'unanswered'|'unknown'; student_response:string; "
     "review_reason:null|'unreadable'|'incomplete'|'multiple_questions'|'other'; "
     "uncertain_regions:string[]; confidence:number from 0 to 1. "
     "If the image contains two or more independent top-level question numbers, extract only "
@@ -33,8 +36,13 @@ OCR_INSTRUCTION = (
     "（2）, and so on; never use Markdown 1./2. list markers and never invent subquestion "
     "markers for a single-part question. options never appear in problem_text. Each options "
     "entry contains only its body: omit printed labels such as A., A], (A), or 1.; array "
-    "position maps to A, B, C, and so on. Never emit raw LaTeX environments "
-    "such as array, tabular, enumerate, or tikzpicture. Do not solve or invent unreadable text."
+    "position maps to A, B, C, and so on. A formula-only option still includes $...$ math "
+    "delimiters, for example '$\\frac{5}{2}$'. Never emit raw LaTeX environments "
+    "such as array, tabular, enumerate, or tikzpicture. student_response contains only visible "
+    "student handwriting or answer marks, never printed question text or a generated solution. "
+    "Use answered only when a readable student response is visible, unanswered when the question "
+    "is readable but no student response is present, and unknown when the response state cannot be "
+    "determined. Do not solve or invent unreadable text."
 )
 
 
@@ -49,9 +57,22 @@ class OcrExtraction(BaseModel):
     problem_text: str = Field(min_length=1)
     options: list[str]
     has_diagram: bool
+    student_response_status: StudentResponseStatus
+    student_response: str
     review_reason: Optional[ReviewReason] = None
     uncertain_regions: list[str]
     confidence: float = Field(ge=0, le=1)
+
+    @model_validator(mode="after")
+    def validate_student_response(self) -> "OcrExtraction":
+        self.student_response = normalize_oopsmark(self.student_response)
+        if self.student_response_status == "answered" and not self.student_response:
+            raise ValueError("answered OCR result requires student_response")
+        if self.student_response_status != "answered" and self.student_response:
+            raise ValueError(
+                "student_response must be empty unless student_response_status=answered"
+            )
+        return self
 
 
 _TOP_LEVEL_NUMBER = re.compile(r"(?m)^[ \t]*(\d{1,3})[.．、][ \t]*")
@@ -98,4 +119,9 @@ def normalize_ocr_result(
     return extraction.model_dump(mode="json")
 
 
-__all__ = ["OCR_INSTRUCTION", "OcrExtraction", "normalize_ocr_result"]
+__all__ = [
+    "OCR_INSTRUCTION",
+    "OcrExtraction",
+    "StudentResponseStatus",
+    "normalize_ocr_result",
+]

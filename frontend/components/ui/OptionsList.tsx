@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Box, Text } from "@/components/ui/primitives";
+import { optionLabel } from "@/lib/content/options";
 
 export type OptionItem = {
   key: string;
@@ -18,10 +19,7 @@ export function OptionsList(props: {
   const [optionsColumns, setOptionsColumns] = useState<1 | 2 | 4>(4);
 
   useEffect(() => {
-    if (options.length === 0) {
-      setOptionsColumns(4);
-      return;
-    }
+    if (options.length === 0) return;
 
     const container = containerRef.current;
     if (!container) return;
@@ -68,7 +66,8 @@ export function OptionsList(props: {
     };
   }, [options]);
 
-  const forceWrap = optionsColumns === 1;
+  const visibleOptionsColumns = options.length === 0 ? 4 : optionsColumns;
+  const forceWrap = visibleOptionsColumns === 1;
 
   return (
     <Box
@@ -76,7 +75,7 @@ export function OptionsList(props: {
       sx={{
         mt: 2,
         display: "grid",
-        gridTemplateColumns: `repeat(${optionsColumns}, minmax(0, 1fr))`,
+        gridTemplateColumns: `repeat(${visibleOptionsColumns}, minmax(0, 1fr))`,
         gap: 2,
         "&[data-measuring='true'] [data-option-text='true']": {
           whiteSpace: "nowrap",
@@ -88,7 +87,7 @@ export function OptionsList(props: {
         },
       }}
     >
-      {options.map((opt) => (
+      {options.map((opt, index) => (
         <Box
           key={`${itemKeyPrefix}-${opt.key}`}
           data-option-item="true"
@@ -100,7 +99,7 @@ export function OptionsList(props: {
             maxWidth: "100%",
           }}
         >
-          <Text sx={{ fontWeight: "bold" }}>{opt.key}.</Text>
+          <Text sx={{ fontWeight: "bold" }}>{optionLabel(index)}.</Text>
           <Box
             data-option-text="true"
             sx={{

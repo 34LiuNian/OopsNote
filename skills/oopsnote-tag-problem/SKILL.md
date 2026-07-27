@@ -18,6 +18,8 @@ metadata:
 - `answer`: 答案
 - `explanation`: 解析
 - `subject`: 学科
+- `student_response_status`: `answered` / `unanswered` / `unknown`
+- `student_response`: OCR 识别到的学生作答；不是题目标准答案
 
 ## 输出
 
@@ -45,7 +47,7 @@ metadata:
 ### 2. 分析题目
 根据题目内容、解题过程判断：
 - **knowledge_points**：只保留题目直接考查、解答不可绕开的核心知识点，按重要性排列，通常 1-3 个
-- **error_hypothesis**：可能的错因（计算失误/概念不清/审题错误/忽略条件/...）
+- **error_hypothesis**：只分析可读学生作答中有证据支持的实际错因。`student_response_status` 不是 `answered` 时必须为 `[]`；不得根据题目难点臆测错因。
 - **difficulty**：简单/中等/较难
 
 ### 3. 创建新标签（如果需要）

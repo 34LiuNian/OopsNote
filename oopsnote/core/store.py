@@ -218,7 +218,7 @@ class RunStore:
         task_id: str,
         prompt_version: str = "unversioned",
         *,
-        backend: str = "hermes",
+        backend: str = "pi",
         runtime_kind: Optional[str] = None,
         runtime_version: Optional[str] = None,
         provider: Optional[str] = None,

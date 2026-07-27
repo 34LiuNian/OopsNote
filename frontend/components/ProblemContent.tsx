@@ -4,11 +4,12 @@ import { useLayoutEffect, useRef, useState } from "react";
 import { Box } from "@/components/ui/primitives";
 import { Button, Spinner } from "@/components/ui/primitives";
 import { Text } from "@/components/ui/primitives";
+import { NativeImage } from "@/components/ui/NativeImage";
 import { MarkdownRenderer } from "./renderers/MarkdownRenderer";
 import { SvgMarkup } from "./renderers/SvgMarkup";
 import { TikzRenderer } from "./renderers/TikzRenderer";
 import { OptionsList } from "./ui/OptionsList";
-import type { ContentFormat } from "@/types/api";
+import type { ContentFormat, DiagramImageTone } from "@/types/api";
 
 type ProblemOption = {
   key: string;
@@ -24,6 +25,7 @@ type ProblemContentProps = {
   diagramTikzSource?: string | null;
   diagramSvg?: string | null;
   diagramImagePath?: string | null;
+  diagramImageTone?: DiagramImageTone;
   diagramPosition?: "left" | "right";
   diagramScalePercent?: number | null;
   diagramRenderStatus?: string | null;
@@ -44,6 +46,7 @@ export function ProblemContent({
   diagramTikzSource,
   diagramSvg,
   diagramImagePath,
+  diagramImageTone = "auto",
   diagramPosition = "right",
   diagramScalePercent = null,
   diagramRenderStatus,
@@ -95,9 +98,9 @@ export function ProblemContent({
             sx={{ m: 0 }}
           >
             {diagramKind === "image" && imageUrl ? (
-              <img src={imageUrl} alt="题图" />
+              <NativeImage className={diagramImageTone === "auto" ? "is-auto-tone" : undefined} src={imageUrl} alt="附图" />
             ) : diagramSvg ? (
-              <SvgMarkup svg={diagramSvg} label="题目图形" fit />
+              <SvgMarkup svg={diagramSvg} label="题目图形" colorMode="themed" fit />
             ) : diagramTikzSource ? (
               <TikzRenderer code={diagramTikzSource} fit />
             ) : null}

@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { Box } from "@/components/ui/primitives";
 import { API_BASE } from "@/lib/api";
 
@@ -58,7 +59,10 @@ export function TaskThumbnail({ asset, size = "medium" }: TaskThumbnailProps) {
         justifyContent: "center",
       }}
     >
-      <img
+      <Image
+        width={width}
+        height={height}
+        unoptimized
         src={imageUrl}
         alt="任务缩略图"
         style={{

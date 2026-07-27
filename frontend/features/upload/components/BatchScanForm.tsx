@@ -34,6 +34,7 @@ import {
 import { PageHeader } from "@/components/layout/PageHeader";
 import { useTheme } from "@/components/providers/ThemeProvider";
 import { Box, Button, IconButton, Spinner, Text } from "@/components/ui/primitives";
+import { NativeImage } from "@/components/ui/NativeImage";
 import { notify } from "@/lib/notify";
 import { ApiError } from "@/lib/api";
 import { selectionsToSessionSegments, sessionSegmentsToSelections } from "../adapters/batchSessionSelectionAdapter";
@@ -862,7 +863,7 @@ export function BatchScanForm() {
                   />
                 ) : (
                   <div className={`batch-crop-editor${inverted ? " is-inverted" : ""}`} style={{ ...cropOverlayScaleStyle, width: `${Math.round(820 * zoom)}px`, aspectRatio: `${pages[activePageIndex].sourceWidth} / ${pages[activePageIndex].sourceHeight}` }}>
-                    {imageUrls[activePageIndex] ? <img src={imageUrls[activePageIndex]} alt={pages[activePageIndex].label} draggable={false} /> : <Spinner />}
+                    {imageUrls[activePageIndex] ? <NativeImage src={imageUrls[activePageIndex]} alt={pages[activePageIndex].label} draggable={false} /> : <Spinner />}
                     <BatchCropOverlay
                       value={crop}
                       columnCount={columnLayout.columnCount}

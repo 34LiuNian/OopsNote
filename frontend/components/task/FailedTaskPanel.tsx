@@ -1,8 +1,9 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { AlertTriangle, ListChecks, RefreshCw, Trash2 } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 
 import { SUBJECT_OPTIONS } from "@/config/subjects";
 import { deleteTask, retryTask } from "@/features/tasks";
@@ -72,13 +73,6 @@ export function FailedTaskPanel({
 
   const selectedCount = tasks.filter((task) => selectedIds[task.id]).length;
   const isBatchBusy = isBatchRetrying || isBatchDeleting;
-
-  useEffect(() => {
-    const taskIds = new Set(tasks.map((task) => task.id));
-    setSelectedIds((current) => Object.fromEntries(
-      Object.entries(current).filter(([taskId, selected]) => selected && taskIds.has(taskId)),
-    ));
-  }, [tasks]);
 
   const leaveSelectionMode = useCallback(() => {
     setSelectionMode(false);
@@ -258,7 +252,10 @@ export function FailedTaskPanel({
                 aria-hidden="true"
               >
                 {task.asset?.path ? (
-                  <img
+                  <Image
+                    fill
+                    unoptimized
+                    sizes="100vw"
                     src={`${API_BASE}${task.asset.path}`}
                     alt=""
                     onLoad={(event) => {

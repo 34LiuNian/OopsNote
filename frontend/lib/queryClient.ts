@@ -39,6 +39,10 @@ export const queryKeys = {
     detail: (taskId: string) => [...queryKeys.tasks.details(), taskId] as const,
     stream: (taskId: string) => [...queryKeys.tasks.detail(taskId), 'stream'] as const,
   },
+  problems: {
+    all: ['problems'] as const,
+    list: (filtersKey: string) => [...queryKeys.problems.all, 'list', filtersKey] as const,
+  },
   
   // 标签相关
   tags: {

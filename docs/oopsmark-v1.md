@@ -49,6 +49,8 @@ OopsMark 是受约束的 Markdown 方言，不是任意 Markdown，也不是完�
 选择题的 `options` 只保存按原版面顺序排列的选项正文，不保存 `A.`、`A]`、`（A）`
 或 `1.` 等印刷标记。选项字母是数组位置的派生标签，依次为 `A`、`B`、`C`、`D`；
 网页、Obsidian 和试卷适配器必须从同一顺序派生标签，不得把标签写回选项正文。
+整项为公式时仍须写成 `$...$`；Core 的选项规范化边界会把不含自然语言、且含明确
+TeX 命令的整项裸公式补成行内数学，以收敛 OCR/模型输出，混合正文不会被猜测性改写。
 
 ### 2.2 数学
 
@@ -109,13 +111,15 @@ C1=CC=CC=C1
 
 题干可以带一个任务绑定的结构化旁图，来源二选一：`tikz` 或 `image`。这些 `diagram_*` 字段属于
 题目的展示元数据，不写入 OopsMark 正文。旁图不是第二份题干正文；`problem_text` 仍是唯一的 OopsMark
-文本源。TikZ 源码是可编辑源，SVG 只是可重新生成的预览资产；题图只保存本地 `/assets/` 引用，
+文本源。TikZ 源码是可编辑源，SVG 只是可重新生成的预览资产；附图只保存本地 `/assets/` 引用，
 不保存 base64 或外部 URL。
 
-- `diagram_kind`: `tikz` / `image` / `null`，同一题不得同时启用 TikZ 和题图。
+- `diagram_kind`: `tikz` / `image` / `null`，同一题不得同时启用 TikZ 和图片附图。
 - `diagram_position`: `right` / `left`，缺省为 `right`。
 - `diagram_scale_percent`: `null` 表示旁图与题干文本等高；手动值范围为 50–200。
-- 当前 `image` 使用任务绑定的原始题目图片。自动识别、裁剪出独立题图留待后续版本。
+- `image` 表示题目中的附图，不表示整道题的截图。`diagram_image_path` 指向由任务原图裁剪得到的本地派生资产；原图仍是唯一校对依据。
+- `diagram_image_crop` 是相对任务原图的归一化矩形 `{x, y, width, height}`；服务端据此生成稳定、幂等的 PNG 派生资产。
+- `diagram_image_tone`: `auto` / `original`。Web 缺省使用 `auto`，仅在深色界面对黑白附图反相；打印、试卷导出和原始资产始终保留原像素。需要保持颜色语义时使用 `original`。
 - Web 在宽屏按左右栏渲染，窄屏退化为题干在上、旁图在下。
 
 ### 2.6 表格
@@ -141,6 +145,11 @@ C1=CC=CC=C1
 | TikZ | `tikz` fenced block | TikZJax/后端 SVG | LaTeX TikZ |
 | 普通表格 | GFM table | HTML table | tabularray |
 | Mermaid | `mermaid` fenced block | Mermaid | 派生资产 + graphicx |
+
+网页图形必须显式声明主题颜色策略：TikZJax、后端 TikZ SVG 与 RDKit SVG 在共享 SVG
+展示边界把纯黑映射为 `currentColor`、纯白映射为当前画布背景，其他颜色保持不变；不得对整张 SVG
+使用 `invert()`，以免破坏曲线、曲面和分子高亮的颜色语义。Mermaid 由自身渲染器根据已解析的
+`light` / `dark` 主题重新生成 SVG。KaTeX 使用继承的文本颜色，不生成第二份主题内容。
 
 注：网页 KaTeX 渲染行内公式（`$...$`）时，`MarkdownRenderer` 在模块初始化时 monkey-patch `katex.renderToString`，自动向 `displayMode === false` 的调用注入 `\displaystyle`，使行内公式按展示样式（display style）渲染但保持行内布局。该做法参考 [RyotaUshio/obsidian-auto-displaystyle-inline-math](https://github.com/RyotaUshio/obsidian-auto-displaystyle-inline-math)。
 

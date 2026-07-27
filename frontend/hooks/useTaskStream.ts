@@ -14,23 +14,24 @@ const POLLING_INTERVAL = 1000; // 1 second
 
 type UseTaskStreamParams = {
   taskId: string;
-  status?: string | null;
   onStatusMessage?: (message: string) => void;
-  onDone?: () => Promise<void> | void;
 };
 
 type UseTaskStreamState = {
   progressLines: string[];
   latestTask: TaskResponse["task"] | null;
   resetStream: () => void;
+  data: TaskResponse | null;
+  isLoading: boolean;
+  error: Error | null;
+  refresh: () => Promise<void>;
 };
 
-export function useTaskStream({ taskId, status, onStatusMessage, onDone }: UseTaskStreamParams): UseTaskStreamState {
+export function useTaskStream({ taskId, onStatusMessage }: UseTaskStreamParams): UseTaskStreamState {
   const [progressLines, setProgressLines] = useState<string[]>([]);
   const lastStatusRef = useRef<string | null>(null);
   const lastStageRef = useRef<string | null>(null);
   const lastStageMessageRef = useRef<string | null>(null);
-  const hasCalledOnDoneRef = useRef<boolean>(false);
   const queryClient = useQueryClient();
 
   const resetStream = useCallback(() => {
@@ -38,7 +39,6 @@ export function useTaskStream({ taskId, status, onStatusMessage, onDone }: UseTa
     lastStatusRef.current = null;
     lastStageRef.current = null;
     lastStageMessageRef.current = null;
-    hasCalledOnDoneRef.current = false;
   }, []);
 
   // Use React Query with polling
@@ -47,7 +47,10 @@ export function useTaskStream({ taskId, status, onStatusMessage, onDone }: UseTa
     queryFn: () => fetchJson<TaskResponse>(`/tasks/${taskId}`),
     enabled: !!taskId,
     // 轮询配置
-    refetchInterval: (status === "pending" || status === "processing") ? POLLING_INTERVAL : false,
+    refetchInterval: (query) => {
+      const currentStatus = query.state.data?.task.status;
+      return currentStatus === "pending" || currentStatus === "processing" ? POLLING_INTERVAL : false;
+    },
     // 不缓存，总是获取最新
     staleTime: 0,
     // 网络错误时重试
@@ -83,13 +86,6 @@ export function useTaskStream({ taskId, status, onStatusMessage, onDone }: UseTa
     if (statusChanged) {
       lastStatusRef.current = currentStatus;
 
-      // Check if task is done
-      if (currentStatus === "completed" || currentStatus === "failed" || currentStatus === "cancelled") {
-        if (!hasCalledOnDoneRef.current) {
-          hasCalledOnDoneRef.current = true;
-          onDone?.();
-        }
-      }
     }
 
     if (stageChanged) {
@@ -99,7 +95,7 @@ export function useTaskStream({ taskId, status, onStatusMessage, onDone }: UseTa
     if (stageMessageChanged) {
       lastStageMessageRef.current = currentStageMessage;
     }
-  }, [data, onStatusMessage, onDone]);
+  }, [data, onStatusMessage]);
 
   // 处理错误
   useEffect(() => {
@@ -113,5 +109,11 @@ export function useTaskStream({ taskId, status, onStatusMessage, onDone }: UseTa
     progressLines,
     latestTask: data?.task || null,
     resetStream,
+    data: data ?? null,
+    isLoading,
+    error: error instanceof Error ? error : error ? new Error("轮询失败") : null,
+    refresh: async () => {
+      await queryClient.invalidateQueries({ queryKey: queryKeys.tasks.detail(taskId) });
+    },
   };
 }

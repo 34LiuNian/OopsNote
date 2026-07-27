@@ -1,9 +1,8 @@
 "use client";
 
 import { memo } from "react";
-import { Box, Text } from "@/components/ui/primitives";
+import { Box } from "@/components/ui/primitives";
 import { XIcon } from "@/components/ui/icons";
-import type { TagDimensionStyle } from "../../types/api";
 
 type TagChipProps = {
   label: string;
@@ -17,32 +16,17 @@ export const TagChip = memo(function TagChip({ label, dimension, variant = "seco
     <Box
       as="button"
       type="button"
-      onClick={onRemove}
-      sx={{
-        display: "inline-flex",
-        alignItems: "center",
-        bg: "transparent",
-        border: "none",
-        cursor: "pointer",
-        color: "fg.default",
-        gap: 1,
-        px: 2,
-        py: 1,
-        borderRadius: 2,
-        borderWidth: "1px",
-        borderStyle: "solid",
-        borderColor: variant === "primary" ? "accent.fg" : "border.default",
-        ":hover": {
-          bg: "canvas.subtle",
-        },
+      className="tag-picker__token"
+      data-dimension={dimension}
+      data-variant={variant}
+      aria-label={onRemove ? `移除标签 ${label}` : label}
+      onClick={(event) => {
+        event.stopPropagation();
+        onRemove?.();
       }}
     >
-      <Text sx={{ fontSize: 1, lineHeight: "20px" }}>{label}</Text>
-      {onRemove && (
-        <Box sx={{ display: "flex", alignItems: "center" }}>
-          <XIcon size={14} />
-        </Box>
-      )}
+      <span>{label}</span>
+      {onRemove ? <XIcon size={12} aria-hidden="true" /> : null}
     </Box>
   );
 });

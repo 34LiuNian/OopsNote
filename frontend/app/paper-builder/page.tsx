@@ -67,12 +67,13 @@ export default function PaperBuilderPage() {
   const [paperTitle, setPaperTitle] = useState<string>(() => generateDefaultTitle(subjectLabel));
   const [isPaperTitleCustomized, setIsPaperTitleCustomized] = useState(false);
 
-  // 只在用户尚未编辑标题时随学科更新默认值，避免覆盖用户输入。
-  useEffect(() => {
+  const handleSubjectChange = useCallback((nextSubject: string) => {
+    setSubject(nextSubject);
     if (!isPaperTitleCustomized) {
-      setPaperTitle(generateDefaultTitle(subjectLabel));
+      const nextLabel = BUILDER_SUBJECT_OPTIONS.find((option) => option.value === nextSubject)?.label || "综合";
+      setPaperTitle(generateDefaultTitle(nextLabel));
     }
-  }, [subjectLabel, isPaperTitleCustomized]);
+  }, [isPaperTitleCustomized]);
 
   const [paperPdfUrl, setPaperPdfUrl] = useState<string | null>(null);
   const [paperError, setPaperError] = useState<{ message: string; log?: string } | null>(null);
@@ -203,7 +204,7 @@ export default function PaperBuilderPage() {
             </FormControl>
             <FormControl>
               <FormControl.Label>学科</FormControl.Label>
-              <Select value={subject} onValueChange={setSubject} block>
+              <Select value={subject} onValueChange={handleSubjectChange} block>
                   {BUILDER_SUBJECT_OPTIONS.map((option) => (
                   <Select.Option key={option.value || "all"} value={option.value}>
                     {option.label}

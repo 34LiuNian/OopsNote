@@ -6,6 +6,7 @@ import { API_BASE } from "../lib/api";
 type LatexAssetKind = "tikz";
 
 type LatexAssetState = {
+  key: string;
   status: "idle" | "loading" | "ready" | "error";
   data: string;
   error: string;
@@ -51,24 +52,19 @@ async function requestAsset(kind: LatexAssetKind, content: string, inline?: bool
 export function useLatexAsset(props: { kind: LatexAssetKind; content: string; inline?: boolean }): LatexAssetState {
   const { kind, content, inline } = props;
   const cacheKey = useMemo(() => (content ? buildCacheKey(kind, content, inline) : ""), [kind, content, inline]);
-  const [state, setState] = useState<LatexAssetState>({ status: "idle", data: "", error: "" });
+  const [state, setState] = useState<LatexAssetState>({ key: "", status: "idle", data: "", error: "" });
 
   useEffect(() => {
-    if (!content) {
-      setState({ status: "idle", data: "", error: "" });
-      return;
-    }
+    if (!content) return;
 
     let cancelled = false;
     const cached = CACHE.get(cacheKey);
 
     if (cached?.status === "ready") {
-      setState({ status: "ready", data: cached.data || "", error: "" });
       return;
     }
 
     if (cached?.status === "error") {
-      setState({ status: "error", data: "", error: cached.error || "渲染失败" });
       return;
     }
 
@@ -78,20 +74,18 @@ export function useLatexAsset(props: { kind: LatexAssetKind; content: string; in
       CACHE.set(cacheKey, { promise });
     }
 
-    setState({ status: "loading", data: "", error: "" });
-
     promise
       .then((text) => {
         CACHE.set(cacheKey, { status: "ready", data: text });
         if (!cancelled) {
-          setState({ status: "ready", data: text, error: "" });
+          setState({ key: cacheKey, status: "ready", data: text, error: "" });
         }
       })
       .catch((err) => {
         const message = err instanceof Error ? err.message : "渲染失败";
         CACHE.set(cacheKey, { status: "error", error: message });
         if (!cancelled) {
-          setState({ status: "error", data: "", error: message });
+          setState({ key: cacheKey, status: "error", data: "", error: message });
         }
       });
 
@@ -100,5 +94,15 @@ export function useLatexAsset(props: { kind: LatexAssetKind; content: string; in
     };
   }, [cacheKey, content, inline, kind]);
 
-  return state;
+  if (!content) return { key: "", status: "idle", data: "", error: "" };
+
+  const cached = CACHE.get(cacheKey);
+  if (cached?.status === "ready") {
+    return { key: cacheKey, status: "ready", data: cached.data || "", error: "" };
+  }
+  if (cached?.status === "error") {
+    return { key: cacheKey, status: "error", data: "", error: cached.error || "渲染失败" };
+  }
+  if (state.key === cacheKey) return state;
+  return { key: cacheKey, status: "loading", data: "", error: "" };
 }

@@ -4,7 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { Box, Button, Heading, IconButton, Label, Text, Tooltip } from "@/components/ui/primitives";
 import { PencilIcon, CopyIcon, ChevronDownIcon, ChevronUpIcon } from "@/components/ui/icons";
-import type { ContentFormat, SourceTrace, TagDimensionStyle } from "@/types/api";
+import type { ContentFormat, DiagramImageTone, NormalizedRect, SourceTrace, TagDimensionStyle } from "@/types/api";
 import { MarkdownRenderer } from "../renderers/MarkdownRenderer";
 import { ProblemCard } from "../ProblemCard";
 import { ProblemEditPanel } from "../ProblemEditPanel";
@@ -20,6 +20,8 @@ type TaskProblem = {
   diagram_tikz_source?: string | null;
   diagram_svg?: string | null;
   diagram_image_path?: string | null;
+  diagram_image_crop?: NormalizedRect | null;
+  diagram_image_tone?: DiagramImageTone;
   diagram_position?: "left" | "right";
   diagram_scale_percent?: number | null;
   diagram_render_status?: string | null;
@@ -85,7 +87,7 @@ export function TaskProblemDetail({
       if (problem.diagram_detected && problem.diagram_tikz_source) {
         lines.push("## 识别图 (TikZ)", "```tikz", problem.diagram_tikz_source, "```", "");
       } else if (problem.diagram_detected && problem.diagram_kind === "image" && problem.diagram_image_path) {
-        lines.push("## 题图", `![题图](${problem.diagram_image_path})`, "");
+        lines.push("## 附图", `![附图](${problem.diagram_image_path})`, "");
       }
 
       const knowledgeTags = Array.isArray(problem.knowledge_tags) ? problem.knowledge_tags : [];
@@ -296,6 +298,7 @@ function ProblemDetailCard({
           diagramTikzSource={problem.diagram_tikz_source}
           diagramSvg={problem.diagram_svg}
           diagramImagePath={problem.diagram_image_path}
+          diagramImageTone={problem.diagram_image_tone}
           diagramPosition={problem.diagram_position}
           diagramScalePercent={problem.diagram_scale_percent}
           diagramRenderStatus={problem.diagram_render_status}

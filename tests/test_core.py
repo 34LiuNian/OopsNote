@@ -141,6 +141,7 @@ class TestRunStore:
     def test_persists_attempts_and_stage_transitions(self, tmp_path):
         store = RunStore(tmp_path / "runs")
         first = store.create("task-1")
+        assert first.backend == "pi"
         store.start(first.id, pid=123, log_path="runs/first.log")
         store.observe_stage(first.id, TaskStage.OCR, "提取题面")
         store.observe_stage(first.id, TaskStage.SOLVING, "生成解析")
@@ -407,6 +408,19 @@ class TestSearcherExtra:
         ])
         results = s.search(SearchQuery(since="2024-01-01"))
         assert len(results) == 1
+
+    def test_invalid_since_is_rejected_at_query_boundary(self):
+        """Invalid dates must fail validation instead of becoming no filter."""
+        with pytest.raises(ValueError):
+            SearchQuery(since="not-a-date")
+
+    def test_since_filter_handles_legacy_naive_problem_timestamp(self):
+        old = Problem(subject="数学", created_at=datetime(2020, 1, 1))
+        task = TaskRecord(subject="数学", problem=old)
+
+        results = Searcher([task]).search(SearchQuery(since="2024-01-01T00:00:00+00:00"))
+
+        assert results == []
 
     def test_regex_error_handled(self):
         """非法正则不会崩溃。"""

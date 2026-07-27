@@ -48,6 +48,8 @@ venv/
 /frontend/.next/
 /frontend/.next*/
 /frontend/out/
+/frontend/public/sw.js
+/frontend/public/workbox-*.js
 /frontend/.turbo/
 /frontend/coverage/
 *.tsbuildinfo

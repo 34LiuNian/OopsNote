@@ -53,6 +53,46 @@ test("RDKit and TikZJax render non-empty SVG output", async ({ page }) => {
   expect(relevantErrors, relevantErrors.join("\n\n")).toEqual([]);
 });
 
+test("diagram renderers follow dark theme without destroying semantic colors", async ({ page }) => {
+  await page.emulateMedia({ colorScheme: "light" });
+  await page.goto("/debug", { waitUntil: "domcontentloaded" });
+
+  const fixture = page.locator("#problem-illustration-auto");
+  const axis = fixture.locator("#theme-axis");
+  const background = fixture.locator("#theme-background");
+  const coloredSeries = fixture.locator("#theme-series");
+  await expect(axis).toHaveAttribute("stroke", "currentColor");
+  await expect(background).toHaveAttribute("fill", "var(--oops-svg-background)");
+  await expect(coloredSeries).toHaveAttribute("stroke", "#0ea5e9");
+  await expect(page.locator('[data-mermaid-theme="light"]')).toBeVisible({ timeout: 30_000 });
+
+  await page.emulateMedia({ colorScheme: "dark" });
+  await expect(page.locator("html")).toHaveAttribute("data-oopsnote-color-scheme", "dark");
+  await expect(page.locator('[data-mermaid-theme="dark"]')).toBeVisible({ timeout: 30_000 });
+
+  const computed = await fixture.evaluate((element) => {
+    const axisElement = element.querySelector<SVGElement>("#theme-axis")!;
+    const seriesElement = element.querySelector<SVGElement>("#theme-series")!;
+    const backgroundElement = element.querySelector<SVGElement>("#theme-background")!;
+    return {
+      axis: getComputedStyle(axisElement).stroke,
+      series: getComputedStyle(seriesElement).stroke,
+      background: getComputedStyle(backgroundElement).fill,
+    };
+  });
+  expect(computed.axis).not.toBe("rgb(0, 0, 0)");
+  expect(computed.series).toBe("rgb(14, 165, 233)");
+  expect(computed.background).not.toBe("rgb(255, 255, 255)");
+
+  const molecule = page.getByRole("img", { name: "分子结构" });
+  await expect(molecule).toBeVisible({ timeout: 60_000 });
+  expect(await molecule.innerHTML()).toContain("currentColor");
+
+  const tikz = page.getByRole("img", { name: "TikZ 图形" });
+  await expect(tikz).toBeVisible({ timeout: 90_000 });
+  expect(await tikz.innerHTML()).toContain("currentColor");
+});
+
 test("GFM tables show a cell grid and are centered", async ({ page }) => {
   await page.goto("/debug", { waitUntil: "domcontentloaded" });
 
@@ -95,7 +135,7 @@ test("problem illustrations support mutually exclusive right-side auto sizing an
 
   const custom = page.locator("#problem-illustration-custom .problem-content__lead");
   await expect(custom).toHaveClass(/is-left/);
-  await expect(custom.getByRole("img", { name: "题图" })).toBeVisible();
+  await expect(custom.getByRole("img", { name: "附图" })).toBeVisible();
   const customSizes = await custom.evaluate((element) => ({
     text: element.querySelector<HTMLElement>(".problem-content__text")!.getBoundingClientRect().height,
     figure: element.querySelector<HTMLElement>(".problem-content__illustration")!.getBoundingClientRect().height,

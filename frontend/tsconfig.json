@@ -21,7 +21,8 @@
     "types": [
       "node",
       "react",
-      "react-dom"
+      "react-dom",
+      "@serwist/next/typings"
     ],
     "plugins": [
       {
@@ -49,6 +50,7 @@
     ".next-splash-test/dev/types/**/*.ts"
   ],
   "exclude": [
-    "node_modules"
+    "node_modules",
+    "public/sw.js"
   ]
 }

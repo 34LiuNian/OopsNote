@@ -3,7 +3,7 @@
 import { memo } from "react";
 import { Box, Text } from "@/components/ui/primitives";
 import { ProblemContent } from "./ProblemContent";
-import type { ContentFormat } from "@/types/api";
+import type { ContentFormat, DiagramImageTone } from "@/types/api";
 
 type ProblemOption = {
   key: string;
@@ -23,6 +23,7 @@ type ProblemCardProps = {
   diagramTikzSource?: string | null;
   diagramSvg?: string | null;
   diagramImagePath?: string | null;
+  diagramImageTone?: DiagramImageTone;
   diagramPosition?: "left" | "right";
   diagramScalePercent?: number | null;
   diagramRenderStatus?: string | null;
@@ -56,6 +57,7 @@ export const ProblemCard = memo(function ProblemCard({
   diagramTikzSource,
   diagramSvg,
   diagramImagePath,
+  diagramImageTone,
   diagramPosition,
   diagramScalePercent,
   diagramRenderStatus,
@@ -94,6 +96,7 @@ export const ProblemCard = memo(function ProblemCard({
         diagramTikzSource={diagramTikzSource}
         diagramSvg={diagramSvg}
         diagramImagePath={diagramImagePath}
+        diagramImageTone={diagramImageTone}
         diagramPosition={diagramPosition}
         diagramScalePercent={diagramScalePercent}
         diagramRenderStatus={diagramRenderStatus}

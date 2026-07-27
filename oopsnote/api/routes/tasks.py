@@ -193,6 +193,8 @@ def override_problem(
         "diagram_tikz_source",
         "diagram_svg",
         "diagram_image_path",
+        "diagram_image_crop",
+        "diagram_image_tone",
         "diagram_position",
         "diagram_scale_percent",
         "diagram_render_status",
@@ -236,22 +238,46 @@ def override_problem(
                     "diagram_tikz_source": tikz_source or None,
                     "diagram_svg": payload.get("diagram_svg"),
                     "diagram_image_path": None,
+                    "diagram_image_crop": None,
+                    "diagram_image_tone": None,
                     "diagram_render_status": payload.get("diagram_render_status"),
                     "diagram_error": payload.get("diagram_error"),
                     "diagram_needs_review": bool(payload.get("diagram_needs_review", False)),
                 }
             )
         elif diagram_kind == "image":
-            image_path = payload.get("diagram_image_path") or task.asset_path
+            crop_was_provided = "diagram_image_crop" in payload
+            crop = payload.get("diagram_image_crop") if crop_was_provided else None
+            if crop_was_provided and crop is None:
+                image_path = task.asset_path
+            elif crop is not None:
+                if not task.asset_path:
+                    raise HTTPException(status_code=422, detail="Image diagrams require a task image asset")
+                try:
+                    image_path, crop = api.ASSET_STORE.save_image_crop(task.asset_path, crop)
+                except (FileNotFoundError, ValueError) as error:
+                    raise HTTPException(status_code=422, detail=str(error)) from error
+            else:
+                image_path = payload.get("diagram_image_path") or next_metadata.get("diagram_image_path") or task.asset_path
             if diagram_detected and not image_path:
                 raise HTTPException(status_code=422, detail="Image diagrams require a task image asset")
-            if image_path and image_path != task.asset_path:
-                raise HTTPException(status_code=422, detail="Image diagrams currently use the task source asset")
+            allowed_paths = {task.asset_path, next_metadata.get("diagram_image_path")}
+            if image_path and image_path not in allowed_paths and crop is None:
+                raise HTTPException(status_code=422, detail="diagram_image_path must belong to this task")
+            image_tone = (
+                payload.get("diagram_image_tone")
+                if "diagram_image_tone" in payload
+                else next_metadata.get("diagram_image_tone") or "auto"
+            )
+            if image_tone not in {"auto", "original"}:
+                raise HTTPException(status_code=422, detail="diagram_image_tone must be auto or original")
             next_metadata.update(
                 {
                     "diagram_tikz_source": None,
                     "diagram_svg": None,
                     "diagram_image_path": image_path,
+                    "diagram_image_crop": crop if crop_was_provided else next_metadata.get("diagram_image_crop"),
+                    "diagram_image_tone": image_tone,
                     "diagram_render_status": "ready" if image_path else None,
                     "diagram_error": None,
                     "diagram_needs_review": False,
@@ -263,6 +289,8 @@ def override_problem(
                     "diagram_tikz_source": None,
                     "diagram_svg": None,
                     "diagram_image_path": None,
+                    "diagram_image_crop": None,
+                    "diagram_image_tone": None,
                     "diagram_render_status": None,
                     "diagram_error": None,
                     "diagram_needs_review": False,

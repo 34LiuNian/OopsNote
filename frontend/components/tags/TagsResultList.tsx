@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Box, Button, Flash, IconButton, Label, Spinner, Text, TextInput } from "@/components/ui/primitives";
 import { PencilIcon, TrashIcon } from "@/components/ui/icons";
 import type { TagItem } from "@/types/api";
@@ -49,20 +49,10 @@ export function TagsResultList({
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [pendingId, setPendingId] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (!editingId) return;
-    if (!pagedItems.some((item) => item.id === editingId)) {
-      setEditingId(null);
-      setEditingValue("");
-    }
-  }, [editingId, pagedItems]);
-
-  useEffect(() => {
-    if (!deleteConfirmId) return;
-    if (!pagedItems.some((item) => item.id === deleteConfirmId)) {
-      setDeleteConfirmId(null);
-    }
-  }, [deleteConfirmId, pagedItems]);
+  const visibleEditingId = editingId && pagedItems.some((item) => item.id === editingId) ? editingId : null;
+  const visibleDeleteConfirmId = deleteConfirmId && pagedItems.some((item) => item.id === deleteConfirmId)
+    ? deleteConfirmId
+    : null;
 
   const startRename = (item: TagItem) => {
     setDeleteConfirmId(null);
@@ -184,7 +174,7 @@ export function TagsResultList({
                     {shouldShowDimLabel ? (
                       <Label variant={getDimVariant(item.dimension)}>{getDimLabel(item.dimension)}</Label>
                     ) : null}
-                    {editingId === item.id ? (
+                    {visibleEditingId === item.id ? (
                       <Box sx={{ display: "flex", gap: 1, alignItems: "center", flexWrap: "wrap", minWidth: 0 }}>
                         <TextInput
                           value={editingValue}
@@ -245,7 +235,7 @@ export function TagsResultList({
                     aria-label="删除"
                     icon={TrashIcon}
                     size="small"
-                    variant={deleteConfirmId === item.id ? "danger" : "default"}
+                    variant={visibleDeleteConfirmId === item.id ? "danger" : "default"}
                     disabled={pendingId === item.id}
                     onClick={() => {
                       void requestDelete(item);
@@ -253,7 +243,7 @@ export function TagsResultList({
                   />
                 </Box>
 
-                {deleteConfirmId === item.id ? (
+                {visibleDeleteConfirmId === item.id ? (
                   <Box sx={{ gridColumn: ["1", "1 / -1"] }}>
                     <Text sx={{ color: "danger.fg", fontSize: 1 }}>再次点击删除按钮以确认删除该标签。</Text>
                   </Box>

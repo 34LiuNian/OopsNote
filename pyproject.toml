@@ -31,6 +31,7 @@ oopsnote = ["catalog/data/*.json"]
 
 [dependency-groups]
 dev = [
+    "httpx2>=2.0.0",
     "pytest>=9.1.1",
     "pytest-cov>=7.1.0",
 ]

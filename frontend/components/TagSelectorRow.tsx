@@ -36,18 +36,15 @@ export function TagSelectorRow({
     custom?: string;
   };
 }) {
-// - 容器宽度 < 1000px 时，单列显示（每项占满一行）
-// - 容器宽度1000px+ 时，多列显示（每列最小宽度 500px，自动填充）
 return (
     <Box sx={{ 
       display: "grid", 
       gridTemplateColumns: [
         "1fr",
-        "repeat(auto-fit, minmax(min(500px, 100%), 1fr))",
+        "repeat(auto-fit, minmax(min(260px, 100%), 1fr))",
       ],
       gap: 3 
     }}>
-      {/* 第一行：来源 */}
       <Box>
         <TagPicker
           title="来源"
@@ -55,11 +52,10 @@ return (
           value={sourceValue}
           onChange={onSourceChange}
           styles={styles}
-          placeholder={placeholders?.source || "输入后回车添加"}
+          placeholder={placeholders?.source || "搜索或添加"}
         />
       </Box>
 
-      {/* 第二行：知识体系 */}
       <Box>
         <TagPicker
           title="知识体系"
@@ -67,11 +63,10 @@ return (
           value={knowledgeValue}
           onChange={onKnowledgeChange}
           styles={styles}
-          placeholder={placeholders?.knowledge || "Tab可补全"}
+          placeholder={placeholders?.knowledge || "搜索或添加"}
         />
       </Box>
 
-      {/* 第三行：错题归因 */}
       <Box>
         <TagPicker
           title="错题归因"
@@ -79,11 +74,10 @@ return (
           value={errorValue}
           onChange={onErrorChange}
           styles={styles}
-          placeholder={placeholders?.error || "上下方向键可选择"}
+          placeholder={placeholders?.error || "搜索或添加"}
         />
       </Box>
 
-      {/* 第四行：自定义标签 */}
       <Box>
         <TagPicker
           title="自定义标签"
@@ -91,7 +85,7 @@ return (
           value={customValue}
           onChange={onCustomChange}
           styles={styles}
-          placeholder={placeholders?.custom || "输入后回车添加"}
+          placeholder={placeholders?.custom || "输入后回车"}
           enableRemoteSearch={false}
         />
       </Box>

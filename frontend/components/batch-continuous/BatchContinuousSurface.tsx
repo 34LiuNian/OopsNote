@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { buildPageMetrics } from "./batchContinuousGeometry";
 import type { ColumnLayout, ContinuousPageSource, DocumentCropRect, PageMetric, SelectionModel } from "./batchContinuousTypes";
 import { BatchSelectionOverlay } from "./BatchSelectionOverlay";
+import { NativeImage } from "@/components/ui/NativeImage";
 
 type LazyPageProps = {
   page: PageMetric;
@@ -50,7 +51,7 @@ function LazyPage({ page, inverted, hoveredBorrowMask, imageUrl, loadPage, onVis
           className="batch-continuous-page__content"
           style={{ left: `${page.contentLeft / page.displayWidth * 100}%`, width: `${(page.contentRight - page.contentLeft) / page.displayWidth * 100}%` }}
         >
-          <img
+          <NativeImage
             src={imageUrl}
             alt={page.label}
             draggable={false}

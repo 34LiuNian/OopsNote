@@ -31,7 +31,7 @@ export function UploadForm() {
   const [lastTaskId, setLastTaskId] = useState<string>("");
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [autoRecognize, setAutoRecognize] = useState(false);
-  const [autoRecognizedKey, setAutoRecognizedKey] = useState("");
+  const autoRecognizedKeyRef = useRef("");
   const { error, handleError, clearError } = useApiError({
     defaultFallback: "上传失败，请稍后重试",
   });
@@ -209,12 +209,12 @@ export function UploadForm() {
       return;
     }
     const key = `${currentFile.name}_${currentFile.size}_${index}`;
-    if (autoRecognizedKey === key) {
+    if (autoRecognizedKeyRef.current === key) {
       return;
     }
-    setAutoRecognizedKey(key);
+    autoRecognizedKeyRef.current = key;
     void handleSubmitAndQueue();
-  }, [autoRecognize, autoRecognizedKey, currentFile, handleSubmitAndQueue, index, isLoading]);
+  }, [autoRecognize, currentFile, handleSubmitAndQueue, index, isLoading]);
 
   return (
     <Box className="capture-page">

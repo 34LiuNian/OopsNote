@@ -91,8 +91,6 @@ export function useInterval() {
     restart,
     /** 立即执行并启动 */
     startWithImmediate,
-    /** 定时器是否正在运行 */
-    isRunning: intervalIdRef.current !== null,
   };
 }
 

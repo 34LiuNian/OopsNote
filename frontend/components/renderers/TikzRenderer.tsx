@@ -77,26 +77,22 @@ export function TikzRenderer({
   fit?: boolean;
 }) {
   const source = useMemo(() => code.trim(), [code]);
-  const [svg, setSvg] = useState("");
-  const [error, setError] = useState("");
+  const [result, setResult] = useState<{ source: string; svg: string; error: string }>({ source: "", svg: "", error: "" });
 
   useEffect(() => {
     let cancelled = false;
-    setSvg("");
-    setError("");
     if (!source) return;
 
     if (source.length > 50_000 || CJK_PATTERN.test(source)) {
-      setError(source.length > 50_000 ? "TikZ 源码过长" : "含中文的 TikZ 交由后端渲染");
       return;
     }
 
     void renderTikz(source)
       .then((result) => {
-        if (!cancelled) setSvg(result);
+        if (!cancelled) setResult({ source, svg: result, error: "" });
       })
       .catch((reason) => {
-        if (!cancelled) setError(reason instanceof Error ? reason.message : "TikZJax 渲染失败");
+        if (!cancelled) setResult({ source, svg: "", error: reason instanceof Error ? reason.message : "TikZJax 渲染失败" });
       });
 
     return () => {
@@ -104,7 +100,14 @@ export function TikzRenderer({
     };
   }, [source]);
 
-  if (svg) return <SvgMarkup svg={svg} label="TikZ 图形" fit={fit} />;
+  const error = source.length > 50_000
+    ? "TikZ 源码过长"
+    : CJK_PATTERN.test(source)
+      ? "含中文的 TikZ 交由后端渲染"
+      : result.source === source ? result.error : "";
+  const svg = result.source === source ? result.svg : "";
+
+  if (svg) return <SvgMarkup svg={svg} label="TikZ 图形" colorMode="themed" fit={fit} />;
   if (error && allowBackendFallback) {
     return (
       <Box data-tikz-client-error={error}>

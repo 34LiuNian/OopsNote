@@ -48,7 +48,7 @@ export function UploadQueue({
     if (singleInputRef.current) {
       singleInputRef.current.setAttribute('capture', 'environment');
     }
-  }, []);
+  }, [folderInputRef, singleInputRef]);
 
   const handleDragOver = useCallback((e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();

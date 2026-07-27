@@ -260,6 +260,15 @@
               "other"
             ],
             "type": "string"
+          },
+          "student_response_status": {
+            "default": "unknown",
+            "enum": [
+              "answered",
+              "unanswered",
+              "unknown"
+            ],
+            "type": "string"
           }
         },
         "required": [

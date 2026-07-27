@@ -1,9 +1,10 @@
 import { fetchJson } from "../../lib/api";
 import type {
   ContentFormat,
+  DiagramImageTone,
+  NormalizedRect,
   ProblemsResponse,
   TaskResponse,
-  TaskStage,
   TaskStatus,
   TasksResponse,
 } from "../../types/api";
@@ -35,40 +36,12 @@ function toSearchParams(params?: Record<string, unknown>) {
   return sp;
 }
 
-type CoreTaskSummary = {
-  id: string;
-  status: TaskStatus;
-  subject: string;
-  created_at: string;
-  updated_at?: string;
-  stage?: TaskStage | null;
-  stage_message?: string | null;
-  question_no?: string | null;
-  asset?: TasksResponse["items"][number]["asset"];
-};
-
-function normalizeTaskSummary(task: CoreTaskSummary): TasksResponse["items"][number] {
-  return {
-    ...task,
-    updated_at: task.updated_at ?? task.created_at,
-    asset: task.asset ?? null,
-  };
-}
-
 export async function listTasks(params?: ListTasksParams): Promise<TasksResponse> {
   const sp = toSearchParams(params);
   const query = sp.toString();
-  const payload = await fetchJson<TasksResponse | CoreTaskSummary[]>(
+  return fetchJson<TasksResponse>(
     query ? `/tasks?${query}` : "/tasks",
   );
-
-  // Phase 3 Core returns a bare list; keep the UI contract stable while the
-  // REST surface evolves toward the richer paginated response.
-  if (Array.isArray(payload)) {
-    return { items: payload.map(normalizeTaskSummary) };
-  }
-
-  return { items: Array.isArray(payload.items) ? payload.items : [] };
 }
 
 export async function getTask(taskId: string): Promise<TaskResponse> {
@@ -87,7 +60,7 @@ export type OverrideProblemPayload = {
   source: string | null;
   problem_text: string;
   content_format?: ContentFormat;
-  options: Array<{ key: string; text: string }>;
+  options: string[];
   knowledge_tags: string[];
   error_tags: string[];
   user_tags: string[];
@@ -96,6 +69,8 @@ export type OverrideProblemPayload = {
   diagram_tikz_source?: string | null;
   diagram_svg?: string | null;
   diagram_image_path?: string | null;
+  diagram_image_crop?: NormalizedRect | null;
+  diagram_image_tone?: DiagramImageTone;
   diagram_position?: "left" | "right";
   diagram_scale_percent?: number | null;
   diagram_render_status?: string | null;

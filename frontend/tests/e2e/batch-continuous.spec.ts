@@ -193,9 +193,9 @@ test("uniform crop rejects undersized regions and compacts resize handles", asyn
   await page.setViewportSize({ width: 1200, height: 800 });
   await openWorkspace(page, { cropRect: { x: 0.1, y: 0.1, width: 0.04, height: 0.04 } });
   await expect(page.getByRole("button", { name: "检查裁剪与分栏" })).toBeDisabled();
-  await expect(page.locator(".batch-crop-overlay__rect .batch-selection-handle.is-n")).toBeHidden();
-  await expect(page.locator(".batch-crop-overlay__rect .batch-selection-handle.is-e")).toBeHidden();
-  await expect(page.locator(".batch-crop-overlay__rect .batch-selection-handle.is-se")).toBeVisible();
+  await expect(page.locator(".normalized-crop-overlay__rect .normalized-crop-handle.is-n")).toBeHidden();
+  await expect(page.locator(".normalized-crop-overlay__rect .normalized-crop-handle.is-e")).toBeHidden();
+  await expect(page.locator(".normalized-crop-overlay__rect .normalized-crop-handle.is-se")).toBeVisible();
 });
 
 test("crop setup shows equal column guides and previews half-neighbor reading units", async ({ page }) => {
@@ -212,22 +212,27 @@ test("crop setup shows equal column guides and previews half-neighbor reading un
   await expect(page.locator(".batch-crop-editor")).not.toHaveClass(/is-inverted/);
   await page.getByRole("combobox", { name: "分栏数量" }).selectOption("2");
 
-  const guide = page.locator(".batch-crop-overlay__column-guide");
+  const guide = page.locator(".normalized-crop-overlay__column-guide");
   await expect(guide).toHaveCount(1);
   const guideLeft = await guide.evaluate((element) => Number.parseFloat(getComputedStyle(element).left));
-  const cropWidth = await page.locator(".batch-crop-overlay__rect").evaluate((element) => element.getBoundingClientRect().width);
+  const cropWidth = await page.locator(".normalized-crop-overlay__rect").evaluate((element) => element.getBoundingClientRect().width);
   expect(guideLeft / cropWidth).toBeCloseTo(0.5, 1);
 
-  const cropHandleColor = await page.locator(".batch-crop-overlay__rect .batch-selection-handle.is-nw").evaluate(
-    (element) => getComputedStyle(element, "::before").backgroundColor,
+  const cropHandleColor = await page.locator(".normalized-crop-overlay__rect .normalized-crop-handle.is-nw").evaluate(
+    (element) => getComputedStyle(element, "::before").borderTopColor,
   );
   expect(cropHandleColor).toBe("rgb(14, 165, 233)");
-  const cropStrokeGeometry = await page.locator(".batch-crop-overlay__rect").evaluate((element) => ({
-    frame: Number.parseFloat(getComputedStyle(element).getPropertyValue("--selection-stroke")),
-    handle: Number.parseFloat(getComputedStyle(element.querySelector(".batch-selection-handle.is-n")!, "::before").height),
-    editorShadow: getComputedStyle(element.closest(".batch-crop-editor")!).boxShadow,
-  }));
-  expect(cropStrokeGeometry.handle).toBeGreaterThan(cropStrokeGeometry.frame * 2);
+  const cropStrokeGeometry = await page.locator(".normalized-crop-overlay__rect").evaluate((element) => {
+    const frameRect = element.getBoundingClientRect();
+    const handleRect = element.querySelector(".normalized-crop-handle.is-nw")!.getBoundingClientRect();
+    return {
+      frame: Number.parseFloat(getComputedStyle(element).getPropertyValue("--crop-frame-stroke")),
+      handleInside: handleRect.left >= frameRect.left && handleRect.top >= frameRect.top,
+      editorShadow: getComputedStyle(element.closest(".batch-crop-editor")!).boxShadow,
+    };
+  });
+  expect(cropStrokeGeometry.frame).toBeGreaterThan(0);
+  expect(cropStrokeGeometry.handleInside).toBe(true);
   expect(cropStrokeGeometry.editorShadow).toBe("none");
 
   await page.getByRole("button", { name: "检查裁剪与分栏" }).click();
@@ -403,7 +408,7 @@ test("viewer follows live color scheme and can scroll fully above the bottom saf
   await expect(pageInput).toHaveCSS("background-color", "rgb(31, 32, 35)");
   const darkStyles = await editor.evaluate((element) => {
     const image = element.querySelector("img");
-    const overlay = element.querySelector<HTMLElement>(".batch-crop-overlay__rect");
+    const overlay = element.querySelector<HTMLElement>(".normalized-crop-overlay__rect");
     return {
       background: getComputedStyle(element).backgroundColor,
       imageFilter: image ? getComputedStyle(image).filter : "",

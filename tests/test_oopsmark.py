@@ -116,6 +116,8 @@ def test_normalize_oopsmark_canonicalizes_only_consecutive_subquestion_lists():
         ("（C）$z$", "$z$"),
         ("4、$w$", "$w$"),
         ("$\\frac{1}{3}$", "$\\frac{1}{3}$"),
+        (r"\frac{5}{2}", r"$\frac{5}{2}$"),
+        (r"(2,3)\cup(3,4]", r"$(2,3)\cup(3,4]$"),
     ],
 )
 def test_option_text_is_marker_free(source, expected):

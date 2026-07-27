@@ -1,1 +1,1 @@
-"""OopsNote MCP Server — Hermes 集成入口。"""
+"""OopsNote's restricted MCP pipeline and tool contracts."""

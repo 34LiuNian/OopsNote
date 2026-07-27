@@ -8,14 +8,16 @@ from __future__ import annotations
 import base64
 import binascii
 import hashlib
+import json
+import math
 import mimetypes
 import re
 from io import BytesIO
 from pathlib import Path
-from typing import Optional
+from typing import Any, Mapping, Optional
 from uuid import uuid4
 
-from PIL import Image, UnidentifiedImageError
+from PIL import Image, ImageOps, UnidentifiedImageError
 
 
 DATA_URI_RE = re.compile(r"^data:(?P<mime>[^;]+);base64,(?P<data>.+)$")
@@ -95,6 +97,62 @@ class AssetStore:
         if not path.exists() or hashlib.sha256(path.read_bytes()).digest() != hashlib.sha256(data).digest():
             self._write_atomic(path, data)
         return f"/assets/{safe_name}"
+
+    def save_image_crop(
+        self,
+        source_asset_path: str,
+        crop: Mapping[str, Any],
+    ) -> tuple[str, dict[str, float]]:
+        """Persist an idempotent PNG crop derived from one managed image asset."""
+        normalized = self.normalize_crop_rect(crop)
+        source_path = self.resolve(source_asset_path)
+        source_bytes = source_path.read_bytes()
+        crop_key = json.dumps(normalized, sort_keys=True, separators=(",", ":"))
+        identity = hashlib.sha256(source_bytes + crop_key.encode("utf-8")).hexdigest()
+
+        try:
+            with Image.open(BytesIO(source_bytes)) as opened:
+                image = ImageOps.exif_transpose(opened)
+                image.load()
+                width, height = image.size
+                left = max(0, min(width - 1, math.floor(normalized["x"] * width)))
+                top = max(0, min(height - 1, math.floor(normalized["y"] * height)))
+                right = max(left + 1, min(width, math.ceil((normalized["x"] + normalized["width"]) * width)))
+                bottom = max(top + 1, min(height, math.ceil((normalized["y"] + normalized["height"]) * height)))
+                cropped = image.crop((left, top, right, bottom))
+                if cropped.mode not in {"1", "L", "LA", "RGB", "RGBA"}:
+                    cropped = cropped.convert("RGBA" if "transparency" in cropped.info else "RGB")
+                output = BytesIO()
+                cropped.save(output, format="PNG", optimize=True)
+        except (UnidentifiedImageError, OSError, ValueError) as error:
+            raise ValueError("Task source asset is not a supported raster image") from error
+
+        path = self.save_bytes(
+            output.getvalue(),
+            filename="diagram.png",
+            stable_name=f"diagram-{identity}",
+        )
+        return path, normalized
+
+    @staticmethod
+    def normalize_crop_rect(crop: Mapping[str, Any]) -> dict[str, float]:
+        if not isinstance(crop, Mapping):
+            raise ValueError("diagram_image_crop must be an object")
+        normalized: dict[str, float] = {}
+        for key in ("x", "y", "width", "height"):
+            value = crop.get(key)
+            if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+                raise ValueError(f"diagram_image_crop.{key} must be a finite number")
+            normalized[key] = round(float(value), 8)
+        if normalized["x"] < 0 or normalized["y"] < 0:
+            raise ValueError("diagram_image_crop origin must be within the image")
+        if normalized["width"] <= 0 or normalized["height"] <= 0:
+            raise ValueError("diagram_image_crop dimensions must be positive")
+        if normalized["x"] + normalized["width"] > 1.00000001 or normalized["y"] + normalized["height"] > 1.00000001:
+            raise ValueError("diagram_image_crop must stay within the image")
+        normalized["width"] = min(normalized["width"], 1 - normalized["x"])
+        normalized["height"] = min(normalized["height"], 1 - normalized["y"])
+        return normalized
 
     def resolve(self, asset_path: str) -> Path:
         """Resolve one managed asset path without allowing directory traversal."""

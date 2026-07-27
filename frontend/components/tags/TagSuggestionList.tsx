@@ -1,8 +1,7 @@
 "use client";
 
-import { memo, useRef, useEffect } from "react";
-import { Box, Text, Spinner } from "@/components/ui/primitives";
-import type { TagDimensionStyle } from "@/types/api";
+import { memo, useEffect, useRef } from "react";
+import { Box, Spinner, Text } from "@/components/ui/primitives";
 
 type SuggestionItem =
   | { type: "existing"; id: string; value: string; ref_count?: number }
@@ -12,109 +11,46 @@ type TagSuggestionListProps = {
   suggestions: SuggestionItem[];
   loading?: boolean;
   highlightIndex: number;
+  onHighlight: (index: number) => void;
   onSelect: (value: string) => void;
-  variant?: string;
 };
 
 export const TagSuggestionList = memo(function TagSuggestionList({
   suggestions,
   loading = false,
   highlightIndex,
+  onHighlight,
   onSelect,
-  variant = "secondary",
 }: TagSuggestionListProps) {
   const listRef = useRef<HTMLDivElement | null>(null);
 
-  // Auto-scroll to highlightIndex
   useEffect(() => {
-    const container = listRef.current;
-    if (!container) return;
-    const el = container.querySelector(
-      `[data-suggestion-index="${highlightIndex}"]`
-    ) as HTMLElement | null;
-    if (!el) return;
-    try {
-      el.scrollIntoView({ block: "nearest" });
-    } catch {
-      // ignore
-    }
+    listRef.current
+      ?.querySelector<HTMLElement>(`[data-suggestion-index="${highlightIndex}"]`)
+      ?.scrollIntoView({ block: "nearest" });
   }, [highlightIndex]);
 
-  if (loading) {
-    return (
-      <Box
-        sx={{
-          position: "absolute",
-          top: "100%",
-          left: 0,
-          right: 0,
-          mt: 1,
-          p: 2,
-          bg: "canvas.overlay",
-          border: "1px solid",
-          borderColor: "border.default",
-          borderRadius: 2,
-          boxShadow: "shadow.large",
-          zIndex: 100,
-          textAlign: "center",
-        }}
-      >
-        <Spinner size="small" />
-      </Box>
-    );
-  }
-
-  if (suggestions.length === 0) {
-    return null;
-  }
-
   return (
-    <Box
-      ref={listRef}
-      sx={{
-        position: "absolute",
-        top: "100%",
-        left: 0,
-        right: 0,
-        mt: 1,
-        p: 2,
-        bg: "canvas.overlay",
-        border: "1px solid",
-        borderColor: "border.default",
-        borderRadius: 2,
-        boxShadow: "shadow.large",
-        zIndex: 100,
-        maxHeight: "240px",
-        overflowY: "auto",
-      }}
-    >
-      {suggestions.map((item, idx) => (
+    <Box ref={listRef} className="tag-picker__suggestions" role="listbox">
+      {loading ? (
+        <Box className="tag-picker__loading"><Spinner size="small" /></Box>
+      ) : suggestions.map((item, index) => (
         <Box
           key={item.id}
-          data-suggestion-index={idx}
+          as="button"
+          type="button"
+          role="option"
+          aria-selected={index === highlightIndex}
+          data-suggestion-index={index}
+          className={`tag-picker__suggestion${index === highlightIndex ? " is-highlighted" : ""}`}
+          onMouseDown={(event) => event.preventDefault()}
+          onPointerEnter={() => onHighlight(index)}
           onClick={() => onSelect(item.value)}
-          sx={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            px: 2,
-            py: 1,
-            borderRadius: 1,
-            cursor: "pointer",
-            bg: idx === highlightIndex ? "canvas.subtle" : "transparent",
-            ":hover": {
-              bg: "canvas.subtle",
-            },
-          }}
         >
-          <Text sx={{ fontSize: 1, color: item.type === "create" ? "accent.fg" : "fg.default" }}>
-            {item.type === "create" ? item.label : item.value}
-          </Text>
-          {item.type === "existing" && item.ref_count !== undefined && (
-            <Text sx={{ fontSize: 0, color: "fg.muted" }}>
-              {item.ref_count}
-            </Text>
-          )}
+          <Text sx={{ fontSize: 1 }}>{item.type === "create" ? item.label : item.value}</Text>
+          {item.type === "existing" && typeof item.ref_count === "number" ? (
+            <Text sx={{ color: "fg.muted", fontSize: 0 }}>{item.ref_count}</Text>
+          ) : null}
         </Box>
       ))}
     </Box>

@@ -6,7 +6,6 @@
 from __future__ import annotations
 
 import re
-from datetime import datetime
 from typing import Optional
 
 from .models import Problem, SearchQuery, TaskRecord
@@ -50,15 +49,16 @@ class Searcher:
 
         # since
         if q.since:
-            try:
-                since_dt = datetime.fromisoformat(q.since)
-                # 补时区以便比较
-                if since_dt.tzinfo is None:
-                    since_dt = since_dt.replace(tzinfo=p.created_at.tzinfo)
-                if p.created_at < since_dt:
-                    return False
-            except ValueError:
-                pass
+            # SearchQuery validates the input once at the boundary. Align
+            # legacy naive timestamps here without silently accepting invalid
+            # query values or leaking a naive/aware comparison error.
+            since_dt = q.since
+            if since_dt.tzinfo is None:
+                since_dt = since_dt.replace(tzinfo=p.created_at.tzinfo)
+            elif p.created_at.tzinfo is None:
+                since_dt = since_dt.replace(tzinfo=None)
+            if p.created_at < since_dt:
+                return False
 
         # regex（搜索 problem_text + answer + explanation）
         if q.regex:

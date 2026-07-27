@@ -9,16 +9,13 @@ function useThrottledValue<T>(value: T, delayMs: number): T {
   const [throttled, setThrottled] = useState(value);
 
   useEffect(() => {
-    if (delayMs <= 0) {
-      setThrottled(value);
-      return;
-    }
+    if (delayMs <= 0) return;
 
     const handle = setTimeout(() => setThrottled(value), delayMs);
     return () => clearTimeout(handle);
   }, [value, delayMs]);
 
-  return throttled;
+  return delayMs <= 0 ? value : throttled;
 }
 
 // 简单的 JSON 字段提取与格式化

@@ -75,32 +75,33 @@ async function renderMolecule(source: string): Promise<string> {
 
 export function MoleculeRenderer({ code }: { code: string }) {
   const source = useMemo(() => code.trim(), [code]);
-  const [svg, setSvg] = useState("");
-  const [error, setError] = useState("");
+  const [result, setResult] = useState<{ source: string; svg: string; error: string }>({ source: "", svg: "", error: "" });
 
   useEffect(() => {
     let cancelled = false;
-    setSvg("");
-    setError("");
     if (!source) return;
 
     if (source.length > 50_000) {
-      setError("分子结构数据过长，已停止渲染");
       return;
     }
 
     void renderMolecule(source)
       .then((result) => {
-        if (!cancelled) setSvg(result);
+        if (!cancelled) setResult({ source, svg: result, error: "" });
       })
       .catch((reason) => {
-        if (!cancelled) setError(reason instanceof Error ? reason.message : "分子结构渲染失败");
+        if (!cancelled) setResult({ source, svg: "", error: reason instanceof Error ? reason.message : "分子结构渲染失败" });
       });
 
     return () => {
       cancelled = true;
     };
   }, [source]);
+
+  const error = source.length > 50_000
+    ? "分子结构数据过长，已停止渲染"
+    : result.source === source ? result.error : "";
+  const svg = result.source === source ? result.svg : "";
 
   if (error) {
     return (
@@ -114,5 +115,5 @@ export function MoleculeRenderer({ code }: { code: string }) {
   }
 
   if (!svg) return <Text sx={{ color: "fg.muted", fontSize: 1 }}>正在加载分子结构...</Text>;
-  return <SvgMarkup svg={svg} label="分子结构" />;
+  return <SvgMarkup svg={svg} label="分子结构" colorMode="themed" />;
 }

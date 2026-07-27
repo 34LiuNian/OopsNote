@@ -28,6 +28,8 @@ class FakeResponse:
                                 "problem_text": "求 $1+1$。",
                                 "options": [],
                                 "has_diagram": False,
+                                "student_response_status": "unanswered",
+                                "student_response": "",
                                 "uncertain_regions": [],
                                 "confidence": 1,
                             },
@@ -113,6 +115,8 @@ def test_ocr_contract_trims_following_top_level_question():
             "problem_text": "21. 第一题\n\n（1）小问一\n（2）小问二\n\n22. 第二题",
             "options": [],
             "has_diagram": False,
+            "student_response_status": "unanswered",
+            "student_response": "",
             "uncertain_regions": [],
             "confidence": 1,
         },
@@ -132,6 +136,8 @@ def test_ocr_contract_normalizes_subquestions_and_option_bodies():
             "problem_text": "题干\n\n1. 第一问\n2. 第二问",
             "options": ["A. $x$", "B] $y$", "（C）$z$", "4、$w$"],
             "has_diagram": False,
+            "student_response_status": "unanswered",
+            "student_response": "",
             "uncertain_regions": [],
             "confidence": 1,
         }
@@ -152,8 +158,28 @@ def test_ocr_contract_rejects_invalid_provider_shape():
                 "problem_text": "1. 题目",
                 "options": [],
                 "has_diagram": False,
+                "student_response_status": "unanswered",
+                "student_response": "",
                 "uncertain_regions": [],
                 "confidence": 2,
+            }
+        )
+
+
+def test_ocr_contract_requires_evidence_for_answered_status():
+    with pytest.raises(ValueError, match="requires student_response"):
+        normalize_ocr_result(
+            {
+                "content_format": "oopsmark-v1",
+                "subject": "math",
+                "question_type": "解答题",
+                "problem_text": "求 $1+1$。",
+                "options": [],
+                "has_diagram": False,
+                "student_response_status": "answered",
+                "student_response": "",
+                "uncertain_regions": [],
+                "confidence": 1,
             }
         )
 

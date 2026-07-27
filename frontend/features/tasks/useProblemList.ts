@@ -1,8 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback } from "react";
+import { useQuery } from "@tanstack/react-query";
 import type { ProblemSummary } from "../../types/api";
 import { listProblems, type ListProblemsParams } from "./api";
+import { queryKeys } from "../../lib/queryClient";
 
 type UseProblemListState = {
   items: ProblemSummary[];
@@ -12,28 +14,20 @@ type UseProblemListState = {
 };
 
 export function useProblemList(params?: ListProblemsParams): UseProblemListState {
-  const [items, setItems] = useState<ProblemSummary[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState("");
   const paramsKey = JSON.stringify(params ?? {});
-  const stableParams = useMemo(() => params ?? {}, [paramsKey]);
-
+  const query = useQuery({
+    queryKey: queryKeys.problems.list(paramsKey),
+    queryFn: () => listProblems(params),
+  });
+  const { data, isLoading, isFetching, error, refetch } = query;
   const refresh = useCallback(async () => {
-    setIsLoading(true);
-    setError("");
-    try {
-      const data = await listProblems(stableParams);
-      setItems(data.items);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "加载题库失败");
-    } finally {
-      setIsLoading(false);
-    }
-  }, [stableParams]);
+    await refetch();
+  }, [refetch]);
 
-  useEffect(() => {
-    void refresh();
-  }, [refresh, paramsKey]);
-
-  return { items, isLoading, error, refresh };
+  return {
+    items: data?.items ?? [],
+    isLoading: isLoading || isFetching,
+    error: error instanceof Error ? error.message : error ? "加载题库失败" : "",
+    refresh,
+  };
 }

@@ -43,6 +43,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="zh-CN" suppressHydrationWarning>
       <head>
+        {/* The TikZJax stylesheet is a postinstall-synced public asset, not a CSS module. */}
+        {/* eslint-disable-next-line @next/next/no-css-tags */}
         <link rel="stylesheet" href="/vendor/tikzjax/css/fonts.css" />
         <Script id="oopsnote-theme-init" strategy="beforeInteractive" dangerouslySetInnerHTML={{ __html: systemThemeInit }} />
         {process.env.NODE_ENV === "development" && (

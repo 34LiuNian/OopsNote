@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Box, Text } from "@/components/ui/primitives";
 import { PageHeader } from "@/components/layout/PageHeader";
@@ -12,16 +12,14 @@ import { usePiSettings } from "@/hooks/useSettings";
 export default function SettingsPage() {
   const queryClient = useQueryClient();
   const { data, isLoading, error } = usePiSettings();
-  const [draft, setDraft] = useState("");
+  const [draft, setDraft] = useState<string | null>(null);
+  const serverDraft = data ? String(data.pi_concurrency) : "";
+  const effectiveDraft = draft ?? serverDraft;
   const [saving, setSaving] = useState(false);
   const [statusMessage, setStatusMessage] = useState("");
 
-  useEffect(() => {
-    if (data) setDraft(String(data.pi_concurrency));
-  }, [data]);
-
   async function save() {
-    const concurrency = Number(draft);
+    const concurrency = Number(effectiveDraft);
     if (!Number.isInteger(concurrency) || concurrency < 1 || concurrency > 16) {
       setStatusMessage("请输入 1 到 16 之间的整数");
       return;
@@ -47,14 +45,14 @@ export default function SettingsPage() {
       <PageHeader title="设置" description="管理 OopsNote 的运行参数和本地配置" />
       <SettingsPiSection
         settings={data ?? null}
-        draft={draft}
+        draft={effectiveDraft}
         isLoading={isLoading}
         isSaving={saving}
-        isDirty={Boolean(data && draft !== String(data.pi_concurrency))}
+        isDirty={Boolean(data && draft !== null && draft !== serverDraft)}
         errorMessage={error instanceof Error ? error.message : error ? "设置加载失败" : ""}
         statusMessage={statusMessage}
         onChange={(value) => { setDraft(value); setStatusMessage(""); }}
-        onReset={() => { setDraft(data ? String(data.pi_concurrency) : ""); setStatusMessage(""); }}
+        onReset={() => { setDraft(null); setStatusMessage(""); }}
         onSave={save}
       />
       <Text sx={{ color: "fg.muted", fontSize: 0 }}>

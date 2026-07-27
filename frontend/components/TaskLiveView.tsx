@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import Image from "next/image";
+import { useCallback, useState } from "react";
 import Link from "next/link";
 import { Modal } from "@mantine/core";
 import {
@@ -11,7 +12,7 @@ import {
   Spinner,
 } from "@/components/ui/primitives";
 import { fetchJson } from "@/lib/api";
-import type { TaskResponse } from "@/types/api";
+import type { TaskResponse, TaskRunSummary } from "@/types/api";
 import { TaskActions } from "./task/TaskActions";
 import { TaskProblemDetail } from "./task/TaskProblemList";
 import { deleteTask } from "@/features/tasks";
@@ -23,39 +24,35 @@ import { ErrorBanner } from "./ui/ErrorBanner";
 import { TaskLiveStream } from "./task/TaskLiveStream";
 import { TaskMathRenderer } from "./task/TaskMathRenderer";
 import { TaskStatusToaster } from "./task/TaskStatusToaster";
-import { ChevronDownIcon, ChevronUpIcon } from "./ui/icons";
+import { CheckIcon, ChevronDownIcon, ChevronUpIcon } from "./ui/icons";
 
-// Format duration between two dates
-function formatDuration(start: string, end: string): string {
-  const startDate = new Date(start).getTime();
-  const endDate = new Date(end).getTime();
-
-  // Return "未知" for invalid dates
-  if (Number.isNaN(startDate) || Number.isNaN(endDate)) return "未知";
-
-  const diffMs = endDate - startDate;
-
-  if (diffMs < 0) return "未知";
-
+function formatDurationMs(diffMs: number): string {
+  if (!Number.isFinite(diffMs) || diffMs < 0) return "未知";
   const seconds = Math.floor(diffMs / 1000);
   const minutes = Math.floor(seconds / 60);
   const remainingSeconds = seconds % 60;
   const hours = Math.floor(minutes / 60);
   const remainingMinutes = minutes % 60;
-  if (hours > 0) {
-    return `${hours}小时${remainingMinutes}分${remainingSeconds}秒`;
-  } else if (minutes > 0) {
-    return `${minutes}分${remainingSeconds}秒`;
-  } else {
-    return `${remainingSeconds}秒`;
+  if (hours > 0) return `${hours}小时${remainingMinutes}分${remainingSeconds}秒`;
+  if (minutes > 0) return `${minutes}分${remainingSeconds}秒`;
+  return `${remainingSeconds}秒`;
+}
+
+function runDuration(run?: TaskRunSummary | null): string | null {
+  if (!run) return null;
+  if (typeof run.duration_ms === "number" && run.duration_ms >= 0) {
+    return formatDurationMs(run.duration_ms);
   }
+  if (!run.started_at || !run.ended_at) return null;
+  const startedAt = new Date(run.started_at).getTime();
+  const endedAt = new Date(run.ended_at).getTime();
+  if (!Number.isFinite(startedAt) || !Number.isFinite(endedAt) || endedAt < startedAt) return null;
+  return formatDurationMs(endedAt - startedAt);
 }
 
 export function TaskLiveView({ taskId }: { taskId: string }) {
-  const [data, setData] = useState<TaskResponse | null>(null);
   const [error, setError] = useState<string>("");
   const [statusMessage, setStatusMessage] = useState<string>("");
-  const [isLoading, setIsLoading] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
   const [isRetrying, setIsRetrying] = useState(false);
   const { effectiveDimensions: tagStyles } = useTagDimensions();
@@ -63,46 +60,22 @@ export function TaskLiveView({ taskId }: { taskId: string }) {
   const [isScreenshotOpen, setIsScreenshotOpen] = useState(false);
   const [showTaskDetails, setShowTaskDetails] = useState(false);
 
-  const loadOnce = useCallback(async () => {
-    setIsLoading(true);
-    setError("");
-    try {
-      const latest = await fetchJson<TaskResponse>(`/tasks/${taskId}`);
-      setData(latest);
-      const msg = latest.task.stage_message || latest.task.stage || latest.task.status;
-      setStatusMessage(msg);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "加载任务失败");
-    } finally {
-      setIsLoading(false);
-    }
-  }, [taskId]);
-
-  const { progressLines: streamProgress, latestTask, resetStream } = useTaskStream({
+  const {
+    data,
+    progressLines: streamProgress,
+    resetStream,
+    refresh: loadOnce,
+    isLoading,
+    error: streamError,
+  } = useTaskStream({
     taskId,
-    status: data?.task?.status,
     onStatusMessage: setStatusMessage,
-    onDone: loadOnce,
   });
-
-  // Update data with latest task from polling
-  useEffect(() => {
-    if (!latestTask) return;
-    setData((prev) => {
-      if (!prev) return { task: latestTask };
-      // Only update if something changed
-      if (prev.task.status === latestTask.status &&
-          prev.task.stage === latestTask.stage &&
-          prev.task.stage_message === latestTask.stage_message) {
-        return prev;
-      }
-      return { task: latestTask };
-    });
-  }, [latestTask]);
+  const viewData = data;
 
   const cancelTask = useCallback(async () => {
-    if (!data) return;
-    const status = data.task.status;
+    if (!viewData) return;
+    const status = viewData.task.status;
     if (status !== "pending" && status !== "processing") return;
 
     setIsCancelling(true);
@@ -115,11 +88,11 @@ export function TaskLiveView({ taskId }: { taskId: string }) {
     } finally {
       setIsCancelling(false);
     }
-  }, [data, loadOnce, taskId]);
+  }, [loadOnce, taskId, viewData]);
 
   const retryTask = useCallback(async () => {
-    if (!data) return;
-    const status = data.task.status;
+    if (!viewData) return;
+    const status = viewData.task.status;
     if (status !== "failed" && status !== "completed" && status !== "cancelled") return;
 
     setIsRetrying(true);
@@ -138,7 +111,7 @@ export function TaskLiveView({ taskId }: { taskId: string }) {
     } finally {
       setIsRetrying(false);
     }
-  }, [data, loadOnce, taskId]);
+  }, [loadOnce, resetStream, taskId, viewData]);
 
 
   const removeTask = useCallback(async () => {
@@ -151,27 +124,23 @@ export function TaskLiveView({ taskId }: { taskId: string }) {
     }
   }, [taskId]);
 
-  useEffect(() => {
-    resetStream();
-    void loadOnce();
-  }, [loadOnce, resetStream]);
-
   const progressState = useTaskProgress({
-    status: data?.task?.status,
-    stage: data?.task?.stage,
-    stageMessage: data?.task?.stage_message,
+    status: viewData?.task?.status,
+    stage: viewData?.task?.stage,
+    stageMessage: viewData?.task?.stage_message,
     statusMessage,
     streamProgress,
   });
-  const isCompleted = data?.task?.status === "completed";
+  const isCompleted = viewData?.task?.status === "completed";
+  const duration = runDuration(viewData?.task?.run);
 
   return (
     <Box sx={{ display: "flex", flexDirection: "column", gap: 4, width: "100%", maxWidth: 1320, mx: "auto" }}>
       {/* Math renderer */}
-      <TaskMathRenderer data={data} />
+      <TaskMathRenderer data={viewData} />
 
       {/* Status toaster */}
-      <TaskStatusToaster statusMessage={statusMessage} status={data?.task?.status} />
+      <TaskStatusToaster statusMessage={statusMessage} status={viewData?.task?.status} />
 
       {/* Task header card */}
       <Box
@@ -186,43 +155,44 @@ export function TaskLiveView({ taskId }: { taskId: string }) {
             left: 0,
             right: 0,
             height: "3px",
-            background: data?.task?.status === "completed"
+            background: viewData?.task?.status === "completed"
               ? "linear-gradient(90deg, var(--fgColor-success, #2da44e), var(--fgColor-done, #8250df))"
-              : data?.task?.status === "failed"
+              : viewData?.task?.status === "failed"
                 ? "linear-gradient(90deg, var(--fgColor-danger, #cf222e), var(--fgColor-attention, #bf8700))"
                 : "linear-gradient(90deg, var(--fgColor-accent, #0969da), var(--fgColor-done, #8250df))",
             borderRadius: "var(--oops-radius-md) var(--oops-radius-md) 0 0",
           }}
         />
 
-        <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 3, flexWrap: "wrap" }}>
+        <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: isCompleted ? "center" : "flex-start", gap: 3, flexWrap: "wrap" }}>
           <Box sx={{ flex: 1, minWidth: 200 }}>
-            <Box sx={{ display: "flex", alignItems: "center", gap: 2, mb: 1, flexWrap: "wrap" }}>
+            <Box sx={{ display: "flex", alignItems: "center", gap: 2, mb: isCompleted ? 0 : 1, flexWrap: "wrap" }}>
               <Heading as="h2" sx={{ fontSize: isCompleted ? 2 : 3, m: 0 }}>任务详情</Heading>
-              <Box
-                className={`oops-badge ${
-                  data?.task?.status === "completed" ? "oops-badge-success"
-                    : data?.task?.status === "failed" ? "oops-badge-danger"
-                      : data?.task?.status === "processing" || data?.task?.status === "pending" ? "oops-badge-accent"
+              {!isCompleted && (
+                <Box
+                  className={`oops-badge ${
+                    viewData?.task?.status === "failed" ? "oops-badge-danger"
+                      : viewData?.task?.status === "processing" || viewData?.task?.status === "pending" ? "oops-badge-accent"
                         : "oops-badge-muted"
-                }`}
-              >
-                {data?.task?.status === "completed" ? "已完成"
-                  : data?.task?.status === "failed" ? "失败"
-                    : data?.task?.status === "processing" ? "处理中"
-                      : data?.task?.status === "pending" ? "排队中"
-                        : data?.task?.status === "cancelled" ? "已取消"
-                          : data?.task?.status ?? "加载中"}
-              </Box>
+                  }`}
+                >
+                  {viewData?.task?.status === "failed" ? "失败"
+                    : viewData?.task?.status === "processing" ? "处理中"
+                      : viewData?.task?.status === "pending" ? "排队中"
+                        : viewData?.task?.status === "cancelled" ? "已取消"
+                          : viewData?.task?.status ?? "加载中"}
+                </Box>
+              )}
               {isCompleted && (
                 <Button
                   size="small"
                   variant="invisible"
                   onClick={() => setShowTaskDetails((value) => !value)}
                   aria-expanded={showTaskDetails}
-                  sx={{ px: 0, color: "fg.muted" }}
+                  sx={{ px: 1, color: "var(--fgColor-success)" }}
                 >
-                  {showTaskDetails ? "收起任务信息" : "查看任务信息"}
+                  <CheckIcon size={14} />
+                  5/5 阶段完成{duration ? ` · ${duration}` : ""}
                   {showTaskDetails ? <ChevronUpIcon size={14} /> : <ChevronDownIcon size={14} />}
                 </Button>
               )}
@@ -230,14 +200,14 @@ export function TaskLiveView({ taskId }: { taskId: string }) {
             {(!isCompleted || showTaskDetails) && (
               <Box sx={{ mt: 1 }}>
                 <Text sx={{ fontSize: 0, color: "fg.muted", fontFamily: "mono" }}>{taskId}</Text>
-                {data?.task?.created_at && (
+                {viewData?.task?.created_at && (
                   <Box sx={{ mt: 2, display: "flex", gap: 3, flexWrap: "wrap" }}>
                     <Text sx={{ fontSize: 0, color: "fg.muted" }}>
-                      创建：{new Date(data.task.created_at).toLocaleString("zh-CN")}
+                      创建：{new Date(viewData.task.created_at).toLocaleString("zh-CN")}
                     </Text>
-                    {(data.task.status === "completed" || data.task.status === "failed" || data.task.status === "cancelled") && data.task.updated_at && (
+                    {duration && (
                       <Text sx={{ fontSize: 0, color: "fg.muted" }}>
-                        用时：{formatDuration(data.task.created_at, data.task.updated_at)}
+                        用时：{duration}
                       </Text>
                     )}
                   </Box>
@@ -246,7 +216,7 @@ export function TaskLiveView({ taskId }: { taskId: string }) {
             )}
           </Box>
           <TaskActions
-            status={data?.task?.status}
+            status={viewData?.task?.status}
             isCancelling={isCancelling}
             isRetrying={isRetrying}
             isLoading={isLoading}
@@ -256,45 +226,54 @@ export function TaskLiveView({ taskId }: { taskId: string }) {
             onDelete={removeTask}
           />
         </Box>
-        <Box sx={{ mt: 3, pt: 3, borderTopWidth: 1, borderTopStyle: "solid", borderTopColor: "border.muted" }}>
-          <TaskProgressBar
-            progressState={progressState}
-            latestLine={progressState.latestLine}
-            error={error}
-            statusMessage={statusMessage}
-            embedded
-          />
-        </Box>
+        {(!isCompleted || showTaskDetails) && (
+          <Box sx={{ mt: 3 }}>
+            <TaskProgressBar
+              progressState={progressState}
+              latestLine={progressState.latestLine}
+              error={error}
+              statusMessage={statusMessage}
+              embedded
+            />
+          </Box>
+        )}
       </Box>
 
-      {data?.task.trace && (
-        <Modal opened={isScreenshotOpen} onClose={() => setIsScreenshotOpen(false)} title={data.task.trace.kind === "batch_segment" ? "选框截图" : "原图"} centered size="lg">
-          <img className="task-trace-image" src={`/api${data.task.trace.screenshot_path}`} alt={data.task.trace.screenshot_filename ?? "题目图片"} />
+      {viewData?.task.trace && (
+        <Modal opened={isScreenshotOpen} onClose={() => setIsScreenshotOpen(false)} title={viewData.task.trace.kind === "batch_segment" ? "选框截图" : "原图"} centered size="lg">
+          <Image
+            className="task-trace-image"
+            src={`/api${viewData.task.trace.screenshot_path}`}
+            alt={viewData.task.trace.screenshot_filename ?? "题目图片"}
+            width={1280}
+            height={760}
+            unoptimized
+          />
         </Modal>
       )}
 
       <ErrorBanner message={error} />
 
-      {(data?.task?.status === "pending" || data?.task?.status === "processing") && (
+      {(viewData?.task?.status === "pending" || viewData?.task?.status === "processing") && (
         <TaskLiveStream streamProgress={streamProgress} />
       )}
 
-      {!error && !data && (
+      {!error && !viewData && (
         <Box className="oops-empty-state" sx={{ py: 6 }}>
           <Spinner size="medium" />
           <Text as="p" sx={{ color: "fg.muted" }}>正在加载任务数据...</Text>
         </Box>
       )}
 
-      {data && (
+      {viewData && (
         <TaskProblemDetail
           taskId={taskId}
-          taskDifficulty={data.task.payload?.difficulty}
-          taskAssetPath={data.task.asset?.path}
-          taskTrace={data.task.trace}
-          problem={data.task.problem}
-          solution={data.task.solution}
-          tag={data.task.tag}
+          taskDifficulty={viewData.task.payload?.difficulty}
+          taskAssetPath={viewData.task.asset?.path}
+          taskTrace={viewData.task.trace}
+          problem={viewData.task.problem}
+          solution={viewData.task.solution}
+          tag={viewData.task.tag}
           editingKey={editingKey}
           onEdit={setEditingKey}
           onCloseEdit={() => setEditingKey("")}

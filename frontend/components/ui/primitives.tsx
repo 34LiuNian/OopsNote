@@ -237,9 +237,9 @@ export const IconButton = forwardRef<HTMLButtonElement, IconButtonCompatProps>(f
 });
 
 type TextInputCompatProps = React.InputHTMLAttributes<HTMLInputElement> & { sx?: SxProps; block?: boolean; label?: React.ReactNode; description?: React.ReactNode; error?: React.ReactNode; monospace?: boolean; leadingVisual?: React.ElementType };
-export const TextInput = forwardRef<HTMLDivElement, TextInputCompatProps>(function TextInput({ sx, className, style, block, monospace, leadingVisual: LeadingVisual, ...props }, ref) {
+export const TextInput = forwardRef<HTMLInputElement, TextInputCompatProps>(function TextInput({ sx, className, style, block, monospace, leadingVisual: LeadingVisual, ...props }, ref) {
   const resolved = useSx(sx);
-  return <div ref={ref} className={["oops-input-wrap", resolved.className, className].filter(Boolean).join(" ")} style={{ ...resolved.style, ...(block ? { width: "100%" } : {}), ...style }}><MantineTextInput {...props as any} w={block ? "100%" : undefined} leftSection={LeadingVisual ? <LeadingVisual size={15} /> : undefined} styles={monospace ? { input: { fontFamily: "var(--font-mono)" } } : undefined} /></div>;
+  return <div className={["oops-input-wrap", resolved.className, className].filter(Boolean).join(" ")} style={{ ...resolved.style, ...(block ? { width: "100%" } : {}), ...style }}><MantineTextInput ref={ref} {...props as any} w={block ? "100%" : undefined} leftSection={LeadingVisual ? <LeadingVisual size={15} /> : undefined} styles={monospace ? { input: { fontFamily: "var(--font-mono)" } } : undefined} /></div>;
 });
 
 type TextareaCompatProps = React.TextareaHTMLAttributes<HTMLTextAreaElement> & { sx?: SxProps; block?: boolean; label?: React.ReactNode; description?: React.ReactNode; error?: React.ReactNode };

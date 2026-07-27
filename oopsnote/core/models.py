@@ -174,7 +174,7 @@ class TaskRun(BaseModel):
     pid: Optional[int] = None
     exit_code: Optional[int] = None
     log_path: Optional[str] = None
-    backend: str = "hermes"
+    backend: str = "pi"
     runtime_kind: Optional[str] = None
     runtime_version: Optional[str] = None
     worker_id: Optional[str] = None
@@ -474,7 +474,7 @@ class PaperDraftUpdateRequest(BaseModel):
 class SearchQuery(BaseModel):
     tags: list[str] = Field(default_factory=list)
     subject: Optional[str] = None
-    since: Optional[str] = None
+    since: Optional[datetime] = None
     error_type: Optional[str] = None
     regex: Optional[str] = None
     limit: int = 50

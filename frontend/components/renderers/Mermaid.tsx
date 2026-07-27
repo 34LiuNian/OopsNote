@@ -1,15 +1,25 @@
 "use client";
 
 import { Box, Text } from "@/components/ui/primitives";
+import { useTheme } from "@/components/providers/ThemeProvider";
 import { useEffect, useId, useState } from "react";
 
 export function Mermaid({ code }: { code: string }) {
   const id = useId().replace(/[:]/g, "_");
+  const { resolvedTheme } = useTheme();
   const [svg, setSvg] = useState<string>("");
   const [error, setError] = useState<string>("");
 
   useEffect(() => {
     let cancelled = false;
+    const renderPrefix = `mmd-${id}`;
+    const renderId = `${renderPrefix}-${resolvedTheme}`;
+
+    function cleanOwnArtifacts() {
+      document.querySelectorAll<HTMLElement>('[id^="mmd-"]').forEach((element) => {
+        if (element.id.startsWith(renderPrefix)) element.remove();
+      });
+    }
 
     async function render() {
       setError("");
@@ -25,18 +35,17 @@ export function Mermaid({ code }: { code: string }) {
         mermaid.initialize({
           startOnLoad: false,
           securityLevel: "strict",
-          theme: "default",
+          theme: resolvedTheme === "dark" ? "dark" : "default",
         });
 
-        const out = await mermaid.render(`mmd-${id}`, src);
+        const out = await mermaid.render(renderId, src);
         if (cancelled) return;
         setSvg(out?.svg || "");
       } catch (e) {
         if (cancelled) return;
         setError(e instanceof Error ? e.message : "Mermaid 渲染失败");
         // Clean up any error images that mermaid may have inserted into the DOM
-        const errorElements = document.querySelectorAll(`[id^="mmd-"]`);
-        errorElements.forEach((el) => el.remove());
+        cleanOwnArtifacts();
       }
     }
 
@@ -45,10 +54,9 @@ export function Mermaid({ code }: { code: string }) {
     return () => {
       cancelled = true;
       // Cleanup on unmount
-      const errorElements = document.querySelectorAll(`[id^="mmd-"]`);
-      errorElements.forEach((el) => el.remove());
+      cleanOwnArtifacts();
     };
-  }, [code, id]);
+  }, [code, id, resolvedTheme]);
 
   if (error) {
     return (
@@ -67,7 +75,7 @@ export function Mermaid({ code }: { code: string }) {
   }
 
   return (
-    <Box sx={{ bg: "canvas.default", overflowX: "auto", maxWidth: "100%" }}>
+    <Box data-mermaid-theme={resolvedTheme} sx={{ bg: "canvas.default", overflowX: "auto", maxWidth: "100%" }}>
       <Box
         sx={{
           "& svg": {

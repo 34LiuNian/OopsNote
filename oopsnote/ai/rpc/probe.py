@@ -40,7 +40,18 @@ def _read_lines(
         output.put(None)
 
 
+def _close_stream(stream: object | None) -> None:
+    if stream is None:
+        return
+    close = getattr(stream, "close", None)
+    if close is not None:
+        close()
+
+
 def _stop_process(process: subprocess.Popen[str]) -> None:
+    # Closing stdin is part of the probe lifecycle: a runtime waiting for its
+    # next request must not keep the probe alive after the result is known.
+    _close_stream(process.stdin)
     if process.poll() is None:
         process.terminate()
         try:
@@ -48,6 +59,11 @@ def _stop_process(process: subprocess.Popen[str]) -> None:
         except subprocess.TimeoutExpired:
             process.kill()
             process.wait(timeout=5)
+    # Popen does not close pipes when wait() returns.  Close every owned pipe
+    # here so repeated startup probes do not leak descriptors or trigger
+    # ResourceWarning during diagnostics and tests.
+    _close_stream(process.stdout)
+    _close_stream(process.stderr)
 
 
 def probe_new_session(
@@ -78,16 +94,18 @@ def probe_new_session(
     assert process.stderr is not None
     stdout: queue.Queue[str | None] = queue.Queue()
     stderr: queue.Queue[str | None] = queue.Queue()
-    threading.Thread(
+    stdout_reader = threading.Thread(
         target=_read_lines,
         args=(process.stdout, stdout),
         daemon=True,
-    ).start()
-    threading.Thread(
+    )
+    stderr_reader = threading.Thread(
         target=_read_lines,
         args=(process.stderr, stderr),
         daemon=True,
-    ).start()
+    )
+    stdout_reader.start()
+    stderr_reader.start()
 
     command_id = "setup-probe"
     events: list[dict[str, object]] = []
@@ -123,6 +141,8 @@ def probe_new_session(
                 break
     finally:
         _stop_process(process)
+        stdout_reader.join(timeout=1)
+        stderr_reader.join(timeout=1)
 
     errors: list[str] = []
     while True:

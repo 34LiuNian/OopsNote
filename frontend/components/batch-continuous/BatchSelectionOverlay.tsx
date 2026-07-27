@@ -35,8 +35,6 @@ export function BatchSelectionOverlay({
 }: Props) {
   const rootRef = useRef<HTMLDivElement | null>(null);
   const [draft, setDraft] = useState<{ pointerId: number; start: DocumentPoint; end: DocumentPoint } | null>(null);
-  const draftRef = useRef(draft);
-  draftRef.current = draft;
 
   const clientToDocument = useCallback((clientX: number, clientY: number) => {
     const bounds = rootRef.current?.getBoundingClientRect();
@@ -65,7 +63,7 @@ export function BatchSelectionOverlay({
   }, [cleanupDraft]);
 
   const finishDraft = useCallback((pointerId: number) => {
-    const current = draftRef.current;
+    const current = draft;
     if (!current || current.pointerId !== pointerId) return;
     const rect = normalizeRect(current.start, current.end);
     setDraft(null);
@@ -84,7 +82,7 @@ export function BatchSelectionOverlay({
       status: "pending",
     });
     onActiveSelectionChange(id);
-  }, [metrics, onActiveSelectionChange, onCreate, onTooSmall]);
+  }, [draft, metrics, onActiveSelectionChange, onCreate, onTooSmall]);
 
   const startResize = useCallback((event: React.PointerEvent, selection: SelectionModel, handle: ResizeHandle) => {
     if (selection.status !== "pending") return;
@@ -136,7 +134,7 @@ export function BatchSelectionOverlay({
         event.currentTarget.setPointerCapture(event.pointerId);
       }}
       onPointerMove={(event) => {
-        const current = draftRef.current;
+        const current = draft;
         if (!current || current.pointerId !== event.pointerId) return;
         const viewport = viewportRef.current;
         if (viewport) {

@@ -1,17 +1,19 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Box, Button, FormControl, Spinner, Text, TextInput, Textarea } from "@/components/ui/primitives";
+import { Box, Button, FormControl, IconButton, Spinner, Text, TextInput, Textarea } from "@/components/ui/primitives";
+import { PlusIcon, TrashIcon } from "@/components/ui/icons";
+import { optionLabel } from "@/lib/content/options";
 import { notify } from "@/lib/notify";
-import type { TagDimensionStyle } from "../types/api";
+import type { DiagramImageTone, NormalizedRect, TagDimensionStyle } from "../types/api";
 import { overrideProblem } from "../features/tasks";
 import { TagPicker } from "./TagPicker";
 import { SvgMarkup } from "./renderers/SvgMarkup";
 import { renderTikz } from "./renderers/TikzRenderer";
+import { FigureCropper, FULL_IMAGE_CROP } from "./image-crop/FigureCropper";
 
 type OptionDraft = {
   id: string;
-  key: string;
   text: string;
 };
 
@@ -28,6 +30,8 @@ type ProblemEditPanelProps = {
     diagram_tikz_source?: string | null;
     diagram_svg?: string | null;
     diagram_image_path?: string | null;
+    diagram_image_crop?: NormalizedRect | null;
+    diagram_image_tone?: DiagramImageTone;
     diagram_position?: "left" | "right";
     diagram_scale_percent?: number | null;
     diagram_render_status?: string | null;
@@ -44,32 +48,48 @@ type ProblemEditPanelProps = {
 };
 
 export function ProblemEditPanel({ taskId, taskAssetPath, problem, tagStyles, onClose, onSaved }: ProblemEditPanelProps) {
-  const [questionNo, setQuestionNo] = useState<string>("");
-  const [sourceTags, setSourceTags] = useState<string[]>([]);
-  const [problemText, setProblemText] = useState<string>("");
-  const [options, setOptions] = useState<OptionDraft[]>([]);
-  const [optionsError, setOptionsError] = useState<string>("");
-  const [knowledgeTags, setKnowledgeTags] = useState<string[]>([]);
-  const [errorTags, setErrorTags] = useState<string[]>([]);
-  const [userTags, setUserTags] = useState<string[]>([]);
-  const [diagramTikzSource, setDiagramTikzSource] = useState<string>("");
-  const [diagramKind, setDiagramKind] = useState<"none" | "tikz" | "image">("none");
-  const [diagramPosition, setDiagramPosition] = useState<"left" | "right">("right");
-  const [diagramScalePercent, setDiagramScalePercent] = useState<number | null>(null);
-  const [diagramSvg, setDiagramSvg] = useState<string | null>(null);
-  const [diagramRenderStatus, setDiagramRenderStatus] = useState<string | null>(null);
-  const [diagramCompileError, setDiagramCompileError] = useState<string>("");
-  const [isCompilingDiagram, setIsCompilingDiagram] = useState(false);
-  const [isSaving, setIsSaving] = useState(false);
-
   const optionIdRef = useRef(0);
   const nextOptionId = useCallback(() => {
     optionIdRef.current += 1;
     return `opt-${optionIdRef.current}`;
   }, []);
 
+  const [questionNo, setQuestionNo] = useState(() => (problem.question_no || "").toString());
+  const [sourceTags, setSourceTags] = useState(() => problem.source ? [String(problem.source)] : []);
+  const [problemText, setProblemText] = useState(() => (problem.problem_text || "").toString());
+  const [options, setOptions] = useState<OptionDraft[]>(() => (
+    (Array.isArray(problem.options) ? problem.options : []).map((opt, index) => ({
+      id: `initial-opt-${index}`,
+      text: String(opt?.text || "").trim(),
+    }))
+  ));
+  const [knowledgeTags, setKnowledgeTags] = useState(() => Array.isArray(problem.knowledge_tags) ? problem.knowledge_tags : []);
+  const [errorTags, setErrorTags] = useState(() => Array.isArray(problem.error_tags) ? problem.error_tags : []);
+  const [userTags, setUserTags] = useState(() => Array.isArray(problem.user_tags) ? problem.user_tags : []);
+  const [diagramTikzSource, setDiagramTikzSource] = useState(() => (problem.diagram_tikz_source || "").toString());
+  const [diagramKind, setDiagramKind] = useState<"none" | "tikz" | "image">(() => (
+    problem.diagram_kind === "image"
+      ? "image"
+      : problem.diagram_kind === "tikz" || problem.diagram_tikz_source
+        ? "tikz"
+        : "none"
+  ));
+  const [diagramPosition, setDiagramPosition] = useState<"left" | "right">(() => problem.diagram_position === "left" ? "left" : "right");
+  const [diagramScalePercent, setDiagramScalePercent] = useState<number | null>(() => (
+    typeof problem.diagram_scale_percent === "number"
+      ? Math.min(200, Math.max(50, Math.round(problem.diagram_scale_percent)))
+      : null
+  ));
+  const [diagramImageCrop, setDiagramImageCrop] = useState<NormalizedRect>(() => problem.diagram_image_crop || FULL_IMAGE_CROP);
+  const [diagramImageTone, setDiagramImageTone] = useState<DiagramImageTone>(() => problem.diagram_image_tone === "original" ? "original" : "auto");
+  const [diagramSvg, setDiagramSvg] = useState<string | null>(() => problem.diagram_svg || null);
+  const [diagramRenderStatus, setDiagramRenderStatus] = useState<string | null>(() => problem.diagram_render_status || null);
+  const [diagramCompileError, setDiagramCompileError] = useState<string>(() => (problem.diagram_error || "").replace(/\\n/g, "\n"));
+  const [isCompilingDiagram, setIsCompilingDiagram] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+
   const addOption = useCallback(() => {
-    setOptions((prev) => [...prev, { id: nextOptionId(), key: "", text: "" }]);
+    setOptions((prev) => [...prev, { id: nextOptionId(), text: "" }]);
   }, [nextOptionId]);
 
   const updateOption = useCallback((id: string, patch: Partial<Omit<OptionDraft, "id">>) => {
@@ -79,44 +99,6 @@ export function ProblemEditPanel({ taskId, taskAssetPath, problem, tagStyles, on
   const removeOptionDraft = useCallback((id: string) => {
     setOptions((prev) => prev.filter((opt) => opt.id !== id));
   }, []);
-
-  useEffect(() => {
-    setOptionsError("");
-    setQuestionNo((problem.question_no || "").toString());
-    setSourceTags(problem.source ? [String(problem.source)] : []);
-    setProblemText((problem.problem_text || "").toString());
-    const rawOptions = Array.isArray(problem.options) ? problem.options : [];
-    if (rawOptions.length > 0) {
-      const normalized = rawOptions.map((opt) => ({
-        id: nextOptionId(),
-        key: String(opt?.key || "").trim(),
-        text: String(opt?.text || "").trim(),
-      }));
-      setOptions(normalized);
-    } else {
-      setOptions([]);
-    }
-    setKnowledgeTags(Array.isArray(problem.knowledge_tags) ? problem.knowledge_tags : []);
-    setErrorTags(Array.isArray(problem.error_tags) ? problem.error_tags : []);
-    setUserTags(Array.isArray(problem.user_tags) ? problem.user_tags : []);
-    setDiagramTikzSource((problem.diagram_tikz_source || "").toString());
-    setDiagramKind(
-      problem.diagram_kind === "image"
-        ? "image"
-        : problem.diagram_kind === "tikz" || problem.diagram_tikz_source
-          ? "tikz"
-          : "none",
-    );
-    setDiagramPosition(problem.diagram_position === "left" ? "left" : "right");
-    setDiagramScalePercent(
-      typeof problem.diagram_scale_percent === "number"
-        ? Math.min(200, Math.max(50, Math.round(problem.diagram_scale_percent)))
-        : null,
-    );
-    setDiagramSvg(problem.diagram_svg || null);
-    setDiagramRenderStatus(problem.diagram_render_status || null);
-    setDiagramCompileError((problem.diagram_error || "").replace(/\\n/g, "\n"));
-  }, [problem, nextOptionId]);
 
   const compileDiagram = useCallback(async () => {
     const source = diagramTikzSource.trim();
@@ -149,10 +131,7 @@ export function ProblemEditPanel({ taskId, taskAssetPath, problem, tagStyles, on
     questionNo: (problem.question_no || "").toString(),
     sourceTags: problem.source ? [String(problem.source)] : [],
     problemText: (problem.problem_text || "").toString(),
-    options: (Array.isArray(problem.options) ? problem.options : []).map((option) => ({
-      key: String(option?.key || "").trim(),
-      text: String(option?.text || "").trim(),
-    })),
+    options: (Array.isArray(problem.options) ? problem.options : []).map((option) => String(option?.text || "").trim()),
     knowledgeTags: Array.isArray(problem.knowledge_tags) ? problem.knowledge_tags : [],
     errorTags: Array.isArray(problem.error_tags) ? problem.error_tags : [],
     userTags: Array.isArray(problem.user_tags) ? problem.user_tags : [],
@@ -166,6 +145,8 @@ export function ProblemEditPanel({ taskId, taskAssetPath, problem, tagStyles, on
     diagramScalePercent: typeof problem.diagram_scale_percent === "number"
       ? Math.min(200, Math.max(50, Math.round(problem.diagram_scale_percent)))
       : null,
+    diagramImageCrop: problem.diagram_image_crop || FULL_IMAGE_CROP,
+    diagramImageTone: problem.diagram_image_tone === "original" ? "original" : "auto",
     diagramSvg: problem.diagram_svg || null,
     diagramRenderStatus: problem.diagram_render_status || null,
     diagramCompileError: (problem.diagram_error || "").replace(/\\n/g, "\n"),
@@ -174,7 +155,7 @@ export function ProblemEditPanel({ taskId, taskAssetPath, problem, tagStyles, on
     questionNo,
     sourceTags,
     problemText,
-    options: options.map(({ key, text }) => ({ key: key.trim(), text: text.trim() })),
+    options: options.map(({ text }) => text.trim()),
     knowledgeTags,
     errorTags,
     userTags,
@@ -182,6 +163,8 @@ export function ProblemEditPanel({ taskId, taskAssetPath, problem, tagStyles, on
     diagramKind,
     diagramPosition,
     diagramScalePercent,
+    diagramImageCrop,
+    diagramImageTone,
     diagramSvg,
     diagramRenderStatus,
     diagramCompileError,
@@ -190,24 +173,9 @@ export function ProblemEditPanel({ taskId, taskAssetPath, problem, tagStyles, on
 
   const save = useCallback(async () => {
     setIsSaving(true);
-    setOptionsError("");
 
     try {
-      const normalized = options.map((opt) => ({
-        key: opt.key.trim(),
-        text: opt.text.trim(),
-      }));
-      const nonEmpty = normalized.filter((opt) => opt.key || opt.text);
-      const hasInvalid = nonEmpty.some((opt) => !opt.key || !opt.text);
-      if (hasInvalid) {
-        setOptionsError("选项需要同时填写编号和内容");
-        setIsSaving(false);
-        return;
-      }
-      const parsedOptions = nonEmpty.map((opt) => ({
-        key: opt.key,
-        text: opt.text,
-      }));
+      const parsedOptions = options.map((option) => option.text.trim()).filter(Boolean);
 
       const tikzSource = diagramTikzSource.trim();
       const imagePath = problem.diagram_image_path || taskAssetPath || null;
@@ -233,6 +201,8 @@ export function ProblemEditPanel({ taskId, taskAssetPath, problem, tagStyles, on
         diagram_tikz_source: diagramKind === "tikz" ? tikzSource : null,
         diagram_svg: diagramKind === "tikz" ? diagramSvg : null,
         diagram_image_path: diagramKind === "image" ? imagePath : null,
+        diagram_image_crop: diagramKind === "image" ? diagramImageCrop : null,
+        diagram_image_tone: diagramKind === "image" ? diagramImageTone : undefined,
         diagram_position: diagramPosition,
         diagram_scale_percent: diagramScalePercent,
         diagram_render_status: diagramKind === "image" ? "ready" : diagramKind === "tikz" ? diagramRenderStatus : null,
@@ -256,7 +226,6 @@ export function ProblemEditPanel({ taskId, taskAssetPath, problem, tagStyles, on
     onClose,
     onSaved,
     options,
-    problem.problem_id,
     problemText,
     questionNo,
     sourceTags,
@@ -266,6 +235,8 @@ export function ProblemEditPanel({ taskId, taskAssetPath, problem, tagStyles, on
     diagramKind,
     diagramPosition,
     diagramScalePercent,
+    diagramImageCrop,
+    diagramImageTone,
     diagramSvg,
     diagramRenderStatus,
     diagramCompileError,
@@ -299,29 +270,26 @@ export function ProblemEditPanel({ taskId, taskAssetPath, problem, tagStyles, on
   }, [isDirty, isSaving, save]);
 
   const diagramImagePath = problem.diagram_image_path || taskAssetPath || null;
-  const diagramImageUrl = diagramImagePath
-    ? diagramImagePath.startsWith("/assets/") ? `/api${diagramImagePath}` : diagramImagePath
+  const diagramCropSourcePath = taskAssetPath || diagramImagePath;
+  const diagramImageUrl = diagramCropSourcePath
+    ? diagramCropSourcePath.startsWith("/assets/") ? `/api${diagramCropSourcePath}` : diagramCropSourcePath
     : "";
 
   return (
     <Box className="oops-card" sx={{ overflow: "hidden", animation: "slideUp 0.25s ease-out" }}>
-      <Box sx={{ p: 3, borderBottomWidth: 1, borderBottomStyle: "solid", borderBottomColor: "border.muted", bg: "canvas.subtle" }}>
+      <Box sx={{ px: 3, py: 2, borderBottomWidth: 1, borderBottomStyle: "solid", borderBottomColor: "border.muted", bg: "canvas.subtle" }}>
         <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 2, flexWrap: "wrap" }}>
           <Box sx={{ flex: 1, minWidth: 220 }}>
             <Text sx={{ fontWeight: 600, fontSize: 2, display: "block" }}>编辑题目</Text>
-            <Text sx={{ color: "fg.muted", fontSize: 1, mt: 1 }}>支持 Markdown / LaTeX，保存后更新题库内容。</Text>
           </Box>
           <Box sx={{ display: "flex", alignItems: "center", gap: 2, flexWrap: "wrap" }}>
-            <Text sx={{ color: isDirty ? "var(--fgColor-attention)" : "fg.muted", fontSize: 0 }}>
-              {isDirty ? "有未保存的修改" : "未修改"}
-            </Text>
+            {isDirty ? <Text sx={{ color: "var(--fgColor-attention)", fontSize: 0 }}>未保存</Text> : null}
             <Button size="small" variant="invisible" onClick={requestClose}>关闭</Button>
           </Box>
         </Box>
       </Box>
 
       <Box sx={{ p: 3, display: "flex", flexDirection: "column", gap: 3 }}>
-        <Text sx={{ fontWeight: 600, fontSize: 1 }}>基本内容</Text>
         <Box sx={{ display: "grid", gridTemplateColumns: ["1fr", "1fr 1fr"], gap: 3 }}>
           <FormControl>
             <FormControl.Label>题号</FormControl.Label>
@@ -333,73 +301,62 @@ export function ProblemEditPanel({ taskId, taskAssetPath, problem, tagStyles, on
             value={sourceTags}
             onChange={(next) => setSourceTags(next.slice(0, 1))}
             styles={tagStyles}
-            placeholder="输入来源，回车确认"
+            placeholder="输入来源"
           />
         </Box>
 
         <FormControl>
           <FormControl.Label>题干</FormControl.Label>
-          <Textarea value={problemText} onChange={(e) => setProblemText(e.target.value)} block rows={4} sx={{ resize: "vertical" }} />
-          <Text sx={{ color: "fg.muted", fontSize: 1, mt: 1, display: "block" }}>
-            可直接粘贴 Markdown，数学公式用 $...$ 或 \\(...\\)。
-          </Text>
+          <Textarea
+            value={problemText}
+            onChange={(e) => setProblemText(e.target.value)}
+            block
+            rows={8}
+            className="problem-statement-editor"
+          />
         </FormControl>
 
-        <FormControl>
-          <FormControl.Label>选项</FormControl.Label>
-          <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
-            {options.length === 0 ? (
-              <Text sx={{ color: "fg.muted", fontSize: 1 }}>暂无选项，点击“添加选项”开始编辑。</Text>
-            ) : null}
-            {options.map((opt) => (
-              <Box
-                key={opt.id}
-                sx={{
-                  display: "grid",
-                  gridTemplateColumns: ["60px 1fr 50px", "80px 1fr 80px"],
-                  gap: 2,
-                  alignItems: "start",
-                }}
-              >
-                <TextInput
-                  value={opt.key}
-                  onChange={(e) => updateOption(opt.id, { key: e.target.value })}
-                  placeholder="A"
-                  block
-                />
+        <Box className="option-editor">
+          <Box className="option-editor__header">
+            <Text sx={{ fontWeight: 600, fontSize: 1 }}>选项</Text>
+            <Button size="small" variant="invisible" leadingVisual={PlusIcon} onClick={addOption}>添加</Button>
+          </Box>
+          <Box className="option-editor__list">
+            {options.map((opt, index) => (
+              <Box key={opt.id} className="option-editor__row">
+                <Text className="option-editor__label">{optionLabel(index)}</Text>
                 <Textarea
                   value={opt.text}
                   onChange={(e) => updateOption(opt.id, { text: e.target.value })}
-                  placeholder="选项内容"
+                  aria-label={`选项 ${optionLabel(index)}`}
+                  placeholder={`选项 ${optionLabel(index)} 内容`}
                   block
-                  rows={2}
+                  rows={1}
+                  className="option-editor__input"
                 />
-                <Button size="small" variant="danger" onClick={() => removeOptionDraft(opt.id)}>
-                  删除
-                </Button>
+                <IconButton
+                  size="small"
+                  variant="invisible"
+                  icon={TrashIcon}
+                  aria-label={`删除选项 ${optionLabel(index)}`}
+                  className="option-editor__remove"
+                  onClick={() => removeOptionDraft(opt.id)}
+                />
               </Box>
             ))}
-            <Box>
-              <Button size="small" onClick={addOption}>
-                添加选项
-              </Button>
-            </Box>
           </Box>
-          {optionsError ? (
-            <Text sx={{ color: "danger.fg", mt: 1, display: "block" }}>{optionsError}</Text>
-          ) : null}
-        </FormControl>
+        </Box>
 
         <Box sx={{ pt: 3, borderTopWidth: 1, borderTopStyle: "solid", borderTopColor: "border.muted" }}>
           <Text sx={{ fontWeight: 600, fontSize: 1, display: "block", mb: 2 }}>分类与标签</Text>
-          <Box sx={{ display: "grid", gridTemplateColumns: ["1fr", "1fr 1fr 1fr"], gap: 3 }}>
+          <Box className="problem-tag-grid">
             <TagPicker
               title="知识体系"
               dimension="knowledge"
               value={knowledgeTags}
               onChange={setKnowledgeTags}
               styles={tagStyles}
-              placeholder="输入搜索，Tab 补全，Enter 选第一"
+              placeholder="搜索或添加"
             />
             <TagPicker
               title="错题归因"
@@ -407,7 +364,7 @@ export function ProblemEditPanel({ taskId, taskAssetPath, problem, tagStyles, on
               value={errorTags}
               onChange={setErrorTags}
               styles={tagStyles}
-              placeholder="输入搜索，Tab 补全，Enter 选第一"
+              placeholder="搜索或添加"
             />
             <TagPicker
               title="自定义"
@@ -416,23 +373,23 @@ export function ProblemEditPanel({ taskId, taskAssetPath, problem, tagStyles, on
               onChange={setUserTags}
               styles={tagStyles}
               enableRemoteSearch={false}
-              placeholder="输入后回车添加"
+              placeholder="输入后回车"
             />
           </Box>
         </Box>
 
         <FormControl sx={{ pt: 3, borderTopWidth: 1, borderTopStyle: "solid", borderTopColor: "border.muted" }}>
-          <FormControl.Label>题目图形</FormControl.Label>
+          <FormControl.Label>附图</FormControl.Label>
           <Box sx={{ mt: 2, display: "flex", gap: 2, flexWrap: "wrap" }}>
             <Button size="small" variant={diagramKind === "none" ? "primary" : "default"} onClick={() => setDiagramKind("none")}>
-              无图
+              无附图
             </Button>
             <Button
               size="small"
               variant={diagramKind === "tikz" ? "primary" : "default"}
               onClick={() => setDiagramKind("tikz")}
             >
-              TikZJax
+              TikZ 附图
             </Button>
             <Button
               size="small"
@@ -440,7 +397,7 @@ export function ProblemEditPanel({ taskId, taskAssetPath, problem, tagStyles, on
               disabled={!diagramImagePath}
               onClick={() => setDiagramKind("image")}
             >
-              题图
+              图片附图
             </Button>
           </Box>
 
@@ -516,10 +473,15 @@ export function ProblemEditPanel({ taskId, taskAssetPath, problem, tagStyles, on
 
           {diagramKind === "image" ? (
             <Box sx={{ mt: 3 }}>
-              <Text sx={{ color: "fg.muted", fontSize: 1, display: "block", mb: 2 }}>
-                当前使用本题的原始图片；自动识别和裁剪题图将在后续实现。
-              </Text>
-              {diagramImageUrl ? <img src={diagramImageUrl} alt="题图预览" style={{ display: "block", maxWidth: "100%", maxHeight: 320, objectFit: "contain" }} /> : null}
+              {diagramImageUrl ? (
+                <FigureCropper
+                  imageUrl={diagramImageUrl}
+                  value={diagramImageCrop}
+                  tone={diagramImageTone}
+                  onChange={setDiagramImageCrop}
+                  onToneChange={setDiagramImageTone}
+                />
+              ) : null}
             </Box>
           ) : null}
 
@@ -535,7 +497,7 @@ export function ProblemEditPanel({ taskId, taskAssetPath, problem, tagStyles, on
                 "& svg": { maxWidth: "100%", height: "auto" },
               }}
             >
-              <SvgMarkup svg={diagramSvg} label="TikZ 预览" />
+              <SvgMarkup svg={diagramSvg} label="TikZ 预览" colorMode="themed" />
             </Box>
           ) : null}
 

@@ -6,9 +6,12 @@ owns the HTTP DTOs; frontend components do not read JSON storage files.
 ## Task Flow
 
 1. `POST /upload` stores one image asset and creates one pending task.
-2. `POST /tasks/{task_id}/process` marks that task processing and starts
-   `hermes --profile oopsnote chat -s oopsnote-orchestrator` in the background.
-3. Hermes uses MCP to update the same TaskRecord with OCR, solution, and tags.
+2. `POST /tasks/{task_id}/process` marks that task processing and submits it
+   to the shared managed AI lifecycle. The default runner uses the bounded
+   pi_agent_rust JSONL RPC pool; upstream Pi and Hermes are explicit,
+   separately selected compatibility backends.
+3. The selected Pi-compatible runner uses the restricted OopsNote MCP pipeline
+   to update the same TaskRecord with OCR, solution, and tags.
 4. Web polls `GET /tasks/{task_id}` while a task is active.
 
 Collection endpoints always return an object with `items`:
@@ -21,8 +24,8 @@ Collection endpoints always return an object with `items`:
 
 The browser owns segmentation. A user selects batch mode, draws each problem
 region on a whole-page image, and confirms all regions once. Each crop becomes
-an independent `POST /upload` request, so Core and Hermes always receive one
-problem image and do not make page-segmentation decisions.
+an independent `POST /upload` request, so the selected AI runner always
+receives one problem image and does not make page-segmentation decisions.
 
 ## Batch Session Cache
 
@@ -38,8 +41,10 @@ submits the selected problems.
 
 ## Boundary
 
-- Core persists JSON and assets, exposes REST, and starts the documented
-  Hermes hand-off.
-- Hermes owns OCR, solving, and tagging through MCP.
+- Core persists JSON and assets, exposes REST, and starts the selected managed
+  runner.
+- The selected Pi-compatible runner owns OCR, solving, and tagging through the
+  restricted MCP pipeline; a failed Pi run is retried only as a fresh run and
+  never switches backend inside the same run.
 - Web owns image selection, manual crop interaction, browsing, and editing.
 - No authentication, account, or token endpoints are part of this product.

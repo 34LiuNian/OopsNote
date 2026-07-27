@@ -58,7 +58,6 @@ export function ThemeProvider({
 
   const mqlRef = useRef<MediaQueryList | null>(null);
   const preferenceRef = useRef<ThemePreference>("system");
-  const isInitialMountRef = useRef(true);
 
   const sync = useCallback(
     (nextPreference: ThemePreference) => {
@@ -76,8 +75,7 @@ export function ThemeProvider({
     writePreferenceCookie("system");
 
     preferenceRef.current = "system";
-    sync("system");
-    isInitialMountRef.current = false;
+    applyDocumentColorScheme(getSystemTheme());
 
     if (typeof window === "undefined" || !window.matchMedia) return;
     const mql = window.matchMedia("(prefers-color-scheme: dark)");

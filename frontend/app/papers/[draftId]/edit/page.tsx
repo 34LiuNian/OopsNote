@@ -73,6 +73,7 @@ export default function PaperEditorPage() {
         if (!active) return;
         setPaper(nextPaper);
         setTitle(nextPaper.title);
+        setCandidateLoading(true);
       })
       .catch((reason) => active && setError(reason instanceof Error ? reason.message : "试卷加载失败"))
       .finally(() => active && setLoading(false));
@@ -81,7 +82,6 @@ export default function PaperEditorPage() {
 
   useEffect(() => {
     if (!paper || title === paper.title) return;
-    setSaveState("saving");
     const timer = window.setTimeout(() => {
       void updatePaper(draftId, { title })
         .then((nextPaper) => {
@@ -95,7 +95,6 @@ export default function PaperEditorPage() {
 
   useEffect(() => {
     if (!paper) return;
-    setCandidateLoading(true);
     void listPaperCandidates({
       subject: paper.subject,
       knowledgeTags: paper.knowledge_tags,
@@ -105,7 +104,7 @@ export default function PaperEditorPage() {
       .then(setCandidates)
       .catch((reason) => setError(reason instanceof Error ? reason.message : "候选题加载失败"))
       .finally(() => setCandidateLoading(false));
-  }, [paper?.id]);
+  }, [paper]);
 
   const usedProblemIds = useMemo(
     () => new Set(paper?.items.map((item) => item.problem_id) ?? []),
@@ -210,7 +209,14 @@ export default function PaperEditorPage() {
       <Box sx={{ display: "grid", gridTemplateColumns: ["1fr", "minmax(0, 1fr) auto"], gap: 2, alignItems: "end" }}>
         <FormControl>
           <FormControl.Label>试卷标题</FormControl.Label>
-          <TextInput value={title} onChange={(event) => setTitle(event.target.value)} block />
+          <TextInput
+            value={title}
+            onChange={(event) => {
+              setTitle(event.target.value);
+              setSaveState("saving");
+            }}
+            block
+          />
         </FormControl>
         <span className={styles.saveState}>
           {saveState === "saving" ? "正在保存…" : saveState === "error" ? "保存失败" : "已自动保存"}
@@ -287,6 +293,7 @@ export default function PaperEditorPage() {
                     diagramTikzSource={item.problem.diagram_tikz_source}
                     diagramSvg={item.problem.diagram_svg}
                     diagramImagePath={item.problem.diagram_image_path}
+                    diagramImageTone={item.problem.diagram_image_tone}
                     diagramPosition={item.problem.diagram_position}
                     diagramScalePercent={item.problem.diagram_scale_percent}
                     diagramRenderStatus={item.problem.diagram_render_status}

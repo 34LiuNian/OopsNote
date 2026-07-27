@@ -40,6 +40,12 @@ def png_base64(color: str = "white") -> str:
     return base64.b64encode(buffer.getvalue()).decode()
 
 
+def test_search_rejects_invalid_since_query_at_http_boundary():
+    response = TestClient(main.app).get("/search", params={"since": "not-a-date"})
+
+    assert response.status_code == 422
+
+
 def test_tracked_knowledge_catalog_supports_subject_search_and_tree():
     client = TestClient(main.app)
 
@@ -170,6 +176,35 @@ def test_web_contract_uses_wrapped_collections_and_persisted_upload(tmp_path, mo
     assert image_problem["diagram_position"] == "left"
     assert image_problem["diagram_scale_percent"] == 125
 
+    cropped = client.patch(
+        f"/tasks/{task['id']}/problem/override",
+        json={
+            "diagram_detected": True,
+            "diagram_kind": "image",
+            "diagram_image_crop": {"x": 0.5, "y": 0, "width": 0.5, "height": 1},
+            "diagram_image_tone": "auto",
+        },
+    )
+    assert cropped.status_code == 200
+    cropped_problem = cropped.json()["task"]["problem"]
+    assert cropped_problem["diagram_image_path"].startswith("/assets/diagram-")
+    assert cropped_problem["diagram_image_path"] != task["asset"]["path"]
+    assert cropped_problem["diagram_image_crop"] == {"x": 0.5, "y": 0.0, "width": 0.5, "height": 1.0}
+    assert cropped_problem["diagram_image_tone"] == "auto"
+    with Image.open(main.ASSET_STORE.resolve(cropped_problem["diagram_image_path"])) as crop_image:
+        assert crop_image.size == (2, 4)
+
+    repeated_crop = client.patch(
+        f"/tasks/{task['id']}/problem/override",
+        json={
+            "diagram_detected": True,
+            "diagram_kind": "image",
+            "diagram_image_crop": {"x": 0.5, "y": 0, "width": 0.5, "height": 1},
+        },
+    )
+    assert repeated_crop.status_code == 200
+    assert repeated_crop.json()["task"]["problem"]["diagram_image_path"] == cropped_problem["diagram_image_path"]
+
     invalid_image = client.patch(
         f"/tasks/{task['id']}/problem/override",
         json={
@@ -180,9 +215,30 @@ def test_web_contract_uses_wrapped_collections_and_persisted_upload(tmp_path, mo
     )
     assert invalid_image.status_code == 422
 
+    invalid_crop = client.patch(
+        f"/tasks/{task['id']}/problem/override",
+        json={
+            "diagram_detected": True,
+            "diagram_kind": "image",
+            "diagram_image_crop": {"x": 0.8, "y": 0, "width": 0.4, "height": 1},
+        },
+    )
+    assert invalid_crop.status_code == 422
+
+    invalid_tone = client.patch(
+        f"/tasks/{task['id']}/problem/override",
+        json={
+            "diagram_detected": True,
+            "diagram_kind": "image",
+            "diagram_image_tone": "",
+        },
+    )
+    assert invalid_tone.status_code == 422
+
     problem_summary = client.get("/problems").json()["items"][0]
     assert problem_summary["diagram_kind"] == "image"
-    assert problem_summary["diagram_image_path"] == task["asset"]["path"]
+    assert problem_summary["diagram_image_path"] == cropped_problem["diagram_image_path"]
+    assert problem_summary["diagram_image_crop"] == cropped_problem["diagram_image_crop"]
 
 
 def test_tag_rename_and_merge_migrate_persisted_problem_references(tmp_path, monkeypatch):

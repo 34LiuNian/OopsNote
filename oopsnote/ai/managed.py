@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import subprocess
 import threading
+from abc import ABC, abstractmethod
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Optional, Protocol
@@ -20,7 +21,7 @@ class AgentBackend(Protocol):
     def build_command(self, task_id: str, run_id: str) -> list[str]: ...
 
 
-class ManagedAiRunner:
+class ManagedAiRunner(ABC):
     """Own task/run state independently from a specific agent process."""
 
     backend_name = "unknown"
@@ -117,11 +118,15 @@ class ManagedAiRunner:
     def dispatcher_status(self) -> dict[str, int]:
         return self._dispatcher.status()
 
+    @abstractmethod
     def build_command(self, task_id: str, run_id: str) -> list[str]:
-        raise NotImplementedError
+        """Build the backend command for one managed run."""
+        ...
 
+    @abstractmethod
     def run(self, task_id: str, run_id: str) -> None:
-        raise NotImplementedError
+        """Execute one managed run and persist its terminal state."""
+        ...
 
     def cancel(self, task_id: str) -> None:
         with self._lock:

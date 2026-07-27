@@ -199,7 +199,7 @@ def list_problems(
 def search(
     tags: Optional[str] = Query(default=None),
     subject: Optional[str] = None,
-    since: Optional[str] = None,
+    since: Optional[datetime] = None,
     error_type: Optional[str] = None,
     regex: Optional[str] = None,
     limit: int = Query(default=50, ge=1, le=500),

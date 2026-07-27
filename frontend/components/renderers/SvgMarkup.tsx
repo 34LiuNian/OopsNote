@@ -5,8 +5,30 @@ import { Box, Text } from "@/components/ui/primitives";
 
 const BLOCKED_ELEMENTS = "script,foreignObject,iframe,object,embed,link,meta,audio,video";
 const UNSAFE_CSS = /(?:expression\s*\(|javascript:|vbscript:|data:text\/html|-moz-binding)/i;
+const THEMED_COLOR_ATTRIBUTES = new Set(["color", "fill", "flood-color", "lighting-color", "stop-color", "stroke"]);
+const CSS_COLOR_DECLARATION = /(^|[;{])(\s*(?:color|fill|flood-color|lighting-color|stop-color|stroke)\s*:\s*)(#[0-9a-f]{3,6}\b|[a-z]+\b|rgba?\([^)]*\))(?=\s*(?:!important)?\s*(?:[;}\n]|$))/gim;
 
-export function sanitizeSvgMarkup(markup: string): string {
+export type SvgColorMode = "preserve" | "themed";
+
+function themedColor(value: string): string | null {
+  const compact = value.trim().toLowerCase().replace(/\s+/g, "");
+  if (/^(?:#000|#000000|black|rgb\(0,0,0\)|rgba\(0,0,0,1(?:\.0*)?\))$/.test(compact)) {
+    return "currentColor";
+  }
+  if (/^(?:#fff|#ffffff|white|rgb\(255,255,255\)|rgba\(255,255,255,1(?:\.0*)?\))$/.test(compact)) {
+    return "var(--oops-svg-background)";
+  }
+  return null;
+}
+
+function themeCssColors(css: string): string {
+  return css.replace(CSS_COLOR_DECLARATION, (match, boundary: string, declaration: string, value: string) => {
+    const replacement = themedColor(value);
+    return replacement ? `${boundary}${declaration}${replacement}` : match;
+  });
+}
+
+export function sanitizeSvgMarkup(markup: string, colorMode: SvgColorMode = "preserve"): string {
   if (typeof window === "undefined" || !markup.trim()) return "";
 
   const parser = new DOMParser();
@@ -25,7 +47,7 @@ export function sanitizeSvgMarkup(markup: string): string {
   if (!svg) return "";
 
   svg.querySelectorAll(BLOCKED_ELEMENTS).forEach((element) => element.remove());
-  svg.querySelectorAll("*").forEach((element) => {
+  [svg, ...Array.from(svg.querySelectorAll("*"))].forEach((element) => {
     for (const attribute of Array.from(element.attributes)) {
       const name = attribute.name.toLowerCase();
       const value = attribute.value.trim();
@@ -44,27 +66,60 @@ export function sanitizeSvgMarkup(markup: string): string {
 
       if (name === "style" && UNSAFE_CSS.test(value)) {
         element.removeAttribute(attribute.name);
+        continue;
+      }
+
+      if (colorMode === "themed" && THEMED_COLOR_ATTRIBUTES.has(name)) {
+        const replacement = themedColor(value);
+        if (replacement) element.setAttribute(attribute.name, replacement);
+      } else if (colorMode === "themed" && name === "style") {
+        element.setAttribute(attribute.name, themeCssColors(value));
       }
     }
 
-    if (element.tagName.toLowerCase() === "style" && UNSAFE_CSS.test(element.textContent || "")) {
-      element.remove();
+    if (element.tagName.toLowerCase() === "style") {
+      const css = element.textContent || "";
+      if (UNSAFE_CSS.test(css)) {
+        element.remove();
+      } else if (colorMode === "themed") {
+        element.textContent = themeCssColors(css);
+      }
     }
   });
 
   return new XMLSerializer().serializeToString(svg);
 }
 
-export function SvgMarkup({ svg, label, fit = false }: { svg: string; label?: string; fit?: boolean }) {
-  const [result, setResult] = useState<{ source: string; sanitized: string } | null>(null);
+export function SvgMarkup({
+  svg,
+  label,
+  colorMode,
+  fit = false,
+}: {
+  svg: string;
+  label?: string;
+  colorMode: SvgColorMode;
+  fit?: boolean;
+}) {
+  const preparationKey = `${colorMode}\0${svg}`;
+  const [prepared, setPrepared] = useState<{ key: string; markup: string } | null>(null);
+  const currentMarkup = prepared?.key === preparationKey ? prepared.markup : null;
 
+  // DOMParser is intentionally browser-owned. Preparing after hydration keeps
+  // the server and first client render identical instead of rendering an error
+  // on the server and replacing it with SVG during hydration.
   useEffect(() => {
-    setResult({ source: svg, sanitized: sanitizeSvgMarkup(svg) });
-  }, [svg]);
+    const preparationTimer = window.setTimeout(() => {
+      setPrepared({ key: preparationKey, markup: sanitizeSvgMarkup(svg, colorMode) });
+    }, 0);
+    return () => window.clearTimeout(preparationTimer);
+  }, [colorMode, preparationKey, svg]);
 
-  if (!result || result.source !== svg) return null;
+  if (currentMarkup === null) {
+    return <Text sx={{ color: "fg.muted", fontSize: 1 }}>图形准备中…</Text>;
+  }
 
-  if (!result.sanitized) {
+  if (!currentMarkup) {
     return <Text sx={{ color: "danger.fg", fontSize: 1 }}>SVG 内容无效，无法显示。</Text>;
   }
 
@@ -72,6 +127,7 @@ export function SvgMarkup({ svg, label, fit = false }: { svg: string; label?: st
     <Box
       role="img"
       aria-label={label}
+      className={`oops-svg is-${colorMode}`}
       sx={{
         width: fit ? "100%" : undefined,
         height: fit ? "100%" : undefined,
@@ -86,7 +142,7 @@ export function SvgMarkup({ svg, label, fit = false }: { svg: string; label?: st
           marginInline: "auto",
         },
       }}
-      dangerouslySetInnerHTML={{ __html: result.sanitized }}
+      dangerouslySetInnerHTML={{ __html: currentMarkup }}
     />
   );
 }

@@ -1,7 +1,7 @@
-"""OopsNote MCP Server — Hermes ↔ Core 唯一通道。
+"""OopsNote MCP Server — the restricted AI ↔ Core boundary.
 
-FastMCP stdio server，暴露 CRUD 工具供 Hermes skill 调用。
-纯数据操作，不涉及 AI。AI 流水线由 Hermes orchestrator skill 编排。
+FastMCP stdio server，暴露 CRUD 工具供 the managed Pi pipeline 调用。
+纯数据操作，不涉及 AI；AI 流水线由 managed runner 编排。
 """
 
 from __future__ import annotations
@@ -54,6 +54,7 @@ ManagedReviewReason = Literal[
     "multiple_questions",
     "other",
 ]
+ManagedStudentResponseStatus = Literal["answered", "unanswered", "unknown"]
 
 
 def _require_active_run(task_id: str, run_id: str) -> TaskRecord:
@@ -258,6 +259,7 @@ def finalize_task(
     run_id: str,
     sync_to_obsidian: bool = True,
     review_reason: ManagedReviewReason = "",
+    student_response_status: ManagedStudentResponseStatus = "unknown",
 ) -> dict[str, Any]:
     """校验并原子提交 AI 结果，可同时标记需人工复核。"""
     import json
@@ -283,6 +285,22 @@ def finalize_task(
         raise ValueError(f"problem missing required fields: {', '.join(missing)}")
     if problem.question_type.value in {"单选题", "多选题"} and len(problem.options) < 2:
         raise ValueError("problem selection options are incomplete")
+
+    trusted_error_hints = {
+        str(value).strip()
+        for value in task.metadata.get("error_tags", [])
+        if str(value).strip()
+    }
+    if student_response_status != "answered":
+        invented_errors = [
+            value for value in problem.error_hypothesis
+            if value not in trusted_error_hints
+        ]
+        if invented_errors:
+            raise ValueError(
+                "error_hypothesis requires a readable student response or an explicit "
+                "user-provided error tag"
+            )
 
     subject = task.subject
     if not subject or subject == "auto":
@@ -350,7 +368,10 @@ def finalize_task(
         stage_message="AI 结果已校验并写入",
         active_run_id=None,
         last_error=None,
-        metadata=_task_metadata_with_review(task, review_reason),
+        metadata={
+            **_task_metadata_with_review(task, review_reason),
+            "student_response_status": student_response_status,
+        },
     )
     sync_queued = False
     if sync_to_obsidian:
