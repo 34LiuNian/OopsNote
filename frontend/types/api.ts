@@ -106,6 +106,10 @@ export interface TaskResponse {
       problem_id: string;
       knowledge_points: string[];
     } | null;
+    merged_into?: {
+      task_id: string;
+      problem_id: string;
+    } | null;
   };
 }
 

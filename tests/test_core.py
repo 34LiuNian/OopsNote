@@ -14,6 +14,7 @@ import oopsnote.core.store as store_module
 from oopsnote.core import (
     AssetStore,
     Problem,
+    ProblemMergeStore,
     RunStatus,
     RunStore,
     Searcher,
@@ -27,6 +28,7 @@ from oopsnote.core import (
     TaskStage,
     TaskStatus,
     TaskStore,
+    problem_fingerprint,
 )
 
 
@@ -428,3 +430,22 @@ class TestSearcherExtra:
         s = Searcher([t])
         results = s.search(SearchQuery(regex="\\"))
         assert len(results) == 0
+
+
+class TestProblemIdentity:
+    def test_fingerprint_ignores_whitespace_but_not_option_order(self):
+        first = Problem(subject="math", problem_text="Find  x", options=["1", "2"])
+        same = Problem(subject="math", problem_text=" Find\n x ", options=["1", "2"])
+        reordered = Problem(subject="math", problem_text="Find x", options=["2", "1"])
+
+        assert problem_fingerprint(first) == problem_fingerprint(same)
+        assert problem_fingerprint(first) != problem_fingerprint(reordered)
+
+    def test_merge_store_resolves_chain_and_rejects_cycle(self, tmp_path):
+        store = ProblemMergeStore(tmp_path / "problem_merges.json")
+        store.merge("b", "a")
+        store.merge("c", "b")
+
+        assert store.canonical_for("c") == "a"
+        with pytest.raises(ValueError, match="already merged"):
+            store.merge("a", "c")

@@ -1,14 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
-import { ListChecks, Trash2 } from "lucide-react";
+import { ListChecks, SlidersHorizontal, Trash2 } from "lucide-react";
 import {
   Box,
   Text,
-  Select,
-  TextInput,
-  FormControl,
   Spinner,
   Button,
 } from "@/components/ui/primitives";
@@ -18,16 +16,11 @@ import { deleteTasks, useActiveTaskList, useProblemList, useTaskList } from "../
 import { ProblemListItem } from "../../components/ProblemListItem";
 import { TaskThumbnail } from "../../components/TaskThumbnail";
 import { FailedTaskPanel } from "../../components/task/FailedTaskPanel";
-import { TagSelectorRow } from "../../components/TagSelectorRow";
 import { ListSkeleton } from "../../components/ui/LoadingStates";
 import { useTagDimensions } from "../../features/tags";
-import { SUBJECT_OPTIONS } from "../../config/subjects";
 import { PageHeader } from "@/components/layout/PageHeader";
-
-const LIBRARY_SUBJECT_OPTIONS = [
-  { value: "", label: "全部学科" },
-  ...SUBJECT_OPTIONS,
-];
+import { useSecondarySidebar } from "@/components/layout/SecondarySidebarContext";
+import { LibraryFilterPanel } from "@/components/library/LibraryFilterPanel";
 
 const TASK_STRIP_CONTENT_MIN_HEIGHT = 84;
 
@@ -36,6 +29,12 @@ function problemSelectionKey(taskId: string, problemId: string) {
 }
 
 export default function LibraryPage() {
+  const {
+    target: secondarySidebarTarget,
+    contextSidebarOpen,
+    toggleContextSidebar,
+    closeSecondarySidebar,
+  } = useSecondarySidebar();
   const [subject, setSubject] = useState<string>("");
   const [sourceFilter, setSourceFilter] = useState<string[]>([]);
   const [knowledgeFilter, setKnowledgeFilter] = useState<string[]>([]);
@@ -76,6 +75,26 @@ export default function LibraryPage() {
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Record<string, boolean>>({});
   const [isBatchDeleting, setIsBatchDeleting] = useState(false);
+
+  const activeFilterCount = [
+    subject,
+    dateAfter || dateBefore,
+    ...sourceFilter,
+    ...knowledgeFilter,
+    ...errorFilter,
+    ...customFilter,
+  ].filter(Boolean).length;
+
+  const clearAllFilters = useCallback(() => {
+    setSubject("");
+    setSourceFilter([]);
+    setKnowledgeFilter([]);
+    setErrorFilter([]);
+    setCustomFilter([]);
+    setDateAfter("");
+    setDateBefore("");
+    setSelectedIds({});
+  }, []);
 
   const selectedItems = items.filter((item) => (
     selectedIds[problemSelectionKey(item.task_id, item.problem_id)]
@@ -140,6 +159,51 @@ export default function LibraryPage() {
   }, [error]);
 
   return (
+    <>
+      {secondarySidebarTarget ? createPortal(
+        <LibraryFilterPanel
+          subject={subject}
+          onSubjectChange={(value) => {
+            setSubject(value);
+            setSelectedIds({});
+          }}
+          dateAfter={dateAfter}
+          onDateAfterChange={(value) => {
+            setDateAfter(value);
+            setSelectedIds({});
+          }}
+          dateBefore={dateBefore}
+          onDateBeforeChange={(value) => {
+            setDateBefore(value);
+            setSelectedIds({});
+          }}
+          sourceValue={sourceFilter}
+          onSourceChange={(value) => {
+            setSourceFilter(value);
+            setSelectedIds({});
+          }}
+          knowledgeValue={knowledgeFilter}
+          onKnowledgeChange={(value) => {
+            setKnowledgeFilter(value);
+            setSelectedIds({});
+          }}
+          errorValue={errorFilter}
+          onErrorChange={(value) => {
+            setErrorFilter(value);
+            setSelectedIds({});
+          }}
+          customValue={customFilter}
+          onCustomChange={(value) => {
+            setCustomFilter(value);
+            setSelectedIds({});
+          }}
+          styles={tagStyles}
+          activeCount={activeFilterCount}
+          onClearAll={clearAllFilters}
+          onClose={closeSecondarySidebar}
+        />,
+        secondarySidebarTarget,
+      ) : null}
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
       {/* Page header */}
       <PageHeader
@@ -225,88 +289,6 @@ export default function LibraryPage() {
         </Box>
       )}
 
-      {/* Filters */}
-      <Box className="oops-card" sx={{ p: 3 }}>
-        <Box sx={{ display: 'grid', gridTemplateColumns: ['1fr', '1fr 1fr'], gap: 3, mb: 3 }}>
-          <FormControl>
-            <FormControl.Label>学科</FormControl.Label>
-            <Select value={subject} onValueChange={(value) => {
-              setSubject(value);
-              setSelectedIds({});
-            }} block>
-                {LIBRARY_SUBJECT_OPTIONS.map((option) => (
-                <Select.Option key={option.value || "all"} value={option.value}>
-                  {option.label}
-                </Select.Option>
-              ))}
-            </Select>
-          </FormControl>
-          <FormControl>
-            <FormControl.Label>日期范围</FormControl.Label>
-            <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
-              <TextInput
-                type="date"
-                value={dateAfter}
-                onChange={(e) => {
-                  setDateAfter(e.target.value);
-                  setSelectedIds({});
-                }}
-                sx={{ flex: 1 }}
-                placeholder="起始日期"
-              />
-              <Text sx={{ color: 'fg.muted', flexShrink: 0 }}>至</Text>
-              <TextInput
-                type="date"
-                value={dateBefore}
-                onChange={(e) => {
-                  setDateBefore(e.target.value);
-                  setSelectedIds({});
-                }}
-                sx={{ flex: 1 }}
-                placeholder="结束日期"
-              />
-              {(dateAfter || dateBefore) && (
-                <Button
-                  size="small"
-                  variant="invisible"
-                  onClick={() => {
-                    setDateAfter('');
-                    setDateBefore('');
-                    setSelectedIds({});
-                  }}
-                >
-                  清空
-                </Button>
-              )}
-            </Box>
-          </FormControl>
-        </Box>
-
-        <TagSelectorRow
-          sourceValue={sourceFilter}
-          onSourceChange={(value) => {
-            setSourceFilter(value);
-            setSelectedIds({});
-          }}
-          knowledgeValue={knowledgeFilter}
-          onKnowledgeChange={(value) => {
-            setKnowledgeFilter(value);
-            setSelectedIds({});
-          }}
-          errorValue={errorFilter}
-          onErrorChange={(value) => {
-            setErrorFilter(value);
-            setSelectedIds({});
-          }}
-          customValue={customFilter}
-          onCustomChange={(value) => {
-            setCustomFilter(value);
-            setSelectedIds({});
-          }}
-          styles={tagStyles}
-        />
-      </Box>
-
       {/* Results */}
       <Box>
         {/* Toolbar */}
@@ -366,18 +348,30 @@ export default function LibraryPage() {
               </Button>
             </Box>
           ) : (
-            <Button
-              size="small"
-              variant="secondary"
-              leadingVisual={ListChecks}
-              onClick={() => {
-                setSelectedIds({});
-                setSelectionMode(true);
-              }}
-              disabled={items.length === 0}
-            >
-              批量操作
-            </Button>
+            <Box sx={{ display: "flex", alignItems: "center", gap: 2, flexWrap: "wrap" }}>
+              <Button
+                className="library-filter-trigger"
+                size="small"
+                variant={contextSidebarOpen ? "default" : "secondary"}
+                leadingVisual={SlidersHorizontal}
+                aria-pressed={contextSidebarOpen}
+                onClick={toggleContextSidebar}
+              >
+                {activeFilterCount > 0 ? `筛选 (${activeFilterCount})` : "筛选"}
+              </Button>
+              <Button
+                size="small"
+                variant="secondary"
+                leadingVisual={ListChecks}
+                onClick={() => {
+                  setSelectedIds({});
+                  setSelectionMode(true);
+                }}
+                disabled={items.length === 0}
+              >
+                批量操作
+              </Button>
+            </Box>
           )}
         </Box>
 
@@ -412,7 +406,6 @@ export default function LibraryPage() {
                   selected={!!selectedIds[problemSelectionKey(item.task_id, item.problem_id)]}
                   toggleKey={selectionMode ? problemSelectionKey(item.task_id, item.problem_id) : undefined}
                   onToggleSelection={selectionMode ? toggleSelected : undefined}
-                  showCheckbox={selectionMode}
                   showViewLink={!selectionMode}
                 />
               </Box>
@@ -421,5 +414,6 @@ export default function LibraryPage() {
         )}
       </Box>
     </Box>
+    </>
   );
 }

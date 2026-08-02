@@ -86,4 +86,6 @@ Pi 实题验证：
 
 ## License
 
-AGPL-3.0
+OopsNote 自有代码以 [AGPL-3.0-or-later](LICENSE) 发布。
+
+第三方代码、字体、框架和其他资源不自动继承 OopsNote 的许可证，具体归属和许可证见 [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md)。

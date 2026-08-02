@@ -1,5 +1,5 @@
 """FastAPI route groups."""
 
-from . import batch, catalog, papers, tasks
+from . import batch, catalog, papers, study, tasks
 
-__all__ = ["batch", "catalog", "papers", "tasks"]
+__all__ = ["batch", "catalog", "papers", "study", "tasks"]

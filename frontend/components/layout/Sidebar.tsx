@@ -15,13 +15,21 @@ const NAV_ITEMS = [
   { href: "/", label: "新建题目", icon: PlusIcon, section: "main" },
   { href: "/batch-segment", label: "批量扫描", icon: ScanIcon, section: "main" },
   { href: "/library", label: "题库", icon: RepoIcon, section: "main" },
-  { href: "/papers/new", label: "组卷", icon: ChecklistIcon, section: "main" },
+  { href: "/papers", label: "组卷", icon: ChecklistIcon, section: "main" },
   { href: "/paper-builder", label: "快速重练", icon: BookIcon, section: "main" },
   { href: "/debug", label: "渲染调试", icon: BookIcon, section: "tools" },
   { href: "/settings", label: "设置", icon: GearIcon, section: "tools" },
 ];
 
-export function Sidebar({ collapsed }: { collapsed: boolean }) {
+function NavigationItems({
+  collapsed,
+  onNavigate,
+  ariaLabel,
+}: {
+  collapsed: boolean;
+  onNavigate?: (href: string) => void;
+  ariaLabel: string;
+}) {
   const pathname = usePathname();
 
   const mainItems = NAV_ITEMS.filter((i) => i.section === "main");
@@ -29,17 +37,22 @@ export function Sidebar({ collapsed }: { collapsed: boolean }) {
 
   const isActive = (href: string) => {
     if (href === "/") return pathname === "/";
-    if (href === "/papers/new") return pathname.startsWith("/papers");
     return pathname.startsWith(href);
   };
 
   return (
-    <aside id="oops-primary-sidebar" className={`app-sidebar oops-desktop-sidebar${collapsed ? " is-collapsed" : ""}`}>
-      <nav className="app-sidebar__nav" aria-label="主导航">
+    <nav className="app-sidebar__nav" aria-label={ariaLabel}>
         {mainItems.map((item) => {
           const active = isActive(item.href);
           return (
-            <Link key={item.href} href={item.href} className={`app-sidebar__link${active ? " is-active" : ""}`} aria-current={active ? "page" : undefined} title={collapsed ? item.label : undefined}>
+            <Link
+              key={item.href}
+              href={item.href}
+              className={`app-sidebar__link${active ? " is-active" : ""}`}
+              aria-current={active ? "page" : undefined}
+              title={collapsed ? item.label : undefined}
+              onClick={() => onNavigate?.(item.href)}
+            >
               <item.icon size={17} strokeWidth={1.9} />
               {!collapsed && <span>{item.label}</span>}
             </Link>
@@ -52,13 +65,37 @@ export function Sidebar({ collapsed }: { collapsed: boolean }) {
         {toolItems.map((item) => {
           const active = isActive(item.href);
           return (
-            <Link key={item.href} href={item.href} className={`app-sidebar__link${active ? " is-active" : ""}`} aria-current={active ? "page" : undefined} title={collapsed ? item.label : undefined}>
+            <Link
+              key={item.href}
+              href={item.href}
+              className={`app-sidebar__link${active ? " is-active" : ""}`}
+              aria-current={active ? "page" : undefined}
+              title={collapsed ? item.label : undefined}
+              onClick={() => onNavigate?.(item.href)}
+            >
               <item.icon size={17} strokeWidth={1.9} />
               {!collapsed && <span>{item.label}</span>}
             </Link>
           );
         })}
-      </nav>
+    </nav>
+  );
+}
+
+export function Sidebar({
+  collapsed,
+  onNavigate,
+}: {
+  collapsed: boolean;
+  onNavigate?: (href: string) => void;
+}) {
+  return (
+    <aside id="oops-primary-sidebar" className={`app-sidebar oops-desktop-sidebar${collapsed ? " is-collapsed" : ""}`}>
+      <NavigationItems
+        collapsed={collapsed}
+        onNavigate={onNavigate}
+        ariaLabel={collapsed ? "快捷导航" : "主导航"}
+      />
     </aside>
   );
 }

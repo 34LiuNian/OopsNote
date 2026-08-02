@@ -20,6 +20,7 @@ from .models import (
     PaperDraftItem,
     PaperDraftUpdateRequest,
     Problem,
+    ProblemMergeRecord,
     QuestionType,
     RunStatus,
     SearchQuery,
@@ -34,8 +35,10 @@ from .models import (
     TaskRun,
     TaskStage,
     TaskStatus,
+    VariationRequest,
 )
 from .search import Searcher
+from .identity import problem_fingerprint
 from .store import (
     BatchSessionStore,
     BatchProcessJobStore,
@@ -44,6 +47,7 @@ from .store import (
     StateConflict,
     StorageCorruptionError,
     TaskStore,
+    ProblemMergeStore,
 )
 from .tags import TagStore
 
@@ -87,4 +91,8 @@ __all__ = [
     "TaskStage",
     "TaskStatus",
     "TaskStore",
+    "ProblemMergeRecord",
+    "ProblemMergeStore",
+    "VariationRequest",
+    "problem_fingerprint",
 ]

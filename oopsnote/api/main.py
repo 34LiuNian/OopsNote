@@ -16,7 +16,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from oopsnote.ai import HermesRunner, PiRpcBackend, PiRpcRunner
-from oopsnote.api.routes import batch, catalog, papers, tasks
+from oopsnote.api.routes import batch, catalog, papers, study, tasks
 from oopsnote.api.schemas import TagInput, TagRenameInput, UploadRequest
 from oopsnote.catalog import KNOWLEDGE_TAGS_PATH, KNOWLEDGE_TREES_PATH
 from oopsnote.content import option_label
@@ -29,6 +29,7 @@ from oopsnote.core import (
     BatchSessionUpdateRequest,
     Problem,
     PaperDraftStore,
+    ProblemMergeStore,
     RunStore,
     TagStore,
     TaskRecord,
@@ -54,6 +55,7 @@ BATCH_PROCESS_JOB_STORE = BatchProcessJobStore(STORAGE_DIR / "batch_jobs")
 APP_SETTINGS_STORE = AppSettingsStore(STORAGE_DIR / "settings" / "app_settings.json")
 RUN_STORE = RunStore(STORAGE_DIR / "runs")
 PAPER_DRAFT_STORE = PaperDraftStore(STORAGE_DIR / "papers")
+PROBLEM_MERGE_STORE = ProblemMergeStore(STORAGE_DIR / "settings" / "problem_merges.json")
 MCP_HTTP_RUNTIME = SharedMcpHttpRuntime()
 
 
@@ -338,6 +340,16 @@ def _run_view(run: Any) -> dict[str, Any]:
 def _task_view(record: TaskRecord) -> dict[str, Any]:
     problem = record.problem
     run = RUN_STORE.latest_for_task(record.id)
+    merged_into = None
+    if problem:
+        canonical_problem_id = PROBLEM_MERGE_STORE.canonical_for(problem.id)
+        if canonical_problem_id != problem.id:
+            target = next(
+                (task for task in TASK_STORE.list_all() if task.problem and task.problem.id == canonical_problem_id),
+                None,
+            )
+            if target:
+                merged_into = {"task_id": target.id, "problem_id": canonical_problem_id}
     return {
         "id": record.id,
         "status": record.status.value,
@@ -361,6 +373,7 @@ def _task_view(record: TaskRecord) -> dict[str, Any]:
             "problem_id": problem.id,
             "knowledge_points": problem.knowledge_points,
         } if problem else None,
+        "merged_into": merged_into,
     }
 
 
@@ -481,6 +494,7 @@ app.include_router(tasks.router)
 app.include_router(batch.router)
 app.include_router(catalog.router)
 app.include_router(papers.router)
+app.include_router(study.router)
 
 
 __all__ = [
@@ -490,6 +504,7 @@ __all__ = [
     "HERMES_RUNNER",
     "PI_RUNNER",
     "PAPER_DRAFT_STORE",
+    "PROBLEM_MERGE_STORE",
     "RUN_STORE",
     "STORAGE_DIR",
     "TAG_STORE",

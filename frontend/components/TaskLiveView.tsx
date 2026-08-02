@@ -25,6 +25,7 @@ import { TaskLiveStream } from "./task/TaskLiveStream";
 import { TaskMathRenderer } from "./task/TaskMathRenderer";
 import { TaskStatusToaster } from "./task/TaskStatusToaster";
 import { CheckIcon, ChevronDownIcon, ChevronUpIcon } from "./ui/icons";
+import { ProblemStudyPanel } from "./task/ProblemStudyPanel";
 
 function formatDurationMs(diffMs: number): string {
   if (!Number.isFinite(diffMs) || diffMs < 0) return "未知";
@@ -265,6 +266,18 @@ export function TaskLiveView({ taskId }: { taskId: string }) {
         </Box>
       )}
 
+      {viewData?.task.problem && (
+        <ProblemStudyPanel
+          taskId={taskId}
+          problem={viewData.task.problem}
+          mergedInto={viewData.task.merged_into}
+          onStatusMessage={setStatusMessage}
+          onError={setError}
+          onRefresh={loadOnce}
+          section="duplicates"
+        />
+      )}
+
       {viewData && (
         <TaskProblemDetail
           taskId={taskId}
@@ -282,6 +295,18 @@ export function TaskLiveView({ taskId }: { taskId: string }) {
           onStatusMessage={setStatusMessage}
           onError={setError}
           onOpenSourceImage={() => setIsScreenshotOpen(true)}
+        />
+      )}
+
+      {viewData?.task.problem && (
+        <ProblemStudyPanel
+          taskId={taskId}
+          problem={viewData.task.problem}
+          mergedInto={viewData.task.merged_into}
+          onStatusMessage={setStatusMessage}
+          onError={setError}
+          onRefresh={loadOnce}
+          section="variations"
         />
       )}
 

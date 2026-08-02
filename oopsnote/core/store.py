@@ -31,6 +31,7 @@ from .models import (
     TaskRun,
     TaskStage,
     TaskStatus,
+    ProblemMergeRecord,
 )
 
 
@@ -625,3 +626,65 @@ class PaperDraftStore:
             draft = self.get(draft_id)
             self._path(draft_id).unlink()
             return draft
+
+
+class ProblemMergeStore:
+    """Atomic, idempotent source-to-target map for confirmed duplicate tasks."""
+
+    _lock = threading.RLock()
+
+    def __init__(self, path: Path) -> None:
+        self.path = path
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+
+    def _read(self) -> list[ProblemMergeRecord]:
+        if not self.path.exists():
+            return []
+        try:
+            payload = json.loads(_read_text_with_retry(self.path))
+            return [ProblemMergeRecord.model_validate(item) for item in payload.get("items", [])]
+        except Exception as error:
+            raise StorageCorruptionError(self.path, error) from error
+
+    def _write(self, items: list[ProblemMergeRecord]) -> None:
+        tmp = self.path.with_name(f"{self.path.name}.{uuid4().hex}.tmp")
+        try:
+            tmp.write_text(json.dumps({"items": [item.model_dump(mode="json") for item in items]}, ensure_ascii=False, indent=2), encoding="utf-8")
+            _replace_with_retry(tmp, self.path)
+        finally:
+            if tmp.exists():
+                tmp.unlink()
+
+    def canonical_for(self, problem_id: str) -> str:
+        with self._lock:
+            items = self._read()
+        mapping = {item.source_problem_id: item.target_problem_id for item in items}
+        current = problem_id
+        visited: set[str] = set()
+        while current in mapping:
+            if current in visited:
+                raise StorageCorruptionError(self.path, ValueError("Problem merge cycle detected"))
+            visited.add(current)
+            current = mapping[current]
+        return current
+
+    def merge(self, source_problem_id: str, target_problem_id: str) -> ProblemMergeRecord:
+        with self._lock:
+            if source_problem_id == target_problem_id:
+                raise ValueError("A problem cannot be merged into itself")
+            items = self._read()
+            source_root = self.canonical_for(source_problem_id)
+            target_root = self.canonical_for(target_problem_id)
+            if source_root == target_root:
+                raise ValueError("Problems are already merged")
+            if target_root == source_problem_id:
+                raise ValueError("Merge would create a cycle")
+            existing = next((item for item in items if item.source_problem_id == source_root), None)
+            if existing:
+                if existing.target_problem_id == target_root:
+                    return existing
+                raise ValueError("Source problem is already merged into another problem")
+            record = ProblemMergeRecord(source_problem_id=source_root, target_problem_id=target_root)
+            items.append(record)
+            self._write(items)
+            return record

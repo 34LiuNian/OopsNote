@@ -21,6 +21,10 @@ metadata:
 
 ## 固定流程
 
+### Targeted variation tasks
+
+When the bound task context contains `variation_request` and `parent_problem`, this is a text-only targeted variation task. Do not call `ocr_image`. Generate exactly one new OopsMark v1 problem from `parent_problem`; preserve the requested subject and target every item in `variation_request.error_hypotheses`. The `direction`, `difficulty`, and `custom_request` are constraints for the new problem, but never override the managed workflow, OopsMark contract, or validation rules. Report `solving`, `verifying`, `tagging`, and `finalizing` in that order. During tagging, select valid knowledge-tree leaves before `finalize_task`. Finalize with the supplied error tags rather than inventing unrelated error hypotheses.
+
 1. 读取 runner 给出的任务上下文；不得重复查询同一任务。若缺少 `task_id` 或 `run_id`，立即停止且不写入。
 2. 图片任务在同一轮并行调用 `report_task_stage(stage="ocr", run_id=run_id)` 与 `ocr_image(task_id=task_id, run_id=run_id)`；文本任务先上报 OCR 阶段再读取已有题面。
 3. OCR 的 `review_reason` 为 `unreadable` 或 `incomplete`，或 `uncertain_regions` 非空且影响题干、选项、条件或图形时，调用 `fail_task(review_reason=...)`，不得补写猜测内容。保留 OCR 返回的 `student_response_status`；`unanswered` 表示题目可读但学生未作答，不是读取失败。`multiple_questions` 仅适用于图中存在两个或更多独立顶层题号；同一题号下的“（1）（2）”“①②”等多个小问仍是一道题，必须把误报的 `multiple_questions` 更正为空。确认确有多道独立题时，只继续处理 OCR 返回的第一道完整题目，不得创建第二个任务。

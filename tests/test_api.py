@@ -12,7 +12,7 @@ from PIL import Image
 
 from oopsnote.api import main
 from oopsnote.ai import HermesRunner
-from oopsnote.core import AssetStore, BatchProcessJobStore, BatchSessionStore, Problem, RunStatus, RunStore, TagStore, TaskCreateRequest, TaskStore, TaskStatus
+from oopsnote.core import AssetStore, BatchProcessJobStore, BatchSessionStore, Problem, ProblemMergeStore, RunStatus, RunStore, TagStore, TaskCreateRequest, TaskRun, TaskStore, TaskStatus
 
 
 class RecordingBatchRunner:
@@ -34,6 +34,18 @@ class RecordingBatchRunner:
         return SimpleNamespace(id=run_id)
 
 
+class RecordingStudyRunner:
+    def __init__(self, task_store: TaskStore) -> None:
+        self.task_store = task_store
+        self.submitted: list[str] = []
+
+    def submit(self, task_id: str) -> TaskRun:
+        self.submitted.append(task_id)
+        run = TaskRun(task_id=task_id)
+        self.task_store.update(task_id, status=TaskStatus.PROCESSING, active_run_id=run.id)
+        return run
+
+
 def png_base64(color: str = "white") -> str:
     buffer = BytesIO()
     Image.new("RGB", (4, 4), color).save(buffer, format="PNG")
@@ -44,6 +56,68 @@ def test_search_rejects_invalid_since_query_at_http_boundary():
     response = TestClient(main.app).get("/search", params={"since": "not-a-date"})
 
     assert response.status_code == 422
+
+
+def test_duplicate_candidates_merge_without_removing_source_task(tmp_path, monkeypatch):
+    storage = tmp_path / "storage"
+    task_store = TaskStore(base_dir=storage)
+    monkeypatch.setattr(main, "STORAGE_DIR", storage)
+    monkeypatch.setattr(main, "TASK_STORE", task_store)
+    monkeypatch.setattr(main, "RUN_STORE", RunStore(storage / "runs"))
+    monkeypatch.setattr(main, "PROBLEM_MERGE_STORE", ProblemMergeStore(storage / "settings" / "problem_merges.json"))
+
+    current = task_store.create(TaskCreateRequest(subject="math"))
+    candidate = task_store.create(TaskCreateRequest(subject="math"))
+    current = task_store.set_problem(current.id, Problem(subject="math", problem_text="Find $x$.", options=["1", "2"], answer="A", explanation=""))
+    candidate = task_store.set_problem(candidate.id, Problem(subject="math", problem_text=" Find   $x$. ", options=["1", "2"], answer="A", explanation=""))
+    client = TestClient(main.app)
+
+    listed = client.get(f"/tasks/{current.id}/duplicates")
+    assert listed.status_code == 200
+    assert [item["task"]["id"] for item in listed.json()["items"]] == [candidate.id]
+
+    merged = client.post(
+        f"/tasks/{current.id}/duplicates/{candidate.id}/merge",
+        json={"direction": "into_current"},
+    )
+    assert merged.status_code == 200
+    assert task_store.get(candidate.id).problem is not None
+    detail = client.get(f"/tasks/{candidate.id}").json()["task"]
+    assert detail["merged_into"]["task_id"] == current.id
+    assert client.get(f"/tasks/{current.id}/duplicates").json() == {"items": []}
+
+
+def test_variation_request_carries_parent_error_and_custom_constraints(tmp_path, monkeypatch):
+    storage = tmp_path / "storage"
+    task_store = TaskStore(base_dir=storage)
+    runner = RecordingStudyRunner(task_store)
+    monkeypatch.setattr(main, "STORAGE_DIR", storage)
+    monkeypatch.setattr(main, "TASK_STORE", task_store)
+    monkeypatch.setattr(main, "RUN_STORE", RunStore(storage / "runs"))
+    monkeypatch.setattr(main, "_runner_for", lambda _backend: runner)
+    monkeypatch.setattr(main, "_configured_backend", lambda _backend: "pi")
+
+    parent = task_store.create(TaskCreateRequest(subject="math"))
+    parent = task_store.set_problem(parent.id, Problem(
+        subject="math",
+        problem_text="Find $x$.",
+        answer="$1$",
+        explanation="",
+        error_hypothesis=["sign error"],
+        knowledge_points=["linear equation"],
+    ))
+    response = TestClient(main.app).post(
+        f"/tasks/{parent.id}/variations",
+        json={"direction": "add_distractors", "custom_request": "Use a real-world setting", "count": 2},
+    )
+
+    assert response.status_code == 200
+    assert len(response.json()["items"]) == 2
+    assert len(runner.submitted) == 2
+    created = task_store.get(runner.submitted[0])
+    assert created.metadata["variation_request"]["parent_problem_id"] == parent.problem.id
+    assert created.metadata["variation_request"]["error_hypotheses"] == ["sign error"]
+    assert created.metadata["variation_request"]["custom_request"] == "Use a real-world setting"
 
 
 def test_tracked_knowledge_catalog_supports_subject_search_and_tree():

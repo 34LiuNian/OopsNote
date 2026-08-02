@@ -58,7 +58,9 @@ export function ProblemContent({
   fontSize,
 }: ProblemContentProps) {
   const contentRef = useRef<HTMLDivElement | null>(null);
+  const illustrationRef = useRef<HTMLElement | null>(null);
   const [contentHeight, setContentHeight] = useState(0);
+  const [illustrationAspectRatio, setIllustrationAspectRatio] = useState(1);
   const hasTikz = diagramKind === "tikz" && Boolean(diagramSvg || diagramTikzSource);
   const hasImage = diagramKind === "image" && Boolean(diagramImagePath);
   const hasIllustration = diagramDetected && (hasTikz || hasImage);
@@ -78,6 +80,38 @@ export function ProblemContent({
     observer.observe(element);
     return () => observer.disconnect();
   }, [hasIllustration, problemText, fontSize]);
+
+  useLayoutEffect(() => {
+    const element = illustrationRef.current;
+    if (!element || !hasIllustration) {
+      setIllustrationAspectRatio(1);
+      return;
+    }
+
+    const update = () => {
+      const image = element.querySelector("img");
+      if (image?.naturalWidth && image.naturalHeight) {
+        setIllustrationAspectRatio(image.naturalWidth / image.naturalHeight);
+        return;
+      }
+
+      const svg = element.querySelector("svg");
+      const viewBox = svg?.viewBox.baseVal;
+      if (viewBox?.width && viewBox.height) {
+        setIllustrationAspectRatio(viewBox.width / viewBox.height);
+      }
+    };
+
+    setIllustrationAspectRatio(1);
+    update();
+    element.addEventListener("load", update, true);
+    const observer = new MutationObserver(update);
+    observer.observe(element, { childList: true, subtree: true });
+    return () => {
+      element.removeEventListener("load", update, true);
+      observer.disconnect();
+    };
+  }, [hasIllustration, diagramKind, diagramImagePath, diagramSvg, diagramTikzSource]);
 
   const imageUrl = diagramImagePath
     ? diagramImagePath.startsWith("/assets/") ? `/api${diagramImagePath}` : diagramImagePath
@@ -101,9 +135,10 @@ export function ProblemContent({
         </Box>
         {hasIllustration ? (
           <Box
+            ref={illustrationRef}
             as="figure"
             className="problem-content__illustration"
-            style={{ height: figureHeight }}
+            style={{ height: figureHeight, aspectRatio: illustrationAspectRatio }}
             sx={{ m: 0 }}
           >
             {diagramKind === "image" && imageUrl ? (

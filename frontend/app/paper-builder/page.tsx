@@ -37,9 +37,23 @@ export default function PaperBuilderPage() {
   const [knowledgeFilter, setKnowledgeFilter] = useState<string[]>([]);
   const [errorFilter, setErrorFilter] = useState<string[]>([]);
   const [customFilter, setCustomFilter] = useState<string[]>([]);
-  const [dateAfter, setDateAfter] = useState<string>("");
-  const [dateBefore, setDateBefore] = useState<string>("");
+  const [dateAfter, setDateAfter] = useState<string | null>(null);
+  const [dateBefore, setDateBefore] = useState<string | null>(null);
   const { effectiveDimensions: tagStyles } = useTagDimensions();
+
+  const { items: allItems } = useProblemList();
+  const defaultDateRange = useMemo(() => {
+    const dates = allItems
+      .map((item) => item.created_at.slice(0, 10))
+      .filter((value) => /^\d{4}-\d{2}-\d{2}$/.test(value))
+      .sort();
+    return {
+      after: dates[0] ?? "",
+      before: dates[dates.length - 1] ?? "",
+    };
+  }, [allItems]);
+  const effectiveDateAfter = dateAfter ?? defaultDateRange.after;
+  const effectiveDateBefore = dateBefore ?? defaultDateRange.before;
 
   const {
     items,
@@ -51,8 +65,8 @@ export default function PaperBuilderPage() {
     knowledge_tag: knowledgeFilter.length > 0 ? knowledgeFilter : undefined,
     error_tag: errorFilter.length > 0 ? errorFilter : undefined,
     user_tag: customFilter.length > 0 ? customFilter : undefined,
-    created_after: dateAfter || undefined,
-    created_before: dateBefore || undefined,
+    created_after: effectiveDateAfter || undefined,
+    created_before: effectiveDateBefore || undefined,
   });
 
   const [selected, setSelected] = useState<Record<string, boolean>>({});
@@ -217,7 +231,7 @@ export default function PaperBuilderPage() {
               <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
                 <TextInput
                   type="date"
-                  value={dateAfter}
+                  value={effectiveDateAfter}
                   onChange={(e) => setDateAfter(e.target.value)}
                   sx={{ flex: 1, fontSize: 0 }}
                   placeholder="起始"
@@ -225,7 +239,7 @@ export default function PaperBuilderPage() {
                 <Text sx={{ color: 'fg.muted', fontSize: 1 }}>-</Text>
                 <TextInput
                   type="date"
-                  value={dateBefore}
+                  value={effectiveDateBefore}
                   onChange={(e) => setDateBefore(e.target.value)}
                   sx={{ flex: 1, fontSize: 0 }}
                   placeholder="结束"
@@ -236,7 +250,7 @@ export default function PaperBuilderPage() {
                     setDateAfter('');
                     setDateBefore('');
                   }}
-                  disabled={!dateAfter && !dateBefore}
+                  disabled={!effectiveDateAfter && !effectiveDateBefore}
                   sx={{ fontSize: 0, px: 1, py: 0 }}
                 >
                   清空

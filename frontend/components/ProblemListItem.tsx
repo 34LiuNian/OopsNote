@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { memo } from "react";
-import { Box, Checkbox } from "@/components/ui/primitives";
+import { Box } from "@/components/ui/primitives";
 import type { ProblemSummary } from "../types/api";
 import { ProblemCard } from "./ProblemCard";
 
@@ -11,10 +11,9 @@ export const ProblemListItem = memo(function ProblemListItem(props: {
   selected?: boolean;
   toggleKey?: string;
   onToggleSelection?: (key: string) => void;
-  showCheckbox?: boolean;
   showViewLink?: boolean;
 }) {
-  const { item, selected, toggleKey, onToggleSelection, showCheckbox = false, showViewLink = false } = props;
+  const { item, selected, toggleKey, onToggleSelection, showViewLink = false } = props;
   const isSelectable = Boolean(toggleKey && onToggleSelection);
 
   const handleClick = () => {
@@ -25,17 +24,7 @@ export const ProblemListItem = memo(function ProblemListItem(props: {
 
   const cardContent = (
     <Box sx={{ display: "flex", alignItems: "flex-start", gap: 3 }}>
-      {showCheckbox && (
-        <Box sx={{ mt: 1, flexShrink: 0 }}>
-          <Checkbox
-            aria-label={`选择题目${item.question_no ? ` ${item.question_no}` : ""}`}
-            checked={Boolean(selected)}
-            onClick={(event) => event.stopPropagation()}
-            onChange={handleClick}
-          />
-        </Box>
-      )}
-      <Box sx={{ minWidth: 0, flex: 1 }}>
+      <Box key="problem-content" sx={{ minWidth: 0, flex: 1 }}>
         <ProblemCard
           questionNo={item.question_no}
           questionType={item.question_type}
@@ -62,19 +51,27 @@ export const ProblemListItem = memo(function ProblemListItem(props: {
     </Box>
   );
 
-  const selectableCard = (
-    <Box
+  return (
+    <Link
+      href={showViewLink ? `/tasks/${item.task_id}` : "#"}
+      aria-label={showViewLink ? "查看任务" : undefined}
       role={isSelectable ? "button" : undefined}
-      tabIndex={isSelectable ? 0 : undefined}
       aria-pressed={isSelectable ? Boolean(selected) : undefined}
-      onClick={isSelectable ? handleClick : undefined}
+      tabIndex={isSelectable || showViewLink ? 0 : -1}
+      onClick={(event) => {
+        if (!showViewLink) event.preventDefault();
+        if (isSelectable) handleClick();
+      }}
       onKeyDown={isSelectable ? (event) => {
-        if (event.key !== "Enter" && event.key !== " ") return;
+        if (event.key !== " ") return;
         event.preventDefault();
         handleClick();
       } : undefined}
+      style={{ textDecoration: "none", color: "inherit" }}
+    >
+    <Box
       sx={{
-        cursor: isSelectable ? "pointer" : "default",
+        cursor: isSelectable || showViewLink ? "pointer" : "default",
         borderRadius: 2,
         outline: selected ? "1px solid var(--fgColor-accent)" : "none",
         backgroundColor: selected ? "accent.subtle" : "transparent",
@@ -88,15 +85,6 @@ export const ProblemListItem = memo(function ProblemListItem(props: {
     >
       {cardContent}
     </Box>
-  );
-
-  return showViewLink ? (
-    <Link
-      href={`/tasks/${item.task_id}`}
-      aria-label="查看任务"
-      style={{ textDecoration: "none", color: "inherit" }}
-    >
-      {selectableCard}
     </Link>
-  ) : selectableCard;
+  );
 });

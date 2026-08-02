@@ -121,7 +121,7 @@ test("GFM tables show a cell grid and are centered", async ({ page }) => {
 });
 
 test("problem illustrations support mutually exclusive right-side auto sizing and custom sizing", async ({ page }) => {
-  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.setViewportSize({ width: 1920, height: 1080 });
   await page.goto("/debug", { waitUntil: "domcontentloaded" });
 
   const automatic = page.locator("#problem-illustration-auto .problem-content__lead");
@@ -130,10 +130,17 @@ test("problem illustrations support mutually exclusive right-side auto sizing an
   const automaticSizes = await automatic.evaluate((element) => ({
     content: element.querySelector<HTMLElement>(".problem-content__body")!.getBoundingClientRect().height,
     figure: element.querySelector<HTMLElement>(".problem-content__illustration")!.getBoundingClientRect().height,
+    figureWidth: element.querySelector<HTMLElement>(".problem-content__illustration")!.getBoundingClientRect().width,
+    leadWidth: element.getBoundingClientRect().width,
+    leadRight: element.getBoundingClientRect().right,
+    figureRight: element.querySelector<HTMLElement>(".problem-content__illustration")!.getBoundingClientRect().right,
     optionsInsideContent: Boolean(element.querySelector(".problem-content__body [data-option-item='true']")),
   }));
   expect(automaticSizes.optionsInsideContent).toBe(true);
   expect(automaticSizes.figure).toBeCloseTo(automaticSizes.content, 0);
+  expect(automaticSizes.figureWidth / automaticSizes.figure).toBeCloseTo(1.5, 1);
+  expect(automaticSizes.figureWidth).toBeLessThanOrEqual(automaticSizes.leadWidth * 0.38 + 1);
+  expect(automaticSizes.leadRight - automaticSizes.figureRight).toBeLessThan(1);
 
   const custom = page.locator("#problem-illustration-custom .problem-content__lead");
   await expect(custom).toHaveClass(/is-left/);
@@ -141,6 +148,23 @@ test("problem illustrations support mutually exclusive right-side auto sizing an
   const customSizes = await custom.evaluate((element) => ({
     content: element.querySelector<HTMLElement>(".problem-content__body")!.getBoundingClientRect().height,
     figure: element.querySelector<HTMLElement>(".problem-content__illustration")!.getBoundingClientRect().height,
+    figureWidth: element.querySelector<HTMLElement>(".problem-content__illustration")!.getBoundingClientRect().width,
   }));
   expect(customSizes.figure / customSizes.content).toBeCloseTo(1.25, 1);
+  expect(customSizes.figureWidth / customSizes.figure).toBeCloseTo(1, 1);
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  const mobileSizes = await automatic.evaluate((element) => {
+    const body = element.querySelector<HTMLElement>(".problem-content__body")!.getBoundingClientRect();
+    const figure = element.querySelector<HTMLElement>(".problem-content__illustration")!.getBoundingClientRect();
+    const lead = element.getBoundingClientRect();
+    return {
+      bodyBottom: body.bottom,
+      figureTop: figure.top,
+      figureWidth: figure.width,
+      leadWidth: lead.width,
+    };
+  });
+  expect(mobileSizes.figureTop).toBeGreaterThanOrEqual(mobileSizes.bodyBottom);
+  expect(mobileSizes.figureWidth).toBeLessThanOrEqual(mobileSizes.leadWidth + 1);
 });

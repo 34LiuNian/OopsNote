@@ -85,7 +85,17 @@ export const ProblemCard = memo(function ProblemCard({
         <Text sx={{ fontWeight: "bold", display: "block", mb: 1, fontSize: 2 }}>{resolvedTitle}</Text>
       ) : null}
       {metaParts.length > 0 ? (
-        <Text sx={{ color: "fg.muted", fontSize: 0, display: "block", mb: 2 }}>{metaParts.join(" · ")}</Text>
+        <Text
+          sx={{
+            color: "fg.muted",
+            fontSize: 0,
+            display: "block",
+            mb: 2,
+            fontFamily: "Inter, 'Noto Sans SC', 'Microsoft YaHei UI', 'Microsoft YaHei', sans-serif",
+          }}
+        >
+          {metaParts.join(" · ")}
+        </Text>
       ) : null}
       <ProblemContent
         problemText={problemText}

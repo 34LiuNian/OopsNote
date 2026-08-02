@@ -1,6 +1,7 @@
 [project]
 name = "oopsnote"
 version = "0.1.0"
+license = { file = "LICENSE" }
 description = "OopsNote - AI 错题管理助手"
 requires-python = ">=3.11"
 dependencies = [

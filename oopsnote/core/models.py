@@ -478,3 +478,22 @@ class SearchQuery(BaseModel):
     error_type: Optional[str] = None
     regex: Optional[str] = None
     limit: int = 50
+
+
+class ProblemMergeRecord(BaseModel):
+    """One explicit duplicate decision; source remains fully preserved."""
+
+    source_problem_id: str
+    target_problem_id: str
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class VariationRequest(BaseModel):
+    """Persisted generation constraints for a targeted derived problem."""
+
+    parent_problem_id: str
+    error_hypotheses: list[str] = Field(default_factory=list)
+    knowledge_points: list[str] = Field(default_factory=list)
+    direction: str = "change_conditions"
+    custom_request: str = Field(default="", max_length=2000)
+    difficulty: Optional[str] = None
