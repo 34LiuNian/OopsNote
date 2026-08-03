@@ -9,6 +9,7 @@ services:
         NEXT_PUBLIC_OIDC_REDIRECT_URI: https://oopsnote.alan-ztr.eu.org/auth/callback
         NEXT_PUBLIC_OIDC_POST_LOGOUT_REDIRECT_URI: https://oopsnote.alan-ztr.eu.org/
         NEXT_PUBLIC_OIDC_SCOPE: openid profile email
+        NEXT_PUBLIC_ADMIN_SUBJECTS: 5cf94ffe-c14b-4c32-9092-7ff8ab947579
     environment:
       NODE_ENV: production
     ports:
@@ -27,6 +28,7 @@ services:
       OOPSNOTE_AUTH_ISSUER: https://auth.alan-ztr.eu.org
       OOPSNOTE_AUTH_AUDIENCE: abd3d0b3-46f3-4aaa-994c-1c9258c74c1e
       OOPSNOTE_AUTH_JWKS_URL: http://pocket-id:1411/.well-known/jwks.json
+      OOPSNOTE_ADMIN_SUBJECTS: 5cf94ffe-c14b-4c32-9092-7ff8ab947579
     volumes:
       - oopsnote-data:/data
       - ./deploy/pi:/app/.pi:ro

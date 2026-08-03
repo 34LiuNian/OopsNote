@@ -118,6 +118,7 @@ function userFromUserInfo(payload: unknown): AuthUser {
     roles: [
       ...(Array.isArray(claims.roles) ? claims.roles.filter((value): value is string => typeof value === "string") : []),
       ...(typeof claims.role === "string" ? [claims.role] : []),
+      ...(Array.isArray(claims.groups) ? claims.groups.filter((value): value is string => typeof value === "string") : []),
       ...(Array.isArray((claims.realm_access as { roles?: unknown } | undefined)?.roles) ? ((claims.realm_access as { roles: unknown[] }).roles.filter((value): value is string => typeof value === "string")) : []),
     ],
   };
@@ -125,6 +126,8 @@ function userFromUserInfo(payload: unknown): AuthUser {
 
 export function isAdminUser(user: AuthUser | null): boolean {
   if (!user) return false;
+  const subjects = (process.env.NEXT_PUBLIC_ADMIN_SUBJECTS || "").split(",").map((value) => value.trim()).filter(Boolean);
+  if (subjects.includes(user.subject)) return true;
   const configured = (process.env.NEXT_PUBLIC_ADMIN_ROLES || "admin").split(",").map((value) => value.trim()).filter(Boolean);
   return (user.roles ?? []).some((role) => configured.includes(role));
 }
