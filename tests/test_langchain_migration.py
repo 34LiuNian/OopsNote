@@ -141,6 +141,42 @@ def test_provider_api_reports_unavailable_vault_instead_of_missing_secrets(monke
     assert response.json() == {"detail": "provider secret store is unavailable"}
 
 
+def test_task_provider_options_only_expose_runnable_nonsecret_profiles(monkeypatch, tmp_path):
+    from oopsnote.api import main
+
+    settings = AppSettingsStore(tmp_path / "settings.json")
+    vault = MemorySecretStore()
+    runnable = ProviderProfile(
+        id="primary", version=2, display_name="Primary", provider="deepseek",
+        model="chat", credential_ref=vault.put("secret"),
+    )
+    disabled = ProviderProfile(
+        id="disabled", version=1, provider="openai", model="chat",
+        credential_ref=vault.put("disabled-secret"), enabled=False,
+    )
+    missing = ProviderProfile(
+        id="missing", version=1, provider="anthropic", model="chat",
+        credential_ref="missing-ref",
+    )
+    settings.activate_provider_profile(runnable)
+    settings.upsert_provider_profile(disabled)
+    settings.upsert_provider_profile(missing)
+    monkeypatch.setattr(main, "APP_SETTINGS_STORE", settings)
+    monkeypatch.setattr(main, "get_secret_store", lambda: vault)
+
+    response = TestClient(main.app).get("/ai/provider-options")
+
+    assert response.status_code == 200
+    assert response.json() == {"items": [{
+        "id": "primary",
+        "display_name": "Primary",
+        "provider": "deepseek",
+        "model": "chat",
+        "is_default": True,
+    }]}
+    assert "credential" not in response.text
+
+
 def test_ocr_profile_activation_updates_persisted_and_live_configuration(monkeypatch, tmp_path):
     from oopsnote.api import main
     from oopsnote.api.routes import ai_settings

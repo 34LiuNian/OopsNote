@@ -29,6 +29,32 @@ def _api():
     return main
 
 
+@router.get("/ai/provider-options")
+def list_task_provider_options() -> dict[str, list[dict[str, Any]]]:
+    """Return only runnable, non-secret profiles available to new tasks."""
+    api = _api()
+    try:
+        vault = api.get_secret_store()
+    except RuntimeError as error:
+        raise HTTPException(status_code=503, detail="provider secret store is unavailable") from error
+    selected_id = api.APP_SETTINGS_STORE.get().get("ai_provider_profile_id")
+    return {
+        "items": [
+            {
+                "id": profile.id,
+                "display_name": profile.display_name or profile.id,
+                "provider": profile.provider,
+                "model": profile.model,
+                "is_default": profile.id == selected_id,
+            }
+            for profile in api.APP_SETTINGS_STORE.provider_profiles()
+            if profile.enabled
+            and profile.credential_ref
+            and vault.has(profile.credential_ref)
+        ]
+    }
+
+
 @router.get("/tasks")
 def list_tasks(
     active_only: bool = False,
