@@ -19,6 +19,8 @@
   "content_format": "oopsmark-v1",
   "subject": "math",
   "question_type": "解答题",
+  "printed_question_no": 6,
+  "printed_chapter": "函数",
   "problem_text": "已知 $f(x) = x^2 - 2ax + 3$，$x \\in [1, 3]$，求 $f(x)$ 的最小值。",
   "options": []
 }
@@ -33,6 +35,8 @@
 | `question_type` | ✅ | `单选题` / `多选题` / `填空题` / `解答题`（中文）|
 | `problem_text` | ✅ | 完整题面，Markdown + LaTeX |
 | `options` | ❌ | 选择题时必填，数组；其他题型可省略或空数组 |
+| `printed_question_no` | ✅ | 明确印刷的正整数题号；看不清或未印刷时为 `null`，不写进 `problem_text` |
+| `printed_chapter` | ✅ | 明确印刷的章节标题；看不清或未印刷时为 `null`，不写进 `problem_text` |
 
 ## 格式要求
 
@@ -63,8 +67,8 @@
 
 ## 约束
 
-- **不输出题号**（如 "6."、"第3题"）
-- **不输出来源**（如 "2024某地一模"）
+- `problem_text` 中不输出题号（如 "6."、"第3题"）；仅在明确可见时写入 `printed_question_no`
+- `problem_text` 中不输出章节或来源；仅在明确可见时写入 `printed_chapter`
 - 图片模糊无法识别 → 只输出 `{"error": "图片质量不足，无法提取"}`
 - 输出必须是纯 JSON，不包含多余文本或 Markdown 包裹
 - 只输出一道题，不批量输出

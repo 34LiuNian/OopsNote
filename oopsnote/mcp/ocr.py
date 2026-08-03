@@ -14,6 +14,7 @@ from typing import Any
 
 import httpx
 
+from oopsnote.core import OcrPrintedContext, StateConflict, TaskStatus
 from oopsnote.mcp.ocr_contract import OCR_INSTRUCTION, normalize_ocr_result
 
 
@@ -26,6 +27,14 @@ _OCR_CLIENT_LOCK = threading.Lock()
 _OCR_RESULT_LOCK = threading.Lock()
 _OCR_RESULTS: OrderedDict[tuple[str, str, str], dict[str, Any]] = OrderedDict()
 _OCR_RESULT_LIMIT = 128
+
+
+class OcrProviderError(RuntimeError):
+    """A classified OCR boundary failure suitable for lifecycle policy."""
+
+    def __init__(self, code: str, message: str) -> None:
+        super().__init__(message)
+        self.code = code
 
 
 def _ocr_client() -> httpx.Client:
@@ -122,16 +131,37 @@ def _ocr_image_path(image_path: Path) -> dict[str, Any]:
         parsed = json.loads(content)
     except httpx.HTTPStatusError as error:
         status = error.response.status_code
-        category = "rate_limit" if status == 429 else "provider_error"
-        raise RuntimeError(f"DashScope OCR {category}: HTTP {status}") from error
+        if status == 429:
+            raise OcrProviderError(
+                "ocr_rate_limit",
+                f"DashScope OCR rate limit: HTTP {status}",
+            ) from error
+        if status in {408, 500, 502, 503, 504}:
+            raise OcrProviderError(
+                "ocr_provider_unavailable",
+                f"DashScope OCR provider unavailable: HTTP {status}",
+            ) from error
+        raise OcrProviderError(
+            "ocr_provider_error",
+            f"DashScope OCR provider error: HTTP {status}",
+        ) from error
     except httpx.TimeoutException as error:
-        raise RuntimeError("DashScope OCR timeout") from error
+        raise OcrProviderError("ocr_timeout", "DashScope OCR timeout") from error
     except httpx.TransportError as error:
-        raise RuntimeError(f"DashScope OCR network error: {error}") from error
+        raise OcrProviderError(
+            "ocr_network_error",
+            f"DashScope OCR network error: {error}",
+        ) from error
     except (KeyError, IndexError, TypeError, json.JSONDecodeError) as error:
-        raise RuntimeError("DashScope OCR returned an invalid response") from error
+        raise OcrProviderError(
+            "ocr_invalid_response",
+            "DashScope OCR returned an invalid response",
+        ) from error
     if not isinstance(parsed, dict):
-        raise RuntimeError("DashScope OCR returned a non-object result")
+        raise OcrProviderError(
+            "ocr_invalid_response",
+            "DashScope OCR returned a non-object result",
+        )
     return parsed
 
 
@@ -158,10 +188,29 @@ def ocr_image(task_id: str, run_id: str) -> dict[str, Any]:
         task.metadata.get("question_no")
         or task.metadata.get("batch_question_no")
     )
-    result = normalize_ocr_result(
-        parsed,
-        expected_question_no=expected_question_no,
-    )
+    try:
+        result = normalize_ocr_result(
+            parsed,
+            expected_question_no=expected_question_no,
+        )
+    except ValueError as error:
+        raise OcrProviderError(
+            "ocr_invalid_response",
+            f"DashScope OCR returned an invalid result: {error}",
+        ) from error
+    try:
+        server.TASK_STORE.transition(
+            task_id,
+            expected_statuses={TaskStatus.PROCESSING},
+            expected_active_run_id=run_id,
+            ocr_context=OcrPrintedContext(
+                printed_question_no=result.get("printed_question_no"),
+                printed_chapter=result.get("printed_chapter"),
+            ),
+        )
+    except StateConflict:
+        # A cancelled or replaced run must not attach stale OCR observations.
+        pass
     with _OCR_RESULT_LOCK:
         _OCR_RESULTS[cache_key] = deepcopy(result)
         _OCR_RESULTS.move_to_end(cache_key)
@@ -170,4 +219,4 @@ def ocr_image(task_id: str, run_id: str) -> dict[str, Any]:
     return result
 
 
-__all__ = ["OCR_ENDPOINT", "close_ocr_client", "ocr_image"]
+__all__ = ["OCR_ENDPOINT", "OcrProviderError", "close_ocr_client", "ocr_image"]

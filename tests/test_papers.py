@@ -25,6 +25,7 @@ from oopsnote.paper import (
     build_paper_document,
     build_paper_tex,
     compile_paper_pdf,
+    difficulty_review_reason,
     infer_difficulty_coefficients,
     select_paper_items,
 )
@@ -78,6 +79,7 @@ def _add_problem(
     question_no: int | None,
     question_type: QuestionType,
     source_hash: str | None = "source-1",
+    section_question_count: int | None = None,
     knowledge: str = "函数",
     content_format: ContentFormat = ContentFormat.LEGACY_MARKDOWN_LATEX,
     answer: str = "",
@@ -89,6 +91,7 @@ def _add_problem(
         TaskCreateRequest(
             subject="math",
             metadata={"question_no": str(question_no) if question_no else None, "trace": trace},
+            section_question_count=section_question_count,
         )
     )
     return store.set_problem(
@@ -104,12 +107,12 @@ def _add_problem(
     )
 
 
-def test_difficulty_is_ranked_inside_source_and_question_type(tmp_path):
+def test_difficulty_uses_explicit_section_question_count(tmp_path):
     store = TaskStore(tmp_path / "tasks")
-    choice_1 = _add_problem(store, question_no=1, question_type=QuestionType.SINGLE_CHOICE)
-    choice_2 = _add_problem(store, question_no=2, question_type=QuestionType.SINGLE_CHOICE)
-    fill_3 = _add_problem(store, question_no=3, question_type=QuestionType.FILL_BLANK)
-    fill_4 = _add_problem(store, question_no=4, question_type=QuestionType.FILL_BLANK)
+    choice_1 = _add_problem(store, question_no=1, question_type=QuestionType.SINGLE_CHOICE, section_question_count=2)
+    choice_2 = _add_problem(store, question_no=2, question_type=QuestionType.SINGLE_CHOICE, section_question_count=2)
+    fill_3 = _add_problem(store, question_no=3, question_type=QuestionType.FILL_BLANK, section_question_count=4)
+    fill_4 = _add_problem(store, question_no=4, question_type=QuestionType.FILL_BLANK, section_question_count=4)
     unknown = _add_problem(
         store,
         question_no=None,
@@ -121,9 +124,64 @@ def test_difficulty_is_ranked_inside_source_and_question_type(tmp_path):
 
     assert coefficients[choice_1.id] == 0.5
     assert coefficients[choice_2.id] == 1.0
-    assert coefficients[fill_3.id] == 0.5
+    assert coefficients[fill_3.id] == 0.75
     assert coefficients[fill_4.id] == 1.0
     assert unknown.id not in coefficients
+
+
+def test_difficulty_does_not_guess_section_size_from_partial_import(tmp_path):
+    store = TaskStore(tmp_path / "tasks")
+    imported = _add_problem(
+        store,
+        question_no=5,
+        question_type=QuestionType.SINGLE_CHOICE,
+        section_question_count=8,
+    )
+    missing_total = _add_problem(
+        store,
+        question_no=1,
+        question_type=QuestionType.FILL_BLANK,
+    )
+    invalid_total = _add_problem(
+        store,
+        question_no=5,
+        question_type=QuestionType.SHORT_ANSWER,
+        section_question_count=4,
+    )
+
+    coefficients = infer_difficulty_coefficients(store.list_all())
+
+    assert coefficients[imported.id] == 0.625
+    assert missing_total.id not in coefficients
+    assert invalid_total.id not in coefficients
+    assert difficulty_review_reason(store.get(missing_total.id)) == "missing_section_question_count"
+    assert difficulty_review_reason(store.get(invalid_total.id)) == "question_no_exceeds_section_question_count"
+    assert difficulty_review_reason(store.get(imported.id)) is None
+
+
+def test_manual_difficulty_override_is_authoritative_and_can_be_cleared(tmp_path):
+    store = TaskStore(tmp_path / "tasks")
+    overridden = _add_problem(
+        store,
+        question_no=None,
+        question_type=QuestionType.SHORT_ANSWER,
+        source_hash=None,
+    )
+    ranked = _add_problem(
+        store,
+        question_no=1,
+        question_type=QuestionType.SINGLE_CHOICE,
+        section_question_count=1,
+    )
+
+    store.update(overridden.id, difficulty_coefficient_override=0.73)
+    coefficients = infer_difficulty_coefficients(store.list_all())
+
+    assert coefficients[overridden.id] == 0.73
+    assert coefficients[ranked.id] == 1.0
+
+    store.update(overridden.id, difficulty_coefficient_override=None)
+    assert overridden.id not in infer_difficulty_coefficients(store.list_all())
 
 
 def test_auto_selection_does_not_fill_from_another_difficulty_band(tmp_path):
@@ -133,6 +191,7 @@ def test_auto_selection_does_not_fill_from_another_difficulty_band(tmp_path):
             store,
             question_no=question_no,
             question_type=QuestionType.SINGLE_CHOICE,
+            section_question_count=4,
         )
     payload = PaperDraftCreateRequest(
         subject="math",
@@ -159,6 +218,7 @@ def test_paper_draft_api_persists_updates_and_deletes(tmp_path, monkeypatch):
             task_store,
             question_no=question_no,
             question_type=QuestionType.SINGLE_CHOICE,
+            section_question_count=4,
         )
     client = TestClient(main.app)
 

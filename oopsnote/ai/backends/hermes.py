@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Optional
 
 from oopsnote.ai.managed import ManagedAiRunner
+from oopsnote.ai.process_metrics import process_working_set_bytes
 from oopsnote.core import RunStatus, StateConflict, TaskStage, TaskStatus
 
 
@@ -57,6 +58,7 @@ class HermesRunner(ManagedAiRunner):
     def run(self, task_id: str, run_id: str) -> None:
         log_path = self.run_store.base_dir / f"{run_id}.log"
         process: Optional[subprocess.Popen[bytes]] = None
+        peak_memory_bytes: Optional[int] = None
         started = time.monotonic()
         last_heartbeat = started
         try:
@@ -79,10 +81,12 @@ class HermesRunner(ManagedAiRunner):
                 with self._lock:
                     self._processes[task_id] = process
                 self.run_store.start(run_id, process.pid, f"runs/{log_path.name}")
-                self.task_store.update(
+                peak_memory_bytes = process_working_set_bytes(process.pid)
+                self._set_stage(
                     task_id,
-                    stage=TaskStage.STARTING,
-                    stage_message="Hermes started",
+                    run_id,
+                    TaskStage.STARTING,
+                    "Hermes started",
                 )
 
                 while process.poll() is None:
@@ -97,6 +101,7 @@ class HermesRunner(ManagedAiRunner):
                                 status=TaskStatus.FAILED,
                                 active_run_id=None,
                                 last_error=message,
+                                last_error_code="process_timeout",
                             )
                         except StateConflict:
                             pass
@@ -107,7 +112,14 @@ class HermesRunner(ManagedAiRunner):
                             error_code="process_timeout",
                             error_message=message,
                         )
+                        self.run_store.update(
+                            run_id,
+                            retryable=self.is_retryable_error("process_timeout", message),
+                        )
                         return
+                    observed_memory = process_working_set_bytes(process.pid)
+                    if observed_memory is not None:
+                        peak_memory_bytes = max(peak_memory_bytes or 0, observed_memory)
                     self._observe_task(run_id, task_id)
                     if time.monotonic() - last_heartbeat >= self.heartbeat_seconds:
                         self.run_store.heartbeat(run_id)
@@ -124,12 +136,17 @@ class HermesRunner(ManagedAiRunner):
                     exit_code=exit_code,
                 )
             elif task.status == TaskStatus.FAILED:
+                error_code = task.last_error_code or "pipeline_failed"
                 self.run_store.finish(
                     run_id,
                     RunStatus.FAILED,
                     exit_code=exit_code,
-                    error_code="pipeline_failed",
+                    error_code=error_code,
                     error_message=task.last_error or task.stage_message,
+                )
+                self.run_store.update(
+                    run_id,
+                    retryable=self.is_retryable_error(error_code, task.last_error),
                 )
             elif exit_code != 0:
                 message = f"Hermes exited with code {exit_code}; see {log_path}"
@@ -141,6 +158,7 @@ class HermesRunner(ManagedAiRunner):
                         status=TaskStatus.FAILED,
                         active_run_id=None,
                         last_error=message,
+                        last_error_code="process_exit",
                     )
                 except StateConflict:
                     pass
@@ -150,6 +168,10 @@ class HermesRunner(ManagedAiRunner):
                     exit_code=exit_code,
                     error_code="process_exit",
                     error_message=message,
+                )
+                self.run_store.update(
+                    run_id,
+                    retryable=self.is_retryable_error("process_exit", message),
                 )
             elif task.status != TaskStatus.COMPLETED:
                 message = "Hermes exited without finalizing the task"
@@ -161,6 +183,7 @@ class HermesRunner(ManagedAiRunner):
                         status=TaskStatus.FAILED,
                         active_run_id=None,
                         last_error=message,
+                        last_error_code="not_finalized",
                     )
                 except StateConflict:
                     pass
@@ -170,6 +193,10 @@ class HermesRunner(ManagedAiRunner):
                     exit_code=exit_code,
                     error_code="not_finalized",
                     error_message=message,
+                )
+                self.run_store.update(
+                    run_id,
+                    retryable=self.is_retryable_error("not_finalized", message),
                 )
             else:
                 self.run_store.finish(
@@ -187,6 +214,11 @@ class HermesRunner(ManagedAiRunner):
         except Exception as error:
             self._fail_start(task_id, run_id, str(error), "runner_error")
         finally:
+            if peak_memory_bytes is not None:
+                try:
+                    self.run_store.update(run_id, peak_memory_bytes=peak_memory_bytes)
+                except KeyError:
+                    pass
             with self._lock:
                 if self._processes.get(task_id) is process:
                     self._processes.pop(task_id, None)

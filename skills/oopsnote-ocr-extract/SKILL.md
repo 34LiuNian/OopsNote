@@ -1,7 +1,7 @@
 ---
 name: oopsnote-ocr-extract
 description: "单题图片 OCR：提取可校验的 OopsMark v1 题面，不解题、不补写。"
-version: 2.3.0
+version: 2.4.0
 license: MIT
 metadata:
   hermes:
@@ -23,6 +23,8 @@ OCR 结果必须能转换为以下 JSON，JSON 之外不输出任何题面内容
   "content_format": "oopsmark-v1",
   "subject": "math",
   "question_type": "填空题",
+  "printed_question_no": 6,
+  "printed_chapter": "函数",
   "problem_text": "完整题干",
   "options": [],
   "has_diagram": false,
@@ -41,6 +43,7 @@ OCR 结果必须能转换为以下 JSON，JSON 之外不输出任何题面内容
 - 只有题面确有多个小问时，才将每个小问独立成段并依次写为 `（1）`、`（2）`；单问不得虚构小问标记，不使用 Markdown `1.`/`2.` 有序列表。普通表格使用 GFM 表格。
 - 不写 `array`、`tabular`、`enumerate`、`chemfig`、`tikzpicture` 或任何文档级 LaTeX 命令。
 - `subject` 仅为 `math`、`physics` 或 `chemistry`；题型仅为单选题、多选题、填空题、解答题。
+- 只有题号或章节标题明确印刷且可读时，才写入 `printed_question_no` 或 `printed_chapter`；否则为 `null`，并且二者都不得混入 `problem_text`。
 
 ## 可靠性规则
 

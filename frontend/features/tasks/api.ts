@@ -57,6 +57,7 @@ export async function retryTask(taskId: string, background = true): Promise<Task
 
 export type OverrideProblemPayload = {
   question_no: string | null;
+  chapter?: string | null;
   source: string | null;
   problem_text: string;
   content_format?: ContentFormat;
@@ -64,6 +65,8 @@ export type OverrideProblemPayload = {
   knowledge_tags: string[];
   error_tags: string[];
   user_tags: string[];
+  difficulty_coefficient_override?: number | null;
+  section_question_count?: number | null;
   diagram_detected?: boolean;
   diagram_kind?: string | null;
   diagram_tikz_source?: string | null;

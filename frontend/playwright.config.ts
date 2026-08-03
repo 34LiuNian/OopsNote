@@ -29,13 +29,8 @@ export default defineConfig({
   },
   projects: [
     {
-    name: "desktop",
+      name: "desktop",
       use: { ...devices["Desktop Chrome"], ...(browserChannel ? { channel: browserChannel } : {}) },
-    },
-    {
-      name: "firefox",
-      testMatch: /batch-cross-page\.spec\.ts/,
-      use: { ...devices["Desktop Firefox"] },
     },
   ],
 });

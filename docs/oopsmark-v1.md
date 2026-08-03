@@ -151,7 +151,7 @@ C1=CC=CC=C1
 使用 `invert()`，以免破坏曲线、曲面和分子高亮的颜色语义。Mermaid 由自身渲染器根据已解析的
 `light` / `dark` 主题重新生成 SVG。KaTeX 使用继承的文本颜色，不生成第二份主题内容。
 
-注：网页 KaTeX 渲染行内公式（`$...$`）时，`MarkdownRenderer` 在模块初始化时 monkey-patch `katex.renderToString`，自动向 `displayMode === false` 的调用注入 `\displaystyle`，使行内公式按展示样式（display style）渲染但保持行内布局。该做法参考 [RyotaUshio/obsidian-auto-displaystyle-inline-math](https://github.com/RyotaUshio/obsidian-auto-displaystyle-inline-math)。
+注：网页 KaTeX 渲染行内公式（`$...$`）时，`MarkdownRenderer` 在 `rehype-katex` 前仅转换 OopsMark 的 `math-inline` 节点，注入 `\displaystyle`，使行内公式按展示样式（display style）渲染但保持行内布局。该转换不改写 KaTeX 全局 API，也不影响块公式或其他渲染器。
 
 ## 4. 数据模型
 
@@ -189,7 +189,7 @@ C1=CC=CC=C1
 - [x] OCR、解题和 orchestrator 输出 `content_format: "oopsmark-v1"`。
 - [x] 试卷模板补齐 `mhchem`、TikZ，内容可通过 OopsMark 导出器生成 LaTeX 片段。
 - [x] 建立数学、化学、表格、TikZ、RDKit 黄金样例测试。
-- [ ] 为历史数据提供只预览、不覆盖的迁移报告和显式迁移命令。
+- [x] 为历史数据提供只预览、不覆盖的迁移报告和显式迁移命令。
 - [ ] 为 molecule/Mermaid 建立带版本和源哈希的派生资产缓存。
 
 ## 7. 变更纪律
@@ -207,15 +207,12 @@ API 路由或 LaTeX 模板中新增无法由协议解释的字符串替换。
   或强制 `\displaystyle` 等历史改写。
 - AI 最终写入必须显式声明 `content_format: "oopsmark-v1"`。
 - 试卷模板具备 `mhchem`、TikZ、tabularray 和 graphicx 依赖。
+- `/papers/compile` 和 `/papers/{draft_id}/compile` 通过 Core 的 OopsMark 导出器构建 PDF；路由层不得重新实现字符串替换。
 
 尚未接通：
 
-- 当前仓库仍缺少 `/papers/compile` FastAPI 路由；后续实现必须调用 Core 的 OopsMark
-  导出器，不能重新实现字符串替换。
 - molecule/Mermaid 的后端派生资产服务和版本化缓存尚未实现。没有派生资产时，
   LaTeX 导出器会明确报错，不会静默漏图。
-- 历史数据迁移命令尚未实现，旧记录继续标记为 `legacy-markdown-latex`。
+- 使用 `scripts/migrate_oopsmark.py` 先生成只读报告；仅传入 `--apply` 时，才会原子地迁移已经通过 v1 校验的记录。无法无损迁移的记录保留为 `legacy-markdown-latex`，并在报告中列出阻塞原因。
 
-当前验证：Python 全量测试 40 项通过。此前 TypeScript 类型检查通过；Playwright renderer
-用例未进入断言阶段：Next/Turbopack 在 `/debug` 首次编译时阻塞并删除了此前内部错误
-产生的文件缓存，因此本轮不把浏览器运行时标记为已验证。
+当前验证：Python 全量回归、前端类型检查和 lint 是变更前的最低验证面。浏览器 E2E 与凭据化模型行为必须通过实际运行验证，不能从静态检查推断。

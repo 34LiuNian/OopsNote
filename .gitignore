@@ -6,6 +6,15 @@ oopsnote/storage/
 /vaults/
 /oopsnote/vaults/
 
+# Server-only Pi runtime configuration
+/deploy/pi/extensions.json
+/deploy/pi-rust/bin/
+/deploy/pi-rust/runtime.json
+/deploy/pi-rust/extensions.json
+/deploy/pi-rust/agent/
+/deploy/pi-rust/sessions/
+/deploy/pi-rust/cache/
+
 # Temp files
 /_tmp/
 

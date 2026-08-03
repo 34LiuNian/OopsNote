@@ -9,8 +9,10 @@ from oopsnote.content import (
     normalize_option_text,
     option_label,
     parse_oopsmark,
+    prepare_legacy_problem,
     to_latex,
     validate_oopsmark,
+    validate_answer_conclusion,
 )
 from oopsnote.core import ContentFormat, Problem
 
@@ -78,6 +80,24 @@ def test_problem_validates_only_declared_oopsmark_content():
             content_format=ContentFormat.OOPSMARK_V1,
             problem_text=r"\begin{tabular}{cc}a&b\end{tabular}",
         )
+
+
+def test_legacy_migration_prepares_only_content_that_satisfies_v1():
+    ready = prepare_legacy_problem({
+        "problem_text": "\n题目\n",
+        "options": ["A. x", r"B. \frac{1}{2}"],
+        "answer": "A",
+        "short_answer": "",
+        "explanation": "说明",
+    })
+
+    assert ready.ready
+    assert ready.fields["problem_text"] == "题目"
+    assert ready.fields["options"] == ["x", r"$\frac{1}{2}$"]
+
+    blocked = prepare_legacy_problem({"problem_text": r"\begin{tabular}{cc}a&b\end{tabular}"})
+    assert not blocked.ready
+    assert [issue.code for issue in blocked.issues] == ["raw-latex-environment"]
 
 
 def test_normalize_oopsmark_collapses_excessive_newlines():
@@ -154,3 +174,15 @@ def test_problem_normalizes_oopsmark_option_bodies():
         options=["A. $x$", "B] $y$"],
     )
     assert problem.options == ["$x$", "$y$"]
+
+
+def test_oopsmark_answer_conclusion_contract_is_explicit_and_non_mutating():
+    assert validate_answer_conclusion("由 $x+1=2$，所以 $x=1$。").code == "answer-contains-derivation"
+    assert validate_answer_conclusion("$x+1=2$\n\n$x=1$").code == "answer-derivation-layout"
+    assert validate_answer_conclusion("（1）$x=1$\n\n（2）$y=2$") is None
+
+    historical = Problem(
+        content_format=ContentFormat.OOPSMARK_V1,
+        answer="由 $x+1=2$，所以 $x=1$。",
+    )
+    assert historical.answer == "由 $x+1=2$，所以 $x=1$。"

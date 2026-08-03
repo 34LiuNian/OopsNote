@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { waitForAppReady } from "./app-ready";
 
 function collectRuntimeErrors(page: Page) {
   const errors: string[] = [];
@@ -11,6 +12,9 @@ function collectRuntimeErrors(page: Page) {
 
 test("RDKit and TikZJax render non-empty SVG output", async ({ page }) => {
   const errors = collectRuntimeErrors(page);
+  await page.route("**/api/health", async (route) => {
+    await route.fulfill({ json: { status: "ok" } });
+  });
   await page.goto("/debug", { waitUntil: "domcontentloaded" });
 
   await expect(page.locator(".katex-error")).toHaveCount(0);
@@ -23,6 +27,28 @@ test("RDKit and TikZJax render non-empty SVG output", async ({ page }) => {
   const tikz = page.getByRole("img", { name: "TikZ 图形" });
   await expect(tikz).toBeVisible({ timeout: 90_000 });
   await expect(tikz.locator("svg path").first()).toBeAttached();
+
+  const cacheEntries = await page.evaluate(() => Array.from(
+    { length: localStorage.length },
+    (_, index) => localStorage.key(index),
+  )
+    .filter((key): key is string => Boolean(key?.startsWith("oopsnote:derived-svg:")))
+    .map((key) => JSON.parse(localStorage.getItem(key) || "{}")));
+  expect(cacheEntries).toEqual(expect.arrayContaining([
+    expect.objectContaining({
+      schemaVersion: "v1",
+      renderer: "rdkit-2025.3.4-1.0.0",
+      sourceHash: expect.stringMatching(/^[0-9a-f]{64}$/),
+      svg: expect.stringContaining("<svg"),
+    }),
+    expect.objectContaining({
+      schemaVersion: "v1",
+      renderer: "mermaid-10.9.3",
+      variant: "light",
+      sourceHash: expect.stringMatching(/^[0-9a-f]{64}$/),
+      svg: expect.stringContaining("<svg"),
+    }),
+  ]));
 
   const dimensions = await page.evaluate(() =>
     Array.from(document.querySelectorAll('[role="img"] svg')).map((svg) => {
@@ -51,6 +77,14 @@ test("RDKit and TikZJax render non-empty SVG output", async ({ page }) => {
     (message) => !message.includes("/_next/webpack-hmr") && !message.includes("favicon"),
   );
   expect(relevantErrors, relevantErrors.join("\n\n")).toEqual([]);
+});
+
+test("inline OopsMark math uses display style without becoming a display block", async ({ page }) => {
+  await page.goto("/debug", { waitUntil: "domcontentloaded" });
+  const inlineMath = page.locator("#problem-illustration-auto .problem-content__body .katex").first();
+  await expect(inlineMath).toBeVisible();
+  await expect(inlineMath.locator("annotation[encoding='application/x-tex']")).toHaveText(/^\\displaystyle f\(x\)=x\^2$/);
+  await expect(inlineMath.locator("xpath=ancestor::*[contains(@class, 'katex-display')]")).toHaveCount(0);
 });
 
 test("diagram renderers follow dark theme without destroying semantic colors", async ({ page }) => {
@@ -123,6 +157,7 @@ test("GFM tables show a cell grid and are centered", async ({ page }) => {
 test("problem illustrations support mutually exclusive right-side auto sizing and custom sizing", async ({ page }) => {
   await page.setViewportSize({ width: 1920, height: 1080 });
   await page.goto("/debug", { waitUntil: "domcontentloaded" });
+  await waitForAppReady(page);
 
   const automatic = page.locator("#problem-illustration-auto .problem-content__lead");
   await expect(automatic).toHaveClass(/is-right/);

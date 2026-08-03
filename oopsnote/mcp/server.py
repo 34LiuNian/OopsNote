@@ -6,18 +6,21 @@ FastMCP stdio server，暴露 CRUD 工具供 the managed Pi pipeline 调用。
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Any, Literal, Optional
 
 from mcp.server.fastmcp import FastMCP
 
 from oopsnote.catalog import KNOWLEDGE_TAGS_PATH, KNOWLEDGE_TREES_PATH
+from oopsnote.content import validate_answer_conclusion
 from oopsnote.core import (
     AssetStore,
     ContentFormat,
     Problem,
     Searcher,
     SearchQuery,
+    StateConflict,
     TagCreateRequest,
     TagDimension,
     TagItem,
@@ -67,6 +70,7 @@ def _require_active_run(task_id: str, run_id: str) -> TaskRecord:
 def _task_metadata_with_review(task: TaskRecord, review_reason: str) -> dict:
     metadata = dict(task.metadata)
     metadata.pop("_managed_tag_selection", None)
+    metadata.pop("_managed_error_candidates", None)
     metadata.pop("intake_review_reason", None)
     if review_reason:
         if review_reason not in INTAKE_REVIEW_REASONS:
@@ -109,9 +113,27 @@ def _task_ack(task: TaskRecord, **fields: Any) -> dict[str, Any]:
         **fields,
     }
 
+
+def _update_completed_task_message(
+    task_id: str,
+    problem_id: str,
+    message: str,
+) -> Optional[TaskRecord]:
+    """Attach derived-work status only while the same completion is current."""
+    try:
+        return TASK_STORE.transition(
+            task_id,
+            expected_statuses={TaskStatus.COMPLETED},
+            expected_active_run_id=None,
+            expected_problem_id=problem_id,
+            stage_message=message,
+        )
+    except (KeyError, StateConflict):
+        return None
+
 # ── 存储实例（共享） ──────────────────────────────────
 
-STORAGE_DIR = Path(__file__).resolve().parents[2] / "storage"
+STORAGE_DIR = Path(os.getenv("OOPSNOTE_STORAGE_DIR", str(Path(__file__).resolve().parents[2] / "storage")))
 TASK_STORE = TaskStore(base_dir=STORAGE_DIR)
 TAG_STORE = TagStore(
     user_path=STORAGE_DIR / "settings" / "tags_user.json",
@@ -238,6 +260,24 @@ def fail_task(
     review_reason: ManagedReviewReason = "",
 ) -> dict[str, Any]:
     """以明确原因终止当前受管 AI 任务，可同时标记需人工复核。"""
+    return _fail_active_task(
+        task_id,
+        error,
+        run_id=run_id,
+        error_code="pipeline_failed",
+        review_reason=review_reason,
+    )
+
+
+def _fail_active_task(
+    task_id: str,
+    error: str,
+    *,
+    run_id: str,
+    error_code: str,
+    review_reason: ManagedReviewReason = "",
+) -> dict[str, Any]:
+    """Atomically persist one classified failure for the active managed run."""
     task = _require_active_run(task_id, run_id)
     failed = TASK_STORE.transition(
         task_id,
@@ -247,6 +287,7 @@ def fail_task(
         stage_message=error,
         active_run_id=None,
         last_error=error,
+        last_error_code=error_code,
         metadata=_task_metadata_with_review(task, review_reason),
     )
     return _task_ack(failed, review_reason=review_reason or None)
@@ -277,6 +318,11 @@ def finalize_task(
     problem = Problem.model_validate(raw)
     if problem.content_format != ContentFormat.OOPSMARK_V1:
         raise ValueError("problem must declare content_format=oopsmark-v1")
+    answer_issue = validate_answer_conclusion(problem.answer)
+    if answer_issue:
+        raise ValueError(
+            f"answer:{answer_issue.line} [{answer_issue.code}] {answer_issue.message}"
+        )
     missing = [
         name for name in ("subject", "problem_text", "answer", "explanation")
         if not getattr(problem, name).strip()
@@ -368,6 +414,9 @@ def finalize_task(
         stage_message="AI 结果已校验并写入",
         active_run_id=None,
         last_error=None,
+        last_error_code=None,
+        revision_count=0,
+        last_revised_at=None,
         metadata={
             **_task_metadata_with_review(task, review_reason),
             "student_response_status": student_response_status,
@@ -383,15 +432,21 @@ def finalize_task(
             )
             OBSIDIAN_SYNC_QUEUE.enqueue(syncer, problem, task_id=task_id)
             sync_queued = True
-            completed = TASK_STORE.update(
+            sync_update = _update_completed_task_message(
                 task_id,
-                stage_message="AI 结果已写入；Obsidian 增量同步已排队",
+                problem.id,
+                "AI 结果已写入；Obsidian 增量同步已排队",
             )
+            if sync_update is not None:
+                completed = sync_update
         except Exception as error:
-            completed = TASK_STORE.update(
+            sync_update = _update_completed_task_message(
                 task_id,
-                stage_message=f"AI 结果已写入；Obsidian 同步失败：{error}",
+                problem.id,
+                f"AI 结果已写入；Obsidian 同步失败：{error}",
             )
+            if sync_update is not None:
+                completed = sync_update
     return _task_ack(
         completed,
         problem_id=problem.id,

@@ -14,6 +14,7 @@ export interface TaskRunSummary {
   log_path?: string | null;
   prompt_version: string;
   duration_ms?: number | null;
+  peak_memory_bytes?: number | null;
   started_at?: string | null;
   heartbeat_at: string;
   ended_at?: string | null;
@@ -50,6 +51,8 @@ export interface TaskResponse {
     stage?: TaskStage | null;
     stage_message?: string | null;
     active_run_id?: string | null;
+    revision_count?: number | null;
+    last_revised_at?: string | null;
     run?: TaskRunSummary | null;
     created_at: string;
     updated_at: string;
@@ -68,9 +71,14 @@ export interface TaskResponse {
     problem: {
       problem_id: string;
       question_no?: string | null;
+      chapter?: string | null;
       question_type?: string | null;
       source?: string | null;
       difficulty?: string | null;
+      difficulty_coefficient_override?: number | null;
+      section_question_count?: number | null;
+      difficulty_needs_review?: boolean;
+      difficulty_review_reason?: string | null;
       has_diagram?: boolean;
       diagram_detected?: boolean;
       diagram_kind?: string | null;
@@ -138,6 +146,7 @@ export interface ProblemSummary {
   task_id: string;
   problem_id: string;
   question_no?: string | null;
+  chapter?: string | null;
   question_type?: string | null;
   content_format?: ContentFormat;
   problem_text: string;
@@ -149,6 +158,10 @@ export interface ProblemSummary {
   grade?: string | null;
   source?: string | null;
   difficulty?: string | null;
+  difficulty_coefficient_override?: number | null;
+  section_question_count?: number | null;
+  difficulty_needs_review?: boolean;
+  difficulty_review_reason?: string | null;
   has_diagram?: boolean;
   diagram_detected?: boolean;
   diagram_kind?: "tikz" | "image" | null;

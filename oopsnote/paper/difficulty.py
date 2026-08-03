@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import random
 import re
-from collections import defaultdict
 from typing import Iterable, Optional
 
 from oopsnote.core import PaperDraftCreateRequest, PaperDraftItem, TaskRecord
@@ -33,11 +32,7 @@ SUBJECT_ALIASES = {
 
 
 def _question_number(task: TaskRecord) -> Optional[int]:
-    raw = task.metadata.get("question_no")
-    trace = task.metadata.get("trace")
-    if raw is None and isinstance(trace, dict):
-        raw = trace.get("question_no")
-    match = re.search(r"\d+", str(raw or ""))
+    match = re.search(r"\d+", task.effective_question_no() or "")
     return int(match.group()) if match else None
 
 
@@ -51,47 +46,45 @@ def _source_key(task: TaskRecord) -> Optional[str]:
     return f"source:{source.strip()}" if isinstance(source, str) and source.strip() else None
 
 
-def _chapter_key(task: TaskRecord) -> str:
-    return str(
-        task.metadata.get("chapter")
-        or task.metadata.get("source_chapter")
-        or ""
-    ).strip()
-
-
 def subject_matches(candidate: str, requested: str) -> bool:
     requested_values = SUBJECT_ALIASES.get(requested, {requested})
     return candidate in requested_values
 
 
+def difficulty_review_reason(task: TaskRecord) -> Optional[str]:
+    """Explain why a task needs manual difficulty classification, if any."""
+
+    if task.difficulty_coefficient_override is not None:
+        return None
+    if not task.problem:
+        return "missing_problem"
+    if not _source_key(task):
+        return "missing_source"
+    number = _question_number(task)
+    if number is None:
+        return "missing_question_no"
+    if task.section_question_count is None:
+        return "missing_section_question_count"
+    if number > task.section_question_count:
+        return "question_no_exceeds_section_question_count"
+    return None
+
+
 def infer_difficulty_coefficients(tasks: Iterable[TaskRecord]) -> dict[str, float]:
-    """Return task-id coefficients using rank / observed section size.
+    """Return task-id coefficients from explicit question number / section size."""
 
-    A section is scoped to source, optional chapter metadata, and question type.
-    Missing source or question numbers intentionally remain unclassified.
-    """
-
-    grouped: dict[tuple[str, str, str], list[tuple[int, TaskRecord]]] = defaultdict(list)
+    coefficients: dict[str, float] = {}
     for task in tasks:
         if not task.problem:
             continue
-        source_key = _source_key(task)
-        number = _question_number(task)
-        if not source_key or number is None:
+        if task.difficulty_coefficient_override is not None:
+            coefficients[task.id] = task.difficulty_coefficient_override
             continue
-        grouped[(source_key, _chapter_key(task), task.problem.question_type.value)].append(
-            (number, task)
-        )
-
-    coefficients: dict[str, float] = {}
-    for members in grouped.values():
-        distinct_numbers = sorted({number for number, _ in members})
-        rank_by_number = {
-            number: (index + 1) / len(distinct_numbers)
-            for index, number in enumerate(distinct_numbers)
-        }
-        for number, task in members:
-            coefficients[task.id] = round(rank_by_number[number], 6)
+        if difficulty_review_reason(task) is not None:
+            continue
+        number = _question_number(task)
+        if number is not None and task.section_question_count is not None:
+            coefficients[task.id] = round(number / task.section_question_count, 6)
     return coefficients
 
 

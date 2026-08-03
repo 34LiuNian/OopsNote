@@ -10,8 +10,10 @@ from .oopsmark import (
     option_label,
     parse_oopsmark,
     to_latex,
+    validate_answer_conclusion,
     validate_oopsmark,
 )
+from .migration import LegacyProblemMigration, prepare_legacy_problem
 
 __all__ = [
     "ContentExportError",
@@ -23,5 +25,8 @@ __all__ = [
     "option_label",
     "parse_oopsmark",
     "to_latex",
+    "validate_answer_conclusion",
     "validate_oopsmark",
+    "LegacyProblemMigration",
+    "prepare_legacy_problem",
 ]

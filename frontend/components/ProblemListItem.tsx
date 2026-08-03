@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { memo } from "react";
-import { Box } from "@/components/ui/primitives";
+import { Box, Checkbox } from "@/components/ui/primitives";
 import type { ProblemSummary } from "../types/api";
 import { ProblemCard } from "./ProblemCard";
 
@@ -15,12 +15,6 @@ export const ProblemListItem = memo(function ProblemListItem(props: {
 }) {
   const { item, selected, toggleKey, onToggleSelection, showViewLink = false } = props;
   const isSelectable = Boolean(toggleKey && onToggleSelection);
-
-  const handleClick = () => {
-    if (toggleKey && onToggleSelection) {
-      onToggleSelection(toggleKey);
-    }
-  };
 
   const cardContent = (
     <Box sx={{ display: "flex", alignItems: "flex-start", gap: 3 }}>
@@ -51,24 +45,7 @@ export const ProblemListItem = memo(function ProblemListItem(props: {
     </Box>
   );
 
-  return (
-    <Link
-      href={showViewLink ? `/tasks/${item.task_id}` : "#"}
-      aria-label={showViewLink ? "查看任务" : undefined}
-      role={isSelectable ? "button" : undefined}
-      aria-pressed={isSelectable ? Boolean(selected) : undefined}
-      tabIndex={isSelectable || showViewLink ? 0 : -1}
-      onClick={(event) => {
-        if (!showViewLink) event.preventDefault();
-        if (isSelectable) handleClick();
-      }}
-      onKeyDown={isSelectable ? (event) => {
-        if (event.key !== " ") return;
-        event.preventDefault();
-        handleClick();
-      } : undefined}
-      style={{ textDecoration: "none", color: "inherit" }}
-    >
+  const shell = (children: React.ReactNode) => (
     <Box
       sx={{
         cursor: isSelectable || showViewLink ? "pointer" : "default",
@@ -83,8 +60,40 @@ export const ProblemListItem = memo(function ProblemListItem(props: {
         py: 2,
       }}
     >
-      {cardContent}
+      {children}
     </Box>
-    </Link>
   );
+
+  if (isSelectable && toggleKey && onToggleSelection) {
+    const selectionLabel = item.question_no
+      ? `选择题目 ${item.question_no}`
+      : `选择题目 ${item.problem_id}`;
+    return shell(
+      <Box
+        as="label"
+        sx={{ display: "flex", alignItems: "flex-start", gap: 3, cursor: "pointer" }}
+      >
+        <Checkbox
+          aria-label={selectionLabel}
+          checked={Boolean(selected)}
+          onChange={() => onToggleSelection(toggleKey)}
+        />
+        <Box sx={{ minWidth: 0, flex: 1 }}>{cardContent}</Box>
+      </Box>,
+    );
+  }
+
+  if (showViewLink) {
+    return (
+      <Link
+        href={`/tasks/${item.task_id}`}
+        aria-label="查看任务"
+        style={{ textDecoration: "none", color: "inherit" }}
+      >
+        {shell(cardContent)}
+      </Link>
+    );
+  }
+
+  return shell(cardContent);
 });

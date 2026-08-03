@@ -3,11 +3,12 @@
 import { useEffect, useMemo, useState } from "react";
 import type { RDKitModule } from "@rdkit/rdkit";
 import { Box, Text } from "@/components/ui/primitives";
+import { loadDerivedSvg, storeDerivedSvg } from "@/lib/derived-svg-cache";
 import { sanitizeSvgMarkup, SvgMarkup } from "./SvgMarkup";
 
 const RDKIT_SCRIPT = "/vendor/rdkit/RDKit_minimal.js";
 const RDKIT_WASM = "/vendor/rdkit/RDKit_minimal.wasm";
-const SVG_CACHE = new Map<string, string>();
+const RENDERER_VERSION = "rdkit-2025.3.4-1.0.0";
 let rdkitPromise: Promise<RDKitModule> | null = null;
 
 function loadRdkit(): Promise<RDKitModule> {
@@ -42,7 +43,7 @@ function loadRdkit(): Promise<RDKitModule> {
 }
 
 async function renderMolecule(source: string): Promise<string> {
-  const cached = SVG_CACHE.get(source);
+  const cached = await loadDerivedSvg(RENDERER_VERSION, source);
   if (cached) return cached;
 
   const rdkit = await loadRdkit();
@@ -66,7 +67,7 @@ async function renderMolecule(source: string): Promise<string> {
     );
     const sanitized = sanitizeSvgMarkup(svg);
     if (!sanitized) throw new Error("RDKit 返回了无效 SVG");
-    SVG_CACHE.set(source, sanitized);
+    void storeDerivedSvg(RENDERER_VERSION, source, sanitized);
     return sanitized;
   } finally {
     molecule.delete();

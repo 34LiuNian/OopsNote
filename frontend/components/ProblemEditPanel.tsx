@@ -23,7 +23,11 @@ type ProblemEditPanelProps = {
   problem: {
     problem_id: string;
     question_no?: string | null;
+    chapter?: string | null;
     source?: string | null;
+    difficulty_coefficient_override?: number | null;
+    section_question_count?: number | null;
+    difficulty_needs_review?: boolean;
     problem_text: string;
     diagram_detected?: boolean;
     diagram_kind?: string | null;
@@ -55,7 +59,16 @@ export function ProblemEditPanel({ taskId, taskAssetPath, problem, tagStyles, on
   }, []);
 
   const [questionNo, setQuestionNo] = useState(() => (problem.question_no || "").toString());
+  const [chapter, setChapter] = useState(() => (problem.chapter || "").toString());
   const [sourceTags, setSourceTags] = useState(() => problem.source ? [String(problem.source)] : []);
+  const [difficultyCoefficientOverride, setDifficultyCoefficientOverride] = useState(() => (
+    typeof problem.difficulty_coefficient_override === "number"
+      ? String(problem.difficulty_coefficient_override)
+      : ""
+  ));
+  const [sectionQuestionCount, setSectionQuestionCount] = useState(() => (
+    typeof problem.section_question_count === "number" ? String(problem.section_question_count) : ""
+  ));
   const [problemText, setProblemText] = useState(() => (problem.problem_text || "").toString());
   const [options, setOptions] = useState<OptionDraft[]>(() => (
     (Array.isArray(problem.options) ? problem.options : []).map((opt, index) => ({
@@ -129,7 +142,12 @@ export function ProblemEditPanel({ taskId, taskAssetPath, problem, tagStyles, on
 
   const initialDraftSignature = JSON.stringify({
     questionNo: (problem.question_no || "").toString(),
+    chapter: (problem.chapter || "").toString(),
     sourceTags: problem.source ? [String(problem.source)] : [],
+    difficultyCoefficientOverride: typeof problem.difficulty_coefficient_override === "number"
+      ? String(problem.difficulty_coefficient_override)
+      : "",
+    sectionQuestionCount: typeof problem.section_question_count === "number" ? String(problem.section_question_count) : "",
     problemText: (problem.problem_text || "").toString(),
     options: (Array.isArray(problem.options) ? problem.options : []).map((option) => String(option?.text || "").trim()),
     knowledgeTags: Array.isArray(problem.knowledge_tags) ? problem.knowledge_tags : [],
@@ -153,7 +171,10 @@ export function ProblemEditPanel({ taskId, taskAssetPath, problem, tagStyles, on
   });
   const currentDraftSignature = JSON.stringify({
     questionNo,
+    chapter,
     sourceTags,
+    difficultyCoefficientOverride,
+    sectionQuestionCount,
     problemText,
     options: options.map(({ text }) => text.trim()),
     knowledgeTags,
@@ -176,6 +197,33 @@ export function ProblemEditPanel({ taskId, taskAssetPath, problem, tagStyles, on
 
     try {
       const parsedOptions = options.map((option) => option.text.trim()).filter(Boolean);
+      const trimmedDifficultyOverride = difficultyCoefficientOverride.trim();
+      const parsedDifficultyOverride = trimmedDifficultyOverride === ""
+        ? null
+        : Number(trimmedDifficultyOverride);
+      const trimmedSectionQuestionCount = sectionQuestionCount.trim();
+      const parsedSectionQuestionCount = trimmedSectionQuestionCount === ""
+        ? null
+        : Number(trimmedSectionQuestionCount);
+      if (
+        trimmedDifficultyOverride !== ""
+        && (typeof parsedDifficultyOverride !== "number"
+          || !Number.isFinite(parsedDifficultyOverride)
+          || parsedDifficultyOverride < 0
+          || parsedDifficultyOverride > 1)
+      ) {
+        notify.error({ title: "难度系数须在 0 到 1 之间" });
+        return;
+      }
+      if (
+        trimmedSectionQuestionCount !== ""
+        && (parsedSectionQuestionCount === null
+          || !Number.isInteger(parsedSectionQuestionCount)
+          || parsedSectionQuestionCount < 1)
+      ) {
+        notify.error({ title: "区段总题数须为正整数" });
+        return;
+      }
 
       const tikzSource = diagramTikzSource.trim();
       const imagePath = problem.diagram_image_path || taskAssetPath || null;
@@ -190,12 +238,15 @@ export function ProblemEditPanel({ taskId, taskAssetPath, problem, tagStyles, on
 
       await overrideProblem(taskId, {
         question_no: questionNo.trim() || null,
+        chapter: chapter.trim() || null,
         source: sourceTags[0]?.trim() || null,
         problem_text: problemText,
         options: parsedOptions,
         knowledge_tags: knowledgeTags,
         error_tags: errorTags,
         user_tags: userTags,
+        difficulty_coefficient_override: parsedDifficultyOverride,
+        section_question_count: parsedSectionQuestionCount,
         diagram_detected: diagramKind !== "none",
         diagram_kind: diagramKind === "none" ? null : diagramKind,
         diagram_tikz_source: diagramKind === "tikz" ? tikzSource : null,
@@ -228,7 +279,10 @@ export function ProblemEditPanel({ taskId, taskAssetPath, problem, tagStyles, on
     options,
     problemText,
     questionNo,
+    chapter,
     sourceTags,
+    difficultyCoefficientOverride,
+    sectionQuestionCount,
     taskId,
     userTags,
     diagramTikzSource,
@@ -290,10 +344,14 @@ export function ProblemEditPanel({ taskId, taskAssetPath, problem, tagStyles, on
       </Box>
 
       <Box sx={{ p: 3, display: "flex", flexDirection: "column", gap: 3 }}>
-        <Box sx={{ display: "grid", gridTemplateColumns: ["1fr", "1fr 1fr"], gap: 3 }}>
+        <Box sx={{ display: "grid", gridTemplateColumns: ["1fr", "1fr 1fr 1fr"], gap: 3 }}>
           <FormControl>
             <FormControl.Label>题号</FormControl.Label>
             <TextInput value={questionNo} onChange={(e) => setQuestionNo(e.target.value)} block />
+          </FormControl>
+          <FormControl>
+            <FormControl.Label>章节</FormControl.Label>
+            <TextInput value={chapter} onChange={(e) => setChapter(e.target.value)} aria-label="章节" block />
           </FormControl>
           <TagPicker
             title="来源"
@@ -303,6 +361,36 @@ export function ProblemEditPanel({ taskId, taskAssetPath, problem, tagStyles, on
             styles={tagStyles}
             placeholder="输入来源"
           />
+          <FormControl>
+            <FormControl.Label>难度系数</FormControl.Label>
+            <TextInput
+              type="number"
+              aria-label="难度系数"
+              min={0}
+              max={1}
+              step={0.01}
+              value={difficultyCoefficientOverride}
+              onChange={(event) => setDifficultyCoefficientOverride(event.target.value)}
+              block
+            />
+          </FormControl>
+          <FormControl>
+            <FormControl.Label>区段总题数</FormControl.Label>
+            <TextInput
+              type="number"
+              aria-label="区段总题数"
+              min={1}
+              step={1}
+              value={sectionQuestionCount}
+              onChange={(event) => setSectionQuestionCount(event.target.value)}
+              block
+            />
+          </FormControl>
+          {problem.difficulty_needs_review && (
+            <Text sx={{ color: "var(--color-text-subtle)", fontSize: "0.8125rem" }}>
+              请补全题号、来源和区段总题数，或设置难度系数。
+            </Text>
+          )}
         </Box>
 
         <FormControl>

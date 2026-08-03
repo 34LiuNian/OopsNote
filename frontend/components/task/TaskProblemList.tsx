@@ -13,8 +13,12 @@ import { rerenderProblemDiagram } from "@/features/tasks";
 type TaskProblem = {
   problem_id: string;
   question_no?: string | null;
+  chapter?: string | null;
   question_type?: string | null;
   source?: string | null;
+  difficulty_coefficient_override?: number | null;
+  section_question_count?: number | null;
+  difficulty_needs_review?: boolean;
   diagram_detected?: boolean;
   diagram_kind?: string | null;
   diagram_tikz_source?: string | null;
@@ -255,6 +259,7 @@ function ProblemDetailCard({
           {taskTrace?.kind === "batch_segment" && typeof taskTrace.page_index === "number" && (
             <Text sx={{ fontSize: 0, color: "fg.muted" }}>第 {taskTrace.page_index + 1} 页</Text>
           )}
+          {problem.chapter && <Text sx={{ fontSize: 0, color: "fg.muted" }}>章节：{problem.chapter}</Text>}
           {taskDifficulty && <Text sx={{ fontSize: 0, color: "fg.muted" }}>难度：{taskDifficulty}</Text>}
           {taskTrace?.kind === "batch_segment" && taskTrace.source_file_hash && (
             taskTrace.batch_session_available === false ? (

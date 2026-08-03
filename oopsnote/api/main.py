@@ -16,10 +16,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from oopsnote.ai import HermesRunner, PiRpcBackend, PiRpcRunner
-from oopsnote.api.routes import batch, catalog, papers, study, tasks
+from oopsnote.api.routes import batch, catalog, latex, papers, study, tasks
 from oopsnote.api.schemas import TagInput, TagRenameInput, UploadRequest
 from oopsnote.catalog import KNOWLEDGE_TAGS_PATH, KNOWLEDGE_TREES_PATH
 from oopsnote.content import option_label
+from oopsnote.paper import difficulty_review_reason
 from oopsnote.core import (
     AssetStore,
     AppSettingsStore,
@@ -40,7 +41,7 @@ from oopsnote.mcp.http_runtime import SharedMcpHttpRuntime
 from oopsnote.mcp.ocr import close_ocr_client
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-STORAGE_DIR = PROJECT_ROOT / "storage"
+STORAGE_DIR = Path(os.getenv("OOPSNOTE_STORAGE_DIR", str(PROJECT_ROOT / "storage")))
 TASK_STORE = TaskStore(base_dir=STORAGE_DIR)
 TAG_STORE = TagStore(
     user_path=STORAGE_DIR / "settings" / "tags_user.json",
@@ -272,9 +273,11 @@ def _asset_view(record: TaskRecord) -> Optional[dict[str, Any]]:
 
 def _problem_view(task: TaskRecord, problem: Problem) -> dict[str, Any]:
     metadata = task.metadata
+    difficulty_reason = difficulty_review_reason(task)
     return {
         "problem_id": problem.id,
-        "question_no": metadata.get("question_no"),
+        "question_no": task.effective_question_no(),
+        "chapter": task.effective_chapter(),
         "question_type": problem.question_type.value,
         "source": _problem_source(task, problem),
         "content_format": problem.content_format.value,
@@ -284,6 +287,10 @@ def _problem_view(task: TaskRecord, problem: Problem) -> dict[str, Any]:
             for index, option in enumerate(problem.options)
         ],
         "difficulty": problem.difficulty,
+        "difficulty_coefficient_override": task.difficulty_coefficient_override,
+        "section_question_count": task.section_question_count,
+        "difficulty_needs_review": difficulty_reason is not None,
+        "difficulty_review_reason": difficulty_reason,
         "has_diagram": problem.has_diagram,
         "diagram_detected": bool(metadata.get("diagram_detected", problem.has_diagram)),
         "diagram_kind": metadata.get("diagram_kind"),
@@ -324,6 +331,7 @@ def _run_view(run: Any) -> dict[str, Any]:
         "cache_tokens": run.cache_tokens,
         "cost": run.cost,
         "duration_ms": run.duration_ms,
+        "peak_memory_bytes": run.peak_memory_bytes,
         "retry_count": run.retry_count,
         "retryable": run.retryable,
         "prompt_version": run.prompt_version,
@@ -356,6 +364,10 @@ def _task_view(record: TaskRecord) -> dict[str, Any]:
         "stage": record.stage.value if record.stage else None,
         "stage_message": record.stage_message or record.last_error,
         "active_run_id": record.active_run_id,
+        "revision_count": record.revision_count,
+        "last_revised_at": (
+            record.last_revised_at.isoformat() if record.last_revised_at else None
+        ),
         "run": _run_view(run) if run else None,
         "created_at": record.created_at.isoformat(),
         "updated_at": record.updated_at.isoformat(),
@@ -387,17 +399,19 @@ def _task_summary(record: TaskRecord) -> dict[str, Any]:
         "created_at": record.created_at.isoformat(),
         "updated_at": record.updated_at.isoformat(),
         "subject": record.subject,
-        "question_no": record.metadata.get("question_no"),
+        "question_no": record.effective_question_no(),
         "asset": _asset_view(record),
     }
 
 
 def _problem_summary(task: TaskRecord, problem: Problem) -> dict[str, Any]:
     metadata = task.metadata
+    difficulty_reason = difficulty_review_reason(task)
     return {
         "task_id": task.id,
         "problem_id": problem.id,
-        "question_no": metadata.get("question_no"),
+        "question_no": task.effective_question_no(),
+        "chapter": task.effective_chapter(),
         "question_type": problem.question_type.value,
         "content_format": problem.content_format.value,
         "problem_text": problem.problem_text,
@@ -406,6 +420,10 @@ def _problem_summary(task: TaskRecord, problem: Problem) -> dict[str, Any]:
             for index, option in enumerate(problem.options)
         ],
         "difficulty": problem.difficulty,
+        "difficulty_coefficient_override": task.difficulty_coefficient_override,
+        "section_question_count": task.section_question_count,
+        "difficulty_needs_review": difficulty_reason is not None,
+        "difficulty_review_reason": difficulty_reason,
         "has_diagram": problem.has_diagram,
         "diagram_detected": bool(metadata.get("diagram_detected", problem.has_diagram)),
         "diagram_kind": metadata.get("diagram_kind"),
@@ -493,6 +511,7 @@ def health() -> dict[str, Any]:
 app.include_router(tasks.router)
 app.include_router(batch.router)
 app.include_router(catalog.router)
+app.include_router(latex.router)
 app.include_router(papers.router)
 app.include_router(study.router)
 

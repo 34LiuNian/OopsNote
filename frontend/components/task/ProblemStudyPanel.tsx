@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { ChevronDown } from "lucide-react";
 import { Box, Button, Select, Text, TextInput, Textarea } from "@/components/ui/primitives";
 import { ProblemCard } from "@/components/ProblemCard";
@@ -33,19 +33,23 @@ export function ProblemStudyPanel({ taskId, problem, mergedInto, onStatusMessage
   const [isGenerating, setIsGenerating] = useState(false);
   const [variationTasks, setVariationTasks] = useState<VariationTask[]>([]);
 
-  const loadCandidates = useCallback(async () => {
-    if (mergedInto) return;
-    try {
-      const data = await fetchJson<{ items: DuplicateCandidate[] }>(`/tasks/${taskId}/duplicates`);
-      setCandidates(data.items);
-    } catch (error) {
-      onError(error instanceof Error ? error.message : "加载疑似相同题失败");
-    }
-  }, [mergedInto, onError, taskId]);
-
   useEffect(() => {
-    if (section === "duplicates") void loadCandidates();
-  }, [loadCandidates, problem.problem_id, section]);
+    if (section !== "duplicates" || mergedInto) return;
+
+    const controller = new AbortController();
+    void fetchJson<{ items: DuplicateCandidate[] }>(`/tasks/${taskId}/duplicates`, {
+      signal: controller.signal,
+    })
+      .then((data) => {
+        if (!controller.signal.aborted) setCandidates(data.items);
+      })
+      .catch((error: unknown) => {
+        if (controller.signal.aborted) return;
+        onError(error instanceof Error ? error.message : "加载疑似相同题失败");
+      });
+
+    return () => controller.abort();
+  }, [mergedInto, onError, problem.problem_id, section, taskId]);
 
   const merge = async (candidateTaskId: string, mergeDirection: "into_current" | "into_candidate") => {
     const message = mergeDirection === "into_current"

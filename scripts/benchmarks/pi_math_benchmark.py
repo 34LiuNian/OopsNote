@@ -7,30 +7,25 @@ import json
 import math
 import shutil
 import statistics
+import sys
 import time
 from datetime import datetime
 from pathlib import Path
 
+ROOT = Path(__file__).resolve().parents[2]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
 from oopsnote.ai import PiRpcBackend, PiRpcRunner
 from oopsnote.core import AssetStore, RunStore, TaskCreateRequest, TaskStore
 from oopsnote.mcp.http_runtime import SharedMcpHttpRuntime
-
-
-ROOT = Path(__file__).resolve().parents[2]
-ASSET_ROOT = ROOT / "storage" / "assets"
-REPORT_ROOT = ROOT / "storage" / "pi-benchmark"
-CASES = (
-    ("example-1.1", "*page-6-1.png", "C"),
-    ("example-1.2", "*page-6-2.png", "42"),
-    ("variant-1.2.1", "*page-7-1.png", "0"),
-    ("variant-1.2.2", "*page-7-2.png", "0"),
-    ("example-1.4", "*page-8-1.png", "C"),
-    ("variant-1.4.2", "*region-1.png", "C"),
-    ("example-1.5", "*region-2.png", "C"),
-    ("variant-1.5.2", "*page-10-1.png", "D"),
+from scripts.benchmarks.pi_math_cases import (
+    MATH_BENCHMARK_CASES,
+    benchmark_answers_match,
 )
 
-
+ASSET_ROOT = ROOT / "storage" / "assets"
+REPORT_ROOT = ROOT / "storage" / "pi-benchmark"
 def find_asset(pattern: str) -> Path:
     matches = sorted(ASSET_ROOT.glob(pattern))
     if len(matches) != 1:
@@ -101,7 +96,8 @@ def summary_table(rows: list[dict[str, object]]) -> str:
         stage_averages[stage] = ms(round(statistics.mean(values))) if values else "--"
     completed = sum(row["status"] == "completed" for row in rows)
     correct = sum(
-        row["status"] == "completed" and row["answer"] == row["expected"]
+        row["status"] == "completed"
+        and benchmark_answers_match(str(row["answer"]), str(row["expected"]))
         for row in rows
     )
     total_cost = sum(float(row["cost"] or 0) for row in rows)
@@ -147,12 +143,15 @@ def main() -> int:
     runner.set_child_environment(mcp_runtime.start())
     rows: list[dict[str, object]] = []
     try:
-        for name, pattern, expected in CASES:
-            source = find_asset(pattern)
+        for case in MATH_BENCHMARK_CASES:
+            source = find_asset(case.asset_glob)
             task = task_store.create(TaskCreateRequest(
                 subject="math",
                 asset_path=f"/assets/{source.name}",
-                metadata={"source": f"pi-benchmark-{name}", "expected_answer": expected},
+                metadata={
+                    "source": f"pi-benchmark-{case.name}",
+                    "expected_answer": case.expected_answer,
+                },
             ))
             run = runner.enqueue(task.id)
             started = time.monotonic()
@@ -162,10 +161,10 @@ def main() -> int:
             stored_task = task_store.get(task.id)
             answer = stored_task.problem.answer.strip() if stored_task.problem else ""
             rows.append({
-                "case": name,
+                "case": case.name,
                 "task_id": task.id,
                 "run_id": run.id,
-                "expected": expected,
+                "expected": case.expected_answer,
                 "answer": answer,
                 "status": stored_run.status.value,
                 "duration_ms": stored_run.duration_ms or elapsed_ms,
@@ -192,7 +191,11 @@ def main() -> int:
     stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     (REPORT_ROOT / f"{stamp}.json").write_text(json.dumps(rows, ensure_ascii=False, indent=2), encoding="utf-8")
     (REPORT_ROOT / f"{stamp}.md").write_text(report + "\n", encoding="utf-8")
-    return 0 if all(row["status"] == "completed" and row["answer"] == row["expected"] for row in rows) else 1
+    return 0 if all(
+        row["status"] == "completed"
+        and benchmark_answers_match(str(row["answer"]), str(row["expected"]))
+        for row in rows
+    ) else 1
 
 
 if __name__ == "__main__":

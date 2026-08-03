@@ -7,32 +7,14 @@ import remarkBreaks from "remark-breaks";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
 import "katex/contrib/mhchem";
-import katex from "katex";
 import { Mermaid } from "./Mermaid";
 import { MoleculeRenderer } from "./MoleculeRenderer";
 import { TikzRenderer } from "./TikzRenderer";
 import { prepareContentForWeb } from "@/lib/content/oopsmark";
+import { rehypeInlineDisplaystyle } from "@/lib/rehype-inline-displaystyle";
 import type { ContentFormat } from "@/types/api";
 import type { PluggableList } from "unified";
 import { useEffect, useMemo, useRef } from "react";
-
-/** Patch KaTeX to inject \displaystyle into inline math, mirroring
- *  RyotaUshio/obsidian-auto-displaystyle-inline-math's approach. */
-{
-  const original = katex.renderToString;
-  if (!("__patched" in (katex as unknown as Record<string, unknown>))) {
-    (katex as unknown as Record<string, unknown>).__patched = true;
-    katex.renderToString = function patched(
-      source: string,
-      options?: Parameters<typeof katex.renderToString>[1],
-    ): string {
-      if (options && options.displayMode === false && !source.startsWith("\\displaystyle")) {
-        source = "\\displaystyle " + source;
-      }
-      return original(source, options);
-    };
-  }
-}
 
 export function MarkdownRenderer({
   text,
@@ -59,8 +41,10 @@ export function MarkdownRenderer({
   }, []);
 
   const rehypePlugins = useMemo(() => {
-    const plugins: PluggableList = [];
-    plugins.push([rehypeKatex, { strict: "ignore", trust: format === "legacy-markdown-latex" }]);
+    const plugins: PluggableList = [
+      rehypeInlineDisplaystyle,
+      [rehypeKatex, { strict: "ignore", trust: format === "legacy-markdown-latex" }],
+    ];
     return plugins;
   }, [format]);
 

@@ -1,11 +1,33 @@
 from __future__ import annotations
 
-from scripts.benchmarks import pi_math_smoke
+import pytest
+
+from scripts.benchmarks import pi_math_benchmark, pi_math_smoke
+from scripts.benchmarks.pi_math_cases import MATH_BENCHMARK_CASES
 
 
-def test_math_smoke_case_comes_from_the_curated_vault():
-    question, expected_option = pi_math_smoke.source_case()
+def test_math_smoke_and_benchmark_share_the_canonical_case_manifest():
+    assert pi_math_smoke.SMOKE_CASE is MATH_BENCHMARK_CASES[0]
+    assert pi_math_benchmark.MATH_BENCHMARK_CASES is MATH_BENCHMARK_CASES
+    assert pi_math_smoke.SMOKE_CASE.name == "example-1.1"
+    assert pi_math_smoke.SMOKE_CASE.asset_glob == "*page-6-1.png"
+    assert pi_math_smoke.SMOKE_CASE.expected_answer == "C"
 
-    assert question.startswith("【例1.1】")
-    assert "f(1) + f(2)" in question
-    assert expected_option == "C"
+
+@pytest.mark.parametrize(
+    ("actual", "expected", "matches"),
+    [
+        ("0", "0", True),
+        ("$0$", "0", True),
+        ("$x=1$", "x=1", True),
+        ("$$0$$", "0", False),
+        ("$1+1$", "2", False),
+        (r"$\frac{1}{2}$", "0.5", False),
+    ],
+)
+def test_benchmark_answer_comparison_only_ignores_inline_math_wrapper(
+    actual,
+    expected,
+    matches,
+):
+    assert pi_math_smoke.benchmark_answers_match(actual, expected) is matches

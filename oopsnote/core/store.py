@@ -12,8 +12,10 @@ import threading
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
+from typing import Optional, TypeVar
 from uuid import uuid4
+
+from pydantic import BaseModel
 
 from .models import (
     BatchProcessJob,
@@ -33,6 +35,21 @@ from .models import (
     TaskStatus,
     ProblemMergeRecord,
 )
+
+
+_ModelT = TypeVar("_ModelT", bound=BaseModel)
+
+
+def _validated_update(model: _ModelT, fields: dict[str, object]) -> _ModelT:
+    """Apply a partial update without bypassing Pydantic validation."""
+    model_type = type(model)
+    unknown = set(fields) - set(model_type.model_fields)
+    if unknown:
+        names = ", ".join(sorted(unknown))
+        raise TypeError(f"Unknown {model_type.__name__} field(s): {names}")
+    payload = model.model_dump(mode="python")
+    payload.update(fields)
+    return model_type.model_validate(payload)
 
 
 class StateConflict(RuntimeError):
@@ -96,6 +113,7 @@ class TaskStore:
         return self.base_dir / f"{task_id}.json"
 
     def _write(self, record: TaskRecord) -> None:
+        record = _validated_update(record, {})
         path = self._path(record.id)
         tmp = path.with_name(f"{path.name}.{uuid4().hex}.tmp")
         try:
@@ -114,6 +132,7 @@ class TaskStore:
             status=TaskStatus.PENDING,
             asset_path=payload.asset_path,
             metadata=payload.metadata,
+            section_question_count=payload.section_question_count,
         )
         self._write(record)
         return record
@@ -141,8 +160,9 @@ class TaskStore:
     def update(self, task_id: str, **fields) -> TaskRecord:
         with self._lock:
             record = self.get(task_id)
-            updated = record.model_copy(
-                update={"updated_at": datetime.now(timezone.utc), **fields}
+            updated = _validated_update(
+                record,
+                {"updated_at": datetime.now(timezone.utc), **fields},
             )
             self._write(updated)
             return updated
@@ -153,6 +173,7 @@ class TaskStore:
         *,
         expected_statuses: Optional[set[TaskStatus]] = None,
         expected_active_run_id: object = _UNSET,
+        expected_problem_id: object = _UNSET,
         **fields,
     ) -> TaskRecord:
         """Atomically compare task state and apply one state transition."""
@@ -170,8 +191,17 @@ class TaskStore:
                 raise StateConflict(
                     f"Run {expected_active_run_id!s} is not active for task {task_id}"
                 )
-            updated = record.model_copy(
-                update={"updated_at": datetime.now(timezone.utc), **fields}
+            actual_problem_id = record.problem.id if record.problem else None
+            if (
+                expected_problem_id is not _UNSET
+                and actual_problem_id != expected_problem_id
+            ):
+                raise StateConflict(
+                    f"Problem {expected_problem_id!s} is not current for task {task_id}"
+                )
+            updated = _validated_update(
+                record,
+                {"updated_at": datetime.now(timezone.utc), **fields},
             )
             self._write(updated)
             return updated
@@ -179,8 +209,19 @@ class TaskStore:
     def set_problem(self, task_id: str, problem: Optional[Problem]) -> TaskRecord:
         return self.update(task_id, problem=problem)
 
-    def mark_status(self, task_id: str, status: TaskStatus, error: Optional[str] = None) -> TaskRecord:
-        fields: dict = {"status": status, "last_error": error}
+    def mark_status(
+        self,
+        task_id: str,
+        status: TaskStatus,
+        error: Optional[str] = None,
+        *,
+        error_code: Optional[str] = None,
+    ) -> TaskRecord:
+        fields: dict = {
+            "status": status,
+            "last_error": error,
+            "last_error_code": error_code,
+        }
         if status in {TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.CANCELLED}:
             fields["active_run_id"] = None
         return self.update(task_id, **fields)
@@ -205,6 +246,7 @@ class RunStore:
         return self.base_dir / f"{run_id}.json"
 
     def _write(self, run: TaskRun) -> None:
+        run = _validated_update(run, {})
         path = self._path(run.id)
         tmp = path.with_name(f"{path.name}.{uuid4().hex}.tmp")
         try:
@@ -288,7 +330,7 @@ class RunStore:
     def update(self, run_id: str, **fields) -> TaskRun:
         with self._lock:
             run = self.get(run_id)
-            updated = run.model_copy(update=fields)
+            updated = _validated_update(run, fields)
             self._write(updated)
             return updated
 
@@ -333,17 +375,25 @@ class RunStore:
             if stages and stages[-1].stage == stage:
                 if stages[-1].message == message:
                     return run
-                stages[-1] = stages[-1].model_copy(update={"message": message})
+                stages[-1] = _validated_update(stages[-1], {"message": message})
             else:
                 if stages and stages[-1].status == StageStatus.RUNNING:
                     started_at = stages[-1].started_at
-                    stages[-1] = stages[-1].model_copy(update={
-                        "status": StageStatus.COMPLETED,
-                        "ended_at": now,
-                        "latency_ms": int((now - started_at).total_seconds() * 1000),
-                    })
+                    stages[-1] = _validated_update(
+                        stages[-1],
+                        {
+                            "status": StageStatus.COMPLETED,
+                            "ended_at": now,
+                            "latency_ms": int(
+                                (now - started_at).total_seconds() * 1000
+                            ),
+                        },
+                    )
                 stages.append(StageRun(stage=stage, message=message, started_at=now))
-            updated = run.model_copy(update={"stage_runs": stages, "heartbeat_at": now})
+            updated = _validated_update(
+                run,
+                {"stage_runs": stages, "heartbeat_at": now},
+            )
             self._write(updated)
             return updated
 
@@ -375,21 +425,33 @@ class RunStore:
                     RunStatus.COMPLETED: StageStatus.COMPLETED,
                     RunStatus.CANCELLED: StageStatus.CANCELLED,
                 }.get(status, StageStatus.FAILED)
-                stages[-1] = stages[-1].model_copy(update={
-                    "status": stage_status,
+                stages[-1] = _validated_update(
+                    stages[-1],
+                    {
+                        "status": stage_status,
+                        "ended_at": now,
+                        "latency_ms": int(
+                            (now - stages[-1].started_at).total_seconds() * 1000
+                        ),
+                        "error_code": error_code,
+                    },
+                )
+            updated = _validated_update(
+                run,
+                {
+                    "status": status,
+                    "stage_runs": stages,
+                    "heartbeat_at": now,
                     "ended_at": now,
-                    "latency_ms": int((now - stages[-1].started_at).total_seconds() * 1000),
+                    "duration_ms": max(
+                        0,
+                        int((now - run.queued_at).total_seconds() * 1000),
+                    ),
+                    "exit_code": exit_code,
                     "error_code": error_code,
-                })
-            updated = run.model_copy(update={
-                "status": status,
-                "stage_runs": stages,
-                "heartbeat_at": now,
-                "ended_at": now,
-                "exit_code": exit_code,
-                "error_code": error_code,
-                "error_message": error_message,
-            })
+                    "error_message": error_message,
+                },
+            )
             self._write(updated)
             return updated
 
@@ -423,6 +485,10 @@ class BatchSessionStore:
             raise StorageCorruptionError(self.path, error) from error
 
     def _write(self, records: dict[str, BatchSessionRecord]) -> None:
+        records = {
+            key: _validated_update(record, {})
+            for key, record in records.items()
+        }
         tmp = self.path.with_name(f"{self.path.name}.{uuid4().hex}.tmp")
         try:
             tmp.write_text(
@@ -537,7 +603,10 @@ class BatchProcessJobStore:
                 raise StorageCorruptionError(path, error) from error
 
     def save(self, job: BatchProcessJob) -> BatchProcessJob:
-        updated = job.model_copy(update={"updated_at": datetime.now(timezone.utc)})
+        updated = _validated_update(
+            job,
+            {"updated_at": datetime.now(timezone.utc)},
+        )
         path = self._path(job.file_hash)
         tmp = path.with_name(f"{path.name}.{uuid4().hex}.tmp")
         with self._lock:
@@ -562,6 +631,7 @@ class PaperDraftStore:
         return self.base_dir / f"{draft_id}.json"
 
     def _write(self, draft: PaperDraft) -> None:
+        draft = _validated_update(draft, {})
         path = self._path(draft.id)
         tmp = path.with_name(f"{path.name}.{uuid4().hex}.tmp")
         try:
@@ -647,6 +717,7 @@ class ProblemMergeStore:
             raise StorageCorruptionError(self.path, error) from error
 
     def _write(self, items: list[ProblemMergeRecord]) -> None:
+        items = [_validated_update(item, {}) for item in items]
         tmp = self.path.with_name(f"{self.path.name}.{uuid4().hex}.tmp")
         try:
             tmp.write_text(json.dumps({"items": [item.model_dump(mode="json") for item in items]}, ensure_ascii=False, indent=2), encoding="utf-8")

@@ -122,6 +122,7 @@ class ManagedTaskDispatcher:
                                 status=TaskStatus.FAILED,
                                 active_run_id=None,
                                 last_error=str(error),
+                                last_error_code="dispatcher_error",
                             )
                     except (KeyError, RuntimeError):
                         pass

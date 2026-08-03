@@ -168,14 +168,24 @@ def write_tag_index(
     aliases: Optional[list[str]] = None,
 ) -> Path:
     """将标签索引写入 vault 目录。"""
+    path = tag_index_path(tag_name, vault_root, subject_dir_name)
+    write_index_content(path, render_tag_index(tag_name, problem_refs, aliases))
+    return path
+
+
+def tag_index_path(tag_name: str, vault_root: Path, subject_dir_name: str) -> Path:
+    """Return the deterministic path for one generated tag index."""
     indexes_dir = vault_root / subject_dir_name / "indexes"
-    indexes_dir.mkdir(parents=True, exist_ok=True)
 
     # 标签名中的特殊字符处理
     safe_name = tag_name.replace("/", "／").replace("\\", "／")
-    path = indexes_dir / f"{safe_name}.md"
-    _atomic_write(path, render_tag_index(tag_name, problem_refs, aliases))
-    return path
+    return indexes_dir / f"{safe_name}.md"
+
+
+def write_index_content(path: Path, content: str) -> None:
+    """Atomically write one derived index after its owner has authorized it."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    _atomic_write(path, content)
 
 
 def _atomic_write(path: Path, content: str) -> None:

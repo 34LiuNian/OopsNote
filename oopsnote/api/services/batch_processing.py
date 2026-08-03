@@ -160,6 +160,7 @@ def process_batch_session(
                 f"Batch session revision is {record.revision}, expected {expected_revision}",
             )
         pending = [segment for segment in record.segments if segment.status == "pending"]
+        requested_count = len(pending)
         if not pending:
             return {
                 "requested": 0,
@@ -171,11 +172,50 @@ def process_batch_session(
             }
         if not record.crop_confirmed:
             raise BatchProcessError(409, "Batch crop must be confirmed before processing")
-        numbers = [segment.question_no for segment in pending]
-        if any(number is None for number in numbers):
-            raise BatchProcessError(422, "Every pending segment requires a question number")
-        if len(set(numbers)) != len(numbers):
-            raise BatchProcessError(422, "Pending segment question numbers must be unique")
+        number_counts: dict[int, int] = {}
+        for segment in pending:
+            if segment.question_no is not None:
+                number_counts[segment.question_no] = number_counts.get(segment.question_no, 0) + 1
+        invalid_numbers: dict[str, str] = {}
+        for segment in pending:
+            if segment.question_no is None:
+                invalid_numbers[segment.id] = "请先标注题号后再处理"
+            elif number_counts[segment.question_no] > 1:
+                invalid_numbers[segment.id] = f"题号 {segment.question_no} 与其他待处理选框重复"
+        review_items: list[dict[str, Any]] = []
+        for segment in pending:
+            error = invalid_numbers.get(segment.id)
+            if error is None:
+                continue
+            record = _replace_session_segment(
+                context,
+                record,
+                segment.id,
+                status="needs_review",
+                review_reason="other",
+                review_previous_status="pending",
+                review_resolved=False,
+                error=error,
+            )
+            review_items.append({
+                "segment_id": segment.id,
+                "question_no": segment.question_no,
+                "task_id": None,
+                "run_id": None,
+                "status": "needs_review",
+                "error": error,
+            })
+        pending = [segment for segment in record.segments if segment.status == "pending"]
+        if not pending:
+            return {
+                "requested": requested_count,
+                "created": 0,
+                "queued": 0,
+                "failed": 0,
+                "needs_review": len(review_items),
+                "items": review_items,
+                "session": context.session_view(context.task_state_view(record)),
+            }
 
         try:
             job = context.job_store.get(file_hash)
@@ -210,7 +250,7 @@ def process_batch_session(
                 created_count = 0
                 queued_count = 0
                 failed_count = 0
-                items: list[dict[str, Any]] = []
+                items: list[dict[str, Any]] = list(review_items)
                 for segment in pending:
                     task = tasks.get(segment.id)
                     if task is None:
@@ -302,10 +342,11 @@ def process_batch_session(
         return {
             "job_id": job.id,
             "job_status": job.status,
-            "requested": len(pending),
+            "requested": requested_count,
             "created": created_count,
             "queued": queued_count,
             "failed": failed_count,
+            "needs_review": len(review_items),
             "items": items,
             "session": context.session_view(record),
         }

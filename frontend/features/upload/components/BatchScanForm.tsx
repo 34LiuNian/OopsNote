@@ -65,6 +65,13 @@ import {
 import { BatchSessionHistory } from "./BatchSessionHistory";
 import { BatchSelectionRail } from "./BatchSelectionRail";
 
+class StaleWorkspaceError extends Error {
+  constructor() {
+    super("批量扫描工作区已切换");
+    this.name = "StaleWorkspaceError";
+  }
+}
+
 export function BatchScanForm() {
   const searchParams = useSearchParams();
   const { resolvedTheme } = useTheme();
@@ -76,6 +83,7 @@ export function BatchScanForm() {
   const pageFilesRef = useRef(new Map<number, File>());
   const renderPromisesRef = useRef(new Map<number, Promise<File>>());
   const objectUrlsRef = useRef(new Map<number, string>());
+  const workspaceGenerationRef = useRef(0);
   const selectionsRef = useRef<SelectionModel[]>([]);
   const visiblePageIndexRef = useRef(0);
   const currentContentSnapshotRef = useRef("");
@@ -169,6 +177,7 @@ export function BatchScanForm() {
   }, [pages.length]);
 
   const clearWorkspace = useCallback(() => {
+    workspaceGenerationRef.current += 1;
     if (pdfRef.current) {
       void pdfRef.current.document.destroy?.();
       URL.revokeObjectURL(pdfRef.current.url);
@@ -216,12 +225,15 @@ export function BatchScanForm() {
     if (pending) return pending;
     const source = sourceFileRef.current;
     if (!source) throw new Error("原始文件不可用");
-    const promise = pdfRef.current
-      ? renderPdfPage(pdfRef.current.document, pageIndex, source.name.replace(/\.pdf$/i, ""))
+    const generation = workspaceGenerationRef.current;
+    const pdfDocument = pdfRef.current?.document;
+    const promise = pdfDocument
+      ? renderPdfPage(pdfDocument, pageIndex, source.name.replace(/\.pdf$/i, ""))
       : Promise.resolve(source);
     renderPromisesRef.current.set(pageIndex, promise);
     try {
       const file = await promise;
+      if (workspaceGenerationRef.current !== generation) throw new StaleWorkspaceError();
       pageFilesRef.current.set(pageIndex, file);
       while (pageFilesRef.current.size > PAGE_CACHE_LIMIT) {
         const oldest = pageFilesRef.current.keys().next().value as number | undefined;
@@ -238,40 +250,60 @@ export function BatchScanForm() {
       }
       return file;
     } finally {
-      renderPromisesRef.current.delete(pageIndex);
+      if (renderPromisesRef.current.get(pageIndex) === promise) {
+        renderPromisesRef.current.delete(pageIndex);
+      }
     }
   }, []);
 
   const loadPage = useCallback((pageIndex: number) => {
     if (objectUrlsRef.current.has(pageIndex)) return;
+    const generation = workspaceGenerationRef.current;
     void ensurePageFile(pageIndex).then((file) => {
+      if (workspaceGenerationRef.current !== generation) return;
       if (objectUrlsRef.current.has(pageIndex)) return;
       const url = URL.createObjectURL(file);
       objectUrlsRef.current.set(pageIndex, url);
       setImageUrls((current) => ({ ...current, [pageIndex]: url }));
-    }).catch((reason) => setError(reason instanceof Error ? reason.message : "页面加载失败"));
+    }).catch((reason) => {
+      if (!(reason instanceof StaleWorkspaceError)) {
+        setError(reason instanceof Error ? reason.message : "页面加载失败");
+      }
+    });
   }, [ensurePageFile]);
 
   useEffect(() => { if (pages.length) loadPage(activePageIndex); }, [activePageIndex, loadPage, pages.length]);
 
   const openWorkspace = useCallback(async (file: File, session: BatchSession | null) => {
     clearWorkspace();
+    const generation = workspaceGenerationRef.current;
     sourceFileRef.current = file;
     const nextPages: ContinuousPageSource[] = [];
     if (isPdf(file)) {
       const resource = await openPdf(file);
+      if (workspaceGenerationRef.current !== generation) {
+        await resource.document.destroy?.();
+        URL.revokeObjectURL(resource.url);
+        throw new StaleWorkspaceError();
+      }
       pdfRef.current = resource;
       const baseName = file.name.replace(/\.pdf$/i, "");
       for (let pageIndex = 0; pageIndex < resource.document.numPages; pageIndex += 1) {
         const page = await resource.document.getPage(pageIndex + 1);
+        if (workspaceGenerationRef.current !== generation) throw new StaleWorkspaceError();
         const viewport = page.getViewport({ scale: 1 });
         nextPages.push({ id: `page-${pageIndex}`, pageIndex, label: `${baseName} · 第 ${pageIndex + 1} 页`, sourceWidth: viewport.width, sourceHeight: viewport.height });
       }
     } else {
       const bitmap = await createImageBitmap(file);
+      if (workspaceGenerationRef.current !== generation) {
+        bitmap.close();
+        throw new StaleWorkspaceError();
+      }
       nextPages.push({ id: "page-0", pageIndex: 0, label: file.name, sourceWidth: bitmap.width, sourceHeight: bitmap.height });
       bitmap.close();
     }
+    if (workspaceGenerationRef.current !== generation) throw new StaleWorkspaceError();
     const nextCrop = session?.crop_rect ?? FULL_CROP;
     const nextColumnLayout: ColumnLayout = {
       columnCount: session?.column_layout?.column_count ?? 1,
@@ -324,7 +356,9 @@ export function BatchScanForm() {
         await refreshSavedSessions();
       }
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "导入失败");
+      if (!(reason instanceof StaleWorkspaceError)) {
+        setError(reason instanceof Error ? reason.message : "导入失败");
+      }
     } finally {
       setIsImporting(false);
     }
@@ -350,7 +384,9 @@ export function BatchScanForm() {
         setPageInput(String(pageIndex + 1));
       }
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "恢复批量扫描失败");
+      if (!(reason instanceof StaleWorkspaceError)) {
+        setError(reason instanceof Error ? reason.message : "恢复批量扫描失败");
+      }
     } finally {
       setIsImporting(false);
     }

@@ -5,6 +5,7 @@ from .difficulty import (
     QUESTION_TYPE_ORDER,
     candidate_tasks,
     difficulty_band,
+    difficulty_review_reason,
     infer_difficulty_coefficients,
     select_paper_items,
 )
@@ -42,6 +43,7 @@ __all__ = [
     "candidate_tasks",
     "compile_paper_pdf",
     "difficulty_band",
+    "difficulty_review_reason",
     "infer_difficulty_coefficients",
     "select_paper_items",
 ]

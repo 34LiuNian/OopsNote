@@ -62,3 +62,31 @@ def test_batch_renderer_uses_pdf_scale_and_uniform_crop(tmp_path):
     center = rendered.getpixel((rendered.width // 2, rendered.height // 2))
     assert center[0] > 240 and center[1] < 20 and center[2] < 20
     rendered.close()
+
+
+def test_batch_renderer_stacks_cross_page_parts_by_explicit_document_order(tmp_path):
+    path = tmp_path / "source.pdf"
+    document = pymupdf.open()
+    first = document.new_page(width=100, height=100)
+    first.draw_rect(first.rect, color=(1, 0, 0), fill=(1, 0, 0))
+    second = document.new_page(width=100, height=100)
+    second.draw_rect(second.rect, color=(0, 0, 1), fill=(0, 0, 1))
+    document.save(path)
+    document.close()
+    segment = BatchSegment.model_validate({
+        "id": "cross-page",
+        "parts": [
+            {"page_index": 1, "x": 0, "y": 0, "width": 1, "height": 1, "order": 1},
+            {"page_index": 0, "x": 0, "y": 0, "width": 1, "height": 1, "order": 0},
+        ],
+        "question_no": 1,
+    })
+
+    with BatchSourceRenderer(path, "application/pdf") as renderer:
+        payload = renderer.render_segment(segment, BatchCropRect())
+
+    rendered = Image.open(BytesIO(payload))
+    assert rendered.size == (150, 300)
+    assert rendered.getpixel((75, 75))[0] > 240
+    assert rendered.getpixel((75, 225))[2] > 240
+    rendered.close()

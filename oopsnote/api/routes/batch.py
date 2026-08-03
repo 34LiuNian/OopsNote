@@ -107,6 +107,8 @@ def update_batch_session(
         raise HTTPException(status_code=404, detail="Batch session not found")
     except StateConflict as error:
         raise HTTPException(status_code=409, detail=str(error)) from error
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
     if payload.filename is not None:
         api._sync_batch_source_references(file_hash, record.filename)
     return {"session": api._batch_session_view(record)}

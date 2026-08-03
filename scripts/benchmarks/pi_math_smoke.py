@@ -1,8 +1,8 @@
-"""Run one image-based Pi smoke task from the curated math vault.
+"""Run one image-based Pi smoke task from the canonical benchmark manifest.
 
 The default image is the existing original crop for Example 1.1 in
-``storage/assets``. Its reference answer is read from the same Markdown source,
-so the smoke test has no second question bank to maintain.
+``storage/assets``. Its reference answer comes from the same manifest used by
+the full benchmark, so the two runners have one authoritative case definition.
 
 Usage:
   .venv\\Scripts\\python.exe scripts\\benchmarks\\pi_math_smoke.py
@@ -11,34 +11,31 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import re
 import sys
 from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[2]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 from oopsnote.ai import PiRpcBackend, PiRpcRunner
 from oopsnote.core import AssetStore, RunStore, TaskCreateRequest, TaskStore
 from oopsnote.mcp.http_runtime import SharedMcpHttpRuntime
+from scripts.benchmarks.pi_math_cases import (
+    MATH_BENCHMARK_CASES,
+    benchmark_answers_match,
+)
 
-
-ROOT = Path(__file__).resolve().parents[2]
-BOOK = ROOT / "vaults" / "新高考数学你真的掌握了吗 函数.md"
-DEFAULT_ASSET_GLOB = "*page-6-1.png"
-
-
-def source_case() -> tuple[str, str]:
-    """Read Example 1.1 and its reference option directly from the vault."""
-    text = BOOK.read_text(encoding="utf-8")
-    question = re.search(r"(【例1\.1】.*?)(?=\n\n【解析1】)", text, flags=re.DOTALL)
-    answer = re.search(r"【例1\.1】.*?故选\s*([A-D])", text, flags=re.DOTALL)
-    if not question or not answer:
-        raise RuntimeError("Could not locate Example 1.1 and its answer in the curated math vault")
-    return question.group(1).strip(), answer.group(1)
+SMOKE_CASE = MATH_BENCHMARK_CASES[0]
 
 
 def default_image_path() -> Path:
-    matches = sorted((ROOT / "storage" / "assets").glob(DEFAULT_ASSET_GLOB))
+    matches = sorted((ROOT / "storage" / "assets").glob(SMOKE_CASE.asset_glob))
     if len(matches) != 1:
-        raise RuntimeError(f"Expected exactly one original crop matching {DEFAULT_ASSET_GLOB}, found {len(matches)}")
+        raise RuntimeError(
+            f"Expected exactly one original crop matching {SMOKE_CASE.asset_glob}, "
+            f"found {len(matches)}"
+        )
     return matches[0]
 
 
@@ -81,17 +78,21 @@ def run_task(image_path: Path, expected_option: str, runtime: str) -> int:
         return 1
     answer = completed_task.problem.answer.strip()
     print(f"expected_option={expected_option} actual_answer={answer}")
-    return 0 if answer == expected_option else 1
+    print(
+        "ocr_context="
+        f"{completed_task.ocr_context.model_dump(mode='json') if completed_task.ocr_context else None}"
+    )
+    return 0 if benchmark_answers_match(answer, expected_option) else 1
 
 
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--image", type=Path, help="Use an existing cropped image instead of rendering the Markdown excerpt")
-    parser.add_argument("--expected", help="Expected answer; skips reading the curated vault answer")
+    parser.add_argument("--expected", help="Override the expected answer from the benchmark manifest")
     parser.add_argument("--runtime", choices=("pi", "pi-rust"), default="pi-rust")
     args = parser.parse_args()
 
-    expected_option = args.expected or source_case()[1]
+    expected_option = args.expected or SMOKE_CASE.expected_answer
     image_path = (args.image or default_image_path()).resolve()
     if not image_path.is_file():
         raise RuntimeError(f"Image not found: {image_path}")

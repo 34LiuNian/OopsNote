@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import hashlib
 import os
 import shutil
@@ -12,6 +13,8 @@ from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
 from typing import Callable
+
+import httpx
 
 from oopsnote.content import ContentExportError, to_latex
 
@@ -320,6 +323,9 @@ def compile_paper_pdf(
         asset_path_resolver=asset_path_resolver,
         derived_asset_resolver=derived_asset_resolver,
     )
+    renderer_url = os.getenv("OOPSNOTE_LATEX_RENDERER_URL", "").rstrip("/")
+    if renderer_url:
+        return _compile_remote_bundle(bundle, renderer_url)
     executable = xelatex or shutil.which("xelatex")
     if not executable:
         raise PaperCompileError(
@@ -394,6 +400,54 @@ def compile_paper_pdf(
                     log="\n".join(logs)[-12_000:],
                 )
         return pdf_path.read_bytes()
+
+
+def _compile_remote_bundle(bundle: PaperBundle, renderer_url: str) -> bytes:
+    """Compile the immutable paper bundle in the configured renderer service.
+
+    A configured service is authoritative. Failures are reported to callers;
+    this must not silently switch engines and produce divergent paper output.
+    """
+
+    payload = {
+        "tex": bundle.tex,
+        "files": [
+            {
+                "path": file.path,
+                "content_base64": base64.b64encode(file.content).decode("ascii"),
+            }
+            for file in bundle.files
+        ],
+    }
+    try:
+        response = httpx.post(
+            f"{renderer_url}/v1/paper",
+            json=payload,
+            timeout=130,
+        )
+    except httpx.TimeoutException as error:
+        raise PaperCompileError(
+            "LaTeX renderer timed out after 120 seconds",
+            code=PaperCompileFailure.ENGINE_TIMEOUT,
+        ) from error
+    except httpx.HTTPError as error:
+        raise PaperCompileError(
+            f"LaTeX renderer is unavailable: {error}",
+            code=PaperCompileFailure.MISSING_ENGINE,
+        ) from error
+    if response.status_code == 504:
+        raise PaperCompileError(
+            "LaTeX renderer timed out after 120 seconds",
+            code=PaperCompileFailure.ENGINE_TIMEOUT,
+            log=response.text[-12_000:],
+        )
+    if response.status_code != 200:
+        raise PaperCompileError(
+            "LaTeX renderer failed to compile the paper",
+            code=PaperCompileFailure.ENGINE_FAILED,
+            log=response.text[-12_000:],
+        )
+    return response.content
 
 
 __all__ = [

@@ -2,13 +2,14 @@ from __future__ import annotations
 
 import json
 
+import httpx
 import pytest
 
 from oopsnote.core import AssetStore, TaskCreateRequest, TaskStatus, TaskStore
 from oopsnote.mcp import ocr
 from oopsnote.mcp import server
 from oopsnote.mcp.ocr_contract import OCR_INSTRUCTION, normalize_ocr_result
-from oopsnote.mcp.restricted import AI_TOOL_NAMES
+from oopsnote.mcp.restricted import AI_TOOL_NAMES, managed_ocr_image
 
 
 class FakeResponse:
@@ -25,6 +26,8 @@ class FakeResponse:
                                 "content_format": "oopsmark-v1",
                                 "subject": "math",
                                 "question_type": "填空题",
+                                "printed_question_no": 6,
+                                "printed_chapter": "函数",
                                 "problem_text": "求 $1+1$。",
                                 "options": [],
                                 "has_diagram": False,
@@ -95,6 +98,12 @@ def test_ocr_image_reads_local_config_and_returns_object(tmp_path, monkeypatch):
 
     assert result["content_format"] == "oopsmark-v1"
     assert result["problem_text"] == "求 $1+1$。"
+    assert result["printed_question_no"] == 6
+    assert result["printed_chapter"] == "函数"
+    observed = task_store.get(task.id)
+    assert observed.ocr_context is not None
+    assert observed.ocr_context.printed_question_no == 6
+    assert observed.ocr_context.printed_chapter == "函数"
     assert captured["url"] == ocr.OCR_ENDPOINT
     assert captured["json"]["model"] == "test-vision-model"
     assert captured["headers"]["Authorization"] == "Bearer local-test-key"
@@ -104,6 +113,136 @@ def test_ocr_image_reads_local_config_and_returns_object(tmp_path, monkeypatch):
 
     cached = ocr.ocr_image(task.id, "run-1")
     assert cached == result
+
+
+def test_cancelled_run_does_not_attach_stale_ocr_context(tmp_path, monkeypatch):
+    storage = tmp_path / "storage"
+    image = storage / "assets" / "question.png"
+    image.parent.mkdir(parents=True)
+    image.write_bytes(b"image")
+    task_store = TaskStore(storage)
+    task = task_store.create(TaskCreateRequest(asset_path="/assets/question.png"))
+    task_store.update(task.id, status=TaskStatus.PROCESSING, active_run_id="run-1")
+    monkeypatch.setattr(server, "TASK_STORE", task_store)
+    monkeypatch.setattr(server, "ASSET_STORE", AssetStore(storage / "assets"))
+
+    def cancel_during_ocr(_image_path):
+        task_store.mark_status(task.id, TaskStatus.CANCELLED)
+        return {
+            "content_format": "oopsmark-v1",
+            "subject": "math",
+            "question_type": "填空题",
+            "printed_question_no": 6,
+            "printed_chapter": "函数",
+            "problem_text": "求 $1+1$。",
+            "options": [],
+            "has_diagram": False,
+            "student_response_status": "unanswered",
+            "student_response": "",
+            "uncertain_regions": [],
+            "confidence": 1,
+        }
+
+    monkeypatch.setattr(ocr, "_ocr_image_path", cancel_during_ocr)
+
+    result = ocr.ocr_image(task.id, "run-1")
+
+    assert result["printed_question_no"] == 6
+    cancelled = task_store.get(task.id)
+    assert cancelled.status == TaskStatus.CANCELLED
+    assert cancelled.ocr_context is None
+
+
+@pytest.mark.parametrize(
+    ("failure", "expected_code"),
+    [
+        (429, "ocr_rate_limit"),
+        (503, "ocr_provider_unavailable"),
+        (401, "ocr_provider_error"),
+        ("timeout", "ocr_timeout"),
+        ("network", "ocr_network_error"),
+    ],
+)
+def test_ocr_provider_failures_have_stable_codes(
+    tmp_path,
+    monkeypatch,
+    failure,
+    expected_code,
+):
+    image = tmp_path / "question.png"
+    image.write_bytes(b"image")
+    request = httpx.Request("POST", ocr.OCR_ENDPOINT)
+
+    class FailingClient:
+        def post(self, *_args, **_kwargs):
+            if failure == "timeout":
+                raise httpx.ReadTimeout("slow", request=request)
+            if failure == "network":
+                raise httpx.ConnectError("offline", request=request)
+            response = httpx.Response(failure, request=request)
+            raise httpx.HTTPStatusError(
+                f"HTTP {failure}",
+                request=request,
+                response=response,
+            )
+
+    monkeypatch.setattr(
+        ocr,
+        "_load_ocr_config",
+        lambda: {"dashscope_api_key": "test", "model": "vision"},
+    )
+    monkeypatch.setattr(ocr, "_ocr_client", lambda: FailingClient())
+
+    with pytest.raises(ocr.OcrProviderError) as captured:
+        ocr._ocr_image_path(image)
+
+    assert captured.value.code == expected_code
+
+
+@pytest.mark.parametrize(
+    ("outcome", "expected_code", "review_reason"),
+    [
+        (ocr.OcrProviderError("ocr_timeout", "DashScope OCR timeout"), "ocr_timeout", None),
+        (
+            {
+                "problem_text": "",
+                "review_reason": "unreadable",
+            },
+            "ocr_unreadable",
+            "unreadable",
+        ),
+    ],
+)
+def test_managed_ocr_failure_atomically_closes_the_active_task(
+    tmp_path,
+    monkeypatch,
+    outcome,
+    expected_code,
+    review_reason,
+):
+    task_store = TaskStore(tmp_path / "storage")
+    task = task_store.create(TaskCreateRequest(subject="math"))
+    task_store.update(task.id, status=TaskStatus.PROCESSING, active_run_id="run-1")
+    monkeypatch.setattr(server, "TASK_STORE", task_store)
+
+    def fake_ocr(_task_id, _run_id):
+        if isinstance(outcome, Exception):
+            raise outcome
+        return outcome
+
+    monkeypatch.setattr(ocr, "ocr_image", fake_ocr)
+
+    if isinstance(outcome, Exception):
+        with pytest.raises(ocr.OcrProviderError):
+            managed_ocr_image(task.id, "run-1")
+    else:
+        assert managed_ocr_image(task.id, "run-1") == outcome
+
+    failed = task_store.get(task.id)
+    assert failed.status == TaskStatus.FAILED
+    assert failed.active_run_id is None
+    assert failed.last_error_code == expected_code
+    assert failed.metadata.get("intake_review_reason") == review_reason
 
 
 def test_ocr_contract_trims_following_top_level_question():
@@ -125,6 +264,50 @@ def test_ocr_contract_trims_following_top_level_question():
 
     assert result["problem_text"] == "21. 第一题\n\n（1）小问一\n（2）小问二"
     assert result["review_reason"] == "multiple_questions"
+
+
+def test_ocr_contract_accepts_only_explicit_bounded_printed_context():
+    payload = {
+        "content_format": "oopsmark-v1",
+        "subject": "math",
+        "question_type": "解答题",
+        "printed_question_no": 12,
+        "printed_chapter": "  函数与导数  ",
+        "problem_text": "求函数的最值。",
+        "options": [],
+        "has_diagram": False,
+        "student_response_status": "unanswered",
+        "student_response": "",
+        "uncertain_regions": [],
+        "confidence": 1,
+    }
+
+    result = normalize_ocr_result(payload)
+
+    assert result["printed_question_no"] == 12
+    assert result["printed_chapter"] == "函数与导数"
+    with pytest.raises(ValueError):
+        normalize_ocr_result({**payload, "printed_question_no": 0})
+
+
+def test_ocr_contract_allows_empty_text_only_for_an_unreadable_image():
+    unreadable = {
+        "content_format": "oopsmark-v1",
+        "subject": "math",
+        "question_type": "解答题",
+        "problem_text": "",
+        "options": [],
+        "has_diagram": False,
+        "student_response_status": "unknown",
+        "student_response": "",
+        "review_reason": "unreadable",
+        "uncertain_regions": ["whole image"],
+        "confidence": 0,
+    }
+
+    assert normalize_ocr_result(unreadable)["problem_text"] == ""
+    with pytest.raises(ValueError, match="requires review_reason=unreadable"):
+        normalize_ocr_result({**unreadable, "review_reason": None})
 
 
 def test_ocr_contract_normalizes_subquestions_and_option_bodies():

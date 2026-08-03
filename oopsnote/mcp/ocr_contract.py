@@ -24,7 +24,8 @@ OCR_INSTRUCTION = (
     "with exactly these fields: content_format='oopsmark-v1'; "
     "subject='math'|'physics'|'chemistry'; "
     "question_type='单选题'|'多选题'|'填空题'|'解答题'; problem_text:string; "
-    "options:string[]; has_diagram:boolean; "
+    "options:string[]; has_diagram:boolean; printed_question_no:positive integer|null; "
+    "printed_chapter:string|null; "
     "student_response_status:'answered'|'unanswered'|'unknown'; student_response:string; "
     "review_reason:null|'unreadable'|'incomplete'|'multiple_questions'|'other'; "
     "uncertain_regions:string[]; confidence:number from 0 to 1. "
@@ -42,7 +43,8 @@ OCR_INSTRUCTION = (
     "student handwriting or answer marks, never printed question text or a generated solution. "
     "Use answered only when a readable student response is visible, unanswered when the question "
     "is readable but no student response is present, and unknown when the response state cannot be "
-    "determined. Do not solve or invent unreadable text."
+    "determined. Set printed_question_no or printed_chapter only when that exact identifier is visibly "
+    "printed; omit both from problem_text and use null when absent or unclear. Do not solve or invent unreadable text."
 )
 
 
@@ -54,9 +56,11 @@ class OcrExtraction(BaseModel):
     content_format: Literal["oopsmark-v1"]
     subject: Literal["math", "physics", "chemistry"]
     question_type: Literal["单选题", "多选题", "填空题", "解答题"]
-    problem_text: str = Field(min_length=1)
+    problem_text: str
     options: list[str]
     has_diagram: bool
+    printed_question_no: Optional[int] = Field(default=None, ge=1, le=999)
+    printed_chapter: Optional[str] = Field(default=None, max_length=160)
     student_response_status: StudentResponseStatus
     student_response: str
     review_reason: Optional[ReviewReason] = None
@@ -65,6 +69,13 @@ class OcrExtraction(BaseModel):
 
     @model_validator(mode="after")
     def validate_student_response(self) -> "OcrExtraction":
+        self.problem_text = normalize_oopsmark(self.problem_text)
+        if self.printed_chapter is not None:
+            self.printed_chapter = self.printed_chapter.strip() or None
+        if not self.problem_text and self.review_reason != "unreadable":
+            raise ValueError(
+                "empty OCR problem_text requires review_reason=unreadable"
+            )
         self.student_response = normalize_oopsmark(self.student_response)
         if self.student_response_status == "answered" and not self.student_response:
             raise ValueError("answered OCR result requires student_response")

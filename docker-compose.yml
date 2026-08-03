@@ -1,0 +1,75 @@
+services:
+  gateway:
+    image: nginx:1.27-alpine
+    ports:
+      - "8080:80"
+    volumes:
+      - ./deploy/gateway/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      backend:
+        condition: service_healthy
+      frontend:
+        condition: service_started
+    networks:
+      - public
+
+  frontend:
+    build:
+      context: ./frontend
+    environment:
+      NODE_ENV: production
+    networks:
+      - public
+
+  backend:
+    build:
+      context: .
+      dockerfile: deploy/backend/Dockerfile
+    environment:
+      OOPSNOTE_STORAGE_DIR: /data
+      OOPSNOTE_LATEX_RENDERER_URL: http://latex-renderer:8080
+      OOPSNOTE_RPC_MAX_WORKERS: "1"
+    volumes:
+      - oopsnote-data:/data
+      - ./deploy/pi:/app/.pi:ro
+      - ./deploy/pi-rust:/app/.pi-rust:ro
+    depends_on:
+      latex-renderer:
+        condition: service_healthy
+    networks:
+      - public
+      - latex-internal
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  latex-renderer:
+    build:
+      context: ./deploy/latex-renderer
+    read_only: true
+    tmpfs:
+      - /tmp:size=256m,noexec,nosuid
+    mem_limit: 768m
+    cpus: 1.0
+    pids_limit: 64
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - latex-internal
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health')"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  oopsnote-data:
+
+networks:
+  public:
+  latex-internal:
+    internal: true

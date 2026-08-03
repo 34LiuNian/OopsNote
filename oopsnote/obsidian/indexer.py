@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Optional
 
 from oopsnote.core import Problem, TagItem, TagStore
-from .writer import problem_filename, write_tag_index, subject_dir
+from .writer import problem_filename, render_tag_index, subject_dir, tag_index_path, write_index_content
 
 
 def build_indexes(
@@ -23,43 +23,45 @@ def build_indexes(
 
     返回所有写入的文件路径列表。
     """
-    # 聚合：tag → [(subject, problem)]
+    rendered = render_indexes(problems, vault_root, tag_store)
+    for path, content in rendered:
+        write_index_content(path, content)
+    return [path for path, _content in rendered]
+
+
+def render_indexes(
+    problems: list[Problem],
+    vault_root: Path,
+    tag_store: Optional[TagStore] = None,
+) -> list[tuple[Path, str]]:
+    """Build deterministic index content without mutating the vault.
+
+    The synchronizer owns writes because it has the manifest hashes needed to
+    distinguish an OopsNote update from a local Obsidian edit.
+    """
     tag_to_problems: dict[str, list[tuple[str, Problem]]] = defaultdict(list)
+    for problem in problems:
+        for tag in [*problem.knowledge_points, *problem.error_hypothesis]:
+            tag_to_problems[tag].append((problem.subject, problem))
 
-    for p in problems:
-        for kp in p.knowledge_points:
-            tag_to_problems[kp].append((p.subject, p))
-        for eh in p.error_hypothesis:
-            tag_to_problems[eh].append((p.subject, p))
-
-    # 按学科分组写索引
-    written: list[Path] = []
-
+    rendered: list[tuple[Path, str]] = []
     for tag_name, entries in tag_to_problems.items():
-        # 按学科分组
         by_subject: dict[str, list[tuple[str, str]]] = defaultdict(list)
-        for subject, p in entries:
-            ref = problem_filename(p)
-            preview = _preview_text(p.problem_text, max_len=40)
-            by_subject[subject].append((ref, preview))
-
-        # 写入每个学科
-        for subject, refs in by_subject.items():
-            dir_name = subject_dir(subject)
-
-            # 查别名
+        for subject, problem in entries:
+            by_subject[subject].append(
+                (problem_filename(problem), _preview_text(problem.problem_text, max_len=40))
+            )
+        for subject, references in by_subject.items():
             aliases = None
             if tag_store:
                 items = tag_store.search(query=tag_name, limit=1)
-                if items:
-                    item = items[0]
-                    if item.value == tag_name and item.aliases:
-                        aliases = item.aliases
-
-            path = write_tag_index(tag_name, refs, vault_root, dir_name, aliases)
-            written.append(path)
-
-    return written
+                if items and items[0].value == tag_name and items[0].aliases:
+                    aliases = items[0].aliases
+            rendered.append((
+                tag_index_path(tag_name, vault_root, subject_dir(subject)),
+                render_tag_index(tag_name, references, aliases),
+            ))
+    return rendered
 
 
 def _preview_text(text: str, max_len: int = 40) -> str:

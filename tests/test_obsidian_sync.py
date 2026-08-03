@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from oopsnote.core import Problem, TagStore, TaskCreateRequest, TaskStore
+import json
+
+from oopsnote.core import Problem, TagStore, TaskCreateRequest, TaskStatus, TaskStore
 from oopsnote.obsidian.syncer import MANAGED_MARKER, ObsidianSyncQueue, ObsidianSyncer
 from oopsnote.obsidian.writer import problem_filename, subject_dir
 
@@ -40,6 +42,83 @@ def test_incremental_sync_does_not_rewrite_existing_problem_note(tmp_path):
     assert MANAGED_MARKER in second_path.read_text(encoding="utf-8")
 
 
+def test_sync_preserves_locally_edited_managed_problem_and_reports_conflict(tmp_path):
+    store = TaskStore(tmp_path / "storage")
+    syncer = ObsidianSyncer(store, tmp_path / "vaults")
+    problem = _problem(store, "original")
+    syncer.sync_for_subject("math")
+    path = tmp_path / "vaults" / subject_dir("math") / "problems" / problem_filename(problem)
+    path.write_text(path.read_text(encoding="utf-8") + "\nLOCAL EDIT", encoding="utf-8")
+    task = next(item for item in store.list_all() if item.problem and item.problem.id == problem.id)
+    store.update(task.id, problem=problem.model_copy(update={"problem_text": "core update"}))
+
+    report = syncer.sync_for_subject("math")
+
+    assert path.read_text(encoding="utf-8").endswith("LOCAL EDIT")
+    assert report.files_written == 0
+    assert report.conflicts == [f"problems/{problem_filename(problem)}"]
+
+
+def test_sync_updates_unchanged_managed_problem_from_core(tmp_path):
+    store = TaskStore(tmp_path / "storage")
+    syncer = ObsidianSyncer(store, tmp_path / "vaults")
+    problem = _problem(store, "original")
+    syncer.sync_for_subject("math")
+    task = next(item for item in store.list_all() if item.problem and item.problem.id == problem.id)
+    updated = problem.model_copy(update={"problem_text": "core update"})
+    store.update(task.id, problem=updated)
+
+    report = syncer.sync_for_subject("math")
+    path = tmp_path / "vaults" / subject_dir("math") / "problems" / problem_filename(updated)
+
+    assert report.files_written == 1
+    assert "core update" in path.read_text(encoding="utf-8")
+
+
+def test_v1_manifest_never_authorizes_overwriting_an_unverified_local_edit(tmp_path):
+    store = TaskStore(tmp_path / "storage")
+    syncer = ObsidianSyncer(store, tmp_path / "vaults")
+    problem = _problem(store, "original")
+    syncer.sync_for_subject("math")
+    subject_root = tmp_path / "vaults" / subject_dir("math")
+    manifest_path = subject_root / ".oopsnote-managed.json"
+    v2 = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest_path.write_text(
+        json.dumps({
+            "version": 1,
+            "subject": v2["subject"],
+            "problem_files": v2["problem_files"],
+            "index_files": v2["index_files"],
+        }),
+        encoding="utf-8",
+    )
+    path = subject_root / "problems" / problem_filename(problem)
+    path.write_text(path.read_text(encoding="utf-8") + "\nLOCAL EDIT", encoding="utf-8")
+    task = next(item for item in store.list_all() if item.problem and item.problem.id == problem.id)
+    store.update(task.id, problem=problem.model_copy(update={"problem_text": "core update"}))
+
+    report = syncer.sync_for_subject("math")
+
+    assert path.read_text(encoding="utf-8").endswith("LOCAL EDIT")
+    assert f"problems/{problem_filename(problem)}" in report.conflicts
+
+
+def test_sync_preserves_locally_edited_index(tmp_path):
+    store = TaskStore(tmp_path / "storage")
+    syncer = ObsidianSyncer(store, tmp_path / "vaults")
+    problem = _problem(store, "original")
+    syncer.sync_for_subject("math")
+    index_path = tmp_path / "vaults" / subject_dir("math") / "indexes" / "函数.md"
+    index_path.write_text(index_path.read_text(encoding="utf-8") + "\nLOCAL INDEX EDIT", encoding="utf-8")
+    task = next(item for item in store.list_all() if item.problem and item.problem.id == problem.id)
+    store.update(task.id, problem=problem.model_copy(update={"problem_text": "core update"}))
+
+    report = syncer.sync_for_subject("math")
+
+    assert index_path.read_text(encoding="utf-8").endswith("LOCAL INDEX EDIT")
+    assert "indexes/函数.md" in report.conflicts
+
+
 def test_sync_cleanup_removes_only_manifest_owned_files(tmp_path):
     store = TaskStore(tmp_path / "storage")
     syncer = ObsidianSyncer(store, tmp_path / "vaults")
@@ -77,3 +156,29 @@ def test_sync_queue_coalesces_same_subject_without_losing_problems(tmp_path):
     assert {
         problem_filename(problem) for problem in problems
     } <= {path.name for path in problem_dir.glob("*.md")}
+
+
+def test_sync_status_update_is_bound_to_the_completed_problem(tmp_path):
+    store = TaskStore(tmp_path / "storage")
+    syncer = ObsidianSyncer(store, tmp_path / "vaults")
+    task = store.create(TaskCreateRequest(subject="math"))
+    first = Problem(subject="math", problem_text="first", answer="1", explanation="one")
+    store.update(task.id, status=TaskStatus.COMPLETED, problem=first)
+
+    ObsidianSyncQueue._update_tasks(syncer, [(task.id, first.id)], "first synced")
+    assert store.get(task.id).stage_message == "first synced"
+
+    second = Problem(subject="math", problem_text="second", answer="2", explanation="two")
+    store.update(
+        task.id,
+        status=TaskStatus.COMPLETED,
+        active_run_id=None,
+        problem=second,
+        stage_message="second completed",
+    )
+    ObsidianSyncQueue._update_tasks(syncer, [(task.id, first.id)], "late first sync")
+
+    current = store.get(task.id)
+    assert current.problem is not None
+    assert current.problem.id == second.id
+    assert current.stage_message == "second completed"

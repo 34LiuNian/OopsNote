@@ -48,7 +48,10 @@ _ALLOWED_FENCES = {"molecule", "smiles", "tikz", "mermaid", "text"}
 _TABLE_SEPARATOR = re.compile(r"^\s*\|?\s*:?-{3,}:?\s*(?:\|\s*:?-{3,}:?\s*)+\|?\s*$")
 _LIST_ITEM = re.compile(r"^(?P<indent>\s*)(?:(?P<number>\d+)[.)]|(?P<bullet>[-+*]))\s+(?P<text>.+)$")
 _RAW_ENVIRONMENT = re.compile(r"\\(?:begin|end)\{(?P<name>tabular|array|tblr|enumerate|itemize|tikzpicture|document)\}")
-_DOCUMENT_COMMAND = re.compile(r"\\(?:documentclass|usepackage|input|include|write18|openout|read)\b")
+_DOCUMENT_COMMAND = re.compile(
+    r"\\(?:documentclass|usepackage|input|include|write18|openout|read)\b|"
+    r"\\(?:begin|end)\s*\{document\}"
+)
 _OPTION_MARKER = re.compile(
     r"^\s*(?:"
     r"[（(]\s*(?:[A-Za-z]|\d{1,2})\s*[）)]"
@@ -59,6 +62,24 @@ _BARE_OPTION_MATH_COMMAND = re.compile(r"\\[A-Za-z]+")
 _BARE_OPTION_MATH_BODY = re.compile(r"[A-Za-z0-9\\{}()[\]^_+\-*/=<>.,:;|!'\s]+")
 _ORDERED_ITEM = re.compile(
     r"^(?P<indent>\s*)(?P<number>\d{1,2})[.．、)）]\s+(?P<text>.+)$"
+)
+_ANSWER_SUBQUESTION = re.compile(r"^（\d+）\s*\S+")
+_ANSWER_EXPLANATION_MARKERS = (
+    "因为",
+    "所以",
+    "由于",
+    "因此",
+    "从而",
+    "由此",
+    "可得",
+    "推出",
+    "证明",
+    "推导",
+    "求导",
+    "分类讨论",
+    "理由",
+    "故",
+    "由",
 )
 
 
@@ -358,6 +379,40 @@ def normalize_option_text(source: str) -> str:
     ):
         return f"${normalized}$"
     return normalized
+
+
+def validate_answer_conclusion(source: str) -> Optional[ContentIssue]:
+    """Reject answer-shaped explanations while leaving OopsMark math intact.
+
+    This is deliberately a narrow contract, not a natural-language grader.
+    It catches structural derivations and explicit Chinese reasoning markers;
+    formulas are removed before marker checks, and valid numbered subquestion
+    conclusions remain multi-line.
+    """
+    normalized = normalize_oopsmark(source)
+    if len(normalized) > 120:
+        return ContentIssue(
+            "answer-too-long",
+            "answer 只能保留最终结论，超过 120 个字符的内容应移入 explanation",
+            1,
+        )
+    paragraphs = [paragraph.strip() for paragraph in normalized.split("\n\n") if paragraph.strip()]
+    if len(paragraphs) > 1 and any(not _ANSWER_SUBQUESTION.fullmatch(paragraph) for paragraph in paragraphs):
+        return ContentIssue(
+            "answer-derivation-layout",
+            "answer 的多段内容必须是原题对应的（1）（2）结论；推导应移入 explanation",
+            1,
+        )
+    prose = re.sub(r"```.*?```", "", normalized, flags=re.DOTALL)
+    prose = re.sub(r"\$\$.*?\$\$|\$[^$]*\$", "", prose, flags=re.DOTALL)
+    marker = next((value for value in _ANSWER_EXPLANATION_MARKERS if value in prose), None)
+    if marker:
+        return ContentIssue(
+            "answer-contains-derivation",
+            f"answer 不得包含论证或推导标记“{marker}”；应只保留最终结论",
+            1,
+        )
+    return None
 
 
 def option_label(index: int) -> str:

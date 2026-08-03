@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { waitForAppReady } from "./app-ready";
 
 function collectRuntimeErrors(page: Page) {
   const errors: string[] = [];
@@ -13,7 +14,7 @@ test("homepage hydrates and dismisses splash", async ({ page }) => {
   const errors = collectRuntimeErrors(page);
   await page.goto("/", { waitUntil: "domcontentloaded" });
   await page.locator("main").waitFor();
-  await expect(page.locator("#oops-splash")).toBeHidden();
+  await waitForAppReady(page);
   await expect(page.getByRole("heading", { name: "新建题目" })).toBeVisible();
 
   const relevantErrors = errors.filter((message) => !message.includes("/_next/webpack-hmr"));
@@ -23,7 +24,7 @@ test("homepage hydrates and dismisses splash", async ({ page }) => {
 test("desktop brand controls the sidebar", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto("/", { waitUntil: "domcontentloaded" });
-  await expect(page.locator("#oops-splash")).toBeHidden();
+  await waitForAppReady(page);
 
   const toggle = page.locator(".oops-titlebar__brand-toggle");
   const brandIcon = toggle.locator(".oops-titlebar__brand-icon");
@@ -44,17 +45,19 @@ test("desktop brand controls the sidebar", async ({ page }) => {
   await expect(toggle).toHaveAttribute("aria-expanded", "false");
   await expect(page.locator("#oops-primary-sidebar")).toHaveClass(/is-collapsed/);
   await expect(toggle.locator("p")).toHaveText("OopsNote");
-  await expect(toggle.locator("p")).toBeVisible();
+  await expect(toggle.locator("p")).toBeHidden();
+  await expect(brandIcon).toBeVisible();
 
   await toggle.click();
   await expect(toggle).toHaveAttribute("aria-expanded", "true");
   await expect(page.locator("#oops-primary-sidebar")).not.toHaveClass(/is-collapsed/);
+  await expect(toggle.locator("p")).toBeVisible();
 });
 
 test("desktop content scroll keeps the rounded shell edge fixed", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 640 });
   await page.goto("/", { waitUntil: "domcontentloaded" });
-  await expect(page.locator("#oops-splash")).toBeHidden();
+  await waitForAppReady(page);
 
   const surface = page.locator(".oops-content-surface");
   const initialBounds = (await surface.boundingBox())!;
@@ -105,7 +108,7 @@ test("splash remains visible while hydration scripts are still loading", async (
 test("mobile shell fits without horizontal overflow", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/", { waitUntil: "domcontentloaded" });
-  await expect(page.locator("#oops-splash")).toBeHidden();
+  await waitForAppReady(page);
   await expect(page.locator(".oops-mobile-tabbar")).toBeVisible();
   await expect(page.locator("aside")).toBeHidden();
 
@@ -119,7 +122,7 @@ test("mobile shell fits without horizontal overflow", async ({ page }) => {
 test("batch scan is a separate manual-segmentation workspace", async ({ page }) => {
   const errors = collectRuntimeErrors(page);
   await page.goto("/batch-segment", { waitUntil: "domcontentloaded" });
-  await expect(page.locator("#oops-splash")).toBeHidden();
+  await waitForAppReady(page);
   await expect(page.getByRole("heading", { name: "批量扫描" })).toBeVisible();
   await expect(page.locator('input[type="file"][accept*="application/pdf"]')).toBeAttached();
   await expect(page.getByRole("button", { name: "开始处理" })).toHaveCount(0);

@@ -4,7 +4,7 @@ import json
 
 import pytest
 
-from oopsnote.core import TagStore, TaskCreateRequest, TaskStatus, TaskStore
+from oopsnote.core import TagStore, TaskCreateRequest, TaskStage, TaskStatus, TaskStore
 from oopsnote.mcp import server
 from oopsnote.mcp.restricted import managed_create_tag, managed_list_tags
 
@@ -95,7 +95,76 @@ def test_finalize_validates_and_commits_managed_task(tmp_path, monkeypatch):
     assert completed.problem.short_answer == "$x=1$"
     assert completed.problem.content_format.value == "oopsmark-v1"
     assert completed.active_run_id is None
+    assert completed.revision_count == 0
+    assert completed.last_revised_at is None
     assert completed.metadata["intake_review_reason"] == "multiple_questions"
+
+
+def test_repeated_finalize_is_rejected_without_rewriting_completed_result(
+    tmp_path,
+    monkeypatch,
+):
+    task_store = configure_stores(tmp_path, monkeypatch)
+    task = task_store.create(TaskCreateRequest(subject="auto"))
+    task_store.update(task.id, status=TaskStatus.PROCESSING, active_run_id="run-1")
+    authorize_knowledge_point(task.id, valid_problem()["knowledge_points"][0])
+    advance_to_finalizing(task.id)
+    server.finalize_task(
+        task.id,
+        json.dumps(valid_problem(), ensure_ascii=False),
+        run_id="run-1",
+        sync_to_obsidian=False,
+    )
+    committed = task_store.get(task.id)
+
+    replacement = valid_problem()
+    replacement["problem_text"] = "不应覆盖已提交结果。"
+    with pytest.raises(ValueError, match="is not active"):
+        server.finalize_task(
+            task.id,
+            json.dumps(replacement, ensure_ascii=False),
+            run_id="run-1",
+            sync_to_obsidian=False,
+        )
+
+    current = task_store.get(task.id)
+    assert current == committed
+    assert current.status == TaskStatus.COMPLETED
+    assert current.active_run_id is None
+
+
+def test_finalize_sync_message_cannot_overwrite_newer_run(tmp_path, monkeypatch):
+    task_store = configure_stores(tmp_path, monkeypatch)
+    task = task_store.create(TaskCreateRequest(subject="auto"))
+    task_store.update(task.id, status=TaskStatus.PROCESSING, active_run_id="run-1")
+    authorize_knowledge_point(task.id, valid_problem()["knowledge_points"][0])
+    advance_to_finalizing(task.id)
+
+    class RacingQueue:
+        @staticmethod
+        def enqueue(_syncer, _problem, *, task_id):
+            task_store.update(
+                task_id,
+                status=TaskStatus.PROCESSING,
+                active_run_id="run-2",
+                stage=TaskStage.SOLVING,
+                stage_message="new run solving",
+            )
+
+    monkeypatch.setattr(server, "OBSIDIAN_SYNC_QUEUE", RacingQueue())
+
+    result = server.finalize_task(
+        task.id,
+        json.dumps(valid_problem(), ensure_ascii=False),
+        run_id="run-1",
+        sync_to_obsidian=True,
+    )
+
+    assert result["sync_queued"] is True
+    current = task_store.get(task.id)
+    assert current.status == TaskStatus.PROCESSING
+    assert current.active_run_id == "run-2"
+    assert current.stage_message == "new run solving"
 
 
 def test_finalize_enforces_subject_and_enriches_trusted_source(tmp_path, monkeypatch):
@@ -147,6 +216,28 @@ def test_finalize_rejects_missing_answer_and_wrong_run(tmp_path, monkeypatch):
         )
     with pytest.raises(ValueError, match="not active"):
         server.report_task_stage(task.id, "ocr", run_id="wrong-run")
+
+
+def test_finalize_rejects_answer_derivation_without_consuming_the_active_run(tmp_path, monkeypatch):
+    task_store = configure_stores(tmp_path, monkeypatch)
+    task = task_store.create(TaskCreateRequest(subject="math"))
+    task_store.update(task.id, status=TaskStatus.PROCESSING, active_run_id="run-1")
+    problem = valid_problem()
+    problem["answer"] = "因为 $x+1=2$，所以 $x=1$。"
+    authorize_knowledge_point(task.id, problem["knowledge_points"][0])
+    advance_to_finalizing(task.id)
+
+    with pytest.raises(ValueError, match="answer-contains-derivation"):
+        server.finalize_task(
+            task.id,
+            json.dumps(problem, ensure_ascii=False),
+            run_id="run-1",
+            sync_to_obsidian=False,
+        )
+
+    unchanged = task_store.get(task.id)
+    assert unchanged.status == TaskStatus.PROCESSING
+    assert unchanged.active_run_id == "run-1"
 
 
 def test_finalize_rejects_multiple_independent_problems(tmp_path, monkeypatch):
@@ -251,6 +342,7 @@ def test_fail_task_persists_structured_review_reason(tmp_path, monkeypatch):
         "review_reason": "incomplete",
     }
     assert failed.status.value == "failed"
+    assert failed.last_error_code == "pipeline_failed"
     assert failed.metadata["intake_review_reason"] == "incomplete"
 
     another = task_store.create(TaskCreateRequest(subject="auto"))
@@ -374,6 +466,20 @@ def test_managed_ai_cannot_create_knowledge_tag(tmp_path, monkeypatch):
             run_id="run-1",
             subject="math",
         )
+    with pytest.raises(ValueError, match="list existing error tags"):
+        managed_create_tag(
+            dimension="error",
+            value="忽略端点",
+            task_id=task.id,
+            run_id="run-1",
+            subject="math",
+        )
+    managed_list_tags(
+        dimension="error",
+        task_id=task.id,
+        run_id="run-1",
+        subject="math",
+    )
     managed_create_tag(
         dimension="error",
         value="忽略端点",
@@ -381,6 +487,29 @@ def test_managed_ai_cannot_create_knowledge_tag(tmp_path, monkeypatch):
         run_id="run-1",
         subject="math",
     )
+    with pytest.raises(ValueError, match="matches existing candidate"):
+        managed_create_tag(
+            dimension="error",
+            value="忽略约束条件",
+            task_id=task.id,
+            run_id="run-1",
+            subject="math",
+        )
+    server.create_tag("error", "定义域遗漏", aliases=["忽略定义域"], subject="math")
+    managed_list_tags(
+        dimension="error",
+        task_id=task.id,
+        run_id="run-1",
+        subject="math",
+    )
+    with pytest.raises(ValueError, match="matches existing candidate"):
+        managed_create_tag(
+            dimension="error",
+            value="忽略定义域",
+            task_id=task.id,
+            run_id="run-1",
+            subject="math",
+        )
     with pytest.raises(ValueError, match="not active"):
         managed_list_tags(
             dimension="error",

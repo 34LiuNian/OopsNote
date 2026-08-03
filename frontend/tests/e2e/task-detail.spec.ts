@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { waitForAppReady } from "./app-ready";
 
 test("completed task stays compact and editing replaces the reading card", async ({ page }) => {
   const taskId = "task-ui-test";
@@ -43,6 +44,9 @@ test("completed task stays compact and editing replaces the reading card", async
       question_no: "26",
       question_type: "单选题",
       source: "界面测试试卷.pdf",
+      chapter: null as string | null,
+      difficulty_coefficient_override: null as number | null,
+      section_question_count: null as number | null,
       problem_text: "求函数 $f(x)=x^2$ 的最小值。",
       content_format: "oopsmark-v1",
       options: [
@@ -73,6 +77,7 @@ test("completed task stays compact and editing replaces the reading card", async
     tag: { problem_id: "problem-ui-test", knowledge_points: ["函数"] },
   };
 
+  await page.addInitScript(() => document.documentElement.classList.add("oops-splash-skip"));
   await page.route("**/api/settings/tag-dimensions", async (route) => {
     await route.fulfill({ json: { dimensions: {} } });
   });
@@ -96,7 +101,7 @@ test("completed task stays compact and editing replaces the reading card", async
 
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto(`/tasks/${taskId}`, { waitUntil: "domcontentloaded" });
-  await expect(page.locator("#oops-splash")).toBeHidden();
+  await waitForAppReady(page);
 
   const taskCard = page.locator(".oops-card").first();
   const progressSummary = taskCard.getByRole("button", { name: /5\/5 阶段完成/ });
@@ -123,6 +128,9 @@ test("completed task stays compact and editing replaces the reading card", async
   await expect(page.getByText("未修改", { exact: true })).toHaveCount(0);
   await expect(page.locator(".option-editor__label")).toHaveText(["A", "B"]);
   await expect(page.getByRole("textbox", { name: "选项 A" })).toHaveValue("$\\frac{5}{2}$");
+  await page.getByLabel("难度系数").fill("0.73");
+  await page.getByLabel("章节").fill("函数");
+  await page.getByLabel("区段总题数").fill("8");
   await page.getByRole("button", { name: "添加" }).click();
   await expect(page.locator(".option-editor__label")).toHaveText(["A", "B", "C"]);
   await page.getByRole("button", { name: "删除选项 C" }).click();
@@ -168,6 +176,9 @@ test("completed task stays compact and editing replaces the reading card", async
   expect(task.problem.diagram_image_crop?.x).toBeCloseTo(0.2, 1);
   expect(task.problem.diagram_image_crop?.width).toBeCloseTo(0.6, 1);
   expect(task.problem.diagram_image_tone).toBe("auto");
+  expect(task.problem.difficulty_coefficient_override).toBe(0.73);
+  expect(task.problem.chapter).toBe("函数");
+  expect(task.problem.section_question_count).toBe(8);
   await expect(page.getByRole("heading", { name: "题目与解答" })).toBeVisible();
   await expect(page.getByText("求函数", { exact: false })).toBeVisible();
   const readingLayout = await page.locator(".problem-content__lead.has-illustration").evaluate((element) => {

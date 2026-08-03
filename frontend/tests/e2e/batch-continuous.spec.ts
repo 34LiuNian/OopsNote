@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { waitForAppReady } from "./app-ready";
 
 function createPdf(pageCount: number): Buffer {
   const objects: string[] = [];
@@ -26,19 +27,21 @@ function createPdf(pageCount: number): Buffer {
 }
 
 async function openWorkspace(page: Page, options: {
+  pageCount?: number;
   failPatchCount?: number;
   cropRect?: { x: number; y: number; width: number; height: number };
   dropColumnLayoutPatch?: boolean;
   onPatch?: (payload: Record<string, unknown>) => void;
   onProcess?: () => void;
 } = {}) {
+  const pageCount = options.pageCount ?? 3;
   let failedPatches = 0;
   let session = {
     file_hash: "fixture",
     filename: "continuous.pdf",
     mime_type: "application/pdf",
     asset_path: "/assets/batch-fixture.pdf",
-    page_count: 3,
+    page_count: pageCount,
     subject: "auto",
     notes: "",
     active_page: 0,
@@ -119,12 +122,103 @@ async function openWorkspace(page: Page, options: {
     await route.fulfill({ json: { session } });
   });
   await page.goto("/batch-segment", { waitUntil: "domcontentloaded" });
-  await expect(page.locator("#oops-splash")).toBeHidden();
-  await page.locator('input[type="file"]').setInputFiles({ name: "continuous.pdf", mimeType: "application/pdf", buffer: createPdf(3) });
+  await waitForAppReady(page);
+  await page.locator('input[type="file"]').setInputFiles({ name: "continuous.pdf", mimeType: "application/pdf", buffer: createPdf(pageCount) });
   await expect(page.locator(".batch-document-viewport > .image-selection-stage")).toBeVisible({ timeout: 30_000 });
-  await expect(page.locator(".batch-page-rail__page")).toHaveCount(3);
+  await expect(page.locator(".batch-page-rail__page")).toHaveCount(pageCount);
   await expect(page.locator(".batch-page-rail__page small")).toHaveCount(0);
 }
+
+async function trackBlobUrls(page: Page, renderDelayMs = 0) {
+  await page.addInitScript((delayMs) => {
+    const state = window as typeof window & {
+      __oopsnoteBlobUrls?: {
+        activePageUrls: Set<string>;
+        peakPageUrls: number;
+        revokedPageUrls: number;
+        pendingPageEncodes: number;
+      };
+    };
+    const tracked = { activePageUrls: new Set<string>(), peakPageUrls: 0, revokedPageUrls: 0, pendingPageEncodes: 0 };
+    state.__oopsnoteBlobUrls = tracked;
+    const createObjectURL = URL.createObjectURL.bind(URL);
+    const revokeObjectURL = URL.revokeObjectURL.bind(URL);
+    URL.createObjectURL = (object: Blob | MediaSource) => {
+      const url = createObjectURL(object);
+      if (object instanceof File && object.type === "image/png") {
+        tracked.activePageUrls.add(url);
+        tracked.peakPageUrls = Math.max(tracked.peakPageUrls, tracked.activePageUrls.size);
+      }
+      return url;
+    };
+    URL.revokeObjectURL = (url: string) => {
+      if (tracked.activePageUrls.delete(url)) tracked.revokedPageUrls += 1;
+      revokeObjectURL(url);
+    };
+    if (delayMs > 0) {
+      const toBlob = HTMLCanvasElement.prototype.toBlob;
+      HTMLCanvasElement.prototype.toBlob = function(callback, type, quality) {
+        tracked.pendingPageEncodes += 1;
+        toBlob.call(this, (blob) => window.setTimeout(() => {
+          tracked.pendingPageEncodes -= 1;
+          callback(blob);
+        }, delayMs), type, quality);
+      };
+    }
+  }, renderDelayMs);
+}
+
+async function blobUrlStats(page: Page) {
+  return page.evaluate(() => {
+    const tracked = (window as typeof window & {
+      __oopsnoteBlobUrls?: {
+        activePageUrls: Set<string>;
+        peakPageUrls: number;
+        revokedPageUrls: number;
+        pendingPageEncodes: number;
+      };
+    }).__oopsnoteBlobUrls;
+    return {
+      activePageUrls: tracked?.activePageUrls.size ?? 0,
+      peakPageUrls: tracked?.peakPageUrls ?? 0,
+      revokedPageUrls: tracked?.revokedPageUrls ?? 0,
+      pendingPageEncodes: tracked?.pendingPageEncodes ?? 0,
+    };
+  });
+}
+
+test("PDF page cache keeps at most six rendered page URLs and reloads evicted pages", async ({ page }) => {
+  await trackBlobUrls(page);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await openWorkspace(page, { pageCount: 10 });
+  await page.getByRole("button", { name: "检查裁剪与分栏" }).click();
+
+  for (let pageIndex = 0; pageIndex < 10; pageIndex += 1) {
+    await page.locator(".batch-page-rail__page").nth(pageIndex).click();
+    await expect(page.locator(`.batch-continuous-page[data-page-index="${pageIndex}"] img`)).toBeVisible({ timeout: 30_000 });
+  }
+
+  await expect.poll(async () => (await blobUrlStats(page)).activePageUrls).toBeLessThanOrEqual(6);
+  const afterForwardScan = await blobUrlStats(page);
+  expect(afterForwardScan.peakPageUrls).toBeLessThanOrEqual(6);
+  expect(afterForwardScan.revokedPageUrls).toBeGreaterThan(0);
+
+  await page.locator(".batch-page-rail__page").first().click();
+  await expect(page.locator('.batch-continuous-page[data-page-index="0"] img')).toBeVisible({ timeout: 30_000 });
+  await expect.poll(async () => (await blobUrlStats(page)).activePageUrls).toBeLessThanOrEqual(6);
+});
+
+test("clearing a workspace prevents an in-flight PDF render from publishing a stale page URL", async ({ page }) => {
+  await trackBlobUrls(page, 800);
+  await openWorkspace(page);
+  await expect.poll(async () => (await blobUrlStats(page)).pendingPageEncodes).toBeGreaterThan(0);
+  await page.getByRole("button", { name: "返回最近文件" }).click();
+  await expect(page.getByRole("button", { name: "选择 PDF 或图片" })).toBeVisible();
+  await page.waitForTimeout(1_200);
+
+  expect(await blobUrlStats(page)).toEqual({ activePageUrls: 0, peakPageUrls: 0, revokedPageUrls: 0, pendingPageEncodes: 0 });
+  await expect(page.locator(".batch-scan-error")).toHaveCount(0);
+});
 
 test("recent files expose delete directly without a secondary menu", async ({ page }) => {
   await page.route(/\/batch-sessions$/, async (route) => {
@@ -148,7 +242,7 @@ test("recent files expose delete directly without a secondary menu", async ({ pa
     }] } });
   });
   await page.goto("/batch-segment", { waitUntil: "domcontentloaded" });
-  await expect(page.locator("#oops-splash")).toBeHidden();
+  await waitForAppReady(page);
   await expect(page.getByRole("button", { name: "删除最近文件" })).toBeVisible();
   await expect(page.locator(".batch-history-menu, .batch-scan-history details")).toHaveCount(0);
   await expect(page.locator(".batch-scan-history__meta")).toContainText("2 栏");
@@ -455,7 +549,15 @@ test("viewer follows live color scheme and can scroll fully above the bottom saf
 
 test("one crop produces a lazy, single-column, gapless selection surface", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
-  await openWorkspace(page);
+  let persistedParts: Array<{ page_index: number; order: number }> = [];
+  await openWorkspace(page, {
+    onPatch: (payload) => {
+      const segments = payload.segments;
+      if (!Array.isArray(segments) || !segments.length) return;
+      const first = segments[0] as { parts?: Array<{ page_index: number; order: number }> };
+      persistedParts = first.parts ?? [];
+    },
+  });
   const editor = (await page.locator(".batch-document-viewport > .image-selection-stage").boundingBox())!;
   await page.mouse.move(editor.x + editor.width * 0.08, editor.y + editor.height * 0.08);
   await page.mouse.down();
@@ -482,6 +584,7 @@ test("one crop produces a lazy, single-column, gapless selection surface", async
   await page.mouse.move(surface.x + surface.width * 0.72, firstAfter.y + firstAfter.height + 90, { steps: 8 });
   await page.mouse.up();
   await expect(page.locator("[data-selection-id]")).toHaveCount(1);
+  await expect.poll(() => persistedParts.map((part) => [part.page_index, part.order])).toEqual([[0, 0], [1, 1]]);
   await expect(page.locator(".batch-selection-handle")).toHaveCount(8);
   const selectionStyle = await page.locator("[data-selection-id]").evaluate((element) => {
     const style = getComputedStyle(element);
@@ -543,6 +646,44 @@ test("one crop produces a lazy, single-column, gapless selection surface", async
   await expect(page.locator(".batch-selection-list__item")).toContainText("包含多道完整题目");
   await review.selectOption("");
   await expect(page.locator("[data-selection-id]")).not.toHaveClass(/is-needs_review/);
+});
+
+test("resizing a pending selection persists its corrected page-local geometry", async ({ page }) => {
+  let persistedParts: Array<{ width: number; height: number }> = [];
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await openWorkspace(page, {
+    onPatch: (payload) => {
+      const segments = payload.segments;
+      if (!Array.isArray(segments) || !segments.length) return;
+      const first = segments[0] as { parts?: Array<{ width: number; height: number }> };
+      persistedParts = first.parts?.map((part) => ({ ...part })) ?? [];
+    },
+  });
+  await page.getByRole("button", { name: "检查裁剪与分栏" }).click();
+  await page.getByRole("button", { name: /确认裁剪与分栏并开始框题/ }).click();
+  const sourcePage = (await page.locator('.batch-continuous-page[data-page-index="0"]').boundingBox())!;
+  await page.mouse.move(sourcePage.x + sourcePage.width * 0.2, sourcePage.y + sourcePage.height * 0.2);
+  await page.mouse.down();
+  await page.mouse.move(sourcePage.x + sourcePage.width * 0.5, sourcePage.y + sourcePage.height * 0.45, { steps: 6 });
+  await page.mouse.up();
+  const selection = page.locator("[data-selection-id]");
+  await expect(selection).toHaveCount(1);
+  await expect.poll(() => persistedParts).toHaveLength(1);
+  const initialPart = persistedParts[0];
+  const before = (await selection.boundingBox())!;
+  const handle = selection.locator(".batch-selection-handle.is-se");
+  await expect(handle).toBeVisible();
+  const handleBox = (await handle.boundingBox())!;
+  await page.mouse.move(handleBox.x + handleBox.width / 2, handleBox.y + handleBox.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(handleBox.x + handleBox.width / 2 + 80, handleBox.y + handleBox.height / 2 + 90, { steps: 6 });
+  await page.mouse.up();
+
+  await expect.poll(() => persistedParts[0]?.width ?? 0).toBeGreaterThan(initialPart.width);
+  await expect.poll(() => persistedParts[0]?.height ?? 0).toBeGreaterThan(initialPart.height);
+  const after = (await selection.boundingBox())!;
+  expect(after.width).toBeGreaterThan(before.width);
+  expect(after.height).toBeGreaterThan(before.height);
 });
 
 test("viewer zoom uses Ctrl+wheel and page navigation has no previous/next controls", async ({ page }) => {

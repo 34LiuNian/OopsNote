@@ -3,14 +3,15 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import threading
 from pathlib import Path
 from typing import Optional
 from uuid import uuid4
 
-from oopsnote.core import Problem, TagStore, TaskStore
+from oopsnote.core import Problem, StateConflict, TagStore, TaskStatus, TaskStore
 
-from .indexer import build_indexes
+from .indexer import render_indexes
 from .writer import problem_filename, render_problem, subject_dir
 
 
@@ -23,11 +24,12 @@ class SyncReport:
         self.files_written = 0
         self.files_removed = 0
         self.indexes_written = 0
+        self.conflicts: list[str] = []
 
     def __str__(self) -> str:
         return (
             f"写入 {self.files_written} 个题目文件，清理 {self.files_removed} 个受管文件，"
-            f"生成 {self.indexes_written} 个索引"
+            f"生成 {self.indexes_written} 个索引，检测到 {len(self.conflicts)} 个本地冲突"
         )
 
 
@@ -69,6 +71,7 @@ class ObsidianSyncer:
                 report.files_written += current.files_written
                 report.files_removed += current.files_removed
                 report.indexes_written += current.indexes_written
+                report.conflicts.extend(current.conflicts)
             return report
 
     def sync_for_subject(self, subject: str) -> SyncReport:
@@ -98,6 +101,7 @@ class ObsidianSyncer:
                 report.files_written += current.files_written
                 report.files_removed += current.files_removed
                 report.indexes_written += current.indexes_written
+                report.conflicts.extend(current.conflicts)
             return report
 
     def _sync_subject(
@@ -118,18 +122,47 @@ class ObsidianSyncer:
         manifest = self._read_manifest(subject_root)
         previous_problems = set(manifest.get("problem_files", []))
         previous_indexes = set(manifest.get("index_files", []))
+        previous_problem_hashes = dict(manifest.get("problem_hashes", {}))
+        previous_index_hashes = dict(manifest.get("index_hashes", {}))
 
         written_problem_names: set[str] = set()
+        current_problem_hashes = {
+            name: digest
+            for name, digest in previous_problem_hashes.items()
+            if name in previous_problems
+        }
         if write_all:
             for problem in problems:
-                self._write_problem(problem)
-                written_problem_names.add(problem_filename(problem))
-                report.files_written += 1
+                filename = problem_filename(problem)
+                content = render_problem(problem)
+                result = self._write_managed(
+                    subject_root / "problems" / filename,
+                    content,
+                    previous_problem_hashes.get(filename),
+                )
+                if result == "conflict":
+                    report.conflicts.append(f"problems/{filename}")
+                else:
+                    written_problem_names.add(filename)
+                    current_problem_hashes[filename] = self._content_hash(content)
+                    if result == "written":
+                        report.files_written += 1
         elif changed:
             for problem in changed:
-                self._write_problem(problem)
-                written_problem_names.add(problem_filename(problem))
-            report.files_written = len(written_problem_names)
+                filename = problem_filename(problem)
+                content = render_problem(problem)
+                result = self._write_managed(
+                    subject_root / "problems" / filename,
+                    content,
+                    previous_problem_hashes.get(filename),
+                )
+                if result == "conflict":
+                    report.conflicts.append(f"problems/{filename}")
+                else:
+                    written_problem_names.add(filename)
+                    current_problem_hashes[filename] = self._content_hash(content)
+                    if result == "written":
+                        report.files_written += 1
 
         current_problem_names = {problem_filename(problem) for problem in problems}
         if write_all:
@@ -137,26 +170,57 @@ class ObsidianSyncer:
         else:
             managed_problems = (previous_problems & current_problem_names) | written_problem_names
 
-        index_paths = build_indexes(problems, self.vault_root, self.tag_store)
-        current_indexes = {
-            path.name
-            for path in index_paths
+        index_plan = [
+            (path, content)
+            for path, content in render_indexes(problems, self.vault_root, self.tag_store)
             if path.parent == subject_root / "indexes"
+        ]
+        current_indexes = {path.name for path, _content in index_plan}
+        current_index_hashes = {
+            name: digest
+            for name, digest in previous_index_hashes.items()
+            if name in previous_indexes
         }
-        report.indexes_written = len(current_indexes)
-        report.files_removed += self._remove_managed(
-            subject_root / "problems", previous_problems - current_problem_names
+        for path, content in index_plan:
+            result = self._write_managed(path, content, previous_index_hashes.get(path.name))
+            if result == "conflict":
+                report.conflicts.append(f"indexes/{path.name}")
+            else:
+                current_index_hashes[path.name] = self._content_hash(content)
+                if result == "written":
+                    report.indexes_written += 1
+        removed, conflicts = self._remove_managed(
+            subject_root / "problems",
+            previous_problems - current_problem_names,
+            previous_problem_hashes,
         )
-        report.files_removed += self._remove_managed(
-            subject_root / "indexes", previous_indexes - current_indexes
+        report.files_removed += removed
+        report.conflicts.extend(f"problems/{name}" for name in conflicts)
+        removed, conflicts = self._remove_managed(
+            subject_root / "indexes",
+            previous_indexes - current_indexes,
+            previous_index_hashes,
         )
+        report.files_removed += removed
+        report.conflicts.extend(f"indexes/{name}" for name in conflicts)
         self._write_manifest(
             subject_root,
             {
-                "version": 1,
+                "version": 2,
                 "subject": subject,
                 "problem_files": sorted(managed_problems),
                 "index_files": sorted(current_indexes),
+                "problem_hashes": {
+                    name: digest
+                    for name, digest in current_problem_hashes.items()
+                    if name in managed_problems
+                },
+                "index_hashes": {
+                    name: digest
+                    for name, digest in current_index_hashes.items()
+                    if name in current_indexes
+                },
+                "conflicts": sorted(set(report.conflicts)),
             },
         )
         return report
@@ -171,9 +235,26 @@ class ObsidianSyncer:
                 problems.append(problem)
         return problems
 
-    def _write_problem(self, problem: Problem) -> None:
-        path = self.vault_root / subject_dir(problem.subject) / "problems" / problem_filename(problem)
-        self._atomic_write(path, render_problem(problem))
+    def _write_managed(self, path: Path, content: str, expected_hash: Optional[str]) -> str:
+        """Write only when the existing managed file has not been locally edited."""
+        if not path.exists():
+            self._atomic_write(path, content)
+            return "written"
+        try:
+            existing = path.read_text(encoding="utf-8")
+        except OSError:
+            return "conflict"
+        candidate_hash = self._content_hash(content)
+        if self._content_hash(existing) == candidate_hash:
+            return "unchanged"
+        if (
+            expected_hash
+            and MANAGED_MARKER in existing[:2048]
+            and self._content_hash(existing) == expected_hash
+        ):
+            self._atomic_write(path, content)
+            return "written"
+        return "conflict"
 
     def _read_manifest(self, subject_root: Path) -> dict:
         path = subject_root / MANIFEST_NAME
@@ -183,7 +264,7 @@ class ObsidianSyncer:
             payload = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, ValueError) as error:
             raise RuntimeError(f"Invalid Obsidian ownership manifest: {path}") from error
-        if not isinstance(payload, dict) or payload.get("version") != 1:
+        if not isinstance(payload, dict) or payload.get("version") not in {1, 2}:
             raise RuntimeError(f"Unsupported Obsidian ownership manifest: {path}")
         return payload
 
@@ -193,17 +274,36 @@ class ObsidianSyncer:
             json.dumps(payload, ensure_ascii=False, indent=2),
         )
 
-    def _remove_managed(self, directory: Path, names: set[str]) -> int:
+    def _remove_managed(
+        self,
+        directory: Path,
+        names: set[str],
+        expected_hashes: dict[str, str],
+    ) -> tuple[int, list[str]]:
         removed = 0
+        conflicts: list[str] = []
         for name in names:
             path = directory / name
             try:
-                if path.is_file() and MANAGED_MARKER in path.read_text(encoding="utf-8")[:2048]:
+                if not path.is_file():
+                    continue
+                content = path.read_text(encoding="utf-8")
+                if (
+                    MANAGED_MARKER in content[:2048]
+                    and expected_hashes.get(name)
+                    and self._content_hash(content) == expected_hashes[name]
+                ):
                     path.unlink()
                     removed += 1
+                else:
+                    conflicts.append(name)
             except OSError:
-                continue
-        return removed
+                conflicts.append(name)
+        return removed, conflicts
+
+    @staticmethod
+    def _content_hash(content: str) -> str:
+        return hashlib.sha256(content.encode("utf-8")).hexdigest()
 
     @staticmethod
     def _atomic_write(path: Path, content: str) -> None:
@@ -260,31 +360,46 @@ class ObsidianSyncQueue:
                 key, (syncer, pending) = self._pending.popitem()
             items = list(pending.values())
             problems = [problem for problem, _ in items]
-            task_ids = [task_id for _, task_id in items if task_id]
+            task_refs = [
+                (task_id, problem.id)
+                for problem, task_id in items
+                if task_id
+            ]
             try:
-                syncer.sync_problems(problems)
+                report = syncer.sync_problems(problems)
                 self.last_error = None
                 self.last_errors.pop(key, None)
-                self._update_tasks(syncer, task_ids, "AI 结果已写入；Obsidian 同步完成")
+                message = (
+                    "AI 结果已写入；Obsidian 同步完成"
+                    if not report.conflicts
+                    else f"AI 结果已写入；Obsidian 保留了 {len(report.conflicts)} 个本地修改，待人工处理"
+                )
+                self._update_tasks(syncer, task_refs, message)
             except Exception as error:  # background failure remains observable
                 self.last_error = str(error)
                 self.last_errors[key] = str(error)
                 self._update_tasks(
                     syncer,
-                    task_ids,
+                    task_refs,
                     f"AI 结果已写入；Obsidian 同步失败：{error}",
                 )
 
     @staticmethod
     def _update_tasks(
         syncer: ObsidianSyncer,
-        task_ids: list[str],
+        task_refs: list[tuple[str, str]],
         message: str,
     ) -> None:
-        for task_id in task_ids:
+        for task_id, problem_id in task_refs:
             try:
-                syncer.task_store.update(task_id, stage_message=message)
-            except (KeyError, OSError):
+                syncer.task_store.transition(
+                    task_id,
+                    expected_statuses={TaskStatus.COMPLETED},
+                    expected_active_run_id=None,
+                    expected_problem_id=problem_id,
+                    stage_message=message,
+                )
+            except (KeyError, OSError, StateConflict):
                 continue
 
 

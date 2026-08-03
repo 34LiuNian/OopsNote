@@ -24,6 +24,22 @@ class AgentBackend(Protocol):
 class ManagedAiRunner(ABC):
     """Own task/run state independently from a specific agent process."""
 
+    _RETRYABLE_ERROR_CODES = frozenset({
+        "connection_error",
+        "network_error",
+        "ocr_network_error",
+        "ocr_provider_unavailable",
+        "ocr_rate_limit",
+        "ocr_timeout",
+        "rate_limit",
+        "rate_limit_exceeded",
+        "provider_rate_limit",
+        "provider_unavailable",
+        "service_unavailable",
+        "429",
+        "503",
+    })
+
     backend_name = "unknown"
     _admission_lock = threading.RLock()
 
@@ -91,6 +107,7 @@ class ManagedAiRunner(ABC):
                     stage_message=f"Waiting for {self.backend_name} worker",
                     active_run_id=run.id,
                     last_error=None,
+                    last_error_code=None,
                 )
             except (KeyError, StateConflict) as error:
                 self.run_store.finish(
@@ -100,7 +117,29 @@ class ManagedAiRunner(ABC):
                     error_message=str(error),
                 )
                 raise RuntimeError(str(error)) from error
-            return run
+            return self.run_store.observe_stage(
+                run.id,
+                TaskStage.QUEUED,
+                f"Waiting for {self.backend_name} worker",
+            )
+
+    def _set_stage(
+        self,
+        task_id: str,
+        run_id: str,
+        stage: TaskStage,
+        message: str,
+    ) -> None:
+        """Persist one lifecycle-owned stage in both task and run views."""
+
+        self.task_store.transition(
+            task_id,
+            expected_statuses={TaskStatus.PROCESSING},
+            expected_active_run_id=run_id,
+            stage=stage,
+            stage_message=message,
+        )
+        self.run_store.observe_stage(run_id, stage, message)
 
     def submit(self, task_id: str) -> TaskRun:
         """Persist and schedule a run without tying execution to an HTTP request."""
@@ -142,6 +181,7 @@ class ManagedAiRunner(ABC):
                 status=TaskStatus.CANCELLED,
                 active_run_id=None,
                 last_error=None,
+                last_error_code=None,
             )
             self.run_store.finish(
                 active.id,
@@ -156,6 +196,7 @@ class ManagedAiRunner(ABC):
                 status=TaskStatus.CANCELLED,
                 active_run_id=None,
                 last_error=None,
+                last_error_code=None,
             )
 
     def recover_stale(self) -> int:
@@ -167,14 +208,18 @@ class ManagedAiRunner(ABC):
             if run.status not in {RunStatus.QUEUED, RunStatus.RUNNING}:
                 continue
             active_task_ids.add(run.task_id)
-            with self._lock:
-                locally_managed = run.task_id in self._processes
-            if locally_managed or run.heartbeat_at >= cutoff:
-                continue
             try:
                 task = self.task_store.get(run.task_id)
             except KeyError:
                 task = None
+            with self._lock:
+                locally_managed = (
+                    task is not None
+                    and task.active_run_id == run.id
+                    and run.task_id in self._processes
+                )
+            if locally_managed or run.heartbeat_at >= cutoff:
+                continue
             terminal_status = {
                 TaskStatus.COMPLETED: RunStatus.COMPLETED,
                 TaskStatus.FAILED: RunStatus.FAILED,
@@ -185,7 +230,7 @@ class ManagedAiRunner(ABC):
                     run.id,
                     terminal_status,
                     error_code=(
-                        "pipeline_failed"
+                        task.last_error_code or "pipeline_failed"
                         if terminal_status == RunStatus.FAILED
                         else None
                     ),
@@ -201,8 +246,16 @@ class ManagedAiRunner(ABC):
                 error_message=message,
             )
             try:
-                self.task_store.mark_status(run.task_id, TaskStatus.FAILED, message)
-            except KeyError:
+                self.task_store.transition(
+                    run.task_id,
+                    expected_statuses={TaskStatus.PROCESSING},
+                    expected_active_run_id=run.id,
+                    status=TaskStatus.FAILED,
+                    active_run_id=None,
+                    last_error=message,
+                    last_error_code="stale_heartbeat",
+                )
+            except (KeyError, StateConflict):
                 pass
             recovered += 1
 
@@ -216,6 +269,7 @@ class ManagedAiRunner(ABC):
                     task.id,
                     TaskStatus.FAILED,
                     "Legacy processing task expired",
+                    error_code="legacy_stale",
                 )
                 recovered += 1
         return recovered
@@ -245,7 +299,7 @@ class ManagedAiRunner(ABC):
                     run.id,
                     terminal_status,
                     error_code=(
-                        "pipeline_failed"
+                        task.last_error_code or "pipeline_failed"
                         if terminal_status == RunStatus.FAILED
                         else None
                     ),
@@ -261,7 +315,18 @@ class ManagedAiRunner(ABC):
                 )
                 self.run_store.update(run.id, retryable=True)
                 if task is not None:
-                    self.task_store.mark_status(task.id, TaskStatus.FAILED, message)
+                    try:
+                        self.task_store.transition(
+                            task.id,
+                            expected_statuses={TaskStatus.PROCESSING},
+                            expected_active_run_id=run.id,
+                            status=TaskStatus.FAILED,
+                            active_run_id=None,
+                            last_error=message,
+                            last_error_code="worker_lost",
+                        )
+                    except StateConflict:
+                        pass
             recovered += 1
         return recovered
 
@@ -287,6 +352,7 @@ class ManagedAiRunner(ABC):
                 status=TaskStatus.FAILED,
                 active_run_id=None,
                 last_error=message,
+                last_error_code=error_code,
             )
         except (KeyError, StateConflict):
             pass
@@ -307,21 +373,14 @@ class ManagedAiRunner(ABC):
         error_code: Optional[str],
         message: Optional[str] = None,
     ) -> bool:
-        """Only transport and provider throttling failures are safe to retry."""
-        text = f"{error_code or ''} {message or ''}".lower()
-        return any(
-            marker in text
-            for marker in (
-                "network",
-                "connection",
-                "timeout",
-                "rate_limit",
-                "rate limit",
-                "429",
-                "503",
-                "rpc_protocol",
-            )
-        )
+        """Retry only explicitly classified transient transport failures.
+
+        Lifecycle timeouts and generic runner errors stay terminal even when
+        their human-readable message contains a transport-related word.
+        Backends must map provider responses to one of the codes above.
+        """
+        del message
+        return (error_code or "").lower() in ManagedAiRunner._RETRYABLE_ERROR_CODES
 
     @staticmethod
     def _terminate(process: subprocess.Popen[Any]) -> None:

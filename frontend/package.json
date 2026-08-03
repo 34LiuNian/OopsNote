@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "eslint app components features hooks lib types --ext .ts,.tsx",
     "test:e2e": "playwright test",
+    "test:e2e:credentialed": "playwright test --config playwright.credentialed.config.ts",
     "renderers:sync": "node scripts/sync-renderer-assets.mjs",
     "postinstall": "npm run renderers:sync"
   },

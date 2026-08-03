@@ -47,7 +47,9 @@
     ".next/types/**/*.ts",
     ".next/dev/types/**/*.ts",
     ".next-splash-test/types/**/*.ts",
-    ".next-splash-test/dev/types/**/*.ts"
+    ".next-splash-test/dev/types/**/*.ts",
+    ".next-cold-contract/types/**/*.ts",
+    ".next-cold-contract/dev/types/**/*.ts"
   ],
   "exclude": [
     "node_modules",

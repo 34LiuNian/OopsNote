@@ -13,6 +13,7 @@ import pytest
 
 from oopsnote.ai import HermesRunner, PiRpcBackend, PiRpcRunner
 from oopsnote.ai import runner as runner_module
+from oopsnote.ai.backends import pi_rpc as pi_rpc_module
 from oopsnote.ai.backends.pi_rpc import RpcProtocolError
 from oopsnote.ai.pi_skills import ACTIVE_PI_SKILLS
 from oopsnote.ai.rpc.probe import probe_new_session
@@ -94,7 +95,13 @@ def test_managed_runner_restricts_tools_and_records_completion(tmp_path, monkeyp
     stored = run_store.get(run.id)
     assert stored.status == RunStatus.COMPLETED
     assert stored.exit_code == 0
-    assert [stage.stage for stage in stored.stage_runs] == [TaskStage.STARTING, TaskStage.FINALIZING]
+    assert [stage.stage for stage in stored.stage_runs] == [
+        TaskStage.QUEUED,
+        TaskStage.STARTING,
+        TaskStage.FINALIZING,
+    ]
+    assert all(stage.status.value == "completed" for stage in stored.stage_runs)
+    assert stored.duration_ms is not None
     toolsets = captured["command"][captured["command"].index("-t") + 1]
     assert toolsets == "vision,oopsnote_pipeline"
     assert "terminal" not in toolsets
@@ -111,9 +118,44 @@ def test_recover_stale_run_and_legacy_task(tmp_path):
     task_store.update(legacy.id, status=TaskStatus.PROCESSING, updated_at=old)
 
     assert runner.recover_stale() == 2
-    assert run_store.get(run.id).status == RunStatus.TIMED_OUT
+    recovered = run_store.get(run.id)
+    assert recovered.status == RunStatus.TIMED_OUT
+    assert recovered.duration_ms is not None
+    assert recovered.stage_runs[0].stage == TaskStage.QUEUED
+    assert recovered.stage_runs[0].status.value == "failed"
     assert task_store.get(task.id).status == TaskStatus.FAILED
     assert task_store.get(legacy.id).status == TaskStatus.FAILED
+    assert task_store.get(legacy.id).last_error_code == "legacy_stale"
+
+
+def test_hermes_process_exit_preserves_the_shared_failure_code(tmp_path, monkeypatch):
+    runner, task_store, run_store = make_runner(tmp_path)
+    task = task_store.create(TaskCreateRequest(subject="math"))
+    run = runner.enqueue(task.id)
+
+    class ExitingProcess:
+        pid = 4322
+        returncode = 7
+
+        def poll(self):
+            return self.returncode
+
+        def terminate(self):
+            self.returncode = 1
+
+        def kill(self):
+            self.returncode = 1
+
+    monkeypatch.setattr(runner_module.subprocess, "Popen", lambda *_a, **_k: ExitingProcess())
+
+    runner.run(task.id, run.id)
+
+    failed_task = task_store.get(task.id)
+    failed_run = run_store.get(run.id)
+    assert failed_task.status == TaskStatus.FAILED
+    assert failed_task.last_error_code == "process_exit"
+    assert failed_run.error_code == "process_exit"
+    assert failed_run.retryable is False
 
 
 def test_recover_stale_run_preserves_completed_task(tmp_path):
@@ -133,6 +175,30 @@ def test_recover_stale_run_preserves_completed_task(tmp_path):
     assert task_store.get(task.id).status == TaskStatus.COMPLETED
 
 
+def test_recover_stale_run_cannot_overwrite_newer_run_ownership(tmp_path):
+    runner, task_store, run_store = make_runner(tmp_path, stale_seconds=60)
+    task = task_store.create(TaskCreateRequest(subject="math"))
+    stale_run = runner.enqueue(task.id)
+    old = datetime.now(timezone.utc) - timedelta(hours=1)
+    run_store.update(stale_run.id, status=RunStatus.RUNNING, heartbeat_at=old)
+
+    current_run = run_store.create(task.id, backend=runner.backend_name)
+    task_store.transition(
+        task.id,
+        expected_statuses={TaskStatus.PROCESSING},
+        expected_active_run_id=stale_run.id,
+        active_run_id=current_run.id,
+    )
+    runner._processes[task.id] = object()
+
+    assert runner.recover_stale() == 1
+    assert run_store.get(stale_run.id).status == RunStatus.TIMED_OUT
+    current_task = task_store.get(task.id)
+    assert current_task.status == TaskStatus.PROCESSING
+    assert current_task.active_run_id == current_run.id
+    assert run_store.get(current_run.id).status == RunStatus.QUEUED
+
+
 def test_recover_orphaned_running_requires_fresh_retry(tmp_path):
     runner, task_store, run_store = make_runner(tmp_path, stale_seconds=3600)
     task = task_store.create(TaskCreateRequest(subject="math"))
@@ -146,6 +212,51 @@ def test_recover_orphaned_running_requires_fresh_retry(tmp_path):
     assert recovered.error_code == "worker_lost"
     assert recovered.retryable is True
     assert task_store.get(task.id).status == TaskStatus.FAILED
+
+
+def test_stale_recovery_preserves_a_classified_task_failure(tmp_path):
+    runner, task_store, run_store = make_runner(tmp_path, stale_seconds=60)
+    task = task_store.create(TaskCreateRequest(subject="math"))
+    run = runner.enqueue(task.id)
+    old = datetime.now(timezone.utc) - timedelta(hours=1)
+    run_store.update(run.id, status=RunStatus.RUNNING, heartbeat_at=old)
+    task_store.transition(
+        task.id,
+        expected_statuses={TaskStatus.PROCESSING},
+        expected_active_run_id=run.id,
+        status=TaskStatus.FAILED,
+        active_run_id=None,
+        last_error="DashScope OCR timeout",
+        last_error_code="ocr_timeout",
+    )
+
+    assert runner.recover_stale() == 1
+    recovered = run_store.get(run.id)
+    assert recovered.status == RunStatus.FAILED
+    assert recovered.error_code == "ocr_timeout"
+    assert recovered.error_message == "DashScope OCR timeout"
+
+
+def test_recover_orphaned_run_cannot_overwrite_newer_run_ownership(tmp_path):
+    runner, task_store, run_store = make_runner(tmp_path, stale_seconds=3600)
+    task = task_store.create(TaskCreateRequest(subject="math"))
+    orphaned_run = runner.enqueue(task.id)
+    run_store.update(orphaned_run.id, status=RunStatus.RUNNING)
+
+    current_run = run_store.create(task.id, backend=runner.backend_name)
+    task_store.transition(
+        task.id,
+        expected_statuses={TaskStatus.PROCESSING},
+        expected_active_run_id=orphaned_run.id,
+        active_run_id=current_run.id,
+    )
+
+    assert runner.recover_orphaned_running() == 1
+    assert run_store.get(orphaned_run.id).status == RunStatus.FAILED
+    current_task = task_store.get(task.id)
+    assert current_task.status == TaskStatus.PROCESSING
+    assert current_task.active_run_id == current_run.id
+    assert run_store.get(current_run.id).status == RunStatus.QUEUED
 
 
 def test_enqueue_admission_is_atomic_across_threads(tmp_path):
@@ -231,6 +342,7 @@ class SettlingRpcProcess:
         settle_repetitions=1,
         settle_abort=True,
         terminal_tool_event=False,
+        terminal_tool_error=False,
         cost=0.02,
     ):
         self.stdout = RpcOutput()
@@ -242,6 +354,7 @@ class SettlingRpcProcess:
         self.settle_repetitions = settle_repetitions
         self.settle_abort = settle_abort
         self.terminal_tool_event = terminal_tool_event
+        self.terminal_tool_error = terminal_tool_error
         self.cost = cost
         self.commands = []
         self.returncode = None
@@ -272,9 +385,13 @@ class SettlingRpcProcess:
             if self.terminal_tool_event:
                 self.stdout.emit({
                     "type": "tool_execution_end",
-                    "toolName": "mcp__oopsnote_pipeline_finalize_task",
+                    "toolName": (
+                        "ocr_image"
+                        if self.terminal_tool_error
+                        else "mcp__oopsnote_pipeline_finalize_task"
+                    ),
                     "toolCallId": "finalize-call",
-                    "isError": False,
+                    "isError": self.terminal_tool_error,
                 })
             if self.settle_prompt:
                 self.stdout.emit({"type": self.settle_event})
@@ -344,6 +461,33 @@ class StartupFailureRpcProcess:
         self.terminate()
 
 
+class FailingPromptRpcProcess(SettlingRpcProcess):
+    def __init__(self, failure: str):
+        super().__init__(lambda _payload: None, settle_prompt=False)
+        self.failure = failure
+        self._post_prompt_polls = 0
+
+    def handle_command(self, payload):
+        if payload["type"] != "prompt":
+            return super().handle_command(payload)
+        self.commands.append(payload)
+        if self.failure == "invalid_json":
+            self.stdout.lines.put("not-json\n")
+            return
+        self.stdout.close()
+
+    def poll(self):
+        if self.failure != "process_exit" or not any(
+            command["type"] == "prompt" for command in self.commands
+        ):
+            return self.returncode
+        self._post_prompt_polls += 1
+        if self._post_prompt_polls == 1:
+            return None
+        self.returncode = 7
+        return self.returncode
+
+
 def test_pi_rpc_runner_persists_jsonl_and_stats(tmp_path, monkeypatch):
     task_store = TaskStore(tmp_path / "storage")
     run_store = RunStore(tmp_path / "storage" / "runs")
@@ -371,6 +515,11 @@ def test_pi_rpc_runner_persists_jsonl_and_stats(tmp_path, monkeypatch):
         return captured["process"]
 
     monkeypatch.setattr(runner_module.subprocess, "Popen", fake_popen)
+    monkeypatch.setattr(
+        pi_rpc_module,
+        "process_working_set_bytes",
+        lambda _pid: 123_456,
+    )
     runner.run(task.id, run.id)
 
     stored = run_store.get(run.id)
@@ -381,6 +530,7 @@ def test_pi_rpc_runner_persists_jsonl_and_stats(tmp_path, monkeypatch):
     assert stored.output_tokens == 8
     assert stored.cache_tokens == 4
     assert stored.cost == 0.02
+    assert stored.peak_memory_bytes == 123_456
     assert stored.retry_count == 0
     assert not stored.retryable
     assert stored.rpc_log_path
@@ -648,6 +798,138 @@ def test_pi_rpc_invalid_json_is_a_protocol_error(tmp_path):
     assert '"type": "invalid_json"' in rpc_log.getvalue()
 
 
+@pytest.mark.parametrize(
+    ("failure", "expected_code", "expected_message"),
+    [
+        ("invalid_json", "rpc_protocol_error", "invalid JSON"),
+        ("process_exit", "process_exit", "exited with code 7"),
+    ],
+)
+def test_pi_rpc_failure_keeps_the_earliest_terminal_evidence(
+    tmp_path,
+    monkeypatch,
+    failure,
+    expected_code,
+    expected_message,
+):
+    task_store = TaskStore(tmp_path / "storage")
+    run_store = RunStore(tmp_path / "storage" / "runs")
+    write_pi_skill_pack(tmp_path)
+    runner = PiRpcRunner(
+        backend=PiRpcBackend(tmp_path),
+        project_root=tmp_path,
+        task_store=task_store,
+        run_store=run_store,
+        poll_seconds=0.01,
+    )
+    task = task_store.create(TaskCreateRequest(subject="math"))
+    run = runner.enqueue(task.id)
+    process = FailingPromptRpcProcess(failure)
+    monkeypatch.setattr(runner_module.subprocess, "Popen", lambda *_a, **_k: process)
+
+    runner.run(task.id, run.id)
+
+    failed_task = task_store.get(task.id)
+    failed_run = run_store.get(run.id)
+    assert failed_task.status == TaskStatus.FAILED
+    assert failed_task.active_run_id is None
+    assert expected_message in (failed_task.last_error or "")
+    assert failed_run.status == RunStatus.FAILED
+    assert failed_run.error_code == expected_code
+    assert expected_message in (failed_run.error_message or "")
+    assert failed_run.exit_code == (7 if failure == "process_exit" else None)
+    assert failed_run.retryable is False
+    assert not runner._processes
+    runner.shutdown()
+
+
+def test_pi_rpc_aborts_after_ocr_error_persists_a_terminal_task(tmp_path, monkeypatch):
+    task_store = TaskStore(tmp_path / "storage")
+    run_store = RunStore(tmp_path / "storage" / "runs")
+    write_pi_skill_pack(tmp_path)
+    runner = PiRpcRunner(
+        backend=PiRpcBackend(tmp_path),
+        project_root=tmp_path,
+        task_store=task_store,
+        run_store=run_store,
+        poll_seconds=0.01,
+    )
+    task = task_store.create(TaskCreateRequest(subject="math"))
+    run = runner.enqueue(task.id)
+
+    def fail_ocr(_payload):
+        task_store.transition(
+            task.id,
+            expected_statuses={TaskStatus.PROCESSING},
+            expected_active_run_id=run.id,
+            status=TaskStatus.FAILED,
+            active_run_id=None,
+            last_error="OCR could not read a complete question",
+            last_error_code="ocr_unreadable",
+        )
+
+    process = SettlingRpcProcess(
+        fail_ocr,
+        settle_prompt=False,
+        terminal_tool_event=True,
+        terminal_tool_error=True,
+    )
+    monkeypatch.setattr(runner_module.subprocess, "Popen", lambda *_a, **_k: process)
+
+    runner.run(task.id, run.id)
+
+    failed = run_store.get(run.id)
+    assert failed.status == RunStatus.FAILED
+    assert failed.error_code == "ocr_unreadable"
+    assert failed.retryable is False
+    assert [command["type"] for command in process.commands] == [
+        "new_session",
+        "prompt",
+        "abort",
+        "get_session_stats",
+    ]
+    assert process.poll() is None
+    runner.shutdown()
+
+
+def test_pi_rpc_copies_classified_pipeline_failure_to_the_run(tmp_path):
+    task_store = TaskStore(tmp_path / "storage")
+    run_store = RunStore(tmp_path / "storage" / "runs")
+    write_pi_skill_pack(tmp_path)
+    runner = PiRpcRunner(
+        backend=PiRpcBackend(tmp_path),
+        project_root=tmp_path,
+        task_store=task_store,
+        run_store=run_store,
+    )
+    task = task_store.create(TaskCreateRequest(subject="math"))
+    run = runner.enqueue(task.id)
+    task_store.transition(
+        task.id,
+        expected_statuses={TaskStatus.PROCESSING},
+        expected_active_run_id=run.id,
+        status=TaskStatus.FAILED,
+        active_run_id=None,
+        last_error="DashScope OCR timeout",
+        last_error_code="ocr_timeout",
+    )
+
+    runner._complete_after_task(
+        task.id,
+        run.id,
+        None,
+        run_store.base_dir / f"{run.id}.log",
+        False,
+        None,
+    )
+
+    failed = run_store.get(run.id)
+    assert failed.status == RunStatus.FAILED
+    assert failed.error_code == "ocr_timeout"
+    assert failed.error_message == "DashScope OCR timeout"
+    assert failed.retryable is True
+
+
 def test_pi_rpc_cancel_aborts_task_without_killing_shared_worker(tmp_path, monkeypatch):
     task_store = TaskStore(tmp_path / "storage")
     run_store = RunStore(tmp_path / "storage" / "runs")
@@ -889,6 +1171,19 @@ def test_pi_retries_only_retryable_failures_in_new_run(tmp_path, monkeypatch):
     assert retry.retry_count == 1
     assert retry.retry_of_run_id == first.id
     assert retry.retry_root_run_id == first.id
+
+
+def test_retry_classifier_uses_error_codes_not_message_substrings():
+    assert PiRpcRunner.is_retryable_error("network_error", "connection refused")
+    assert PiRpcRunner.is_retryable_error("rate_limit", "429 from provider")
+    assert PiRpcRunner.is_retryable_error("ocr_rate_limit", "HTTP 429")
+    assert PiRpcRunner.is_retryable_error("ocr_timeout", "provider timeout")
+    assert not PiRpcRunner.is_retryable_error("ocr_unreadable", "unreadable")
+    assert not PiRpcRunner.is_retryable_error("ocr_provider_error", "HTTP 401")
+    assert not PiRpcRunner.is_retryable_error("rpc_protocol_error", "invalid JSON")
+    assert not PiRpcRunner.is_retryable_error("process_timeout", "network timeout")
+    assert not PiRpcRunner.is_retryable_error("runner_error", "network unavailable")
+    assert not PiRpcRunner.is_retryable_error("rpc_error", "503 from provider")
 
 
 def test_manual_rerun_starts_a_new_retry_budget(tmp_path):

@@ -9,7 +9,7 @@ from pydantic import Field
 
 from oopsnote.core import TagDimension
 from oopsnote.mcp import server
-from oopsnote.mcp.ocr import ocr_image
+from oopsnote.mcp import ocr
 from oopsnote.mcp.tool_registry import AI_TOOL_NAMES, MANAGED_TOOL_DEFINITIONS
 
 
@@ -60,7 +60,36 @@ def managed_list_tags(
             expected_active_run_id=run_id,
             metadata=metadata,
         )
+    elif dimension == TagDimension.ERROR.value and result.get("mode") == "values":
+        metadata = dict(task.metadata)
+        metadata["_managed_error_candidates"] = {
+            "run_id": run_id,
+            "subject": effective_subject,
+            "scope": scope,
+            "values": list(result["items"]),
+        }
+        server.TASK_STORE.transition(
+            task_id,
+            expected_statuses={server.TaskStatus.PROCESSING},
+            expected_active_run_id=run_id,
+            metadata=metadata,
+        )
     return result
+
+
+def _existing_error_equivalent(value: str, subject: str) -> Optional[str]:
+    normalized = value.strip().casefold()
+    for item in server.TAG_STORE.search(
+        dimension=TagDimension.ERROR,
+        subject=subject,
+        scope="core",
+        limit=None,
+    ):
+        if normalized == item.value.casefold() or any(
+            normalized == alias.casefold() for alias in item.aliases
+        ):
+            return item.value
+    return None
 
 
 def managed_create_tag(
@@ -76,19 +105,57 @@ def managed_create_tag(
     task = server._require_active_run(task_id, run_id)
     if dimension != TagDimension.ERROR.value:
         raise ValueError("managed AI may create only error tags")
+    effective_subject = _managed_subject(task, subject)
+    candidates = task.metadata.get("_managed_error_candidates")
+    if (
+        not isinstance(candidates, dict)
+        or candidates.get("run_id") != run_id
+        or candidates.get("subject") != effective_subject
+    ):
+        raise ValueError("list existing error tags before creating a new error tag")
+    for proposed in [value, *(aliases or [])]:
+        equivalent = _existing_error_equivalent(proposed, effective_subject)
+        if equivalent:
+            raise ValueError(
+                f"error tag {proposed.strip()} matches existing candidate {equivalent}; use it instead"
+            )
     return server.create_tag(
         dimension=dimension,
         value=value,
         aliases=aliases,
-        subject=_managed_subject(task, subject),
+        subject=effective_subject,
     )
+
+
+def managed_ocr_image(task_id: str, run_id: str):
+    """Run OCR and persist provider failures before returning a tool error."""
+
+    try:
+        result = ocr.ocr_image(task_id, run_id)
+    except ocr.OcrProviderError as error:
+        server._fail_active_task(
+            task_id,
+            str(error),
+            run_id=run_id,
+            error_code=error.code,
+        )
+        raise
+    if result.get("review_reason") == "unreadable":
+        server._fail_active_task(
+            task_id,
+            "OCR could not read a complete question",
+            run_id=run_id,
+            error_code="ocr_unreadable",
+            review_reason="unreadable",
+        )
+    return result
 
 
 def create_restricted_mcp(**kwargs) -> FastMCP:
     """Create a server containing only the managed pipeline's allowed tools."""
     instance = FastMCP("OopsNote Managed Pipeline", log_level="WARNING", **kwargs)
     overrides = {
-        "ocr_image": ocr_image,
+        "ocr_image": managed_ocr_image,
         "list_tags": managed_list_tags,
         "create_tag": managed_create_tag,
     }
@@ -117,6 +184,7 @@ if __name__ == "__main__":
 __all__ = [
     "create_restricted_mcp",
     "managed_create_tag",
+    "managed_ocr_image",
     "managed_list_tags",
     "AI_TOOL_NAMES",
 ]

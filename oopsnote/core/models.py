@@ -13,7 +13,11 @@ from uuid import uuid4
 
 from pydantic import BaseModel, Field, model_validator
 
-from oopsnote.content import normalize_oopsmark, normalize_option_text, validate_oopsmark
+from oopsnote.content import (
+    normalize_oopsmark,
+    normalize_option_text,
+    validate_oopsmark,
+)
 
 
 # ── 枚举 ──────────────────────────────────────────────
@@ -132,6 +136,20 @@ class TaskCreateRequest(BaseModel):
     asset_path: Optional[str] = None            # 本地 PDF/图片路径
     tags: list[str] = Field(default_factory=list)
     metadata: dict[str, Any] = Field(default_factory=dict)
+    section_question_count: Optional[int] = Field(default=None, ge=1)
+
+
+class OcrPrintedContext(BaseModel):
+    """Printed identifiers observed by OCR, separate from user corrections."""
+
+    printed_question_no: Optional[int] = Field(default=None, ge=1, le=999)
+    printed_chapter: Optional[str] = Field(default=None, max_length=160)
+
+    @model_validator(mode="after")
+    def normalize_chapter(self) -> "OcrPrintedContext":
+        if self.printed_chapter is not None:
+            self.printed_chapter = self.printed_chapter.strip() or None
+        return self
 
 
 class TaskRecord(BaseModel):
@@ -143,12 +161,45 @@ class TaskRecord(BaseModel):
     problem: Optional[Problem] = None
     asset_path: Optional[str] = None
     metadata: dict[str, Any] = Field(default_factory=dict)
+    ocr_context: Optional[OcrPrintedContext] = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     last_error: Optional[str] = None
+    last_error_code: Optional[str] = None
+    revision_count: Optional[int] = Field(default=None, ge=0)
+    last_revised_at: Optional[datetime] = None
+    difficulty_coefficient_override: Optional[float] = Field(
+        default=None,
+        ge=0,
+        le=1,
+    )
+    section_question_count: Optional[int] = Field(default=None, ge=1)
     stage: Optional[TaskStage] = None
     stage_message: Optional[str] = None
     active_run_id: Optional[str] = None
+
+    def effective_question_no(self) -> Optional[str]:
+        raw = self.metadata.get("question_no")
+        if raw is None:
+            raw = self.metadata.get("batch_question_no")
+        if raw is None and self.ocr_context:
+            raw = self.ocr_context.printed_question_no
+        trace = self.metadata.get("trace")
+        if raw is None and isinstance(trace, dict):
+            raw = trace.get("question_no")
+        value = str(raw or "").strip()
+        return value or None
+
+    def effective_chapter(self) -> Optional[str]:
+        for raw in (
+            self.metadata.get("chapter"),
+            self.metadata.get("source_chapter"),
+            self.ocr_context.printed_chapter if self.ocr_context else None,
+        ):
+            value = str(raw or "").strip()
+            if value:
+                return value
+        return None
 
 
 class StageRun(BaseModel):
@@ -185,6 +236,7 @@ class TaskRun(BaseModel):
     cache_tokens: Optional[int] = None
     cost: Optional[float] = None
     duration_ms: Optional[int] = None
+    peak_memory_bytes: Optional[int] = Field(default=None, ge=0)
     rpc_log_path: Optional[str] = None
     retry_count: int = 0
     retry_of_run_id: Optional[str] = None
@@ -301,6 +353,9 @@ class BatchSegment(BaseModel):
     def validate_parts(self) -> "BatchSegment":
         if not self.parts:
             raise ValueError("Batch segment requires at least one part")
+        orders = sorted(part.order for part in self.parts)
+        if orders != list(range(len(self.parts))):
+            raise ValueError("Batch segment part orders must be unique and contiguous from zero")
         return self
 
 
@@ -331,6 +386,20 @@ class BatchSessionRecord(BaseModel):
             raise ValueError("Excluded page index is outside the source document")
         if self.page_count > 0 and len(self.excluded_page_indices) >= self.page_count:
             raise ValueError("Batch session must retain at least one page")
+        excluded = set(self.excluded_page_indices)
+        for segment in self.segments:
+            previous_location: tuple[int, int] | None = None
+            for part in sorted(segment.parts, key=lambda item: item.order):
+                if self.page_count > 0 and part.page_index >= self.page_count:
+                    raise ValueError("Batch segment part references unavailable page")
+                if part.page_index in excluded:
+                    raise ValueError("Batch segment part references an excluded page")
+                if part.column_index >= self.column_layout.column_count:
+                    raise ValueError("Batch segment part references unavailable column")
+                location = (part.page_index, part.column_index)
+                if previous_location is not None and location <= previous_location:
+                    raise ValueError("Batch segment parts must follow document reading order")
+                previous_location = location
         return self
 
 

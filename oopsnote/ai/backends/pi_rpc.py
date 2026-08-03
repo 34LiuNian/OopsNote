@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 from oopsnote.ai.managed import ManagedAiRunner
+from oopsnote.ai.process_metrics import process_working_set_bytes
 from oopsnote.ai.pi_skills import load_skill_pack, skill_pack_version
 from oopsnote.ai.rpc import (
     PiRuntimeAdapter,
@@ -468,6 +469,7 @@ class PiRpcRunner(ManagedAiRunner):
         log_path = self.run_store.base_dir / f"{run_id}.log"
         rpc_path = self.run_store.base_dir / f"{run_id}.rpc.jsonl"
         process: Optional[subprocess.Popen[str]] = None
+        peak_memory_bytes: Optional[int] = None
         started = time.monotonic()
         last_heartbeat = started
 
@@ -502,11 +504,13 @@ class PiRpcRunner(ManagedAiRunner):
                     f"runs/{log_path.name}",
                     worker_id=self._current_worker().worker_id,
                 )
-                self.task_store.update(
+                self._set_stage(
                     task_id,
-                    stage=TaskStage.STARTING,
-                    stage_message="Pi RPC session ready",
+                    run_id,
+                    TaskStage.STARTING,
+                    "Pi RPC session ready",
                 )
+                peak_memory_bytes = process_working_set_bytes(process.pid)
                 prompt = self._prompt(task_id, run_id)
                 prompt_id = f"prompt-{run_id}"
                 self._send(
@@ -526,13 +530,19 @@ class PiRpcRunner(ManagedAiRunner):
                 terminal_cleanup_deadline: Optional[float] = None
                 rpc_error: Optional[tuple[str, str]] = None
                 while process.poll() is None:
+                    current_memory = process_working_set_bytes(process.pid)
+                    if current_memory is not None:
+                        peak_memory_bytes = max(
+                            peak_memory_bytes or 0,
+                            current_memory,
+                        )
                     now = time.monotonic()
                     if terminal_cleanup_deadline is not None and now >= terminal_cleanup_deadline:
                         self._invalidate_worker(process)
                         break
                     if now - started >= self.timeout_seconds:
                         self._invalidate_worker(process)
-                        self._save_stats(run_id, {}, started)
+                        self._save_stats(run_id, {})
                         self._finish_failure(
                             task_id,
                             run_id,
@@ -565,11 +575,7 @@ class PiRpcRunner(ManagedAiRunner):
                             and event.get("type") == "response"
                             and event.get("id") == stats_id
                         ):
-                            self._save_stats(
-                                run_id,
-                                event.get("data") or {},
-                                started,
-                            )
+                            self._save_stats(run_id, event.get("data") or {})
                             stats_saved = True
                             break
                         elif (
@@ -596,7 +602,6 @@ class PiRpcRunner(ManagedAiRunner):
                         elif (
                             not terminal_abort_sent
                             and event.get("type") == "tool_execution_end"
-                            and not event.get("isError")
                         ):
                             observed_task = self.task_store.get(task_id)
                             if observed_task.status in {
@@ -618,7 +623,7 @@ class PiRpcRunner(ManagedAiRunner):
                         last_heartbeat = time.monotonic()
                 self._drain_stderr(stderr_log)
                 if not stats_saved:
-                    self._save_stats(run_id, {}, started)
+                    self._save_stats(run_id, {})
                 exit_code = process.poll()
                 if exit_code is not None:
                     worker = self._worker_for_process(process)
@@ -652,22 +657,36 @@ class PiRpcRunner(ManagedAiRunner):
                 str(error),
             )
         except RpcProtocolError as error:
+            exit_code = process.poll() if process is not None else None
             if process is not None:
                 self._invalidate_worker(process)
-            self._save_stats(run_id, {}, started)
+            self._save_stats(run_id, {})
+            rpc_error = (
+                None
+                if exit_code not in (0, None)
+                else ("rpc_protocol_error", str(error))
+            )
             self._complete_after_task(
                 task_id,
                 run_id,
-                process.poll() if process is not None else None,
+                exit_code,
                 log_path,
                 False,
-                ("rpc_protocol_error", str(error)),
+                rpc_error,
             )
         except Exception as error:
             if process is not None:
                 self._invalidate_worker(process)
             self._fail_start(task_id, run_id, str(error), "runner_error")
         finally:
+            if peak_memory_bytes is not None:
+                try:
+                    self.run_store.update(
+                        run_id,
+                        peak_memory_bytes=peak_memory_bytes,
+                    )
+                except KeyError:
+                    pass
             with self._lock:
                 if self._processes.get(task_id) is process:
                     self._processes.pop(task_id, None)
@@ -689,6 +708,7 @@ class PiRpcRunner(ManagedAiRunner):
                 status=TaskStatus.CANCELLED,
                 active_run_id=None,
                 last_error=None,
+                last_error_code=None,
             )
             self.run_store.finish(active.id, RunStatus.CANCELLED)
         else:
@@ -699,6 +719,7 @@ class PiRpcRunner(ManagedAiRunner):
                 status=TaskStatus.CANCELLED,
                 active_run_id=None,
                 last_error=None,
+                last_error_code=None,
             )
 
     def shutdown(self) -> None:
@@ -768,7 +789,6 @@ class PiRpcRunner(ManagedAiRunner):
         self,
         run_id: str,
         data: dict[str, Any],
-        started: float,
     ) -> None:
         tokens = data.get("tokens") or {}
         token_total = sum(
@@ -787,7 +807,6 @@ class PiRpcRunner(ManagedAiRunner):
             cache_tokens=(tokens.get("cacheRead") or 0)
             + (tokens.get("cacheWrite") or 0),
             cost=reported_cost,
-            duration_ms=int((time.monotonic() - started) * 1000),
         )
 
     def _finish_failure(
@@ -797,6 +816,8 @@ class PiRpcRunner(ManagedAiRunner):
         status: RunStatus,
         code: str,
         message: str,
+        *,
+        exit_code: Optional[int] = None,
     ) -> None:
         try:
             self.task_store.transition(
@@ -806,12 +827,14 @@ class PiRpcRunner(ManagedAiRunner):
                 status=TaskStatus.FAILED,
                 active_run_id=None,
                 last_error=message,
+                last_error_code=code,
             )
         except (KeyError, StateConflict):
             pass
         self.run_store.finish(
             run_id,
             status,
+            exit_code=exit_code,
             error_code=code,
             error_message=message,
         )
@@ -837,16 +860,17 @@ class PiRpcRunner(ManagedAiRunner):
                 exit_code=exit_code,
             )
         elif task.status == TaskStatus.FAILED:
+            error_code = task.last_error_code or "pipeline_failed"
             self.run_store.finish(
                 run_id,
                 RunStatus.FAILED,
                 exit_code=exit_code,
-                error_code="pipeline_failed",
+                error_code=error_code,
                 error_message=task.last_error,
             )
             self.run_store.update(
                 run_id,
-                retryable=self.is_retryable_error("pipeline_failed", task.last_error),
+                retryable=self.is_retryable_error(error_code, task.last_error),
             )
         elif task.status == TaskStatus.COMPLETED:
             # A validated terminal MCP write is the business transaction. RPC
@@ -866,6 +890,7 @@ class PiRpcRunner(ManagedAiRunner):
                 RunStatus.FAILED,
                 "process_exit",
                 f"{self.backend.runtime.display_name} exited with code {exit_code}; see {log_path}",
+                exit_code=exit_code,
             )
         elif not settled or task.status != TaskStatus.COMPLETED:
             self._finish_failure(

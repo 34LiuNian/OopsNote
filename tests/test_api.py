@@ -200,8 +200,14 @@ def test_web_contract_uses_wrapped_collections_and_persisted_upload(tmp_path, mo
             explanation="$1+1=2$。",
         ),
     )
+    main.TASK_STORE.update(
+        task["id"],
+        ocr_context={"printed_question_no": 6, "printed_chapter": "自动章节"},
+    )
     detail = client.get(f"/tasks/{task['id']}").json()["task"]
     assert detail["problem"]["problem_id"] == stored.problem.id
+    assert detail["problem"]["question_no"] == "6"
+    assert detail["problem"]["chapter"] == "自动章节"
     assert detail["solution"]["answer"] == "$2$"
     assert detail["tag"]["problem_id"] == stored.problem.id
 
@@ -210,6 +216,7 @@ def test_web_contract_uses_wrapped_collections_and_persisted_upload(tmp_path, mo
         json={
             "problem_text": "计算 $1+1$。",
             "question_no": "12",
+            "chapter": "函数",
             "user_tags": ["重点"],
             "diagram_detected": True,
             "diagram_kind": "tikz",
@@ -219,15 +226,52 @@ def test_web_contract_uses_wrapped_collections_and_persisted_upload(tmp_path, mo
         },
     )
     assert edited.status_code == 200
-    edited_problem = edited.json()["task"]["problem"]
+    edited_task = edited.json()["task"]
+    edited_problem = edited_task["problem"]
+    assert edited_task["revision_count"] == 1
+    assert edited_task["last_revised_at"]
     assert edited_problem["problem_text"] == "计算 $1+1$。"
     assert edited_problem["question_no"] == "12"
+    assert edited_problem["chapter"] == "函数"
     assert edited_problem["user_tags"] == ["重点"]
     assert edited_problem["diagram_tikz_source"] == "\\draw (0,0) -- (1,1);"
     assert edited_problem["diagram_render_status"] == "ready"
     assert edited_problem["diagram_image_path"] is None
     assert edited_problem["diagram_position"] == "right"
     assert edited_problem["diagram_scale_percent"] is None
+
+    overridden_difficulty = client.patch(
+        f"/tasks/{task['id']}/problem/override",
+        json={"difficulty_coefficient_override": 0.73},
+    )
+    assert overridden_difficulty.status_code == 200
+    assert overridden_difficulty.json()["task"]["problem"]["difficulty_coefficient_override"] == 0.73
+    assert main.TASK_STORE.get(task["id"]).difficulty_coefficient_override == 0.73
+
+    section_total = client.patch(
+        f"/tasks/{task['id']}/problem/override",
+        json={"section_question_count": 30},
+    )
+    assert section_total.status_code == 200
+    section_problem = section_total.json()["task"]["problem"]
+    assert section_problem["section_question_count"] == 30
+    assert section_problem["difficulty_needs_review"] is False
+    assert section_problem["difficulty_review_reason"] is None
+    assert main.TASK_STORE.get(task["id"]).section_question_count == 30
+
+    invalid_section_total = client.patch(
+        f"/tasks/{task['id']}/problem/override",
+        json={"section_question_count": 0},
+    )
+    assert invalid_section_total.status_code == 422
+    assert main.TASK_STORE.get(task["id"]).section_question_count == 30
+
+    invalid_difficulty = client.patch(
+        f"/tasks/{task['id']}/problem/override",
+        json={"difficulty_coefficient_override": 1.1},
+    )
+    assert invalid_difficulty.status_code == 422
+    assert main.TASK_STORE.get(task["id"]).difficulty_coefficient_override == 0.73
 
     image_edited = client.patch(
         f"/tasks/{task['id']}/problem/override",
@@ -242,7 +286,9 @@ def test_web_contract_uses_wrapped_collections_and_persisted_upload(tmp_path, mo
         },
     )
     assert image_edited.status_code == 200
-    image_problem = image_edited.json()["task"]["problem"]
+    image_task = image_edited.json()["task"]
+    image_problem = image_task["problem"]
+    assert image_task["revision_count"] == 4
     assert image_problem["diagram_kind"] == "image"
     assert image_problem["diagram_image_path"] == task["asset"]["path"]
     assert image_problem["diagram_tikz_source"] is None
@@ -673,7 +719,7 @@ def test_batch_process_renders_all_pending_segments_and_enqueues_once(tmp_path, 
     assert len(runner.submitted) == 2
 
 
-def test_batch_process_preflights_every_segment_before_creating_tasks(tmp_path, monkeypatch):
+def test_batch_session_rejects_invalid_segment_pages_before_persistence(tmp_path, monkeypatch):
     storage = tmp_path / "storage"
     task_store = TaskStore(storage)
     monkeypatch.setattr(main, "ASSET_STORE", AssetStore(storage / "assets"))
@@ -700,7 +746,7 @@ def test_batch_process_preflights_every_segment_before_creating_tasks(tmp_path, 
             "content-type": "image/png",
         },
     ).status_code == 200
-    assert client.patch(
+    invalid_patch = client.patch(
         f"/batch-sessions/{digest}",
         json={
             "expected_revision": 0,
@@ -713,16 +759,62 @@ def test_batch_process_preflights_every_segment_before_creating_tasks(tmp_path, 
                 "status": "pending",
             }],
         },
-    ).status_code == 200
-
-    processed = client.post(
-        f"/batch-sessions/{digest}/process",
-        json={"expected_revision": 1},
     )
 
-    assert processed.status_code == 422
-    assert "unavailable page 2" in processed.json()["detail"]
+    assert invalid_patch.status_code == 422
+    assert "unavailable page" in invalid_patch.json()["detail"]
+    persisted = client.get(f"/batch-sessions/{digest}").json()["session"]
+    assert persisted["revision"] == 0
+    assert persisted["segments"] == []
     assert task_store.list_all() == []
+
+
+def test_batch_process_marks_invalid_question_numbers_for_review_and_queues_valid_segments(tmp_path, monkeypatch):
+    storage = tmp_path / "storage"
+    task_store = TaskStore(storage)
+    runner = RecordingBatchRunner(task_store)
+    monkeypatch.setattr(main, "ASSET_STORE", AssetStore(storage / "assets"))
+    monkeypatch.setattr(main, "TASK_STORE", task_store)
+    monkeypatch.setattr(main, "TAG_STORE", TagStore(storage / "settings" / "tags.json"))
+    monkeypatch.setattr(main, "BATCH_SESSION_STORE", BatchSessionStore(storage / "settings" / "batch_sessions.json"))
+    monkeypatch.setattr(main, "BATCH_PROCESS_JOB_STORE", BatchProcessJobStore(storage / "batch_jobs"))
+    monkeypatch.setattr(main, "PI_RUNNER", runner)
+    client = TestClient(main.app)
+    image = base64.b64decode(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
+    )
+    digest = hashlib.sha256(image).hexdigest()
+    assert client.put(
+        f"/batch-sessions/{digest}/source",
+        content=image,
+        headers={"x-oopsnote-filename": "question.png", "x-oopsnote-page-count": "1", "content-type": "image/png"},
+    ).status_code == 200
+    assert client.patch(
+        f"/batch-sessions/{digest}",
+        json={
+            "expected_revision": 0,
+            "page_count": 1,
+            "crop_confirmed": True,
+            "segments": [
+                {"id": "missing", "parts": [{"page_index": 0, "x": 0, "y": 0, "width": 0.5, "height": 1}], "question_no": None},
+                {"id": "valid", "parts": [{"page_index": 0, "x": 0.5, "y": 0, "width": 0.5, "height": 1}], "question_no": 2},
+            ],
+        },
+    ).status_code == 200
+
+    processed = client.post(f"/batch-sessions/{digest}/process", json={"expected_revision": 1})
+
+    assert processed.status_code == 200
+    payload = processed.json()
+    assert payload["requested"] == 2
+    assert payload["needs_review"] == 1
+    assert payload["queued"] == 1
+    assert {item["status"] for item in payload["items"]} == {"needs_review", "processing"}
+    reviewed = next(segment for segment in payload["session"]["segments"] if segment["id"] == "missing")
+    assert reviewed["status"] == "needs_review"
+    assert reviewed["review_reason"] == "other"
+    assert reviewed["task_id"] is None
+    assert len(task_store.list_all()) == 1
 
 
 def test_process_endpoint_creates_observable_run(tmp_path, monkeypatch):

@@ -13,6 +13,11 @@ import oopsnote.core.store as store_module
 
 from oopsnote.core import (
     AssetStore,
+    BatchProcessJob,
+    BatchProcessJobStore,
+    BatchSegment,
+    BatchSessionRecord,
+    BatchSessionStore,
     Problem,
     ProblemMergeStore,
     RunStatus,
@@ -90,11 +95,18 @@ class TestTaskStore:
         t = store.mark_status(t.id, TaskStatus.PROCESSING)
         assert t.status == TaskStatus.PROCESSING
 
-        t = store.mark_status(t.id, TaskStatus.FAILED, "模型超时")
+        t = store.mark_status(
+            t.id,
+            TaskStatus.FAILED,
+            "模型超时",
+            error_code="ocr_timeout",
+        )
         assert t.status == TaskStatus.FAILED
         assert t.last_error == "模型超时"
+        assert t.last_error_code == "ocr_timeout"
         t = store.mark_status(t.id, TaskStatus.PROCESSING)
         assert t.last_error is None
+        assert t.last_error_code is None
         store.delete(t.id)
 
     def test_get_retries_transient_windows_file_lock(self, tmp_path, monkeypatch):
@@ -138,6 +150,19 @@ class TestTaskStore:
         assert store.get(task.id).subject == "physics"
         assert attempts == 2
 
+    def test_update_rejects_invalid_or_unknown_fields_before_writing(self, tmp_path):
+        store = TaskStore(base_dir=tmp_path)
+        task = store.create(TaskCreateRequest(subject="math"))
+
+        with pytest.raises(ValueError):
+            store.update(task.id, status="not-a-task-status")
+        with pytest.raises(TypeError, match="Unknown TaskRecord field"):
+            store.update(task.id, typo_field="silently ignored before")
+
+        persisted = store.get(task.id)
+        assert persisted.status == TaskStatus.PENDING
+        assert persisted.subject == "math"
+
 
 class TestRunStore:
     def test_persists_attempts_and_stage_transitions(self, tmp_path):
@@ -155,12 +180,99 @@ class TestRunStore:
         assert completed.stage_runs[1].status.value == "completed"
         assert completed.ended_at is not None
 
+    def test_terminal_transition_owns_end_to_end_duration(self, tmp_path):
+        store = RunStore(tmp_path / "runs")
+        run = store.create("task-1")
+        queued_at = datetime.now(timezone.utc) - timedelta(seconds=2)
+        store.update(run.id, queued_at=queued_at, duration_ms=1)
+
+        completed = store.finish(run.id, RunStatus.COMPLETED)
+
+        assert completed.duration_ms is not None
+        assert 1_900 <= completed.duration_ms <= 3_000
+
     def test_active_run_uses_heartbeat(self, tmp_path):
         store = RunStore(tmp_path / "runs")
         run = store.create("task-1")
         old = datetime.now(timezone.utc) - timedelta(hours=1)
         store.update(run.id, heartbeat_at=old)
         assert store.active_for_task("task-1").id == run.id
+
+    def test_update_rejects_invalid_or_unknown_fields_before_writing(self, tmp_path):
+        store = RunStore(tmp_path / "runs")
+        run = store.create("task-1")
+
+        with pytest.raises(ValueError):
+            store.update(run.id, status="not-a-run-status")
+        with pytest.raises(TypeError, match="Unknown TaskRun field"):
+            store.update(run.id, typo_field=True)
+
+        assert store.get(run.id).status == RunStatus.QUEUED
+
+
+class TestBatchProcessJobStore:
+    def test_save_revalidates_caller_supplied_model_copy(self, tmp_path):
+        store = BatchProcessJobStore(tmp_path / "batch-jobs")
+        job = BatchProcessJob(file_hash="abc123", backend="pi-rust")
+        store.save(job)
+
+        invalid = job.model_copy(update={"status": "not-a-job-status"})
+        with pytest.raises(ValueError):
+            store.save(invalid)
+
+        assert store.get(job.file_hash).status == "pending"
+
+
+class TestBatchSessionStore:
+    def test_create_revalidates_caller_supplied_model_copy(self, tmp_path):
+        path = tmp_path / "batch-sessions.json"
+        store = BatchSessionStore(path)
+        record = BatchSessionRecord(
+            file_hash="abc123",
+            filename="questions.pdf",
+            asset_path="/assets/questions.pdf",
+            page_count=1,
+        )
+        invalid = record.model_copy(update={"excluded_page_indices": [-1]})
+
+        with pytest.raises(ValueError):
+            store.create(invalid)
+
+        assert not path.exists()
+
+    def test_segments_require_contiguous_order_and_valid_document_locations(self):
+        with pytest.raises(ValueError, match="orders must be unique and contiguous"):
+            BatchSegment.model_validate({
+                "parts": [
+                    {"page_index": 0, "x": 0, "y": 0, "width": 1, "height": 0.5, "order": 0},
+                    {"page_index": 1, "x": 0, "y": 0, "width": 1, "height": 0.5, "order": 2},
+                ],
+            })
+
+        with pytest.raises(ValueError, match="follow document reading order"):
+            BatchSessionRecord.model_validate({
+                "file_hash": "abc123",
+                "filename": "questions.pdf",
+                "asset_path": "/assets/questions.pdf",
+                "page_count": 2,
+                "segments": [{
+                    "parts": [
+                        {"page_index": 1, "x": 0, "y": 0, "width": 1, "height": 0.5, "order": 0},
+                        {"page_index": 0, "x": 0, "y": 0, "width": 1, "height": 0.5, "order": 1},
+                    ],
+                }],
+            })
+
+        with pytest.raises(ValueError, match="unavailable column"):
+            BatchSessionRecord.model_validate({
+                "file_hash": "abc123",
+                "filename": "questions.pdf",
+                "asset_path": "/assets/questions.pdf",
+                "page_count": 1,
+                "segments": [{
+                    "parts": [{"page_index": 0, "column_index": 1, "x": 0, "y": 0, "width": 1, "height": 0.5, "order": 0}],
+                }],
+            })
 
 
 class TestTagStore:
@@ -449,3 +561,21 @@ class TestProblemIdentity:
         assert store.canonical_for("c") == "a"
         with pytest.raises(ValueError, match="already merged"):
             store.merge("a", "c")
+
+
+class TestTaskPrintedContext:
+    def test_manual_identifiers_override_ocr_and_can_fall_back(self):
+        task = TaskRecord(
+            metadata={"question_no": "8", "chapter": "人工章节"},
+            ocr_context={
+                "printed_question_no": 6,
+                "printed_chapter": "印刷章节",
+            },
+        )
+
+        assert task.effective_question_no() == "8"
+        assert task.effective_chapter() == "人工章节"
+
+        automatic = task.model_copy(update={"metadata": {"question_no": None, "chapter": None}})
+        assert automatic.effective_question_no() == "6"
+        assert automatic.effective_chapter() == "印刷章节"

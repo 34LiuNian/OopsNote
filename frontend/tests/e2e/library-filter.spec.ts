@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { waitForAppReady } from "./app-ready";
 
 test("source filtering uses document names and does not emit border style warnings", async ({ page }) => {
   const consoleErrors: string[] = [];
@@ -49,7 +50,7 @@ test("source filtering uses document names and does not emit border style warnin
   });
 
   await page.goto("/library", { waitUntil: "domcontentloaded" });
-  await expect(page.locator("#oops-splash")).toBeHidden();
+  await waitForAppReady(page);
   await expect(page.getByText("第 2 道题", { exact: true })).toBeVisible();
 
   const sourceInput = page.getByRole("textbox", { name: "来源标签输入" });

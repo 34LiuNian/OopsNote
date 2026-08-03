@@ -122,7 +122,12 @@ def create_variations(task_id: str, payload: VariationPayload) -> dict[str, Any]
         try:
             run = runner.submit(task.id)
         except RuntimeError as error:
-            api.TASK_STORE.mark_status(task.id, TaskStatus.FAILED, str(error))
+            api.TASK_STORE.mark_status(
+                task.id,
+                TaskStatus.FAILED,
+                str(error),
+                error_code="admission_conflict",
+            )
             raise HTTPException(status_code=409, detail=str(error)) from error
         created.append({"task": api._task_view(api.TASK_STORE.get(task.id)), "run": api._run_view(run)})
     return {"items": created}

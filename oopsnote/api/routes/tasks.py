@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
+import math
 from typing import Any, Optional
 
 from fastapi import APIRouter, HTTPException, Query
@@ -183,10 +185,47 @@ def override_problem(
     next_metadata = dict(task.metadata)
     if "question_no" in payload:
         next_metadata["question_no"] = payload.get("question_no")
+    if "chapter" in payload:
+        raw_chapter = payload.get("chapter")
+        if raw_chapter is not None and not isinstance(raw_chapter, str):
+            raise HTTPException(status_code=422, detail="chapter must be a string or null")
+        chapter = raw_chapter.strip() if raw_chapter else None
+        if chapter and len(chapter) > 160:
+            raise HTTPException(status_code=422, detail="chapter must be at most 160 characters")
+        next_metadata["chapter"] = chapter
     if "user_tags" in payload:
         next_metadata["user_tags"] = list(payload.get("user_tags") or [])
     if "source" in payload:
         next_metadata["source"] = payload.get("source") or ""
+    difficulty_coefficient_override = task.difficulty_coefficient_override
+    if "difficulty_coefficient_override" in payload:
+        raw_override = payload.get("difficulty_coefficient_override")
+        if raw_override is None:
+            difficulty_coefficient_override = None
+        elif isinstance(raw_override, bool) or not isinstance(raw_override, (int, float)):
+            raise HTTPException(
+                status_code=422,
+                detail="difficulty_coefficient_override must be a number or null",
+            )
+        elif not math.isfinite(raw_override) or not 0 <= raw_override <= 1:
+            raise HTTPException(
+                status_code=422,
+                detail="difficulty_coefficient_override must be between 0 and 1",
+            )
+        else:
+            difficulty_coefficient_override = float(raw_override)
+    section_question_count = task.section_question_count
+    if "section_question_count" in payload:
+        raw_total = payload.get("section_question_count")
+        if raw_total is None:
+            section_question_count = None
+        elif isinstance(raw_total, bool) or not isinstance(raw_total, int) or raw_total < 1:
+            raise HTTPException(
+                status_code=422,
+                detail="section_question_count must be a positive integer or null",
+            )
+        else:
+            section_question_count = raw_total
     diagram_fields = {
         "diagram_detected",
         "diagram_kind",
@@ -332,6 +371,10 @@ def override_problem(
         task_id,
         problem=updated_problem,
         metadata=next_metadata,
+        revision_count=(task.revision_count or 0) + 1,
+        last_revised_at=datetime.now(timezone.utc),
+        difficulty_coefficient_override=difficulty_coefficient_override,
+        section_question_count=section_question_count,
     )
     return {"task": api._task_view(task)}
 
