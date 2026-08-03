@@ -3,8 +3,8 @@ FROM python:3.12-slim
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
 WORKDIR /app
 COPY pyproject.toml /app/
-COPY oopsnote /app/oopsnote
-COPY skills /app/skills
+COPY --chown=10001:10001 oopsnote /app/oopsnote
+COPY --chown=10001:10001 skills /app/skills
 RUN pip install --no-cache-dir .
 RUN useradd --system --uid 10001 --create-home oopsnote \
     && mkdir -p /data \

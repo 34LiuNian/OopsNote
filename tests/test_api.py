@@ -97,6 +97,26 @@ def test_health_stays_public_when_oidc_is_configured():
     assert response.status_code == 200
 
 
+def test_enabled_runner_registry_does_not_construct_disabled_backends(monkeypatch):
+    langchain_runner = object()
+
+    monkeypatch.setattr(main, "_new_langchain_runner", lambda: langchain_runner)
+    monkeypatch.setattr(
+        main,
+        "_new_pi_runner",
+        lambda: pytest.fail("disabled Pi backend must not be constructed"),
+    )
+    monkeypatch.setattr(
+        main,
+        "_new_hermes_runner",
+        lambda: pytest.fail("disabled Hermes backend must not be constructed"),
+    )
+
+    runners = main._build_enabled_runners(frozenset({"langchain"}))
+
+    assert runners == {"langchain": langchain_runner}
+
+
 def test_task_routes_require_bearer_token_when_oidc_is_configured():
     with patch.dict(
         "os.environ",

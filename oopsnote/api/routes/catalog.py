@@ -284,13 +284,24 @@ def _replace_tag_references(
 @router.get("/settings/pi")
 def get_pi_settings() -> dict[str, Any]:
     api = _api()
-    return {"pi_concurrency": api.PI_RUNNER.max_concurrent_tasks, "workers": api.PI_RUNNER.dispatcher_status()["workers"], "applies_on_restart": True}
+    configured = int(api.APP_SETTINGS_STORE.get().get("pi_concurrency", 3))
+    return {
+        "pi_concurrency": api.PI_RUNNER.max_concurrent_tasks if api.PI_RUNNER else configured,
+        "workers": api.PI_RUNNER.dispatcher_status()["workers"] if api.PI_RUNNER else 0,
+        "enabled": api.PI_RUNNER is not None,
+        "applies_on_restart": True,
+    }
 
 @router.put("/settings/pi")
 def update_pi_settings(payload: PiConcurrencyUpdate) -> dict[str, Any]:
     api = _api()
     api.APP_SETTINGS_STORE.update({"pi_concurrency": payload.pi_concurrency})
-    return {"pi_concurrency": payload.pi_concurrency, "workers": api.PI_RUNNER.dispatcher_status()["workers"], "applies_on_restart": True}
+    return {
+        "pi_concurrency": payload.pi_concurrency,
+        "workers": api.PI_RUNNER.dispatcher_status()["workers"] if api.PI_RUNNER else 0,
+        "enabled": api.PI_RUNNER is not None,
+        "applies_on_restart": True,
+    }
 
 
 def _parse_iso(value: Optional[str]) -> Optional[datetime]:

@@ -71,6 +71,21 @@ RUN_STORE = RunStore(STORAGE_DIR / "runs")
 PAPER_DRAFT_STORE = PaperDraftStore(STORAGE_DIR / "papers")
 PROBLEM_MERGE_STORE = ProblemMergeStore(STORAGE_DIR / "settings" / "problem_merges.json")
 MCP_HTTP_RUNTIME = SharedMcpHttpRuntime()
+_SUPPORTED_AI_BACKENDS = frozenset({"hermes", "langchain", "pi"})
+_DEFAULT_AI_BACKEND = os.getenv("OOPSNOTE_AI_BACKEND", "langchain").strip().lower()
+_ENABLED_AI_BACKENDS = frozenset(
+    name.strip().lower()
+    for name in os.getenv("OOPSNOTE_ENABLED_AI_BACKENDS", _DEFAULT_AI_BACKEND).split(",")
+    if name.strip()
+)
+if _DEFAULT_AI_BACKEND not in _SUPPORTED_AI_BACKENDS:
+    raise RuntimeError(f"Unsupported OOPSNOTE_AI_BACKEND: {_DEFAULT_AI_BACKEND}")
+if _DEFAULT_AI_BACKEND not in _ENABLED_AI_BACKENDS:
+    raise RuntimeError("OOPSNOTE_AI_BACKEND must be included in OOPSNOTE_ENABLED_AI_BACKENDS")
+if unsupported_backends := _ENABLED_AI_BACKENDS - _SUPPORTED_AI_BACKENDS:
+    raise RuntimeError(
+        f"Unsupported OOPSNOTE_ENABLED_AI_BACKENDS: {', '.join(sorted(unsupported_backends))}"
+    )
 
 
 def _runner_settings() -> dict[str, int]:
@@ -80,25 +95,29 @@ def _runner_settings() -> dict[str, int]:
     }
 
 
-HERMES_RUNNER = HermesRunner(
-    project_root=PROJECT_ROOT,
-    task_store=TASK_STORE,
-    run_store=RUN_STORE,
-    **_runner_settings(),
-)
-PI_RUNNER = PiRpcRunner(
-    backend=PiRpcBackend(
-        PROJECT_ROOT,
-        runtime=os.getenv("OOPSNOTE_RPC_RUNTIME", "pi-rust"),
-    ),
-    project_root=PROJECT_ROOT,
-    task_store=TASK_STORE,
-    run_store=RUN_STORE,
-    max_concurrent_tasks=int(APP_SETTINGS_STORE.get().get("pi_concurrency", os.getenv(
-        "OOPSNOTE_RPC_MAX_WORKERS", os.getenv("OOPSNOTE_PI_MAX_CONCURRENT_TASKS", "3")
-    ))),
-    **_runner_settings(),
-)
+def _new_hermes_runner() -> HermesRunner:
+    return HermesRunner(
+        project_root=PROJECT_ROOT,
+        task_store=TASK_STORE,
+        run_store=RUN_STORE,
+        **_runner_settings(),
+    )
+
+
+def _new_pi_runner() -> PiRpcRunner:
+    return PiRpcRunner(
+        backend=PiRpcBackend(
+            PROJECT_ROOT,
+            runtime=os.getenv("OOPSNOTE_RPC_RUNTIME", "pi-rust"),
+        ),
+        project_root=PROJECT_ROOT,
+        task_store=TASK_STORE,
+        run_store=RUN_STORE,
+        max_concurrent_tasks=int(APP_SETTINGS_STORE.get().get("pi_concurrency", os.getenv(
+            "OOPSNOTE_RPC_MAX_WORKERS", os.getenv("OOPSNOTE_PI_MAX_CONCURRENT_TASKS", "3")
+        ))),
+        **_runner_settings(),
+    )
 
 
 def _langchain_provider_factory() -> ProviderClientFactory:
@@ -110,15 +129,31 @@ def _langchain_tool_client() -> McpHttpToolClient:
     return McpHttpToolClient(environment["OOPSNOTE_MCP_URL"], environment["OOPSNOTE_MCP_TOKEN"])
 
 
-LANGCHAIN_RUNNER = LangChainRunner(
-    project_root=PROJECT_ROOT,
-    task_store=TASK_STORE,
-    run_store=RUN_STORE,
-    settings_store=APP_SETTINGS_STORE,
-    provider_factory=_langchain_provider_factory,
-    tool_client_factory=_langchain_tool_client,
-    **_runner_settings(),
-)
+def _new_langchain_runner() -> LangChainRunner:
+    return LangChainRunner(
+        project_root=PROJECT_ROOT,
+        task_store=TASK_STORE,
+        run_store=RUN_STORE,
+        settings_store=APP_SETTINGS_STORE,
+        provider_factory=_langchain_provider_factory,
+        tool_client_factory=_langchain_tool_client,
+        **_runner_settings(),
+    )
+
+
+def _build_enabled_runners(enabled: frozenset[str]) -> dict[str, Any]:
+    factories = {
+        "hermes": _new_hermes_runner,
+        "langchain": _new_langchain_runner,
+        "pi": _new_pi_runner,
+    }
+    return {name: factories[name]() for name in sorted(enabled)}
+
+
+_RUNNERS = _build_enabled_runners(_ENABLED_AI_BACKENDS)
+HERMES_RUNNER = _RUNNERS.get("hermes")
+PI_RUNNER = _RUNNERS.get("pi")
+LANGCHAIN_RUNNER = _RUNNERS.get("langchain")
 
 _DEFAULT_TAG_DIMENSIONS = {
     "knowledge": {"label": "知识体系", "label_variant": "default"},
@@ -493,15 +528,16 @@ def _problem_summary(task: TaskRecord, problem: Problem) -> dict[str, Any]:
 
 
 def _runner_for(backend: str):
-    runners = {"hermes": HERMES_RUNNER, "pi": PI_RUNNER, "langchain": LANGCHAIN_RUNNER}
-    try:
-        return runners[backend]
-    except KeyError:
+    if backend not in _SUPPORTED_AI_BACKENDS:
         raise HTTPException(status_code=422, detail="backend must be pi, langchain, or hermes")
+    try:
+        return _RUNNERS[backend]
+    except KeyError:
+        raise HTTPException(status_code=422, detail=f"backend {backend} is not enabled")
 
 
 def _configured_backend(backend: Optional[str]) -> str:
-    return backend or os.getenv("OOPSNOTE_AI_BACKEND", "langchain").strip().lower()
+    return backend or _DEFAULT_AI_BACKEND
 
 
 def _run_managed(task_id: str, run_id: str, backend: str) -> None:
@@ -510,19 +546,15 @@ def _run_managed(task_id: str, run_id: str, backend: str) -> None:
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    HERMES_RUNNER.recover_orphaned_running()
-    PI_RUNNER.recover_orphaned_running()
-    LANGCHAIN_RUNNER.recover_orphaned_running()
-    HERMES_RUNNER.recover_stale()
-    PI_RUNNER.recover_stale()
-    LANGCHAIN_RUNNER.recover_stale()
-    PI_RUNNER.set_child_environment(MCP_HTTP_RUNTIME.start())
-    HERMES_RUNNER.start_dispatcher()
-    PI_RUNNER.start_dispatcher()
-    LANGCHAIN_RUNNER.start_dispatcher()
-    HERMES_RUNNER.recover_queued()
-    PI_RUNNER.recover_queued()
-    LANGCHAIN_RUNNER.recover_queued()
+    runners = list(_RUNNERS.values())
+    for runner in runners:
+        runner.recover_orphaned_running()
+        runner.recover_stale()
+    if PI_RUNNER is not None:
+        PI_RUNNER.set_child_environment(MCP_HTTP_RUNTIME.start())
+    for runner in runners:
+        runner.start_dispatcher()
+        runner.recover_queued()
     # New backends resolve OCR credentials from the vault. Legacy Pi remains
     # compatible with .pi/extensions.json only until its explicit retirement.
     ocr_profile_id = APP_SETTINGS_STORE.get().get("ocr_profile_id")
@@ -534,10 +566,10 @@ async def lifespan(_: FastAPI):
     try:
         yield
     finally:
-        HERMES_RUNNER.shutdown_dispatcher()
-        PI_RUNNER.shutdown_dispatcher()
-        LANGCHAIN_RUNNER.shutdown_dispatcher()
-        PI_RUNNER.shutdown()
+        for runner in runners:
+            runner.shutdown_dispatcher()
+        if PI_RUNNER is not None:
+            PI_RUNNER.shutdown()
         MCP_HTTP_RUNTIME.shutdown()
         clear_ocr_vault()
         close_ocr_client()
@@ -572,14 +604,20 @@ app.mount("/assets", StaticFiles(directory=STORAGE_DIR / "assets"), name="assets
 
 @app.get("/health")
 def health() -> dict[str, Any]:
+    runner = _RUNNERS[_DEFAULT_AI_BACKEND]
+    ai_status = {
+        "backend": runner.backend_name,
+        **runner.dispatcher_status(),
+    }
+    if PI_RUNNER is not None and runner is PI_RUNNER:
+        ai_status.update({
+            "runtime": PI_RUNNER.backend.runtime_kind,
+            "runtime_version": PI_RUNNER.backend.runtime_version,
+        })
     return {
         "status": "ok",
         "version": "0.3.0",
-        "ai": {
-            "runtime": PI_RUNNER.backend.runtime_kind,
-            "runtime_version": PI_RUNNER.backend.runtime_version,
-            **PI_RUNNER.dispatcher_status(),
-        },
+        "ai": ai_status,
     }
 
 
