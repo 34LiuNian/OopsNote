@@ -28,6 +28,7 @@ prompt templates, themes, and migrations. It explicitly loads only
 - `mcp__oopsnote_pipeline_list_tags`
 - `mcp__oopsnote_pipeline_create_tag`
 - `mcp__oopsnote_pipeline_report_task_stage`
+- `mcp__oopsnote_pipeline_submit_solution_candidate`
 - `mcp__oopsnote_pipeline_finalize_task`
 - `mcp__oopsnote_pipeline_fail_task`
 

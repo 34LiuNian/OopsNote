@@ -195,14 +195,14 @@ def validate() -> bool:
 
     try:
         contract = load_tool_contract()
-        valid &= check(len(contract["tools"]) == 8, "exact eight-tool surface")
+        valid &= check(len(contract["tools"]) == 9, "exact nine-tool surface")
         valid &= check(
             tuple(tool["remoteName"] for tool in contract["tools"]) == AI_TOOL_NAMES,
             "canonical Python tool surface",
         )
         active_run_tools = {
             "ocr_image", "get_task", "get_asset_path", "list_tags", "create_tag",
-            "report_task_stage", "finalize_task", "fail_task"
+            "report_task_stage", "submit_solution_candidate", "finalize_task", "fail_task"
         }
         for tool in contract["tools"]:
             if tool["remoteName"] in active_run_tools:

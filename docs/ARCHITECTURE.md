@@ -23,7 +23,7 @@ pi_agent_rust (default)             (temporary fallback)
 upstream Pi (diagnostic fallback)
    |
 bounded pool of 3 long-lived serial JSONL RPC workers
-   `-- explicit 8-tool bridge -> restricted Python MCP
+   `-- explicit 9-tool bridge -> restricted Python MCP
                                  |-- ocr_image -> DashScope vision model
                                  `-- pipeline tools -> Core stores
 ```
@@ -44,7 +44,7 @@ Frontend   -> REST ----------> Core
 ```
 
 - AI 不能直接读写 `storage/`。
-- AI 只开放 `ocr_image`、`get_task`、`get_asset_path`、`list_tags`、`create_tag`、`report_task_stage`、`finalize_task`、`fail_task`。
+- AI 只开放 `ocr_image`、`get_task`、`get_asset_path`、`list_tags`、`create_tag`、`report_task_stage`、`submit_solution_candidate`、`finalize_task`、`fail_task`。`submit_solution_candidate` 只写入当前 `TaskRun` 的未提交候选，必须由新会话复核后才可 `finalize_task`。
 - `run_id` 必须属于当前任务；finalize 必须幂等且最多成功一次。
 - 同一 run 不允许从 Pi 自动切换到 Hermes。
 - 瞬时网络或限流错误最多产生两个全新 Pi retry run。
@@ -88,7 +88,7 @@ OCR / AI / manual edit -> OopsMark v1 -> Web renderer
 - 产品里程碑：Core、Web、Obsidian、复习与出卷能力。
 - AI 迁移阶段：Pi PoC、生产化、质量优化、Hermes 下线。
 
-当前已完成 Rust 接入、真实 OCR-to-finalize smoke 与三 worker 并发验证，进入 Hermes 下线前的生产观察期。
+当前已完成 Rust 接入、真实 OCR-to-finalize smoke 与三 worker 并发验证，运行证据由 RunStore 按 run 保留并由 REST 暴露非敏感索引，进入 Hermes 下线前的生产观察期。
 
 ## 8. Hermes 下线门槛
 

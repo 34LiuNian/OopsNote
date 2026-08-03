@@ -14,7 +14,7 @@ from typing import Any
 
 import httpx
 
-from oopsnote.core import OcrPrintedContext, StateConflict, TaskStatus
+from oopsnote.core import OcrPrintedContext, RunArtifact, StateConflict, TaskStage, TaskStatus
 from oopsnote.mcp.ocr_contract import OCR_INSTRUCTION, normalize_ocr_result
 
 
@@ -174,6 +174,7 @@ def ocr_image(task_id: str, run_id: str) -> dict[str, Any]:
     task = server.TASK_STORE.get(task_id)
     if not run_id or task.active_run_id != run_id:
         raise ValueError(f"run_id {run_id} is not active for task {task_id}")
+    run = server._active_task_run(task_id, run_id)
     if not task.asset_path:
         raise ValueError(f"task {task_id} has no image asset")
     cache_key = (task_id, run_id, task.asset_path)
@@ -198,6 +199,15 @@ def ocr_image(task_id: str, run_id: str) -> dict[str, Any]:
             "ocr_invalid_response",
             f"DashScope OCR returned an invalid result: {error}",
         ) from error
+    server.RUN_STORE.record_artifact(
+        run.id,
+        RunArtifact(
+            stage=TaskStage.OCR,
+            kind="ocr",
+            raw_output=json.dumps(parsed, ensure_ascii=False, sort_keys=True),
+            parsed_output=result,
+        ),
+    )
     try:
         server.TASK_STORE.transition(
             task_id,

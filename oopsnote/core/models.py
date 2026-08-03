@@ -214,6 +214,34 @@ class StageRun(BaseModel):
     latency_ms: Optional[int] = None
 
 
+class RunArtifact(BaseModel):
+    """An immutable raw/parsed model-output observation for one managed run."""
+
+    stage: TaskStage
+    kind: Literal["ocr", "solver_candidate", "verifier_submission"]
+    raw_output: str
+    parsed_output: dict[str, Any]
+    recorded_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class RunValidationError(BaseModel):
+    """An immutable record of a rejected managed-model output."""
+
+    stage: TaskStage
+    raw_output: str
+    message: str
+    recorded_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class SolutionCandidate(BaseModel):
+    """A validated but uncommitted solution handed to an independent verifier."""
+
+    problem: Problem
+    review_reason: Literal["", "unreadable", "incomplete", "multiple_questions", "other"] = ""
+    student_response_status: Literal["answered", "unanswered", "unknown"] = "unknown"
+    submitted_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
 class TaskRun(BaseModel):
     """One managed AI process execution for a task."""
 
@@ -235,6 +263,7 @@ class TaskRun(BaseModel):
     output_tokens: Optional[int] = None
     cache_tokens: Optional[int] = None
     cost: Optional[float] = None
+    stats_sessions: int = Field(default=0, ge=0)
     duration_ms: Optional[int] = None
     peak_memory_bytes: Optional[int] = Field(default=None, ge=0)
     rpc_log_path: Optional[str] = None
@@ -243,12 +272,23 @@ class TaskRun(BaseModel):
     retry_root_run_id: Optional[str] = None
     retryable: bool = False
     prompt_version: str = "unversioned"
+    artifacts: list[RunArtifact] = Field(default_factory=list, max_length=3)
+    validation_errors: list[RunValidationError] = Field(default_factory=list)
+    solution_candidate: Optional[SolutionCandidate] = None
+    verification_started_at: Optional[datetime] = None
     queued_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     started_at: Optional[datetime] = None
     heartbeat_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     ended_at: Optional[datetime] = None
     error_code: Optional[str] = None
     error_message: Optional[str] = None
+
+    @model_validator(mode="after")
+    def require_candidate_before_verification(self) -> "TaskRun":
+        """Keep verification state impossible until solver output is durable."""
+        if self.verification_started_at is not None and self.solution_candidate is None:
+            raise ValueError("verification_started_at requires a solution_candidate")
+        return self
 
 
 # ── 批量扫描会话 ────────────────────────────────────────

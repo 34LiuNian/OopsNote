@@ -18,6 +18,7 @@ MANAGED_TOOL_DEFINITIONS = (
     ManagedToolDefinition("mcp__oopsnote_pipeline_list_tags", "list_tags", "List tag branches, selected branch leaves, or non-knowledge tag values."),
     ManagedToolDefinition("mcp__oopsnote_pipeline_create_tag", "create_tag", "Create or merge one error tag for the active managed run."),
     ManagedToolDefinition("mcp__oopsnote_pipeline_report_task_stage", "report_task_stage", "Report progress for the active managed OopsNote run."),
+    ManagedToolDefinition("mcp__oopsnote_pipeline_submit_solution_candidate", "submit_solution_candidate", "Store one solver candidate for an independent verification session."),
     ManagedToolDefinition("mcp__oopsnote_pipeline_finalize_task", "finalize_task", "Validate and atomically finalize the active OopsNote task."),
     ManagedToolDefinition("mcp__oopsnote_pipeline_fail_task", "fail_task", "Fail the active OopsNote task with an explicit reason."),
 )

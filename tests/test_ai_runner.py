@@ -17,7 +17,17 @@ from oopsnote.ai.backends import pi_rpc as pi_rpc_module
 from oopsnote.ai.backends.pi_rpc import RpcProtocolError
 from oopsnote.ai.pi_skills import ACTIVE_PI_SKILLS
 from oopsnote.ai.rpc.probe import probe_new_session
-from oopsnote.core import RunStatus, RunStore, TaskCreateRequest, TaskStage, TaskStatus, TaskStore
+from oopsnote.core import (
+    ContentFormat,
+    Problem,
+    RunStatus,
+    RunStore,
+    SolutionCandidate,
+    TaskCreateRequest,
+    TaskStage,
+    TaskStatus,
+    TaskStore,
+)
 from oopsnote.mcp.tool_registry import AI_TOOL_NAMES
 
 
@@ -676,7 +686,7 @@ def test_pi_rpc_runner_reuses_process_with_clean_session_per_task(tmp_path, monk
     spawned = []
 
     def finish_prompt(payload):
-        run_id = payload["id"].removeprefix("prompt-")
+        run_id = payload["id"].removeprefix("prompt-").removesuffix("-solver")
         task = tasks_by_run[run_id]
         task_store.update(task.id, status=TaskStatus.COMPLETED, active_run_id=None)
 
@@ -700,6 +710,70 @@ def test_pi_rpc_runner_reuses_process_with_clean_session_per_task(tmp_path, monk
         "get_session_stats",
     ]
     assert all(run_store.get(run.id).status == RunStatus.COMPLETED for run in runs)
+    runner.shutdown()
+
+
+def test_pi_rpc_runner_verifies_a_persisted_candidate_in_a_fresh_session(tmp_path, monkeypatch):
+    task_store = TaskStore(tmp_path / "storage")
+    run_store = RunStore(tmp_path / "storage" / "runs")
+    write_pi_skill_pack(tmp_path)
+    runner = PiRpcRunner(
+        backend=PiRpcBackend(tmp_path),
+        project_root=tmp_path,
+        task_store=task_store,
+        run_store=run_store,
+        poll_seconds=0.01,
+    )
+    task = task_store.create(TaskCreateRequest(subject="math"))
+    run = runner.enqueue(task.id)
+
+    def respond_to_prompt(payload):
+        if payload["id"].endswith("-solver"):
+            run_store.submit_solution_candidate(
+                run.id,
+                SolutionCandidate(
+                    problem=Problem(
+                        content_format=ContentFormat.OOPSMARK_V1,
+                        subject="math",
+                        question_type="解答题",
+                        problem_text="求 $x+1=2$ 的解。",
+                        answer="$x=1$",
+                        explanation="移项得 $x=1$。",
+                    ),
+                ),
+            )
+        else:
+            task_store.update(
+                task.id,
+                status=TaskStatus.COMPLETED,
+                active_run_id=None,
+            )
+
+    process = SettlingRpcProcess(respond_to_prompt)
+    monkeypatch.setattr(runner_module.subprocess, "Popen", lambda *_args, **_kwargs: process)
+
+    runner.run(task.id, run.id)
+
+    stored = run_store.get(run.id)
+    commands = [command["type"] for command in process.commands]
+    prompts = [command["message"] for command in process.commands if command["type"] == "prompt"]
+    assert commands == [
+        "new_session",
+        "prompt",
+        "get_session_stats",
+        "new_session",
+        "prompt",
+        "get_session_stats",
+    ]
+    assert len(prompts) == 2
+    assert "solver session" in prompts[0]
+    assert "fresh, independent Pi session" in prompts[1]
+    assert stored.verification_started_at is not None
+    assert stored.stats_sessions == 2
+    assert stored.input_tokens == 24
+    assert stored.output_tokens == 16
+    assert stored.cache_tokens == 8
+    assert stored.cost == 0.04
     runner.shutdown()
 
 

@@ -232,9 +232,9 @@
       }
     },
     {
-      "name": "mcp__oopsnote_pipeline_finalize_task",
-      "remoteName": "finalize_task",
-      "description": "Validate and atomically finalize the active OopsNote task.",
+      "name": "mcp__oopsnote_pipeline_submit_solution_candidate",
+      "remoteName": "submit_solution_candidate",
+      "description": "Store one solver candidate for an independent verification session.",
       "parameters": {
         "properties": {
           "task_id": {
@@ -245,10 +245,6 @@
           },
           "run_id": {
             "type": "string"
-          },
-          "sync_to_obsidian": {
-            "default": true,
-            "type": "boolean"
           },
           "review_reason": {
             "default": "",
@@ -269,6 +265,69 @@
               "unknown"
             ],
             "type": "string"
+          }
+        },
+        "required": [
+          "task_id",
+          "problem_json",
+          "run_id"
+        ],
+        "type": "object",
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "mcp__oopsnote_pipeline_finalize_task",
+      "remoteName": "finalize_task",
+      "description": "Validate and atomically finalize the active OopsNote task.",
+      "parameters": {
+        "properties": {
+          "task_id": {
+            "type": "string"
+          },
+          "problem_json": {
+            "type": "string"
+          },
+          "run_id": {
+            "type": "string"
+          },
+          "sync_to_obsidian": {
+            "default": true,
+            "type": "boolean"
+          },
+          "review_reason": {
+            "anyOf": [
+              {
+                "enum": [
+                  "",
+                  "unreadable",
+                  "incomplete",
+                  "multiple_questions",
+                  "other"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "student_response_status": {
+            "anyOf": [
+              {
+                "enum": [
+                  "answered",
+                  "unanswered",
+                  "unknown"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
           }
         },
         "required": [

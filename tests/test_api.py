@@ -17,7 +17,7 @@ from oopsnote.api import main
 from oopsnote.api import auth
 from oopsnote.api.auth import AuthConfig, AuthenticatedUser, AuthenticationError
 from oopsnote.ai import HermesRunner
-from oopsnote.core import AssetStore, BatchProcessJobStore, BatchSessionStore, Problem, ProblemMergeStore, RunStatus, RunStore, TagStore, TaskCreateRequest, TaskRun, TaskStore, TaskStatus
+from oopsnote.core import AssetStore, BatchProcessJobStore, BatchSessionStore, Problem, ProblemMergeStore, RunArtifact, RunStatus, RunStore, TagStore, TaskCreateRequest, TaskRun, TaskStore, TaskStage, TaskStatus
 
 
 class RecordingBatchRunner:
@@ -61,6 +61,26 @@ def test_search_rejects_invalid_since_query_at_http_boundary():
     response = TestClient(main.app).get("/search", params={"since": "not-a-date"})
 
     assert response.status_code == 422
+
+
+def test_run_view_exposes_evidence_index_without_model_output():
+    run = TaskRun(
+        task_id="task-1",
+        artifacts=[
+            RunArtifact(
+                stage=TaskStage.OCR,
+                kind="ocr",
+                raw_output="provider-only-output",
+                parsed_output={"problem_text": "normalized"},
+            )
+        ],
+    )
+
+    view = main._run_view(run)
+
+    assert view["evidence"]["artifacts"][0]["kind"] == "ocr"
+    assert view["evidence"]["validation_error_count"] == 0
+    assert "provider-only-output" not in str(view)
 
 
 def test_health_stays_public_when_oidc_is_configured():

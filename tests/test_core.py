@@ -20,8 +20,10 @@ from oopsnote.core import (
     BatchSessionStore,
     Problem,
     ProblemMergeStore,
+    RunArtifact,
     RunStatus,
     RunStore,
+    RunValidationError,
     Searcher,
     SearchQuery,
     StateConflict,
@@ -190,6 +192,42 @@ class TestRunStore:
 
         assert completed.duration_ms is not None
         assert 1_900 <= completed.duration_ms <= 3_000
+
+    def test_evidence_is_append_only_and_validation_failures_are_deduplicated(self, tmp_path):
+        store = RunStore(tmp_path / "runs")
+        run = store.create("task-1")
+        artifact = RunArtifact(
+            stage=TaskStage.OCR,
+            kind="ocr",
+            raw_output="{\"raw\":true}",
+            parsed_output={"raw": True},
+        )
+
+        first = store.record_artifact(run.id, artifact)
+        repeated = store.record_artifact(
+            run.id,
+            artifact.model_copy(update={"recorded_at": datetime.now(timezone.utc)}),
+        )
+
+        assert len(first.artifacts) == 1
+        assert len(repeated.artifacts) == 1
+        with pytest.raises(StateConflict, match="already has ocr evidence"):
+            store.record_artifact(
+                run.id,
+                artifact.model_copy(update={"raw_output": "{\"raw\":false}"}),
+            )
+
+        error = RunValidationError(
+            stage=TaskStage.FINALIZING,
+            raw_output="{}",
+            message="problem missing answer",
+        )
+        store.record_validation_error(run.id, error)
+        store.record_validation_error(
+            run.id,
+            error.model_copy(update={"recorded_at": datetime.now(timezone.utc)}),
+        )
+        assert len(store.get(run.id).validation_errors) == 1
 
     def test_active_run_uses_heartbeat(self, tmp_path):
         store = RunStore(tmp_path / "runs")

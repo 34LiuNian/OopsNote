@@ -13,7 +13,7 @@ from oopsnote.mcp.tool_registry import AI_TOOL_NAMES, MANAGED_TOOL_DEFINITIONS
 CONTRACT_PATH = Path(__file__).with_name("tool_contracts.json")
 
 
-def load_tool_contract() -> dict[str, Any]:
+def load_tool_contract(*, validate_registry: bool = True) -> dict[str, Any]:
     payload = json.loads(CONTRACT_PATH.read_text(encoding="utf-8"))
     if payload.get("version") != 1 or not isinstance(payload.get("tools"), list):
         raise ValueError("Unsupported managed MCP tool contract")
@@ -31,10 +31,11 @@ def load_tool_contract() -> dict[str, Any]:
             raise ValueError(f"Managed MCP tool {name} must reject additional properties")
         names.add(name)
         remote_names.add(remote_name)
-    expected = [(item.name, item.remote_name) for item in MANAGED_TOOL_DEFINITIONS]
-    actual = [(item["name"], item["remoteName"]) for item in payload["tools"]]
-    if actual != expected:
-        raise ValueError("Managed MCP tool contract does not match the Python registry")
+    if validate_registry:
+        expected = [(item.name, item.remote_name) for item in MANAGED_TOOL_DEFINITIONS]
+        actual = [(item["name"], item["remoteName"]) for item in payload["tools"]]
+        if actual != expected:
+            raise ValueError("Managed MCP tool contract does not match the Python registry")
     return payload
 
 
@@ -90,7 +91,11 @@ def sync_tool_contract() -> bool:
     return True
 
 
-TOOL_CONTRACT = load_tool_contract()
+# Keep a syntactically valid previous contract importable so `--sync` can
+# regenerate it after a registry change. Parity remains enforced by explicit
+# validation and contract tests; runtime adapters are generated from live
+# signatures rather than this cached import.
+TOOL_CONTRACT = load_tool_contract(validate_registry=False)
 
 
 __all__ = [

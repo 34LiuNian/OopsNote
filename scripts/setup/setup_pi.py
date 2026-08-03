@@ -127,7 +127,10 @@ def main() -> int:
     mcp_path = ROOT / ".pi" / "mcp.json"
     valid &= check(package_path.exists(), ".pi pinned dependencies")
     valid &= check(mcp_path.exists(), "restricted OopsNote MCP config")
-    valid &= check(runtime_path.exists() or shutil.which("pi"), "Pi runtime config (.pi/runtime.json) or pi on PATH")
+    valid &= check(
+        bool(runtime_path.exists() or shutil.which("pi")),
+        "Pi runtime config (.pi/runtime.json) or pi on PATH",
+    )
     try:
         package = json.loads(package_path.read_text(encoding="utf-8"))
         valid &= check(package.get("dependencies", {}).get("pi-mcp-adapter") == "2.11.0", "pi-mcp-adapter pinned to 2.11.0")

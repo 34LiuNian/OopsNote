@@ -35,9 +35,9 @@ user:
 
 - [ ] 建立 60 题黄金集：数学、物理、化学各 20 题。
 - [ ] 覆盖模糊、倾斜、批注、复杂公式、图表和多小问。
-- [ ] 保存阶段 prompt version、raw/parsed output、validation error、latency 和 retry count。
+- [x] 保存阶段 prompt version、raw/parsed output、validation error、latency 和 retry count：RunStore 以只追加证据记录保存 OCR、solver candidate、verifier submission 及拒绝原因，REST 仅展示非敏感目录。
 - [x] OCR 增加缺失区域与低质量提示并禁止补写：`uncertain_regions`、`unreadable`、`incomplete` 会在受管边界终止任务，取消后的 OCR 结果不得附着到任务。
-- [ ] solve 与 verify 使用独立上下文并检查单位、定义域、条件和选项映射。
+- [x] solve 与 verify 使用独立上下文并检查单位、定义域、条件和选项映射：solver 只持久化一次候选解；runner 创建全新 Pi session 后才允许 verifier 进行标签和终结写入。
 - [x] 增加 `answer` 结论契约与一次定向修复：`finalize_task` 对新的 OopsMark v1 AI 写入拒绝推导标记、未编号多段步骤和超长答案；模型按 skill 将被拒内容移入 `explanation` 后重试，历史记录保持可读。
 - [x] 标签先召回已有候选再排序：受管 AI 必须先读取 error 候选；知识标签受分支叶子候选约束；创建 error 标签时拒绝已有 canonical/alias 的重复项。
 

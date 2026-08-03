@@ -13,6 +13,16 @@ from oopsnote.mcp import ocr
 from oopsnote.mcp.tool_registry import AI_TOOL_NAMES, MANAGED_TOOL_DEFINITIONS
 
 
+def _require_verifier_context(task_id: str, run_id: str):
+    """Allow tags only after the runner has opened a fresh verifier session."""
+
+    task = server._require_active_run(task_id, run_id)
+    run = server._active_task_run(task_id, run_id)
+    if run.solution_candidate is None or run.verification_started_at is None:
+        raise ValueError("tagging requires a runner-started independent verification session")
+    return task
+
+
 def _managed_subject(task, subject: Optional[str]) -> str:
     requested = (subject or "").strip()
     if task.subject not in {"", "auto"}:
@@ -38,7 +48,7 @@ def managed_list_tags(
 ):
     """List tags for one active run and remember its selected knowledge branches."""
 
-    task = server._require_active_run(task_id, run_id)
+    task = _require_verifier_context(task_id, run_id)
     effective_subject = _managed_subject(task, subject)
     result = server.list_tags(
         dimension=dimension,
@@ -102,9 +112,9 @@ def managed_create_tag(
 ):
     """Create only an error tag for one active managed run."""
 
-    task = server._require_active_run(task_id, run_id)
     if dimension != TagDimension.ERROR.value:
         raise ValueError("managed AI may create only error tags")
+    task = _require_verifier_context(task_id, run_id)
     effective_subject = _managed_subject(task, subject)
     candidates = task.metadata.get("_managed_error_candidates")
     if (
@@ -158,6 +168,7 @@ def create_restricted_mcp(**kwargs) -> FastMCP:
         "ocr_image": managed_ocr_image,
         "list_tags": managed_list_tags,
         "create_tag": managed_create_tag,
+        "submit_solution_candidate": server.submit_solution_candidate,
     }
     for definition in MANAGED_TOOL_DEFINITIONS:
         tool_name = definition.remote_name

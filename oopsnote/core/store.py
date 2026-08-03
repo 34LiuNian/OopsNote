@@ -25,12 +25,15 @@ from .models import (
     PaperDraftCreateRequest,
     PaperDraftUpdateRequest,
     Problem,
+    RunArtifact,
     RunStatus,
+    RunValidationError,
     StageRun,
     StageStatus,
     TaskCreateRequest,
     TaskRecord,
     TaskRun,
+    SolutionCandidate,
     TaskStage,
     TaskStatus,
     ProblemMergeRecord,
@@ -331,6 +334,85 @@ class RunStore:
         with self._lock:
             run = self.get(run_id)
             updated = _validated_update(run, fields)
+            self._write(updated)
+            return updated
+
+    def submit_solution_candidate(
+        self,
+        run_id: str,
+        candidate: SolutionCandidate,
+        artifact: Optional[RunArtifact] = None,
+    ) -> TaskRun:
+        """Persist the sole solver output before an independent verification session."""
+        with self._lock:
+            run = self.get(run_id)
+            if run.solution_candidate is not None:
+                raise StateConflict(f"Run {run_id} already has a solution candidate")
+            artifacts = list(run.artifacts)
+            if artifact is not None:
+                if artifact.stage != TaskStage.SOLVING or artifact.kind != "solver_candidate":
+                    raise ValueError("solver candidate evidence must describe the solving stage")
+                artifacts.append(artifact)
+            updated = _validated_update(
+                run,
+                {"solution_candidate": candidate, "artifacts": artifacts},
+            )
+            self._write(updated)
+            return updated
+
+    def record_artifact(self, run_id: str, artifact: RunArtifact) -> TaskRun:
+        """Append one unique immutable output observation without changing task content."""
+        with self._lock:
+            run = self.get(run_id)
+            for existing in run.artifacts:
+                if (existing.stage, existing.kind) != (artifact.stage, artifact.kind):
+                    continue
+                if (
+                    existing.raw_output == artifact.raw_output
+                    and existing.parsed_output == artifact.parsed_output
+                ):
+                    return run
+                raise StateConflict(
+                    f"Run {run_id} already has {artifact.kind} evidence for {artifact.stage.value}"
+                )
+            updated = _validated_update(run, {"artifacts": [*run.artifacts, artifact]})
+            self._write(updated)
+            return updated
+
+    def record_validation_error(
+        self,
+        run_id: str,
+        evidence: RunValidationError,
+    ) -> TaskRun:
+        """Append a deduplicated rejection without replacing the valid prior evidence."""
+        with self._lock:
+            run = self.get(run_id)
+            for existing in run.validation_errors:
+                if (
+                    existing.stage == evidence.stage
+                    and existing.raw_output == evidence.raw_output
+                    and existing.message == evidence.message
+                ):
+                    return run
+            updated = _validated_update(
+                run,
+                {"validation_errors": [*run.validation_errors, evidence]},
+            )
+            self._write(updated)
+            return updated
+
+    def begin_verification(self, run_id: str) -> TaskRun:
+        """Record that the runner, not the solver context, opened verification."""
+        with self._lock:
+            run = self.get(run_id)
+            if run.solution_candidate is None:
+                raise StateConflict(f"Run {run_id} has no solution candidate")
+            if run.verification_started_at is not None:
+                return run
+            updated = _validated_update(
+                run,
+                {"verification_started_at": datetime.now(timezone.utc)},
+            )
             self._write(updated)
             return updated
 

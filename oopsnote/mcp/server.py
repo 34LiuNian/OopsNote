@@ -18,6 +18,10 @@ from oopsnote.core import (
     AssetStore,
     ContentFormat,
     Problem,
+    RunArtifact,
+    RunStatus,
+    RunStore,
+    RunValidationError,
     Searcher,
     SearchQuery,
     StateConflict,
@@ -27,6 +31,7 @@ from oopsnote.core import (
     TagStore,
     TaskCreateRequest,
     TaskRecord,
+    SolutionCandidate,
     TaskStage,
     TaskStatus,
     TaskStore,
@@ -141,6 +146,7 @@ TAG_STORE = TagStore(
     tree_path=KNOWLEDGE_TREES_PATH,
 )
 ASSET_STORE = AssetStore(base_dir=STORAGE_DIR / "assets")
+RUN_STORE = RunStore(base_dir=STORAGE_DIR / "runs")
 
 
 # ═════════════════════════════════════════════════════
@@ -175,6 +181,83 @@ def create_task(
 def get_task(task_id: str, run_id: str) -> dict[str, Any]:
     """Get only the task bound to the currently active managed run."""
     return _managed_task_context(_require_active_run(task_id, run_id))
+
+
+def _active_task_run(task_id: str, run_id: str):
+    """Return the lifecycle-owned run after checking it matches the active task."""
+
+    try:
+        run = RUN_STORE.get(run_id)
+    except KeyError as error:
+        raise ValueError(f"run_id {run_id} has no managed run record") from error
+    if run.task_id != task_id:
+        raise ValueError(f"run_id {run_id} does not belong to task {task_id}")
+    if run.status not in {RunStatus.QUEUED, RunStatus.RUNNING}:
+        raise ValueError(f"run_id {run_id} is not active")
+    return run
+
+
+def _parse_pipeline_problem(task: TaskRecord, problem_json: str) -> tuple[Problem, str]:
+    """Validate the content shape shared by solver candidates and final output."""
+
+    import json
+
+    raw = json.loads(problem_json)
+    if not isinstance(raw, dict):
+        raise ValueError("problem_json must be a JSON object")
+    problem = Problem.model_validate(raw)
+    if problem.content_format != ContentFormat.OOPSMARK_V1:
+        raise ValueError("problem must declare content_format=oopsmark-v1")
+    answer_issue = validate_answer_conclusion(problem.answer)
+    if answer_issue:
+        raise ValueError(
+            f"answer:{answer_issue.line} [{answer_issue.code}] {answer_issue.message}"
+        )
+    missing = [
+        name for name in ("subject", "problem_text", "answer", "explanation")
+        if not getattr(problem, name).strip()
+    ]
+    if missing:
+        raise ValueError(f"problem missing required fields: {', '.join(missing)}")
+    if problem.question_type.value in {"单选题", "多选题"} and len(problem.options) < 2:
+        raise ValueError("problem selection options are incomplete")
+
+    subject = task.subject
+    if not subject or subject == "auto":
+        subject = problem.subject
+    elif problem.subject != subject:
+        raise ValueError(
+            f"problem subject {problem.subject} does not match task subject {subject}"
+        )
+    return problem, subject
+
+
+def _record_validation_error(
+    run_id: str,
+    stage: TaskStage,
+    raw_output: str,
+    error: ValueError,
+) -> None:
+    """Retain rejected managed output on its run without changing task state."""
+    RUN_STORE.record_validation_error(
+        run_id,
+        RunValidationError(
+            stage=stage,
+            raw_output=raw_output,
+            message=str(error),
+        ),
+    )
+
+
+def _raise_validation_error(
+    run_id: str,
+    stage: TaskStage,
+    raw_output: str,
+    message: str,
+) -> None:
+    error = ValueError(message)
+    _record_validation_error(run_id, stage, raw_output, error)
+    raise error
 
 
 @mcp.tool()
@@ -234,6 +317,12 @@ def report_task_stage(
     """上报受管 AI 任务阶段。stage: ocr/solving/verifying/tagging/finalizing。"""
     current = _require_active_run(task_id, run_id)
     requested_stage = TaskStage(stage)
+    if requested_stage == TaskStage.VERIFYING:
+        run = _active_task_run(task_id, run_id)
+        if run.solution_candidate is None or run.verification_started_at is None:
+            raise ValueError(
+                "verifying requires a solver candidate and a runner-started independent session"
+            )
     if current.stage == requested_stage:
         return _task_ack(current, stage=requested_stage.value)
     expected = PIPELINE_STAGE_PREDECESSORS.get(requested_stage)
@@ -250,6 +339,67 @@ def report_task_stage(
         stage_message=message,
     )
     return _task_ack(task, stage=task.stage.value if task.stage else None)
+
+
+@mcp.tool()
+def submit_solution_candidate(
+    task_id: str,
+    problem_json: str,
+    run_id: str,
+    review_reason: ManagedReviewReason = "",
+    student_response_status: ManagedStudentResponseStatus = "unknown",
+) -> dict[str, Any]:
+    """Store one solver candidate for a fresh verification session; this never finalizes a task."""
+
+    task = _require_active_run(task_id, run_id)
+    if task.stage != TaskStage.SOLVING:
+        current_stage = task.stage.value if task.stage else "none"
+        raise ValueError(
+            "submit_solution_candidate requires the pipeline to be solving; "
+            f"current stage is {current_stage}"
+        )
+    run = _active_task_run(task_id, run_id)
+    try:
+        problem, _subject = _parse_pipeline_problem(task, problem_json)
+    except ValueError as error:
+        _record_validation_error(run.id, TaskStage.SOLVING, problem_json, error)
+        raise
+    try:
+        candidate = SolutionCandidate(
+            problem=problem,
+            review_reason=review_reason,
+            student_response_status=student_response_status,
+        )
+    except ValueError as error:
+        _record_validation_error(run.id, TaskStage.SOLVING, problem_json, error)
+        raise
+    try:
+        RUN_STORE.submit_solution_candidate(
+            run.id,
+            candidate,
+            RunArtifact(
+                stage=TaskStage.SOLVING,
+                kind="solver_candidate",
+                raw_output=problem_json,
+                parsed_output={
+                    "problem": candidate.problem.model_dump(mode="json"),
+                    "review_reason": candidate.review_reason,
+                    "student_response_status": candidate.student_response_status,
+                },
+            ),
+        )
+    except StateConflict as error:
+        raise ValueError(str(error)) from error
+    metadata = dict(task.metadata)
+    metadata.pop("_managed_tag_selection", None)
+    metadata.pop("_managed_error_candidates", None)
+    TASK_STORE.transition(
+        task_id,
+        expected_statuses={TaskStatus.PROCESSING},
+        expected_active_run_id=run_id,
+        metadata=metadata,
+    )
+    return _task_ack(task, candidate_submitted=True)
 
 
 @mcp.tool()
@@ -299,38 +449,47 @@ def finalize_task(
     problem_json: str,
     run_id: str,
     sync_to_obsidian: bool = True,
-    review_reason: ManagedReviewReason = "",
-    student_response_status: ManagedStudentResponseStatus = "unknown",
+    review_reason: Optional[ManagedReviewReason] = None,
+    student_response_status: Optional[ManagedStudentResponseStatus] = None,
 ) -> dict[str, Any]:
     """校验并原子提交 AI 结果，可同时标记需人工复核。"""
-    import json
-
     task = _require_active_run(task_id, run_id)
+    run = _active_task_run(task_id, run_id)
+    candidate = run.solution_candidate
+    if candidate is None or run.verification_started_at is None:
+        raise ValueError(
+            "finalize_task requires a solver candidate reviewed in an independent session"
+        )
     if task.stage != TaskStage.FINALIZING:
         current_stage = task.stage.value if task.stage else "none"
         raise ValueError(
             "finalize_task requires the ordered pipeline to reach finalizing; "
             f"current stage is {current_stage}"
         )
-    raw = json.loads(problem_json)
-    if not isinstance(raw, dict):
-        raise ValueError("problem_json must be a JSON object")
-    problem = Problem.model_validate(raw)
-    if problem.content_format != ContentFormat.OOPSMARK_V1:
-        raise ValueError("problem must declare content_format=oopsmark-v1")
-    answer_issue = validate_answer_conclusion(problem.answer)
-    if answer_issue:
-        raise ValueError(
-            f"answer:{answer_issue.line} [{answer_issue.code}] {answer_issue.message}"
+    try:
+        problem, subject = _parse_pipeline_problem(task, problem_json)
+    except ValueError as error:
+        _record_validation_error(run.id, TaskStage.FINALIZING, problem_json, error)
+        raise
+    if review_reason is not None and review_reason != candidate.review_reason:
+        _raise_validation_error(
+            run.id,
+            TaskStage.FINALIZING,
+            problem_json,
+            "review_reason must match the solver candidate",
         )
-    missing = [
-        name for name in ("subject", "problem_text", "answer", "explanation")
-        if not getattr(problem, name).strip()
-    ]
-    if missing:
-        raise ValueError(f"problem missing required fields: {', '.join(missing)}")
-    if problem.question_type.value in {"单选题", "多选题"} and len(problem.options) < 2:
-        raise ValueError("problem selection options are incomplete")
+    if (
+        student_response_status is not None
+        and student_response_status != candidate.student_response_status
+    ):
+        _raise_validation_error(
+            run.id,
+            TaskStage.FINALIZING,
+            problem_json,
+            "student_response_status must match the solver candidate",
+        )
+    review_reason = candidate.review_reason
+    student_response_status = candidate.student_response_status
 
     trusted_error_hints = {
         str(value).strip()
@@ -343,18 +502,14 @@ def finalize_task(
             if value not in trusted_error_hints
         ]
         if invented_errors:
-            raise ValueError(
+            _raise_validation_error(
+                run.id,
+                TaskStage.FINALIZING,
+                problem_json,
                 "error_hypothesis requires a readable student response or an explicit "
                 "user-provided error tag"
             )
 
-    subject = task.subject
-    if not subject or subject == "auto":
-        subject = problem.subject
-    elif problem.subject != subject:
-        raise ValueError(
-            f"problem subject {problem.subject} does not match task subject {subject}"
-        )
     trusted_source = str(task.metadata.get("source") or "").strip()
     trusted_source_page = task.metadata.get("source_page")
     problem = problem.model_copy(
@@ -371,9 +526,19 @@ def finalize_task(
     if problem.knowledge_points:
         selection = task.metadata.get("_managed_tag_selection")
         if not isinstance(selection, dict) or selection.get("run_id") != run_id:
-            raise ValueError("knowledge_points require branches selected by this managed run")
+            _raise_validation_error(
+                run.id,
+                TaskStage.FINALIZING,
+                problem_json,
+                "knowledge_points require branches selected by this managed run",
+            )
         if selection.get("subject") != subject:
-            raise ValueError("knowledge tag selection subject does not match the problem")
+            _raise_validation_error(
+                run.id,
+                TaskStage.FINALIZING,
+                problem_json,
+                "knowledge tag selection subject does not match the problem",
+            )
         valid_leaf_values = set(TAG_STORE.ai_knowledge_leaves(
             subject,
             list(selection.get("branch_ids") or []),
@@ -384,7 +549,10 @@ def finalize_task(
             if value not in valid_leaf_values
         ))
         if invalid_tags:
-            raise ValueError(
+            _raise_validation_error(
+                run.id,
+                TaskStage.FINALIZING,
+                problem_json,
                 "knowledge_points must contain only knowledge-tree leaf tags; "
                 f"invalid: {', '.join(invalid_tags)}"
             )
@@ -399,10 +567,22 @@ def finalize_task(
             if value not in valid_error_values
         ))
         if invalid_errors:
-            raise ValueError(
+            _raise_validation_error(
+                run.id,
+                TaskStage.FINALIZING,
+                problem_json,
                 "error_hypothesis must contain existing error tags; create missing tags first; "
                 f"invalid: {', '.join(invalid_errors)}"
             )
+    RUN_STORE.record_artifact(
+        run.id,
+        RunArtifact(
+            stage=TaskStage.FINALIZING,
+            kind="verifier_submission",
+            raw_output=problem_json,
+            parsed_output=problem.model_dump(mode="json"),
+        ),
+    )
     completed = TASK_STORE.transition(
         task_id,
         expected_statuses={TaskStatus.PROCESSING},

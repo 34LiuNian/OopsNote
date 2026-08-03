@@ -1,10 +1,20 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime, timezone
 
 import pytest
 
-from oopsnote.core import TagStore, TaskCreateRequest, TaskStage, TaskStatus, TaskStore
+from oopsnote.core import (
+    RunStatus,
+    RunStore,
+    TagStore,
+    TaskCreateRequest,
+    TaskRun,
+    TaskStage,
+    TaskStatus,
+    TaskStore,
+)
 from oopsnote.mcp import server
 from oopsnote.mcp.restricted import managed_create_tag, managed_list_tags
 
@@ -17,6 +27,7 @@ def configure_stores(tmp_path, monkeypatch):
     )
     monkeypatch.setattr(server, "TASK_STORE", task_store)
     monkeypatch.setattr(server, "TAG_STORE", tag_store)
+    monkeypatch.setattr(server, "RUN_STORE", RunStore(tmp_path / "storage" / "runs"))
     return task_store
 
 
@@ -35,9 +46,41 @@ def valid_problem():
     }
 
 
-def advance_to_finalizing(task_id: str, run_id: str = "run-1") -> None:
-    for stage in ("ocr", "solving", "verifying", "tagging", "finalizing"):
-        server.report_task_stage(task_id, stage, run_id=run_id)
+def advance_to_finalizing(
+    task_id: str,
+    run_id: str = "run-1",
+    *,
+    review_reason: str = "",
+    student_response_status: str = "unknown",
+    authorize_candidate_knowledge: bool = True,
+) -> None:
+    try:
+        server.RUN_STORE.get(run_id)
+    except KeyError:
+        server.RUN_STORE._write(TaskRun(
+            id=run_id,
+            task_id=task_id,
+            status=RunStatus.RUNNING,
+        ))
+    server.report_task_stage(task_id, "ocr", run_id=run_id)
+    server.report_task_stage(task_id, "solving", run_id=run_id)
+    server.submit_solution_candidate(
+        task_id,
+        json.dumps(valid_problem(), ensure_ascii=False),
+        run_id=run_id,
+        review_reason=review_reason,
+        student_response_status=student_response_status,
+    )
+    server.RUN_STORE.begin_verification(run_id)
+    server.report_task_stage(task_id, "verifying", run_id=run_id)
+    server.report_task_stage(task_id, "tagging", run_id=run_id)
+    if authorize_candidate_knowledge:
+        authorize_knowledge_point(
+            task_id,
+            valid_problem()["knowledge_points"][0],
+            run_id=run_id,
+        )
+    server.report_task_stage(task_id, "finalizing", run_id=run_id)
 
 
 def authorize_knowledge_point(
@@ -65,12 +108,80 @@ def authorize_knowledge_point(
     raise AssertionError(f"No branch contains knowledge leaf {value}")
 
 
+def test_solver_candidate_requires_a_runner_started_verifier_session(tmp_path, monkeypatch):
+    task_store = configure_stores(tmp_path, monkeypatch)
+    task = task_store.create(TaskCreateRequest(subject="math"))
+    task_store.update(task.id, status=TaskStatus.PROCESSING, active_run_id="run-1")
+    server.RUN_STORE._write(TaskRun(
+        id="run-1",
+        task_id=task.id,
+        status=RunStatus.RUNNING,
+    ))
+    server.report_task_stage(task.id, "ocr", run_id="run-1")
+    server.report_task_stage(task.id, "solving", run_id="run-1")
+    server.submit_solution_candidate(
+        task.id,
+        json.dumps(valid_problem(), ensure_ascii=False),
+        run_id="run-1",
+    )
+
+    with pytest.raises(ValueError, match="runner-started independent session"):
+        server.report_task_stage(task.id, "verifying", run_id="run-1")
+
+    task_store.update(task.id, stage=TaskStage.FINALIZING)
+    with pytest.raises(ValueError, match="reviewed in an independent session"):
+        server.finalize_task(
+            task.id,
+            json.dumps(valid_problem(), ensure_ascii=False),
+            run_id="run-1",
+            sync_to_obsidian=False,
+        )
+
+    server.RUN_STORE.begin_verification("run-1")
+    task_store.update(task.id, stage=TaskStage.SOLVING)
+    assert server.report_task_stage(task.id, "verifying", run_id="run-1")["stage"] == "verifying"
+
+
+def test_task_run_cannot_deserialize_verification_without_a_candidate():
+    with pytest.raises(ValueError, match="requires a solution_candidate"):
+        TaskRun(
+            task_id="task-1",
+            verification_started_at=datetime.now(timezone.utc),
+        )
+
+
+def test_solution_candidate_is_single_write_and_never_updates_the_task_problem(tmp_path, monkeypatch):
+    task_store = configure_stores(tmp_path, monkeypatch)
+    task = task_store.create(TaskCreateRequest(subject="math"))
+    task_store.update(task.id, status=TaskStatus.PROCESSING, active_run_id="run-1")
+    server.RUN_STORE._write(TaskRun(
+        id="run-1",
+        task_id=task.id,
+        status=RunStatus.RUNNING,
+    ))
+    server.report_task_stage(task.id, "ocr", run_id="run-1")
+    server.report_task_stage(task.id, "solving", run_id="run-1")
+    payload = json.dumps(valid_problem(), ensure_ascii=False)
+
+    submitted = server.submit_solution_candidate(task.id, payload, run_id="run-1")
+    assert submitted["candidate_submitted"] is True
+    assert task_store.get(task.id).problem is None
+    stored_run = server.RUN_STORE.get("run-1")
+    assert stored_run.solution_candidate is not None
+    assert stored_run.artifacts[0].kind == "solver_candidate"
+    assert stored_run.artifacts[0].raw_output == payload
+    assert stored_run.artifacts[0].parsed_output["problem"]["answer"] == "$x=1$"
+
+    with pytest.raises(ValueError, match="already has a solution candidate"):
+        server.submit_solution_candidate(task.id, payload, run_id="run-1")
+    assert task_store.get(task.id).problem is None
+
+
 def test_finalize_validates_and_commits_managed_task(tmp_path, monkeypatch):
     task_store = configure_stores(tmp_path, monkeypatch)
     task = task_store.create(TaskCreateRequest(subject="auto"))
     task_store.update(task.id, status=TaskStatus.PROCESSING, active_run_id="run-1")
-    authorize_knowledge_point(task.id, valid_problem()["knowledge_points"][0])
-    advance_to_finalizing(task.id)
+    advance_to_finalizing(task.id, review_reason="multiple_questions")
 
     result = server.finalize_task(
         task.id,
@@ -98,6 +209,13 @@ def test_finalize_validates_and_commits_managed_task(tmp_path, monkeypatch):
     assert completed.revision_count == 0
     assert completed.last_revised_at is None
     assert completed.metadata["intake_review_reason"] == "multiple_questions"
+    artifacts = server.RUN_STORE.get("run-1").artifacts
+    assert [artifact.kind for artifact in artifacts] == [
+        "solver_candidate",
+        "verifier_submission",
+    ]
+    assert artifacts[-1].raw_output == json.dumps(valid_problem(), ensure_ascii=False)
+    assert artifacts[-1].parsed_output["short_answer"] == "$x=1$"
 
 
 def test_repeated_finalize_is_rejected_without_rewriting_completed_result(
@@ -107,7 +225,6 @@ def test_repeated_finalize_is_rejected_without_rewriting_completed_result(
     task_store = configure_stores(tmp_path, monkeypatch)
     task = task_store.create(TaskCreateRequest(subject="auto"))
     task_store.update(task.id, status=TaskStatus.PROCESSING, active_run_id="run-1")
-    authorize_knowledge_point(task.id, valid_problem()["knowledge_points"][0])
     advance_to_finalizing(task.id)
     server.finalize_task(
         task.id,
@@ -137,7 +254,6 @@ def test_finalize_sync_message_cannot_overwrite_newer_run(tmp_path, monkeypatch)
     task_store = configure_stores(tmp_path, monkeypatch)
     task = task_store.create(TaskCreateRequest(subject="auto"))
     task_store.update(task.id, status=TaskStatus.PROCESSING, active_run_id="run-1")
-    authorize_knowledge_point(task.id, valid_problem()["knowledge_points"][0])
     advance_to_finalizing(task.id)
 
     class RacingQueue:
@@ -174,7 +290,6 @@ def test_finalize_enforces_subject_and_enriches_trusted_source(tmp_path, monkeyp
         metadata={"source": "卷一.pdf", "source_page": 2},
     ))
     task_store.update(task.id, status=TaskStatus.PROCESSING, active_run_id="run-1")
-    authorize_knowledge_point(task.id, valid_problem()["knowledge_points"][0])
     advance_to_finalizing(task.id)
 
     wrong_subject = valid_problem()
@@ -214,6 +329,10 @@ def test_finalize_rejects_missing_answer_and_wrong_run(tmp_path, monkeypatch):
             run_id="run-1",
             sync_to_obsidian=False,
         )
+    validation_error = server.RUN_STORE.get("run-1").validation_errors[-1]
+    assert validation_error.stage == TaskStage.FINALIZING
+    assert validation_error.raw_output == json.dumps(problem, ensure_ascii=False)
+    assert "answer" in validation_error.message
     with pytest.raises(ValueError, match="not active"):
         server.report_task_stage(task.id, "ocr", run_id="wrong-run")
 
@@ -224,7 +343,6 @@ def test_finalize_rejects_answer_derivation_without_consuming_the_active_run(tmp
     task_store.update(task.id, status=TaskStatus.PROCESSING, active_run_id="run-1")
     problem = valid_problem()
     problem["answer"] = "因为 $x+1=2$，所以 $x=1$。"
-    authorize_knowledge_point(task.id, problem["knowledge_points"][0])
     advance_to_finalizing(task.id)
 
     with pytest.raises(ValueError, match="answer-contains-derivation"):
@@ -244,7 +362,7 @@ def test_finalize_rejects_multiple_independent_problems(tmp_path, monkeypatch):
     task_store = configure_stores(tmp_path, monkeypatch)
     task = task_store.create(TaskCreateRequest(subject="math"))
     task_store.update(task.id, status=TaskStatus.PROCESSING, active_run_id="run-1")
-    advance_to_finalizing(task.id)
+    advance_to_finalizing(task.id, authorize_candidate_knowledge=False)
 
     with pytest.raises(ValueError, match="JSON object"):
         server.finalize_task(
@@ -262,7 +380,7 @@ def test_finalize_rejects_invented_error_for_unanswered_question(tmp_path, monke
     problem = valid_problem()
     problem["knowledge_points"] = []
     problem["error_hypothesis"] = ["计算失误"]
-    advance_to_finalizing(task.id)
+    advance_to_finalizing(task.id, student_response_status="unanswered")
 
     with pytest.raises(ValueError, match="readable student response"):
         server.finalize_task(
@@ -280,7 +398,7 @@ def test_finalize_allows_no_error_for_unanswered_question(tmp_path, monkeypatch)
     task_store.update(task.id, status=TaskStatus.PROCESSING, active_run_id="run-1")
     problem = valid_problem()
     problem["knowledge_points"] = []
-    advance_to_finalizing(task.id)
+    advance_to_finalizing(task.id, student_response_status="unanswered")
 
     server.finalize_task(
         task.id,
@@ -307,7 +425,7 @@ def test_finalize_preserves_user_provided_error_for_unanswered_question(tmp_path
     problem = valid_problem()
     problem["knowledge_points"] = []
     problem["error_hypothesis"] = ["计算失误"]
-    advance_to_finalizing(task.id)
+    advance_to_finalizing(task.id, student_response_status="unanswered")
 
     server.finalize_task(
         task.id,
@@ -434,7 +552,7 @@ def test_finalize_rejects_non_leaf_knowledge_tag(tmp_path, monkeypatch):
     task_store.update(task.id, status=TaskStatus.PROCESSING, active_run_id="run-1")
     problem = valid_problem()
     problem["knowledge_points"] = ["集合"]
-    advance_to_finalizing(task.id)
+    advance_to_finalizing(task.id, authorize_candidate_knowledge=False)
 
     with pytest.raises(ValueError, match="require branches selected"):
         server.finalize_task(
@@ -466,6 +584,7 @@ def test_managed_ai_cannot_create_knowledge_tag(tmp_path, monkeypatch):
             run_id="run-1",
             subject="math",
         )
+    advance_to_finalizing(task.id)
     with pytest.raises(ValueError, match="list existing error tags"):
         managed_create_tag(
             dimension="error",

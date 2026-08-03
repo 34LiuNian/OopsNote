@@ -344,6 +344,17 @@ def _run_view(run: Any) -> dict[str, Any]:
         "error_code": run.error_code,
         "error_message": run.error_message,
         "stages": [stage.model_dump(mode="json") for stage in run.stage_runs],
+        "evidence": {
+            "artifacts": [
+                {
+                    "stage": artifact.stage.value,
+                    "kind": artifact.kind,
+                    "recorded_at": artifact.recorded_at.isoformat(),
+                }
+                for artifact in run.artifacts
+            ],
+            "validation_error_count": len(run.validation_errors),
+        },
     }
 
 

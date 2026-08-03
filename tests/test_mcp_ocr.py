@@ -5,7 +5,15 @@ import json
 import httpx
 import pytest
 
-from oopsnote.core import AssetStore, TaskCreateRequest, TaskStatus, TaskStore
+from oopsnote.core import (
+    AssetStore,
+    RunStatus,
+    RunStore,
+    TaskCreateRequest,
+    TaskRun,
+    TaskStatus,
+    TaskStore,
+)
 from oopsnote.mcp import ocr
 from oopsnote.mcp import server
 from oopsnote.mcp.ocr_contract import OCR_INSTRUCTION, normalize_ocr_result
@@ -52,6 +60,7 @@ def test_restricted_surface_contains_exactly_ocr_and_pipeline_tools():
         "list_tags",
         "create_tag",
         "report_task_stage",
+        "submit_solution_candidate",
         "finalize_task",
         "fail_task",
     }
@@ -68,6 +77,9 @@ def test_ocr_image_reads_local_config_and_returns_object(tmp_path, monkeypatch):
     task_store.update(task.id, status=TaskStatus.PROCESSING, active_run_id="run-1")
     monkeypatch.setattr(server, "TASK_STORE", task_store)
     monkeypatch.setattr(server, "ASSET_STORE", asset_store)
+    run_store = RunStore(storage / "runs")
+    run_store._write(TaskRun(id="run-1", task_id=task.id, status=RunStatus.RUNNING))
+    monkeypatch.setattr(server, "RUN_STORE", run_store)
     config = tmp_path / "extensions.json"
     config.write_text(
         json.dumps(
@@ -104,6 +116,10 @@ def test_ocr_image_reads_local_config_and_returns_object(tmp_path, monkeypatch):
     assert observed.ocr_context is not None
     assert observed.ocr_context.printed_question_no == 6
     assert observed.ocr_context.printed_chapter == "函数"
+    artifact = run_store.get("run-1").artifacts[0]
+    assert artifact.kind == "ocr"
+    assert json.loads(artifact.raw_output)["printed_question_no"] == 6
+    assert artifact.parsed_output == result
     assert captured["url"] == ocr.OCR_ENDPOINT
     assert captured["json"]["model"] == "test-vision-model"
     assert captured["headers"]["Authorization"] == "Bearer local-test-key"
@@ -125,6 +141,9 @@ def test_cancelled_run_does_not_attach_stale_ocr_context(tmp_path, monkeypatch):
     task_store.update(task.id, status=TaskStatus.PROCESSING, active_run_id="run-1")
     monkeypatch.setattr(server, "TASK_STORE", task_store)
     monkeypatch.setattr(server, "ASSET_STORE", AssetStore(storage / "assets"))
+    run_store = RunStore(storage / "runs")
+    run_store._write(TaskRun(id="run-1", task_id=task.id, status=RunStatus.RUNNING))
+    monkeypatch.setattr(server, "RUN_STORE", run_store)
 
     def cancel_during_ocr(_image_path):
         task_store.mark_status(task.id, TaskStatus.CANCELLED)
@@ -151,6 +170,7 @@ def test_cancelled_run_does_not_attach_stale_ocr_context(tmp_path, monkeypatch):
     cancelled = task_store.get(task.id)
     assert cancelled.status == TaskStatus.CANCELLED
     assert cancelled.ocr_context is None
+    assert run_store.get("run-1").artifacts[0].kind == "ocr"
 
 
 @pytest.mark.parametrize(

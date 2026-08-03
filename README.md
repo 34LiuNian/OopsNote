@@ -21,14 +21,15 @@
 ```text
 Web / REST
     -> ManagedAiRunner
-       -> Pi RPC（默认）
-       -> Hermes（限时 fallback）
+       -> Pi RPC / pi_agent_rust（默认，三个长驻 worker）
+       -> upstream Pi（仅显式诊断）
+       -> Hermes（迁移期 fallback）
     -> 受限 Python MCP
     -> OopsNote Core
        -> JSON / Assets / Obsidian
 ```
 
-Pi 使用一个长驻 RPC 进程串行处理任务，并在每个任务前通过 `new_session` 创建干净上下文。Core 负责数据、任务生命周期和原子 finalize；AI 运行时不直接写仓库文件。题目正文统一使用 [OopsMark v1](docs/oopsmark-v1.md)。
+Pi 使用三个有界的长驻 RPC worker 串行处理各自领取的任务，并在每个任务前通过 `new_session` 创建干净上下文。失败任务只可作为同一后端上的全新 run 重试，绝不在同一 run 内自动切换到 upstream Pi 或 Hermes。Core 负责数据、任务生命周期和原子 finalize；AI 运行时不直接写仓库文件。题目正文统一使用 [OopsMark v1](docs/oopsmark-v1.md)。
 
 完整设计见 [架构文档](docs/ARCHITECTURE.md)，本机 Pi 配置与调试见 [Pi 运维指南](docs/operations/pi.md)。
 
@@ -55,6 +56,8 @@ npm install --prefix .pi
 
 $env:PYTEST_ADDOPTS='--basetemp=E:/works/2026/OopsNote/.pytest-tmp'
 .\.venv\Scripts\python.exe -m pytest -q
+npm --prefix frontend run typecheck
+npm --prefix frontend run lint
 ```
 
 API 与前端：
@@ -72,7 +75,7 @@ Pi 实题验证：
 .\.venv\Scripts\python.exe scripts\benchmarks\pi_math_benchmark.py
 ```
 
-基准报告写入 `storage/pi-benchmark/`，单次任务状态和 RPC 日志写入 `storage/runs/`。
+基准报告写入 `storage/pi-benchmark/`，单次任务状态、阶段 prompt version/延迟、重试计数、模型原始/解析输出和校验错误证据写入 `storage/runs/`；REST 只展示非敏感的证据目录。
 
 ## 当前进度
 

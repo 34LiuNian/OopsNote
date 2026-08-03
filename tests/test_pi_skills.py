@@ -57,3 +57,11 @@ def test_load_skill_pack_drops_frontmatter_and_empty_knowledge_skeleton(tmp_path
 def test_upstream_pi_uses_the_canonical_restricted_tool_surface():
     assert setup_pi.REQUIRED_PIPELINE_TOOLS == set(AI_TOOL_NAMES)
     assert "ocr_image" in setup_pi.REQUIRED_PIPELINE_TOOLS
+
+
+def test_setup_pi_reports_a_missing_runtime_without_type_error(tmp_path, monkeypatch):
+    monkeypatch.setattr(setup_pi, "ROOT", tmp_path)
+    monkeypatch.setattr(setup_pi.shutil, "which", lambda _name: None)
+    monkeypatch.setattr(setup_pi, "check_rpc_startup", lambda: False)
+
+    assert setup_pi.main() == 1
