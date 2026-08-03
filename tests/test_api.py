@@ -5,12 +5,17 @@ import hashlib
 import time
 from io import BytesIO
 from types import SimpleNamespace
+from unittest.mock import patch
 
 import pymupdf
+import pytest
 from fastapi.testclient import TestClient
 from PIL import Image
+from starlette.requests import Request
 
 from oopsnote.api import main
+from oopsnote.api import auth
+from oopsnote.api.auth import AuthConfig, AuthenticatedUser, AuthenticationError
 from oopsnote.ai import HermesRunner
 from oopsnote.core import AssetStore, BatchProcessJobStore, BatchSessionStore, Problem, ProblemMergeStore, RunStatus, RunStore, TagStore, TaskCreateRequest, TaskRun, TaskStore, TaskStatus
 
@@ -56,6 +61,95 @@ def test_search_rejects_invalid_since_query_at_http_boundary():
     response = TestClient(main.app).get("/search", params={"since": "not-a-date"})
 
     assert response.status_code == 422
+
+
+def test_health_stays_public_when_oidc_is_configured():
+    with patch.dict(
+        "os.environ",
+        {
+            "OOPSNOTE_AUTH_ISSUER": "https://auth.example.com",
+            "OOPSNOTE_AUTH_AUDIENCE": "client-id",
+        },
+        clear=False,
+    ):
+        response = TestClient(main.app).get("/health")
+
+    assert response.status_code == 200
+
+
+def test_task_routes_require_bearer_token_when_oidc_is_configured():
+    with patch.dict(
+        "os.environ",
+        {
+            "OOPSNOTE_AUTH_ISSUER": "https://auth.example.com",
+            "OOPSNOTE_AUTH_AUDIENCE": "client-id",
+        },
+        clear=False,
+    ):
+        response = TestClient(main.app).get("/tasks")
+
+    assert response.status_code == 401
+    assert response.json()["detail"] == "Missing bearer token"
+
+
+def test_task_routes_accept_verified_bearer_token_when_oidc_is_configured():
+    fake_user = AuthenticatedUser(subject="user-1", claims={"sub": "user-1"})
+    with patch.dict(
+        "os.environ",
+        {
+            "OOPSNOTE_AUTH_ISSUER": "https://auth.example.com",
+            "OOPSNOTE_AUTH_AUDIENCE": "client-id",
+        },
+        clear=False,
+    ), patch("oopsnote.api.main.authenticate_request", return_value=fake_user):
+        response = TestClient(main.app).get(
+            "/tasks",
+            headers={"Authorization": "Bearer test-token"},
+        )
+
+    assert response.status_code == 200
+
+
+def test_authentication_uses_explicit_jwks_url_when_configured():
+    with patch.dict(
+        "os.environ",
+        {
+            "OOPSNOTE_AUTH_ISSUER": "https://auth.example.com",
+            "OOPSNOTE_AUTH_AUDIENCE": "client-id",
+            "OOPSNOTE_AUTH_JWKS_URL": "http://pocket-id:1411/.well-known/jwks.json",
+        },
+        clear=False,
+    ):
+        config = auth.auth_config_from_env()
+
+    assert config == AuthConfig(
+        issuer="https://auth.example.com",
+        audience="client-id",
+        jwks_url="http://pocket-id:1411/.well-known/jwks.json",
+    )
+
+
+def test_authentication_returns_503_when_jwks_service_is_unavailable():
+    request = Request(
+        {
+            "type": "http",
+            "headers": [(b"authorization", b"Bearer test-token")],
+        }
+    )
+    config = AuthConfig(
+        issuer="https://auth.example.com",
+        audience="client-id",
+        jwks_url="http://pocket-id:1411/.well-known/jwks.json",
+    )
+
+    with patch(
+        "oopsnote.api.auth._jwk_client",
+        side_effect=auth.jwt.PyJWKClientConnectionError("connection refused"),
+    ), pytest.raises(AuthenticationError) as error:
+        auth.authenticate_request(request, config)
+
+    assert error.value.status_code == 503
+    assert error.value.detail == "Authentication service is temporarily unavailable"
 
 
 def test_duplicate_candidates_merge_without_removing_source_task(tmp_path, monkeypatch):

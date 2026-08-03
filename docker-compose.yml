@@ -1,25 +1,20 @@
 services:
-  gateway:
-    image: nginx:1.27-alpine
-    ports:
-      - "8080:80"
-    volumes:
-      - ./deploy/gateway/nginx.conf:/etc/nginx/conf.d/default.conf:ro
-    depends_on:
-      backend:
-        condition: service_healthy
-      frontend:
-        condition: service_started
-    networks:
-      - public
-
   frontend:
     build:
       context: ./frontend
+      args:
+        OOPSNOTE_BACKEND_URL: http://backend:8000
+        NEXT_PUBLIC_OIDC_AUTHORITY: https://auth.alan-ztr.eu.org
+        NEXT_PUBLIC_OIDC_CLIENT_ID: abd3d0b3-46f3-4aaa-994c-1c9258c74c1e
+        NEXT_PUBLIC_OIDC_REDIRECT_URI: https://oopsnote.alan-ztr.eu.org/auth/callback
+        NEXT_PUBLIC_OIDC_POST_LOGOUT_REDIRECT_URI: https://oopsnote.alan-ztr.eu.org/
+        NEXT_PUBLIC_OIDC_SCOPE: openid profile email
     environment:
       NODE_ENV: production
+    ports:
+      - "127.0.0.1:13000:3000"
     networks:
-      - public
+      - app
 
   backend:
     build:
@@ -29,6 +24,9 @@ services:
       OOPSNOTE_STORAGE_DIR: /data
       OOPSNOTE_LATEX_RENDERER_URL: http://latex-renderer:8080
       OOPSNOTE_RPC_MAX_WORKERS: "1"
+      OOPSNOTE_AUTH_ISSUER: https://auth.alan-ztr.eu.org
+      OOPSNOTE_AUTH_AUDIENCE: abd3d0b3-46f3-4aaa-994c-1c9258c74c1e
+      OOPSNOTE_AUTH_JWKS_URL: http://pocket-id:1411/.well-known/jwks.json
     volumes:
       - oopsnote-data:/data
       - ./deploy/pi:/app/.pi:ro
@@ -37,13 +35,39 @@ services:
       latex-renderer:
         condition: service_healthy
     networks:
-      - public
+      - app
       - latex-internal
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')"]
       interval: 15s
       timeout: 5s
       retries: 5
+
+  pocket-id:
+    image: ghcr.io/pocket-id/pocket-id:v2.7.0
+    env_file:
+      - ./deploy/pocket-id/pocket-id.env
+    environment:
+      APP_URL: https://auth.alan-ztr.eu.org
+      ENCRYPTION_KEY_FILE: /run/secrets/pocket_id_encryption_key
+      TRUST_PROXY: "true"
+    secrets:
+      - pocket_id_encryption_key
+    ports:
+      - "127.0.0.1:14110:1411"
+    volumes:
+      - pocket-id-data:/app/data
+    restart: unless-stopped
+    mem_limit: 256m
+    pids_limit: 64
+    networks:
+      - app
+    healthcheck:
+      test: ["CMD", "/app/pocket-id", "healthcheck"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
 
   latex-renderer:
     build:
@@ -68,8 +92,13 @@ services:
 
 volumes:
   oopsnote-data:
+  pocket-id-data:
 
 networks:
-  public:
+  app:
   latex-internal:
     internal: true
+
+secrets:
+  pocket_id_encryption_key:
+    file: ./deploy/pocket-id/secrets/encryption_key

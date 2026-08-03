@@ -12,10 +12,12 @@ from pathlib import Path
 from typing import Any, Optional
 
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from oopsnote.ai import HermesRunner, PiRpcBackend, PiRpcRunner
+from oopsnote.api.auth import AuthenticationError, auth_config_from_env, authenticate_request
 from oopsnote.api.routes import batch, catalog, latex, papers, study, tasks
 from oopsnote.api.schemas import TagInput, TagRenameInput, UploadRequest
 from oopsnote.catalog import KNOWLEDGE_TAGS_PATH, KNOWLEDGE_TREES_PATH
@@ -486,6 +488,23 @@ async def lifespan(_: FastAPI):
 
 
 app = FastAPI(title="OopsNote", version="0.3.0", lifespan=lifespan)
+
+
+@app.middleware("http")
+async def oidc_authentication(request, call_next):
+    config = auth_config_from_env()
+    if (
+        not config.enabled
+        or request.url.path == "/health"
+    ):
+        return await call_next(request)
+    try:
+        request.state.auth = authenticate_request(request, config)
+    except AuthenticationError as error:
+        return JSONResponse(status_code=error.status_code, content={"detail": error.detail})
+    return await call_next(request)
+
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],

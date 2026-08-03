@@ -15,8 +15,9 @@ const nextConfig = {
   // Enable standalone output for production deployment
   output: 'standalone',
   async rewrites() {
-    // Use environment variable for backend URL, fallback to localhost
-    const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://127.0.0.1:8000';
+    // This is evaluated by Next.js on the server/build side. Keep the Docker
+    // service hostname out of browser-visible NEXT_PUBLIC_* configuration.
+    const backendUrl = process.env.OOPSNOTE_BACKEND_URL || 'http://127.0.0.1:8000';
     
     return [
       {

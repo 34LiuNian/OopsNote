@@ -15,6 +15,10 @@ oopsnote/storage/
 /deploy/pi-rust/sessions/
 /deploy/pi-rust/cache/
 
+# Server-only Pocket ID runtime secrets and state
+/deploy/pocket-id/pocket-id.env
+/deploy/pocket-id/secrets/
+
 # Temp files
 /_tmp/
 

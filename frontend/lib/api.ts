@@ -1,6 +1,8 @@
 // Use /api proxy to avoid CORS issues
 export const API_BASE = "/api";
 
+import { accessTokenOrRedirect } from "./auth";
+
 function directBackendBase(): string | null {
   const configured = process.env.NEXT_PUBLIC_BACKEND_URL;
   if (configured) return configured.replace(/\/$/, "");
@@ -35,6 +37,9 @@ function parseErrorMessage(rawText: string, status: number): string {
 
 export async function fetchApi(path: string, init?: ApiRequestInit): Promise<Response> {
   const headers = new Headers(init?.headers);
+  if (!init?.skipAuth) {
+    headers.set("Authorization", `Bearer ${await accessTokenOrRedirect()}`);
+  }
   return fetch(`${API_BASE}${path}`, {
     ...init,
     headers,
@@ -45,6 +50,9 @@ export async function fetchApi(path: string, init?: ApiRequestInit): Promise<Res
 // the request before forwarding it to FastAPI.
 export async function fetchRawUpload(path: string, init?: ApiRequestInit): Promise<Response> {
   const headers = new Headers(init?.headers);
+  if (!init?.skipAuth) {
+    headers.set("Authorization", `Bearer ${await accessTokenOrRedirect()}`);
+  }
   const base = directBackendBase() ?? API_BASE;
   return fetch(`${base}${path}`, {
     ...init,

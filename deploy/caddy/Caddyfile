@@ -1,0 +1,12 @@
+# Installed by 1Panel Caddy on the production host. Caddy owns all public
+# listeners and automatically obtains the origin certificates for these names.
+
+oopsnote.alan-ztr.eu.org {
+    encode zstd gzip
+    reverse_proxy 127.0.0.1:13000
+}
+
+auth.alan-ztr.eu.org {
+    encode zstd gzip
+    reverse_proxy 127.0.0.1:14110
+}

@@ -10,6 +10,7 @@ import {
 import { Sidebar } from "./Sidebar";
 import { MobileTabBar } from "./MobileTabBar";
 import { BackendStatus } from "../ui/BackendStatus";
+import { AccountMenu } from "./AccountMenu";
 import {
   SecondarySidebarProvider,
   type SecondarySidebarView,
@@ -127,6 +128,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           <Text className="oops-titlebar__mobile-brand">OopsNote</Text>
           <Box sx={{ display: "flex", alignItems: "center", gap: 3 }}>
             <BackendStatus />
+            <AccountMenu />
           </Box>
         </Box>
 
