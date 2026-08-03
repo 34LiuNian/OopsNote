@@ -16,7 +16,10 @@ from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from oopsnote.ai import HermesRunner, PiRpcBackend, PiRpcRunner
+from oopsnote.ai import HermesRunner, LangChainRunner, PiRpcBackend, PiRpcRunner
+from oopsnote.ai.langchain_tools import McpHttpToolClient
+from oopsnote.ai.providers import ProviderClientFactory
+from oopsnote.ai.secrets import WindowsCredentialManagerSecretStore
 from oopsnote.api.auth import AuthenticationError, auth_config_from_env, authenticate_request
 from oopsnote.api.routes import batch, catalog, latex, papers, study, tasks
 from oopsnote.api.schemas import TagInput, TagRenameInput, UploadRequest
@@ -40,10 +43,18 @@ from oopsnote.core import (
     TaskStore,
 )
 from oopsnote.mcp.http_runtime import SharedMcpHttpRuntime
-from oopsnote.mcp.ocr import close_ocr_client
+from oopsnote.mcp.ocr import clear_ocr_vault, close_ocr_client, configure_ocr_vault
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 STORAGE_DIR = Path(os.getenv("OOPSNOTE_STORAGE_DIR", str(PROJECT_ROOT / "storage")))
+_CORS_ORIGINS = [
+    origin.strip()
+    for origin in os.getenv(
+        "OOPSNOTE_CORS_ORIGINS",
+        "http://localhost:3000,http://127.0.0.1:3000",
+    ).split(",")
+    if origin.strip()
+]
 TASK_STORE = TaskStore(base_dir=STORAGE_DIR)
 TAG_STORE = TagStore(
     user_path=STORAGE_DIR / "settings" / "tags_user.json",
@@ -86,6 +97,26 @@ PI_RUNNER = PiRpcRunner(
     max_concurrent_tasks=int(APP_SETTINGS_STORE.get().get("pi_concurrency", os.getenv(
         "OOPSNOTE_RPC_MAX_WORKERS", os.getenv("OOPSNOTE_PI_MAX_CONCURRENT_TASKS", "3")
     ))),
+    **_runner_settings(),
+)
+
+
+def _langchain_provider_factory() -> ProviderClientFactory:
+    return ProviderClientFactory(WindowsCredentialManagerSecretStore())
+
+
+def _langchain_tool_client() -> McpHttpToolClient:
+    environment = MCP_HTTP_RUNTIME.start()
+    return McpHttpToolClient(environment["OOPSNOTE_MCP_URL"], environment["OOPSNOTE_MCP_TOKEN"])
+
+
+LANGCHAIN_RUNNER = LangChainRunner(
+    project_root=PROJECT_ROOT,
+    task_store=TASK_STORE,
+    run_store=RUN_STORE,
+    settings_store=APP_SETTINGS_STORE,
+    provider_factory=_langchain_provider_factory,
+    tool_client_factory=_langchain_tool_client,
     **_runner_settings(),
 )
 
@@ -462,15 +493,15 @@ def _problem_summary(task: TaskRecord, problem: Problem) -> dict[str, Any]:
 
 
 def _runner_for(backend: str):
-    runners = {"hermes": HERMES_RUNNER, "pi": PI_RUNNER}
+    runners = {"hermes": HERMES_RUNNER, "pi": PI_RUNNER, "langchain": LANGCHAIN_RUNNER}
     try:
         return runners[backend]
     except KeyError:
-        raise HTTPException(status_code=422, detail="backend must be pi or hermes")
+        raise HTTPException(status_code=422, detail="backend must be pi, langchain, or hermes")
 
 
 def _configured_backend(backend: Optional[str]) -> str:
-    return backend or os.getenv("OOPSNOTE_AI_BACKEND", "pi").strip().lower()
+    return backend or os.getenv("OOPSNOTE_AI_BACKEND", "langchain").strip().lower()
 
 
 def _run_managed(task_id: str, run_id: str, backend: str) -> None:
@@ -481,20 +512,34 @@ def _run_managed(task_id: str, run_id: str, backend: str) -> None:
 async def lifespan(_: FastAPI):
     HERMES_RUNNER.recover_orphaned_running()
     PI_RUNNER.recover_orphaned_running()
+    LANGCHAIN_RUNNER.recover_orphaned_running()
     HERMES_RUNNER.recover_stale()
     PI_RUNNER.recover_stale()
+    LANGCHAIN_RUNNER.recover_stale()
     PI_RUNNER.set_child_environment(MCP_HTTP_RUNTIME.start())
     HERMES_RUNNER.start_dispatcher()
     PI_RUNNER.start_dispatcher()
+    LANGCHAIN_RUNNER.start_dispatcher()
     HERMES_RUNNER.recover_queued()
     PI_RUNNER.recover_queued()
+    LANGCHAIN_RUNNER.recover_queued()
+    # New backends resolve OCR credentials from the vault. Legacy Pi remains
+    # compatible with .pi/extensions.json only until its explicit retirement.
+    ocr_profile_id = APP_SETTINGS_STORE.get().get("ocr_profile_id")
+    if isinstance(ocr_profile_id, str):
+        for profile in APP_SETTINGS_STORE.provider_profiles():
+            if profile.id == ocr_profile_id:
+                configure_ocr_vault(WindowsCredentialManagerSecretStore(), profile.credential_ref, model=profile.model, endpoint=str(profile.base_url))
+                break
     try:
         yield
     finally:
         HERMES_RUNNER.shutdown_dispatcher()
         PI_RUNNER.shutdown_dispatcher()
+        LANGCHAIN_RUNNER.shutdown_dispatcher()
         PI_RUNNER.shutdown()
         MCP_HTTP_RUNTIME.shutdown()
+        clear_ocr_vault()
         close_ocr_client()
 
 
@@ -518,7 +563,7 @@ async def oidc_authentication(request, call_next):
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_CORS_ORIGINS,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -552,6 +597,7 @@ __all__ = [
     "BATCH_SESSION_STORE",
     "HERMES_RUNNER",
     "PI_RUNNER",
+    "LANGCHAIN_RUNNER",
     "PAPER_DRAFT_STORE",
     "PROBLEM_MERGE_STORE",
     "RUN_STORE",

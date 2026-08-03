@@ -9,12 +9,13 @@ from __future__ import annotations
 
 import subprocess
 
-from oopsnote.ai.backends import HermesRunner, PiRpcBackend, PiRpcRunner
+from oopsnote.ai.backends import HermesRunner, LangChainRunner, PiRpcBackend, PiRpcRunner
 from oopsnote.ai.managed import AgentBackend, ManagedAiRunner
 
 __all__ = [
     "AgentBackend",
     "HermesRunner",
+    "LangChainRunner",
     "ManagedAiRunner",
     "PiRpcBackend",
     "PiRpcRunner",

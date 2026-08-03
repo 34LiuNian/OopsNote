@@ -92,3 +92,43 @@ def authenticate_request(request: Request, config: AuthConfig) -> AuthenticatedU
     if not subject:
         raise AuthenticationError("Token is missing subject")
     return AuthenticatedUser(subject=subject, claims=claims)
+
+
+def _claim_values(claims: dict[str, Any]) -> set[str]:
+    """Normalize the common OIDC role/group claim shapes."""
+    values: set[str] = set()
+    for key in ("role", "roles", "groups"):
+        value = claims.get(key)
+        if isinstance(value, str):
+            values.add(value)
+        elif isinstance(value, list):
+            values.update(item for item in value if isinstance(item, str))
+    realm_access = claims.get("realm_access")
+    if isinstance(realm_access, dict):
+        value = realm_access.get("roles")
+        if isinstance(value, list):
+            values.update(item for item in value if isinstance(item, str))
+    return {value.strip() for value in values if value.strip()}
+
+
+def require_admin_request(request: Request) -> AuthenticatedUser | None:
+    """Authorize privileged settings at the API boundary.
+
+    When OIDC is disabled OopsNote is explicitly local-only and loopback is the
+    administrator. Once OIDC is enabled, a verified token must carry a role in
+    ``OOPSNOTE_ADMIN_ROLES`` (default: ``admin``) or a configured subject.
+    """
+    config = auth_config_from_env()
+    if not config.enabled:
+        host = (request.client.host if request.client else "").strip().lower()
+        if host not in {"127.0.0.1", "::1", "localhost", "testclient"}:
+            raise AuthenticationError("Administrator access requires OIDC outside loopback", status_code=403)
+        return None
+    user = getattr(request.state, "auth", None)
+    if not isinstance(user, AuthenticatedUser):
+        raise AuthenticationError("Missing authenticated user")
+    subjects = {value.strip() for value in os.getenv("OOPSNOTE_ADMIN_SUBJECTS", "").split(",") if value.strip()}
+    roles = {value.strip() for value in os.getenv("OOPSNOTE_ADMIN_ROLES", "admin").split(",") if value.strip()}
+    if user.subject in subjects or _claim_values(user.claims).intersection(roles):
+        return user
+    raise AuthenticationError("Administrator role is required", status_code=403)

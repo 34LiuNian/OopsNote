@@ -64,5 +64,6 @@ export const queryKeys = {
     debug: () => [...queryKeys.settings.all, 'debug'] as const,
     systemInfo: () => [...queryKeys.settings.all, 'systemInfo'] as const,
     pi: () => [...queryKeys.settings.all, 'pi'] as const,
+    aiProfiles: () => [...queryKeys.settings.all, 'aiProfiles'] as const,
   },
 };

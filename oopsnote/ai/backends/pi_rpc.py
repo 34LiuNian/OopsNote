@@ -222,7 +222,7 @@ class PiRpcRunner(ManagedAiRunner):
                 self._idle_workers.put(worker)
         # Retry only after releasing the serial worker slot. The retry is a
         # fresh managed run and receives another clean Pi session.
-        self._retry_if_eligible(task_id, run_id)
+        self.retry_if_eligible(task_id, run_id)
 
     @contextmanager
     def _mcp_cache_lock(self):
@@ -469,6 +469,7 @@ class PiRpcRunner(ManagedAiRunner):
         log_path = self.run_store.base_dir / f"{run_id}.log"
         rpc_path = self.run_store.base_dir / f"{run_id}.rpc.jsonl"
         process: Optional[subprocess.Popen[str]] = None
+        control = None
         peak_memory_bytes: Optional[int] = None
         started = time.monotonic()
         last_heartbeat = started
@@ -497,7 +498,7 @@ class PiRpcRunner(ManagedAiRunner):
                 if task.status == TaskStatus.CANCELLED or run.status == RunStatus.CANCELLED:
                     return
                 with self._lock:
-                    self._processes[task_id] = process
+                    control = self._register_process(task_id, process)
                 self.run_store.start(
                     run_id,
                     process.pid,
@@ -727,9 +728,8 @@ class PiRpcRunner(ManagedAiRunner):
                     )
                 except KeyError:
                     pass
-            with self._lock:
-                if self._processes.get(task_id) is process:
-                    self._processes.pop(task_id, None)
+            if control is not None:
+                self._clear_control(task_id, control)
 
     def cancel(self, task_id: str) -> None:
         with self._lock:
@@ -739,28 +739,9 @@ class PiRpcRunner(ManagedAiRunner):
                 self._send(process, None, {"type": "abort"})
             except (BrokenPipeError, OSError):
                 pass
-        active = self.run_store.active_for_task(task_id)
-        if active:
-            self.task_store.transition(
-                task_id,
-                expected_statuses={TaskStatus.PROCESSING},
-                expected_active_run_id=active.id,
-                status=TaskStatus.CANCELLED,
-                active_run_id=None,
-                last_error=None,
-                last_error_code=None,
-            )
-            self.run_store.finish(active.id, RunStatus.CANCELLED)
-        else:
-            self.task_store.transition(
-                task_id,
-                expected_statuses={TaskStatus.PENDING},
-                expected_active_run_id=None,
-                status=TaskStatus.CANCELLED,
-                active_run_id=None,
-                last_error=None,
-                last_error_code=None,
-            )
+        # A pooled RPC worker stays alive; the protocol aborts only this run.
+        # Terminal state still goes through the shared lifecycle helper.
+        self._mark_cancelled(task_id)
 
     def shutdown(self) -> None:
         """Stop every pooled RPC process when the application exits."""
@@ -1005,15 +986,8 @@ class PiRpcRunner(ManagedAiRunner):
             )
 
     def _retry_if_eligible(self, task_id: str, run_id: str) -> None:
-        """Retry transport failures in a fresh Pi run, never via Hermes."""
-        completed = self.run_store.get(run_id)
-        if not completed.retryable or completed.retry_count >= 2:
-            return
-        task = self.task_store.get(task_id)
-        if task.status != TaskStatus.FAILED or task.active_run_id:
-            return
-        retry = self.enqueue(task_id, retry_of=completed)
-        self.run(task_id, retry.id)
+        """Compatibility alias for callers of the former Pi-specific API."""
+        self.retry_if_eligible(task_id, run_id, execute_inline=True)
 
 
 __all__ = ["PiRpcBackend", "PiRpcRunner"]

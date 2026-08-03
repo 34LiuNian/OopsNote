@@ -17,6 +17,7 @@ export type AuthUser = {
   displayName: string;
   email: string | null;
   picture: string | null;
+  roles: string[];
 };
 
 type SessionRecord = {
@@ -114,7 +115,18 @@ function userFromUserInfo(payload: unknown): AuthUser {
     displayName,
     email,
     picture: optionalString(claims.picture),
+    roles: [
+      ...(Array.isArray(claims.roles) ? claims.roles.filter((value): value is string => typeof value === "string") : []),
+      ...(typeof claims.role === "string" ? [claims.role] : []),
+      ...(Array.isArray((claims.realm_access as { roles?: unknown } | undefined)?.roles) ? ((claims.realm_access as { roles: unknown[] }).roles.filter((value): value is string => typeof value === "string")) : []),
+    ],
   };
+}
+
+export function isAdminUser(user: AuthUser | null): boolean {
+  if (!user) return false;
+  const configured = (process.env.NEXT_PUBLIC_ADMIN_ROLES || "admin").split(",").map((value) => value.trim()).filter(Boolean);
+  return (user.roles ?? []).some((role) => configured.includes(role));
 }
 
 async function fetchUserInfo(accessToken: string): Promise<AuthUser> {

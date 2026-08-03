@@ -130,6 +130,40 @@ def test_task_routes_accept_verified_bearer_token_when_oidc_is_configured():
     assert response.status_code == 200
 
 
+def test_provider_settings_require_an_administrator_role_when_oidc_is_enabled():
+    ordinary = AuthenticatedUser(subject="user-1", claims={"sub": "user-1", "roles": ["student"]})
+    admin = AuthenticatedUser(subject="admin-1", claims={"sub": "admin-1", "roles": ["admin"]})
+    environment = {
+        "OOPSNOTE_AUTH_ISSUER": "https://auth.example.com",
+        "OOPSNOTE_AUTH_AUDIENCE": "client-id",
+    }
+    with patch.dict("os.environ", environment, clear=False), patch(
+        "oopsnote.api.main.authenticate_request", return_value=ordinary
+    ):
+        rejected = TestClient(main.app).get(
+            "/settings/provider-profiles", headers={"Authorization": "Bearer test-token"}
+        )
+    with patch.dict("os.environ", environment, clear=False), patch(
+        "oopsnote.api.main.authenticate_request", return_value=admin
+    ):
+        allowed = TestClient(main.app).get(
+            "/settings/provider-profiles", headers={"Authorization": "Bearer test-token"}
+        )
+
+    assert rejected.status_code == 403
+    assert rejected.json()["detail"] == "Administrator role is required"
+    assert allowed.status_code == 200
+
+
+def test_cors_does_not_allow_an_arbitrary_origin():
+    response = TestClient(main.app).options(
+        "/settings/provider-profiles",
+        headers={"Origin": "https://attacker.example", "Access-Control-Request-Method": "GET"},
+    )
+
+    assert response.headers.get("access-control-allow-origin") is None
+
+
 def test_authentication_uses_explicit_jwks_url_when_configured():
     with patch.dict(
         "os.environ",

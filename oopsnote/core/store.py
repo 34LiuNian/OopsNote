@@ -269,6 +269,7 @@ class RunStore:
         runtime_version: Optional[str] = None,
         provider: Optional[str] = None,
         model: Optional[str] = None,
+        provider_profile_snapshot: Optional[dict[str, Any]] = None,
         retry_of: Optional[TaskRun] = None,
     ) -> TaskRun:
         with self._lock:
@@ -283,6 +284,7 @@ class RunStore:
                 runtime_version=runtime_version,
                 provider=provider,
                 model=model,
+                provider_profile_snapshot=provider_profile_snapshot,
                 retry_count=(retry_of.retry_count + 1 if retry_of else 0),
                 retry_of_run_id=(retry_of.id if retry_of else None),
                 retry_root_run_id=(

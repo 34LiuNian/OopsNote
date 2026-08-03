@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import subprocess
 import threading
 from abc import ABC, abstractmethod
 from datetime import datetime, timedelta, timezone
@@ -10,6 +9,7 @@ from pathlib import Path
 from typing import Any, Optional, Protocol
 
 from oopsnote.ai.dispatcher import ManagedTaskDispatcher
+from oopsnote.ai.run_control import ActiveRunControl, ProcessRunControl
 from oopsnote.core import RunStatus, RunStore, StateConflict, TaskRun, TaskStage, TaskStatus, TaskStore
 
 
@@ -61,7 +61,10 @@ class ManagedAiRunner(ABC):
         self.stale_seconds = max(1, stale_seconds)
         self.heartbeat_seconds = max(0.05, heartbeat_seconds)
         self.poll_seconds = max(0.05, poll_seconds)
-        self._processes: dict[str, subprocess.Popen[Any]] = {}
+        self._active_controls: dict[str, ActiveRunControl] = {}
+        # Kept as a compatibility view for process backends and old local
+        # diagnostics. Lifecycle decisions use _active_controls exclusively.
+        self._processes: dict[str, Any] = {}
         self._lock = threading.RLock()
         worker_count = max(1, int(getattr(self, "max_concurrent_tasks", 1)))
         self._dispatcher = ManagedTaskDispatcher(self, worker_count)
@@ -169,9 +172,13 @@ class ManagedAiRunner(ABC):
 
     def cancel(self, task_id: str) -> None:
         with self._lock:
-            process = self._processes.get(task_id)
-        if process and process.poll() is None:
-            self._terminate(process)
+            control = self._active_controls.get(task_id)
+        if control and control.is_active():
+            control.cancel()
+        self._mark_cancelled(task_id, control.exit_code if control else None)
+
+    def _mark_cancelled(self, task_id: str, exit_code: Optional[int] = None) -> None:
+        """Apply the shared cancellation terminal transition."""
         active = self.run_store.active_for_task(task_id)
         if active:
             self.task_store.transition(
@@ -186,7 +193,7 @@ class ManagedAiRunner(ABC):
             self.run_store.finish(
                 active.id,
                 RunStatus.CANCELLED,
-                exit_code=process.poll() if process else None,
+                exit_code=exit_code,
             )
         else:
             self.task_store.transition(
@@ -216,7 +223,7 @@ class ManagedAiRunner(ABC):
                 locally_managed = (
                     task is not None
                     and task.active_run_id == run.id
-                    and run.task_id in self._processes
+                    and run.task_id in self._active_controls
                 )
             if locally_managed or run.heartbeat_at >= cutoff:
                 continue
@@ -368,6 +375,31 @@ class ManagedAiRunner(ABC):
                 retryable=self.is_retryable_error(error_code, message),
             )
 
+    def retry_if_eligible(
+        self,
+        task_id: str,
+        run_id: str,
+        *,
+        execute_inline: bool = False,
+    ) -> Optional[TaskRun]:
+        """Schedule a bounded fresh retry under the same managed backend.
+
+        The failed run remains terminal evidence. This never switches provider
+        or backend and never retries deterministic validation/state failures.
+        """
+        completed = self.run_store.get(run_id)
+        if not completed.retryable or completed.retry_count >= 2:
+            return None
+        task = self.task_store.get(task_id)
+        if task.status != TaskStatus.FAILED or task.active_run_id:
+            return None
+        retry = self.enqueue(task_id, retry_of=completed)
+        if execute_inline:
+            self.run(task_id, retry.id)
+        else:
+            self._dispatcher.schedule(task_id, retry.id)
+        return retry
+
     @staticmethod
     def is_retryable_error(
         error_code: Optional[str],
@@ -382,14 +414,34 @@ class ManagedAiRunner(ABC):
         del message
         return (error_code or "").lower() in ManagedAiRunner._RETRYABLE_ERROR_CODES
 
+    def _register_process(self, task_id: str, process: Any) -> ProcessRunControl:
+        """Register legacy process execution through the neutral control API."""
+        control = ProcessRunControl(process)
+        with self._lock:
+            self._active_controls[task_id] = control
+            self._processes[task_id] = process
+        return control
+
+    def _register_control(self, task_id: str, control: ActiveRunControl) -> None:
+        with self._lock:
+            self._active_controls[task_id] = control
+
+    def _clear_control(self, task_id: str, control: ActiveRunControl) -> None:
+        with self._lock:
+            if self._active_controls.get(task_id) is control:
+                self._active_controls.pop(task_id, None)
+            process = getattr(control, "process", None)
+            if self._processes.get(task_id) is process:
+                self._processes.pop(task_id, None)
+
     @staticmethod
-    def _terminate(process: subprocess.Popen[Any]) -> None:
-        process.terminate()
-        try:
-            process.wait(timeout=5)
-        except subprocess.TimeoutExpired:
-            process.kill()
-            process.wait(timeout=5)
+    def _terminate(process: Any) -> None:
+        """Compatibility helper for process-runtime internals.
+
+        Managed cancellation itself is control-based; this remains for worker
+        replacement where there is no task lifecycle transition to perform.
+        """
+        ProcessRunControl(process).cancel()
 
 
 __all__ = ["AgentBackend", "ManagedAiRunner"]

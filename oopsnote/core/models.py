@@ -259,6 +259,9 @@ class TaskRun(BaseModel):
     worker_id: Optional[str] = None
     provider: Optional[str] = None
     model: Optional[str] = None
+    # Immutable, non-secret provider metadata selected at admission.  The
+    # credential reference is opaque; secret material never enters a TaskRun.
+    provider_profile_snapshot: Optional[dict[str, Any]] = None
     input_tokens: Optional[int] = None
     output_tokens: Optional[int] = None
     cache_tokens: Optional[int] = None

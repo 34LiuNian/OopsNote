@@ -13,6 +13,8 @@ dependencies = [
     "pillow>=11.0",
     "pymupdf>=1.26",
     "pyyaml>=6.0",
+    "langchain-core>=1.0",
+    "langchain-openai>=1.0",
 ]
 
 [project.optional-dependencies]
@@ -28,7 +30,7 @@ build-backend = "setuptools.build_meta"
 include = ["oopsnote*"]
 
 [tool.setuptools.package-data]
-oopsnote = ["catalog/data/*.json", "paper/templates/*.tex"]
+oopsnote = ["catalog/data/*.json", "mcp/*.json", "paper/templates/*.tex"]
 
 [dependency-groups]
 dev = [

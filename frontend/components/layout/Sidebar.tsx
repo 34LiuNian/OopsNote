@@ -8,8 +8,11 @@ import {
   ChecklistIcon,
   ScanIcon,
   GearIcon,
+  CpuIcon,
 } from "@/components/ui/icons";
 import Link from "next/link";
+import { useAuth } from "@/components/providers/AuthProvider";
+import { isAdminUser } from "@/lib/auth";
 
 const NAV_ITEMS = [
   { href: "/", label: "新建题目", icon: PlusIcon, section: "main" },
@@ -19,6 +22,7 @@ const NAV_ITEMS = [
   { href: "/paper-builder", label: "快速重练", icon: BookIcon, section: "main" },
   { href: "/debug", label: "渲染调试", icon: BookIcon, section: "tools" },
   { href: "/settings", label: "设置", icon: GearIcon, section: "tools" },
+  { href: "/settings/providers", label: "AI Provider", icon: CpuIcon, section: "tools" },
 ];
 
 function NavigationItems({
@@ -31,9 +35,10 @@ function NavigationItems({
   ariaLabel: string;
 }) {
   const pathname = usePathname();
+  const { user } = useAuth();
 
   const mainItems = NAV_ITEMS.filter((i) => i.section === "main");
-  const toolItems = NAV_ITEMS.filter((i) => i.section === "tools");
+  const toolItems = NAV_ITEMS.filter((i) => i.section === "tools" && (i.href !== "/settings/providers" || isAdminUser(user)));
 
   const isActive = (href: string) => {
     if (href === "/") return pathname === "/";

@@ -1,7 +1,7 @@
 # OopsNote architecture
 
-状态：当前实现基线
-更新：2026-07-24
+状态：LangChain 迁移中
+更新：2026-08-03
 
 ## 1. 产品边界
 
@@ -18,19 +18,17 @@ FastAPI
    | enqueue / run / cancel / retry / recover_stale
 ManagedAiRunner
    |-------------------------|
-PiRpcRunner                         HermesRunner
-pi_agent_rust (default)             (temporary fallback)
-upstream Pi (diagnostic fallback)
+LangChainRunner (default)       PiRpcRunner / HermesRunner
+explicit provider + 24 turns    diagnostic / migration only
    |
-bounded pool of 3 long-lived serial JSONL RPC workers
-   `-- explicit 9-tool bridge -> restricted Python MCP
-                                 |-- ocr_image -> DashScope vision model
-                                 `-- pipeline tools -> Core stores
+ProviderClientFactory -> Windows Credential Manager SecretStore
+   |
+restricted MCP HTTP -> OCR + pipeline tools -> Core stores
 ```
 
 共享生命周期只由 `ManagedAiRunner` 管理：run 所有权、heartbeat、timeout、abort、陈旧任务恢复、日志、重试资格和 finalize 后检查。Backend 只负责具体进程协议。
 
-默认运行时是锁定到 v0.1.22 的 `pi_agent_rust`。它使用 `--no-tools --no-extensions --no-skills` 启动，只显式加载项目的 8 工具桥；每个进程长期存活并串行处理任务，每个任务前必须等待 `new_session` 成功。上游 Pi 保留为诊断回退，但同一 run 绝不自动切换运行时。OMP 适配器、项目配置、本地二进制与缓存均已删除，`.omp/` 不再属于项目结构。
+默认运行时是 LangChain 的显式 provider adapter。每次 run 固定其 profile snapshot，solver 与 verifier 使用独立上下文，最多 24 轮受限 MCP tool loop。Pi 与 Hermes 仅可由显式 backend 选择用于诊断，任一 run 都不得自动切换。
 
 正常任务复用三个有界 worker 进程。超时、session 重置失败或异常退出只销毁对应 worker；取消通过 RPC `abort` 完成，不关闭健康 worker。持久化队列先写入 `TaskRun`，应用重启后恢复 `queued` run，遗失的 `running` run 以 fresh retry 处理。
 
@@ -77,7 +75,7 @@ OCR / AI / manual edit -> OopsMark v1 -> Web renderer
 
 ## 6. 配置与密钥
 
-仓库跟踪 `.pi-rust` 的运行配置示例和受限桥源码。本机二进制、运行配置、session 与认证位于忽略的 `.pi-rust/`；OCR 密钥与模型继续以 `.pi/extensions.json` 作为唯一的本地配置源。`setup_pi_rust.py --sync` 把兼容的 Pi `auth.json` 复制到独立的 `.pi-rust/agent/`，两个运行时不会共享可变会话或缓存。
+AppSettings 只保存非敏感 provider profile 与 opaque credential reference。密钥位于 Windows Credential Manager，绝不写入 `storage/`、TaskRun、日志、环境变量或 REST 响应。`.pi/extensions.json` 只为显式旧 Pi 后端保留；LangChain 与 OCR 不会把它作为 vault 失败的回退。
 
 `.pi/skills/` 是 `skills/` 的生成镜像。修改 skill 后运行 `scripts/setup/setup_pi.py --sync`。
 

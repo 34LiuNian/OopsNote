@@ -58,6 +58,7 @@ class HermesRunner(ManagedAiRunner):
     def run(self, task_id: str, run_id: str) -> None:
         log_path = self.run_store.base_dir / f"{run_id}.log"
         process: Optional[subprocess.Popen[bytes]] = None
+        control = None
         peak_memory_bytes: Optional[int] = None
         started = time.monotonic()
         last_heartbeat = started
@@ -79,7 +80,7 @@ class HermesRunner(ManagedAiRunner):
                     creationflags=creationflags,
                 )
                 with self._lock:
-                    self._processes[task_id] = process
+                    control = self._register_process(task_id, process)
                 self.run_store.start(run_id, process.pid, f"runs/{log_path.name}")
                 peak_memory_bytes = process_working_set_bytes(process.pid)
                 self._set_stage(
@@ -91,7 +92,7 @@ class HermesRunner(ManagedAiRunner):
 
                 while process.poll() is None:
                     if time.monotonic() - started >= self.timeout_seconds:
-                        self._terminate(process)
+                        control.cancel()
                         message = f"Hermes exceeded {self.timeout_seconds}s timeout"
                         try:
                             self.task_store.transition(
@@ -219,9 +220,8 @@ class HermesRunner(ManagedAiRunner):
                     self.run_store.update(run_id, peak_memory_bytes=peak_memory_bytes)
                 except KeyError:
                     pass
-            with self._lock:
-                if self._processes.get(task_id) is process:
-                    self._processes.pop(task_id, None)
+            if control is not None:
+                self._clear_control(task_id, control)
 
 
 __all__ = ["HermesRunner"]

@@ -16,6 +16,7 @@ import httpx
 
 from oopsnote.core import OcrPrintedContext, RunArtifact, StateConflict, TaskStage, TaskStatus
 from oopsnote.mcp.ocr_contract import OCR_INSTRUCTION, normalize_ocr_result
+from oopsnote.ai.secrets import SecretStore, SecretNotFoundError
 
 
 MAX_IMAGE_BYTES = 12 * 1024 * 1024
@@ -27,6 +28,9 @@ _OCR_CLIENT_LOCK = threading.Lock()
 _OCR_RESULT_LOCK = threading.Lock()
 _OCR_RESULTS: OrderedDict[tuple[str, str, str], dict[str, Any]] = OrderedDict()
 _OCR_RESULT_LIMIT = 128
+_VAULT_SECRET_STORE: SecretStore | None = None
+_VAULT_CREDENTIAL_REF: str | None = None
+_VAULT_OCR_CONFIG: dict[str, Any] = {}
 
 
 class OcrProviderError(RuntimeError):
@@ -58,7 +62,33 @@ def close_ocr_client() -> None:
         _OCR_RESULTS.clear()
 
 
+def configure_ocr_vault(secret_store: SecretStore, credential_ref: str, *, model: str, endpoint: str | None = None) -> None:
+    """Configure OCR to resolve credentials from the OopsNote vault."""
+    global _VAULT_SECRET_STORE, _VAULT_CREDENTIAL_REF, _VAULT_OCR_CONFIG
+    _VAULT_SECRET_STORE = secret_store
+    _VAULT_CREDENTIAL_REF = credential_ref
+    _VAULT_OCR_CONFIG = {"model": model, **({"endpoint": endpoint} if endpoint else {})}
+
+
+def clear_ocr_vault() -> None:
+    """Clear process-local vault wiring during application shutdown or tests."""
+    global _VAULT_SECRET_STORE, _VAULT_CREDENTIAL_REF, _VAULT_OCR_CONFIG
+    _VAULT_SECRET_STORE = None
+    _VAULT_CREDENTIAL_REF = None
+    _VAULT_OCR_CONFIG = {}
+
+
+def ocr_vault_is_configured() -> bool:
+    return _VAULT_SECRET_STORE is not None and bool(_VAULT_CREDENTIAL_REF)
+
+
 def _load_ocr_config() -> dict[str, Any]:
+    if _VAULT_SECRET_STORE is not None and _VAULT_CREDENTIAL_REF:
+        try:
+            secret = _VAULT_SECRET_STORE.get(_VAULT_CREDENTIAL_REF)
+        except SecretNotFoundError as error:
+            raise RuntimeError("OCR credential reference is unavailable") from error
+        return {**_VAULT_OCR_CONFIG, "dashscope_api_key": secret}
     configured = os.getenv("OOPSNOTE_OCR_CONFIG")
     path = (
         Path(configured)
@@ -229,4 +259,4 @@ def ocr_image(task_id: str, run_id: str) -> dict[str, Any]:
     return result
 
 
-__all__ = ["OCR_ENDPOINT", "OcrProviderError", "close_ocr_client", "ocr_image"]
+__all__ = ["OCR_ENDPOINT", "OcrProviderError", "clear_ocr_vault", "close_ocr_client", "configure_ocr_vault", "ocr_image", "ocr_vault_is_configured"]
