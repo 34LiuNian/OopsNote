@@ -151,6 +151,8 @@ def test_task_routes_accept_verified_bearer_token_when_oidc_is_configured():
 
 
 def test_provider_settings_require_an_administrator_role_when_oidc_is_enabled():
+    from oopsnote.ai.secrets import MemorySecretStore
+
     ordinary = AuthenticatedUser(subject="user-1", claims={"sub": "user-1", "roles": ["student"]})
     admin = AuthenticatedUser(subject="admin-1", claims={"sub": "admin-1", "roles": ["admin"]})
     environment = {
@@ -159,13 +161,13 @@ def test_provider_settings_require_an_administrator_role_when_oidc_is_enabled():
     }
     with patch.dict("os.environ", environment, clear=False), patch(
         "oopsnote.api.main.authenticate_request", return_value=ordinary
-    ):
+    ), patch("oopsnote.api.main.get_secret_store", return_value=MemorySecretStore()):
         rejected = TestClient(main.app).get(
             "/settings/provider-profiles", headers={"Authorization": "Bearer test-token"}
         )
     with patch.dict("os.environ", environment, clear=False), patch(
         "oopsnote.api.main.authenticate_request", return_value=admin
-    ):
+    ), patch("oopsnote.api.main.get_secret_store", return_value=MemorySecretStore()):
         allowed = TestClient(main.app).get(
             "/settings/provider-profiles", headers={"Authorization": "Bearer test-token"}
         )
@@ -795,7 +797,7 @@ def test_batch_process_renders_all_pending_segments_and_enqueues_once(tmp_path, 
         BatchSessionStore(storage / "settings" / "batch_sessions.json"),
     )
     monkeypatch.setattr(main, "BATCH_PROCESS_JOB_STORE", BatchProcessJobStore(storage / "batch_jobs"))
-    monkeypatch.setattr(main, "PI_RUNNER", runner)
+    monkeypatch.setattr(main, "_runner_for", lambda _backend: runner)
     client = TestClient(main.app)
 
     document = pymupdf.open()
@@ -946,7 +948,7 @@ def test_batch_process_marks_invalid_question_numbers_for_review_and_queues_vali
     monkeypatch.setattr(main, "TAG_STORE", TagStore(storage / "settings" / "tags.json"))
     monkeypatch.setattr(main, "BATCH_SESSION_STORE", BatchSessionStore(storage / "settings" / "batch_sessions.json"))
     monkeypatch.setattr(main, "BATCH_PROCESS_JOB_STORE", BatchProcessJobStore(storage / "batch_jobs"))
-    monkeypatch.setattr(main, "PI_RUNNER", runner)
+    monkeypatch.setattr(main, "_runner_for", lambda _backend: runner)
     client = TestClient(main.app)
     image = base64.b64decode(
         "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
@@ -997,7 +999,7 @@ def test_process_endpoint_creates_observable_run(tmp_path, monkeypatch):
     monkeypatch.setattr(main, "STORAGE_DIR", storage)
     monkeypatch.setattr(main, "TASK_STORE", task_store)
     monkeypatch.setattr(main, "RUN_STORE", run_store)
-    monkeypatch.setattr(main, "HERMES_RUNNER", runner)
+    monkeypatch.setattr(main, "_runner_for", lambda _backend: runner)
 
     def fake_run(task_id, run_id):
         task_store.update(task_id, status=TaskStatus.COMPLETED, active_run_id=None)

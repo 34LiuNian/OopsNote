@@ -13,7 +13,7 @@ export function useAiProviderMutations() {
   const refresh = () => queryClient.invalidateQueries({ queryKey: queryKeys.settings.aiProfiles() });
   return {
     create: useMutation({ mutationFn: createAiProfile, onSuccess: refresh }),
-    rotate: useMutation({ mutationFn: ({ profileId, secret }: { profileId: string; secret: string }) => rotateAiCredential(profileId, secret), onSuccess: refresh }),
+    rotate: useMutation({ mutationFn: ({ profileId, secret, provider, model, base_url }: { profileId: string; secret: string; provider: string; model: string; base_url: string }) => rotateAiCredential(profileId, { secret, provider, model, base_url }), onSuccess: refresh }),
     activate: useMutation({ mutationFn: activateAiProfile, onSuccess: refresh }),
     activateOcr: useMutation({ mutationFn: activateOcrProfile, onSuccess: refresh }),
   };

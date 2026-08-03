@@ -72,6 +72,11 @@ class ManagedAiRunner(ABC):
     def _run_metadata(self) -> dict[str, Any]:
         return {}
 
+    def _retry_run_metadata(self, previous: TaskRun) -> dict[str, Any]:
+        """Return immutable metadata for a fresh retry of the same execution choice."""
+        del previous
+        return self._run_metadata()
+
     def enqueue(
         self,
         task_id: str,
@@ -89,11 +94,16 @@ class ManagedAiRunner(ABC):
                 raise RuntimeError(f"Task already has active run {active.id}")
             if task.status == TaskStatus.PROCESSING:
                 raise RuntimeError("Task is already processing without a managed run")
+            metadata = (
+                self._retry_run_metadata(retry_of)
+                if retry_of is not None
+                else self._run_metadata()
+            )
             run = self.run_store.create(
                 task_id,
                 backend=self.backend_name,
                 retry_of=retry_of,
-                **self._run_metadata(),
+                **metadata,
             )
             try:
                 self.task_store.transition(

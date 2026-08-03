@@ -27,15 +27,32 @@ class AppSettingsStore:
         with self._lock:
             current = self.get()
             current.update(values)
-            self.path.parent.mkdir(parents=True, exist_ok=True)
-            temp = self.path.with_name(f"{self.path.name}.{uuid4().hex}.tmp")
-            try:
-                temp.write_text(json.dumps(current, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-                temp.replace(self.path)
-            finally:
-                if temp.exists():
-                    temp.unlink()
+            self._write(current)
             return current
+
+    def _write(self, current: dict[str, Any]) -> None:
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        temp = self.path.with_name(f"{self.path.name}.{uuid4().hex}.tmp")
+        try:
+            temp.write_text(json.dumps(current, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+            temp.replace(self.path)
+        finally:
+            if temp.exists():
+                temp.unlink()
+
+    @staticmethod
+    def _upsert_profile(current: dict[str, Any], profile: Any) -> None:
+        from oopsnote.ai.providers import ProviderProfile
+
+        profiles = [ProviderProfile.model_validate(item) for item in current.get("provider_profiles", [])]
+        for existing in profiles:
+            if existing.id == profile.id and existing.version > profile.version:
+                raise ValueError("provider profile version cannot move backwards")
+            if existing.id == profile.id and existing.version == profile.version and existing != profile:
+                raise ValueError("provider profile changes require a new version")
+        profiles = [item for item in profiles if item.id != profile.id]
+        profiles.append(profile)
+        current["provider_profiles"] = [item.model_dump(mode="json") for item in profiles]
 
     def provider_profiles(self) -> list[Any]:
         """Read the one authoritative non-secret provider profile collection."""
@@ -48,25 +65,26 @@ class AppSettingsStore:
 
     def upsert_provider_profile(self, profile: Any) -> Any:
         """Atomically replace one immutable profile version by id/version."""
-        from oopsnote.ai.providers import ProviderProfile
-
         with self._lock:
             current = self.get()
-            profiles = [ProviderProfile.model_validate(item) for item in current.get("provider_profiles", [])]
-            for existing in profiles:
-                if existing.id == profile.id and existing.version > profile.version:
-                    raise ValueError("provider profile version cannot move backwards")
-                if existing.id == profile.id and existing.version == profile.version and existing != profile:
-                    raise ValueError("provider profile changes require a new version")
-            profiles = [item for item in profiles if item.id != profile.id]
-            profiles.append(profile)
-            current["provider_profiles"] = [item.model_dump(mode="json") for item in profiles]
-            self.path.parent.mkdir(parents=True, exist_ok=True)
-            temp = self.path.with_name(f"{self.path.name}.{uuid4().hex}.tmp")
-            try:
-                temp.write_text(json.dumps(current, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-                temp.replace(self.path)
-            finally:
-                if temp.exists():
-                    temp.unlink()
+            self._upsert_profile(current, profile)
+            self._write(current)
+            return profile
+
+    def activate_provider_profile(self, profile: Any) -> Any:
+        """Atomically persist one validated profile version and select it."""
+        with self._lock:
+            current = self.get()
+            self._upsert_profile(current, profile)
+            current["ai_provider_profile_id"] = profile.id
+            self._write(current)
+            return profile
+
+    def activate_ocr_profile(self, profile: Any) -> Any:
+        """Atomically persist one validated profile version and select it for OCR."""
+        with self._lock:
+            current = self.get()
+            self._upsert_profile(current, profile)
+            current["ocr_profile_id"] = profile.id
+            self._write(current)
             return profile

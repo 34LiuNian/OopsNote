@@ -15,7 +15,9 @@ import sys
 from pathlib import Path
 
 from oopsnote.ai import PiRpcBackend
-from oopsnote.ai.pi_skills import ACTIVE_PI_SKILLS
+from oopsnote.ai.skills import ACTIVE_AI_SKILLS
+
+ACTIVE_PI_SKILLS = ACTIVE_AI_SKILLS
 from oopsnote.ai.rpc.probe import probe_new_session
 from oopsnote.mcp.contracts import AI_TOOL_NAMES
 from oopsnote.mcp.http_runtime import SharedMcpHttpRuntime

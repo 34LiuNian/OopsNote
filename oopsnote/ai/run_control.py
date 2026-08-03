@@ -56,11 +56,18 @@ class AsyncioTaskRunControl(ActiveRunControl):
         self._task = task
         self._loop = loop
         self._cancelled = threading.Event()
+        self._done = threading.Event()
+        self._owner_thread_id = threading.get_ident()
+        task.add_done_callback(lambda _: self._done.set())
 
     def cancel(self) -> None:
         self._cancelled.set()
-        if self._loop.is_running():
+        if self._task.done():
+            return
+        if self._loop.is_running() and not self._loop.is_closed():
             self._loop.call_soon_threadsafe(self._task.cancel)
+            if threading.get_ident() != self._owner_thread_id:
+                self._done.wait(timeout=5)
 
     def is_active(self) -> bool:
         return not self._task.done()

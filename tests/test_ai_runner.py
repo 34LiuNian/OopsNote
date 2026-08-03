@@ -15,7 +15,7 @@ from oopsnote.ai import HermesRunner, PiRpcBackend, PiRpcRunner
 from oopsnote.ai import runner as runner_module
 from oopsnote.ai.backends import pi_rpc as pi_rpc_module
 from oopsnote.ai.backends.pi_rpc import RpcProtocolError
-from oopsnote.ai.pi_skills import ACTIVE_PI_SKILLS
+from oopsnote.ai.skills import ACTIVE_AI_SKILLS
 from oopsnote.ai.rpc.probe import probe_new_session
 from oopsnote.core import (
     ContentFormat,
@@ -73,7 +73,7 @@ def make_runner(tmp_path, **kwargs):
 
 
 def write_pi_skill_pack(project_root):
-    for name in ACTIVE_PI_SKILLS:
+    for name in ACTIVE_AI_SKILLS:
         path = project_root / "skills" / name / "SKILL.md"
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(f"# {name}\n", encoding="utf-8")

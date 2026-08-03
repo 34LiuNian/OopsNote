@@ -18,6 +18,7 @@ oopsnote/storage/
 # Server-only Pocket ID runtime secrets and state
 /deploy/pocket-id/pocket-id.env
 /deploy/pocket-id/secrets/
+/deploy/oopsnote/secrets/
 
 # Temp files
 /_tmp/

@@ -1,16 +1,17 @@
-# Managed RPC worker pool
+# Legacy managed RPC worker pool
 
 ## Decision
 
-Upstream Pi and pi_agent_rust use one managed scheduling and JSONL transport
-implementation with independent runtime adapters.
+This architecture remains only for explicitly enabled Pi diagnostics during the
+LangChain evaluation window. Upstream Pi and pi_agent_rust use one managed
+scheduling and JSONL transport implementation with independent runtime adapters.
 
 ```text
 REST enqueue
   -> persisted QUEUED TaskRun
   -> fixed ManagedTaskDispatcher
   -> bounded RpcWorkerPool
-       -> RustPiRuntimeAdapter -> .pi-rust/ -> long-lived Rust process (default)
+       -> RustPiRuntimeAdapter -> .pi-rust/ -> long-lived Rust process
        -> PiRuntimeAdapter     -> .pi/      -> long-lived upstream Pi process
   -> one shared loopback HTTP MCP server
   -> Core stores
@@ -20,6 +21,10 @@ Each process handles one prompt at a time. High concurrency comes from a small
 number of long-lived processes, not concurrent prompts inside one RPC session.
 Before every task the leased worker must successfully complete `new_session`.
 This preserves task isolation while amortizing runtime initialization.
+
+This pool is not the default model path and is scheduled for deletion after the
+isolated 30-task LangChain gate. It must not own lifecycle state or become a
+fallback from a LangChain run.
 
 ## Backpressure and durability
 

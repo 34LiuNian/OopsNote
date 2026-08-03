@@ -14,7 +14,8 @@ Install, copy compatible local auth into an independent agent directory, and val
 ```
 
 The binary, auth, sessions, and `runtime.json` are ignored under `.pi-rust/`.
-OCR continues to read the ignored `.pi/extensions.json`; no API key is tracked.
+These legacy credential files are read only by an explicitly enabled Pi
+diagnostic backend. LangChain and OCR use SecretStore and never fall back here.
 
 ## Restricted execution
 
@@ -55,6 +56,10 @@ Run the repeatable checks:
 
 ## Runtime selection
 
-FastAPI defaults to `pi-rust`. Set `OOPSNOTE_RPC_RUNTIME=pi` only for explicit
-upstream-Pi diagnostics. A failed run is retried fresh on the same runtime and
-never changes runtime or backend inside the run.
+FastAPI defaults to LangChain and does not admit Pi unless operators explicitly
+include it in `OOPSNOTE_ENABLED_AI_BACKENDS`, for example `langchain,pi`. Select
+`backend=pi` for a diagnostic run; `OOPSNOTE_RPC_RUNTIME=pi-rust` chooses the
+Rust adapter and `OOPSNOTE_RPC_RUNTIME=pi` chooses upstream Pi. A failed run is
+retried fresh on the same runtime and never changes runtime or backend inside
+the run. This path has a removal deadline governed by ADR 0002's evaluation
+gate and must not regain default status.

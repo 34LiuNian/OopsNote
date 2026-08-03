@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Iterable
 
 from pydantic import BaseModel, ConfigDict, Field, HttpUrl
 
-from oopsnote.ai.secrets import SecretStore
+from oopsnote.ai.secrets import SecretNotFoundError, SecretStore
+from oopsnote.core.models import RunStatus
 
 
 class ProviderProfile(BaseModel):
@@ -44,7 +45,13 @@ class ProviderClientFactory:
             from langchain_openai import ChatOpenAI
         except ImportError as error:
             raise RuntimeError("LangChain OpenAI integration is not installed") from error
-        return ChatOpenAI(model=profile.model, base_url=str(profile.base_url), api_key=api_key)
+        return ChatOpenAI(
+            model=profile.model,
+            base_url=str(profile.base_url),
+            api_key=api_key,
+            max_retries=0,
+            timeout=60,
+        )
 
     def validate(self, profile: ProviderProfile) -> dict[str, Any]:
         """Perform explicit provider connectivity validation before activation."""
@@ -54,4 +61,33 @@ class ProviderClientFactory:
         return {"ok": True, "usage": {key: usage.get(key) for key in ("input_tokens", "output_tokens") if usage.get(key) is not None}}
 
 
-__all__ = ["ProviderClientFactory", "ProviderProfile"]
+def collect_unreferenced_profile_secrets(
+    secret_store: SecretStore,
+    profiles: Iterable[ProviderProfile],
+    runs: Iterable[Any],
+) -> int:
+    """Delete historical refs only after no profile or active run retains them."""
+    profile_references = {profile.credential_ref for profile in profiles}
+    historical_references: set[str] = set()
+    active_references: set[str] = set()
+    for run in runs:
+        snapshot = getattr(run, "provider_profile_snapshot", None)
+        if not isinstance(snapshot, dict):
+            continue
+        reference = snapshot.get("credential_ref")
+        if not isinstance(reference, str) or not reference:
+            continue
+        historical_references.add(reference)
+        if getattr(run, "status", None) in {RunStatus.QUEUED, RunStatus.RUNNING}:
+            active_references.add(reference)
+    deleted = 0
+    for reference in historical_references - profile_references - active_references:
+        try:
+            secret_store.delete(reference)
+        except SecretNotFoundError:
+            continue
+        deleted += 1
+    return deleted
+
+
+__all__ = ["ProviderClientFactory", "ProviderProfile", "collect_unreferenced_profile_secrets"]

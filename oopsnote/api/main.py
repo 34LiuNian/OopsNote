@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import os
 from contextlib import asynccontextmanager
+from functools import lru_cache
 from pathlib import Path
 from typing import Any, Optional
 
@@ -19,7 +20,7 @@ from fastapi.staticfiles import StaticFiles
 from oopsnote.ai import HermesRunner, LangChainRunner, PiRpcBackend, PiRpcRunner
 from oopsnote.ai.langchain_tools import McpHttpToolClient
 from oopsnote.ai.providers import ProviderClientFactory
-from oopsnote.ai.secrets import WindowsCredentialManagerSecretStore
+from oopsnote.ai.secrets import SecretStore, secret_store_from_environment
 from oopsnote.api.auth import AuthenticationError, auth_config_from_env, authenticate_request
 from oopsnote.api.routes import batch, catalog, latex, papers, study, tasks
 from oopsnote.api.schemas import TagInput, TagRenameInput, UploadRequest
@@ -95,6 +96,12 @@ def _runner_settings() -> dict[str, int]:
     }
 
 
+@lru_cache(maxsize=1)
+def get_secret_store() -> SecretStore:
+    """Return the process-wide platform vault selected at the composition root."""
+    return secret_store_from_environment()
+
+
 def _new_hermes_runner() -> HermesRunner:
     return HermesRunner(
         project_root=PROJECT_ROOT,
@@ -121,7 +128,7 @@ def _new_pi_runner() -> PiRpcRunner:
 
 
 def _langchain_provider_factory() -> ProviderClientFactory:
-    return ProviderClientFactory(WindowsCredentialManagerSecretStore())
+    return ProviderClientFactory(get_secret_store())
 
 
 def _langchain_tool_client() -> McpHttpToolClient:
@@ -561,7 +568,7 @@ async def lifespan(_: FastAPI):
     if isinstance(ocr_profile_id, str):
         for profile in APP_SETTINGS_STORE.provider_profiles():
             if profile.id == ocr_profile_id:
-                configure_ocr_vault(WindowsCredentialManagerSecretStore(), profile.credential_ref, model=profile.model, endpoint=str(profile.base_url))
+                configure_ocr_vault(get_secret_store(), profile.credential_ref, model=profile.model, endpoint=str(profile.base_url))
                 break
     try:
         yield

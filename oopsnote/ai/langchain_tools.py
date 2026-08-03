@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from copy import deepcopy
 from typing import Any, Protocol
 
@@ -49,6 +50,12 @@ def langchain_tool_schemas() -> list[dict[str, Any]]:
 
 
 class ContractBoundToolDispatcher:
+    _ORDERED_WRITES = frozenset({
+        "mcp__oopsnote_pipeline_submit_solution_candidate",
+        "mcp__oopsnote_pipeline_finalize_task",
+        "mcp__oopsnote_pipeline_fail_task",
+    })
+
     def __init__(
         self,
         client: RestrictedMcpToolClient,
@@ -76,6 +83,35 @@ class ContractBoundToolDispatcher:
             arguments[field] = expected
         # The MCP server remains the authoritative validation boundary.
         return await self.client.call(tool["remoteName"], arguments)
+
+    async def call_many(self, calls: list[dict[str, Any]]) -> list[Any]:
+        """Run independent calls concurrently while preserving write barriers."""
+        results: list[Any] = [None] * len(calls)
+        pending: list[tuple[int, dict[str, Any]]] = []
+
+        async def flush() -> None:
+            if not pending:
+                return
+            batch = list(pending)
+            pending.clear()
+            values = await asyncio.gather(
+                *(self.call(call["name"], dict(call.get("args") or {})) for _, call in batch),
+                return_exceptions=True,
+            )
+            for (index, _), value in zip(batch, values):
+                results[index] = value
+
+        for index, call in enumerate(calls):
+            if call.get("name") not in self._ORDERED_WRITES:
+                pending.append((index, call))
+                continue
+            await flush()
+            try:
+                results[index] = await self.call(call["name"], dict(call.get("args") or {}))
+            except Exception as error:
+                results[index] = error
+        await flush()
+        return results
 
 
 __all__ = ["ContractBoundToolDispatcher", "McpHttpToolClient", "RestrictedMcpToolClient", "langchain_tool_schemas"]

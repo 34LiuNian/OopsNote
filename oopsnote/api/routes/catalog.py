@@ -12,9 +12,9 @@ from pydantic import BaseModel, Field
 from oopsnote.api.schemas import TagInput, TagRenameInput
 from oopsnote.api.auth import AuthenticationError, require_admin_request
 from oopsnote.ai.providers import ProviderClientFactory, ProviderProfile
-from oopsnote.ai.secrets import WindowsCredentialManagerSecretStore
 from oopsnote.core import Problem, Searcher, SearchQuery, TagDimension, TagItem
 from oopsnote.core import RunStatus
+from oopsnote.mcp.ocr import configure_ocr_vault
 from oopsnote.obsidian.syncer import ObsidianSyncer
 
 router = APIRouter()
@@ -41,14 +41,17 @@ def list_provider_profiles(request: Request) -> dict[str, list[dict[str, Any]]]:
     _require_admin(request)
     api = _api()
     try:
-        secret_store = WindowsCredentialManagerSecretStore()
-    except RuntimeError:
-        secret_store = None
+        secret_store = api.get_secret_store()
+    except RuntimeError as error:
+        raise HTTPException(status_code=503, detail="provider secret store is unavailable") from error
+    settings = api.APP_SETTINGS_STORE.get()
     return {
         "items": [
             {
                 **profile.model_dump(mode="json", exclude={"credential_ref"}),
-                "has_secret": bool(secret_store and secret_store.has(profile.credential_ref)),
+                "has_secret": secret_store.has(profile.credential_ref),
+                "active": settings.get("ai_provider_profile_id") == profile.id,
+                "ocr_active": settings.get("ocr_profile_id") == profile.id,
             }
             for profile in api.APP_SETTINGS_STORE.provider_profiles()
         ]
@@ -66,7 +69,10 @@ def create_provider_profile(payload: dict[str, Any], request: Request) -> dict[s
     if "credential_ref" in payload:
         raise HTTPException(status_code=422, detail="credential_ref is server-managed")
     try:
-        vault = WindowsCredentialManagerSecretStore()
+        vault = api.get_secret_store()
+    except RuntimeError as error:
+        raise HTTPException(status_code=503, detail="provider secret store is unavailable") from error
+    try:
         reference = vault.put(secret)
         profile = ProviderProfile.model_validate({
             **{key: value for key, value in payload.items() if key != "secret"},
@@ -74,8 +80,7 @@ def create_provider_profile(payload: dict[str, Any], request: Request) -> dict[s
             "credential_ref": reference,
         })
         ProviderClientFactory(vault).validate(profile)
-        api.APP_SETTINGS_STORE.upsert_provider_profile(profile)
-        api.APP_SETTINGS_STORE.update({"ai_provider_profile_id": profile.id})
+        api.APP_SETTINGS_STORE.activate_provider_profile(profile)
     except ValueError as error:
         if "reference" in locals():
             try: vault.delete(reference)
@@ -100,7 +105,7 @@ def activate_provider_profile(profile_id: str, request: Request) -> dict[str, An
     if not profile.enabled:
         raise HTTPException(status_code=409, detail="provider profile is disabled")
     try:
-        if not WindowsCredentialManagerSecretStore().has(profile.credential_ref):
+        if not api.get_secret_store().has(profile.credential_ref):
             raise HTTPException(status_code=409, detail="provider profile has no secret")
     except RuntimeError as error:
         raise HTTPException(status_code=503, detail=str(error)) from error
@@ -122,11 +127,17 @@ def activate_ocr_profile(payload: dict[str, Any], request: Request) -> dict[str,
     if not profile.enabled:
         raise HTTPException(status_code=409, detail="provider profile is disabled")
     try:
-        if not WindowsCredentialManagerSecretStore().has(profile.credential_ref):
+        if not api.get_secret_store().has(profile.credential_ref):
             raise HTTPException(status_code=409, detail="OCR profile has no secret")
     except RuntimeError as error:
         raise HTTPException(status_code=503, detail=str(error)) from error
     api.APP_SETTINGS_STORE.update({"ocr_profile_id": profile.id})
+    configure_ocr_vault(
+        api.get_secret_store(),
+        profile.credential_ref,
+        model=profile.model,
+        endpoint=str(profile.base_url),
+    )
     return {"profile_id": profile.id, "version": profile.version, "active": True}
 
 
@@ -139,7 +150,7 @@ def rotate_provider_secret(profile_id: str, payload: dict[str, Any], request: Re
     if not isinstance(secret, str) or not secret:
         raise HTTPException(status_code=422, detail="secret is required")
     try:
-        vault = WindowsCredentialManagerSecretStore()
+        vault = api.get_secret_store()
     except RuntimeError as error:
         raise HTTPException(status_code=503, detail=str(error)) from error
     profiles = {profile.id: profile for profile in api.APP_SETTINGS_STORE.provider_profiles()}
@@ -147,11 +158,31 @@ def rotate_provider_secret(profile_id: str, payload: dict[str, Any], request: Re
     if previous is None:
         raise HTTPException(status_code=404, detail="provider profile not found")
     reference = vault.put(secret)
-    candidate = previous.model_copy(update={"version": previous.version + 1, "credential_ref": reference})
+    updates = {
+        key: payload[key]
+        for key in ("provider", "model", "base_url", "enabled")
+        if key in payload
+    }
+    try:
+        candidate = ProviderProfile.model_validate({
+            **previous.model_dump(mode="json"),
+            **updates,
+            "version": previous.version + 1,
+            "credential_ref": reference,
+        })
+    except ValueError as error:
+        vault.delete(reference)
+        raise HTTPException(status_code=422, detail=str(error)) from error
     try:
         ProviderClientFactory(vault).validate(candidate)
-        api.APP_SETTINGS_STORE.upsert_provider_profile(candidate)
-        api.APP_SETTINGS_STORE.update({"ai_provider_profile_id": candidate.id})
+        api.APP_SETTINGS_STORE.activate_provider_profile(candidate)
+        if api.APP_SETTINGS_STORE.get().get("ocr_profile_id") == candidate.id:
+            configure_ocr_vault(
+                vault,
+                candidate.credential_ref,
+                model=candidate.model,
+                endpoint=str(candidate.base_url),
+            )
     except Exception as error:
         try:
             vault.delete(reference)

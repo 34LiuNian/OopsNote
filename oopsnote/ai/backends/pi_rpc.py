@@ -14,7 +14,7 @@ from typing import Any, Optional
 
 from oopsnote.ai.managed import ManagedAiRunner
 from oopsnote.ai.process_metrics import process_working_set_bytes
-from oopsnote.ai.pi_skills import load_skill_pack, skill_pack_version
+from oopsnote.ai.skills import load_skill_pack, skill_pack_version
 from oopsnote.ai.rpc import (
     PiRuntimeAdapter,
     RpcRuntimeAdapter,

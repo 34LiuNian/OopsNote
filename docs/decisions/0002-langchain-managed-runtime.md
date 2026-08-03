@@ -14,7 +14,10 @@ provider-native tools.
 
 Provider profiles are non-secret AppSettings metadata. Each admitted run stores
 an immutable profile snapshot; credentials are resolved only through the local
-SecretStore. OCR uses the same vault configuration for the LangChain path.
+SecretStore. Windows uses Credential Manager. Linux and containers use an
+encrypted file vault whose master key is supplied as a read-only mounted file;
+the key value is never an application environment variable. OCR uses the same
+vault configuration for the LangChain path, with no legacy-file fallback.
 
 Pi and Hermes remain explicit diagnostic/migration backends only. A run never
 changes backend. RustPi deletion requires the documented isolated 30-task
@@ -27,3 +30,7 @@ evaluation gate, not merely unit-test success.
 - A valid MCP `finalize_task` is the only success condition.
 - 401/403, model/configuration and validation failures are terminal; only
   classified transport/429/5xx failures may create a fresh managed retry.
+- Provider SDK retries are disabled; shared lifecycle retry policy remains the
+  only retry authority and retains the original run's profile snapshot.
+- RustPi removal is a separate, irreversible step gated by isolated real-task
+  evidence. Hermes retirement remains a later independent decision.

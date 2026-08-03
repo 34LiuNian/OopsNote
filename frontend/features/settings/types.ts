@@ -6,6 +6,8 @@ export type AiProviderProfile = {
   base_url: string;
   enabled: boolean;
   has_secret: boolean;
+  active: boolean;
+  ocr_active: boolean;
 };
 
 export type AiProfilesResponse = { items: AiProviderProfile[] };

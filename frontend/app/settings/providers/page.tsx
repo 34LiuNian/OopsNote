@@ -46,7 +46,7 @@ export default function ProviderSettingsPage() {
     if (!selected || !secret) return;
     setMessage("");
     try {
-      await mutations.rotate.mutateAsync({ profileId: selected.id, secret });
+      await mutations.rotate.mutateAsync({ profileId: selected.id, secret, provider, model: model.trim(), base_url: baseUrl.trim() });
       setSecret("");
       setMessage("凭证已验证并轮换；旧凭证不会影响仍在运行的任务。");
     } catch (error) { setMessage(error instanceof Error ? error.message : "凭证更新失败"); }
@@ -59,7 +59,7 @@ export default function ProviderSettingsPage() {
       <Box sx={{ display: "grid", gridTemplateColumns: ["1fr", "300px minmax(0, 1fr)"], gap: 3 }}>
         <Box className="oops-card" sx={{ p: 3, display: "flex", flexDirection: "column", gap: 2 }}>
           <Heading order={3}>Profiles</Heading>
-          {items.map((item) => <Button key={item.id} variant={selected?.id === item.id ? "secondary" : "default"} onClick={() => selectProfile(item.id)} sx={{ justifyContent: "flex-start", textAlign: "left", whiteSpace: "normal" }}><Box><Text fw={600}>{item.id}</Text><Text sx={{ color: "fg.muted", fontSize: 1 }}>{item.provider} · {item.model}</Text><Text sx={{ color: item.has_secret ? "fg.success" : "fg.attention", fontSize: 0 }}>{item.has_secret ? "已配置凭证" : "需要凭证"}</Text></Box></Button>)}
+          {items.map((item) => <Button key={item.id} variant={selected?.id === item.id ? "secondary" : "default"} onClick={() => selectProfile(item.id)} sx={{ justifyContent: "flex-start", textAlign: "left", whiteSpace: "normal" }}><Box><Text fw={600}>{item.id}</Text><Text sx={{ color: "fg.muted", fontSize: 1 }}>{item.provider} · {item.model}</Text><Text sx={{ color: item.has_secret ? "fg.success" : "fg.attention", fontSize: 0 }}>{item.has_secret ? "已配置凭证" : "需要凭证"}{item.active ? " · 默认模型" : ""}{item.ocr_active ? " · OCR" : ""}</Text></Box></Button>)}
           {!items.length && <Text sx={{ color: "fg.muted" }}>还没有 Provider Profile。</Text>}
         </Box>
         <Box className="oops-card" sx={{ p: 3, display: "flex", flexDirection: "column", gap: 3 }}>
@@ -71,7 +71,7 @@ export default function ProviderSettingsPage() {
             <FormControl><FormControl.Label>Base URL</FormControl.Label><TextInput value={baseUrl} onChange={(event) => setBaseUrl(event.target.value)} block /></FormControl>
           </Box>
           <FormControl><FormControl.Label>新凭证</FormControl.Label><TextInput type="password" value={secret} onChange={(event) => setSecret(event.target.value)} autoComplete="new-password" block /><FormControl.Caption>仅在本次请求内存在；保存后立即清空。</FormControl.Caption></FormControl>
-          <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap" }}><Button variant="primary" onClick={() => void (selected ? rotate() : create())} disabled={!secret || mutations.create.isPending || mutations.rotate.isPending}>{selected ? "验证并轮换凭证" : "创建并验证 Profile"}</Button>{selected && <Button onClick={() => void mutations.activate.mutateAsync(selected.id).then(() => setMessage("已设为默认，后续新任务生效。")).catch((error) => setMessage(error instanceof Error ? error.message : "激活失败"))} disabled={mutations.activate.isPending || !selected.has_secret}>设为默认</Button>}</Box>
+          <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap" }}><Button variant="primary" onClick={() => void (selected ? rotate() : create())} disabled={!secret || mutations.create.isPending || mutations.rotate.isPending}>{selected ? "验证并保存新版本" : "创建并验证 Profile"}</Button>{selected && <Button onClick={() => void mutations.activate.mutateAsync(selected.id).then(() => setMessage("已设为默认，后续新任务生效。")).catch((error) => setMessage(error instanceof Error ? error.message : "激活失败"))} disabled={mutations.activate.isPending || !selected.has_secret || selected.active}>设为默认</Button>}{selected && <Button onClick={() => void mutations.activateOcr.mutateAsync(selected.id).then(() => setMessage("已设为 OCR Provider，后续工具调用立即生效。")).catch((error) => setMessage(error instanceof Error ? error.message : "OCR 激活失败"))} disabled={mutations.activateOcr.isPending || !selected.has_secret || selected.ocr_active}>设为 OCR</Button>}</Box>
           {message && <Text sx={{ color: message.includes("失败") || message.includes("无法") ? "fg.danger" : "fg.success" }}>{message}</Text>}
         </Box>
       </Box>

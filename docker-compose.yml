@@ -29,10 +29,15 @@ services:
       OOPSNOTE_AUTH_AUDIENCE: abd3d0b3-46f3-4aaa-994c-1c9258c74c1e
       OOPSNOTE_AUTH_JWKS_URL: http://pocket-id:1411/.well-known/jwks.json
       OOPSNOTE_ADMIN_SUBJECTS: 5cf94ffe-c14b-4c32-9092-7ff8ab947579
+      OOPSNOTE_SECRET_STORE_PATH: /vault/credentials.json
+      OOPSNOTE_SECRET_STORE_KEY_FILE: /run/secrets/oopsnote_secret_store_key
     volumes:
       - oopsnote-data:/data
+      - oopsnote-vault:/vault
       - ./deploy/pi:/app/.pi:ro
       - ./deploy/pi-rust:/app/.pi-rust:ro
+    secrets:
+      - oopsnote_secret_store_key
     depends_on:
       latex-renderer:
         condition: service_healthy
@@ -94,6 +99,7 @@ services:
 
 volumes:
   oopsnote-data:
+  oopsnote-vault:
   pocket-id-data:
 
 networks:
@@ -102,5 +108,7 @@ networks:
     internal: true
 
 secrets:
+  oopsnote_secret_store_key:
+    file: ./deploy/oopsnote/secrets/credential_store_key
   pocket_id_encryption_key:
     file: ./deploy/pocket-id/secrets/encryption_key

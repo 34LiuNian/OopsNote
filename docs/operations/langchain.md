@@ -2,12 +2,26 @@
 
 ## Credential and profile setup
 
-On Windows, import the legacy OCR key once into Credential Manager. The command
-prints only an opaque reference; do not copy that reference into a log or a
-tracked file.
+The SecretStore adapter is platform-specific: Windows uses Credential Manager;
+the production Linux container uses an encrypted named volume protected by a
+read-only Docker secret. Initialize that master key once before the first build:
+
+```bash
+.venv/bin/python scripts/setup/init_secret_store.py
+```
+
+The generated file is ignored by Git. Back it up separately from the encrypted
+vault: losing it makes the vault unrecoverable. Never print or place its value
+in Compose environment variables.
+
+Import legacy model and OCR credentials once. The command returns profile
+metadata only, never secret values or credential references.
 
 ```powershell
-.\.venv\Scripts\python.exe scripts\migrate_local_secrets.py .pi\extensions.json
+.\.venv\Scripts\python.exe scripts\migrate_local_secrets.py `
+  --settings storage\app-settings.json `
+  --pi-auth .pi\agent\auth.json `
+  --ocr-config .pi\extensions.json
 ```
 
 Create the provider profile through `POST /settings/provider-profiles` with
@@ -57,6 +71,9 @@ event files. The RustPi backend may be removed only after evidence shows:
   than RustPi cache tokens.
 
 Until then, `backend=pi` and `backend=hermes` are manual diagnostic choices.
+They are available only when explicitly listed in
+`OOPSNOTE_ENABLED_AI_BACKENDS`, for example `langchain,pi`; production should
+normally leave the value unset so only `langchain` is admitted.
 
 Build the cohort evidence without mutating the evaluation storage:
 

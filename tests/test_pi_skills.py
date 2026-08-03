@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 from scripts.setup import setup_pi
-from oopsnote.ai.pi_skills import ACTIVE_PI_SKILLS, load_skill_pack, skill_pack_version
+from oopsnote.ai.skills import ACTIVE_AI_SKILLS, load_skill_pack, skill_pack_version
+
+ACTIVE_PI_SKILLS = ACTIVE_AI_SKILLS
 from oopsnote.mcp.contracts import AI_TOOL_NAMES
 
 
