@@ -200,6 +200,38 @@ def test_provider_rotation_commits_metadata_as_a_new_nonsecret_version(monkeypat
     assert not vault.has(old_reference)
 
 
+def test_rotating_an_inactive_profile_does_not_switch_the_default_model(monkeypatch, tmp_path):
+    from oopsnote.api import main
+
+    settings = AppSettingsStore(tmp_path / "settings.json")
+    vault = MemorySecretStore()
+    active = ProviderProfile(
+        id="active", version=1, provider="deepseek", model="active-model",
+        base_url="https://active.example/v1", credential_ref=vault.put("active-secret"),
+    )
+    inactive = ProviderProfile(
+        id="inactive", version=1, provider="deepseek", model="old-model",
+        base_url="https://inactive.example/v1", credential_ref=vault.put("old-secret"),
+    )
+    settings.activate_provider_profile(active)
+    settings.upsert_provider_profile(inactive)
+    monkeypatch.setattr(main, "APP_SETTINGS_STORE", settings)
+    monkeypatch.setattr(main, "RUN_STORE", RunStore(tmp_path / "storage" / "runs"))
+    monkeypatch.setattr(main, "get_secret_store", lambda: vault)
+
+    with patch("oopsnote.api.routes.catalog.ProviderClientFactory.validate", return_value=None):
+        response = TestClient(main.app).post(
+            "/settings/provider-profiles/inactive/secret",
+            json={"secret": "new-secret", "model": "new-model"},
+        )
+
+    assert response.status_code == 200
+    assert settings.get()["ai_provider_profile_id"] == "active"
+    profiles = {profile.id: profile for profile in settings.provider_profiles()}
+    assert profiles["inactive"].version == 2
+    assert profiles["inactive"].model == "new-model"
+
+
 def test_profile_store_replaces_only_same_or_newer_version(tmp_path):
     store = AppSettingsStore(tmp_path / "settings.json")
     first = ProviderProfile(
@@ -212,6 +244,23 @@ def test_profile_store_replaces_only_same_or_newer_version(tmp_path):
 
     assert store.provider_profiles() == [second]
     assert "two" in (tmp_path / "settings.json").read_text(encoding="utf-8")
+
+
+def test_first_profile_selection_is_atomic_and_does_not_switch_on_later_create(tmp_path):
+    store = AppSettingsStore(tmp_path / "settings.json")
+    first = ProviderProfile(
+        id="first", version=1, provider="deepseek", model="m1",
+        base_url="https://first.example", credential_ref="first-ref",
+    )
+    second = ProviderProfile(
+        id="second", version=1, provider="deepseek", model="m2",
+        base_url="https://second.example", credential_ref="second-ref",
+    )
+
+    store.upsert_provider_profile(first, select_if_unset=True)
+    store.upsert_provider_profile(second, select_if_unset=True)
+
+    assert store.get()["ai_provider_profile_id"] == "first"
 
 
 def test_profile_activation_persists_profile_and_selection_atomically(tmp_path):
@@ -391,6 +440,31 @@ def test_contract_dispatcher_preserves_terminal_write_barriers():
     assert events.index(("end", "get_task")) < finalize_start
     assert events.index(("end", "list_tags")) < finalize_start
     assert results == [{"ok": True}, {"ok": True}, {"ok": True}]
+
+
+def test_contract_dispatcher_uses_canonical_barriers_for_all_state_writes():
+    events = []
+
+    class Client:
+        async def call(self, remote_name, arguments):
+            del arguments
+            events.append(("start", remote_name))
+            if remote_name in {"get_task", "list_tags"}:
+                await asyncio.sleep(0.01)
+            events.append(("end", remote_name))
+            return {"ok": True}
+
+    dispatcher = ContractBoundToolDispatcher(Client(), task_id="t", run_id="r")
+    calls = [
+        {"name": "mcp__oopsnote_pipeline_get_task", "args": {}, "id": "1"},
+        {"name": "mcp__oopsnote_pipeline_create_tag", "args": {"dimension": "error", "value": "x"}, "id": "2"},
+        {"name": "mcp__oopsnote_pipeline_list_tags", "args": {"dimension": "error"}, "id": "3"},
+    ]
+
+    asyncio.run(dispatcher.call_many(calls))
+
+    assert events.index(("end", "get_task")) < events.index(("start", "create_tag"))
+    assert events.index(("end", "create_tag")) < events.index(("start", "list_tags"))
 
 
 def test_ocr_vault_configuration_does_not_fall_back_to_legacy_file(monkeypatch):

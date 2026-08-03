@@ -80,7 +80,7 @@ def create_provider_profile(payload: dict[str, Any], request: Request) -> dict[s
             "credential_ref": reference,
         })
         ProviderClientFactory(vault).validate(profile)
-        api.APP_SETTINGS_STORE.activate_provider_profile(profile)
+        api.APP_SETTINGS_STORE.upsert_provider_profile(profile, select_if_unset=True)
     except ValueError as error:
         if "reference" in locals():
             try: vault.delete(reference)
@@ -175,7 +175,7 @@ def rotate_provider_secret(profile_id: str, payload: dict[str, Any], request: Re
         raise HTTPException(status_code=422, detail=str(error)) from error
     try:
         ProviderClientFactory(vault).validate(candidate)
-        api.APP_SETTINGS_STORE.activate_provider_profile(candidate)
+        api.APP_SETTINGS_STORE.upsert_provider_profile(candidate)
         if api.APP_SETTINGS_STORE.get().get("ocr_profile_id") == candidate.id:
             configure_ocr_vault(
                 vault,

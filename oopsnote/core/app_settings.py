@@ -63,11 +63,13 @@ class AppSettingsStore:
             raise StorageCorruptionError(self.path, ValueError("provider_profiles must be a list"))
         return [ProviderProfile.model_validate(item) for item in profiles]
 
-    def upsert_provider_profile(self, profile: Any) -> Any:
-        """Atomically replace one immutable profile version by id/version."""
+    def upsert_provider_profile(self, profile: Any, *, select_if_unset: bool = False) -> Any:
+        """Atomically replace one profile version, optionally selecting the first."""
         with self._lock:
             current = self.get()
             self._upsert_profile(current, profile)
+            if select_if_unset and not current.get("ai_provider_profile_id"):
+                current["ai_provider_profile_id"] = profile.id
             self._write(current)
             return profile
 

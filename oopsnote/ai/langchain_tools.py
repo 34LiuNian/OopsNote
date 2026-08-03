@@ -50,12 +50,6 @@ def langchain_tool_schemas() -> list[dict[str, Any]]:
 
 
 class ContractBoundToolDispatcher:
-    _ORDERED_WRITES = frozenset({
-        "mcp__oopsnote_pipeline_submit_solution_candidate",
-        "mcp__oopsnote_pipeline_finalize_task",
-        "mcp__oopsnote_pipeline_fail_task",
-    })
-
     def __init__(
         self,
         client: RestrictedMcpToolClient,
@@ -102,7 +96,8 @@ class ContractBoundToolDispatcher:
                 results[index] = value
 
         for index, call in enumerate(calls):
-            if call.get("name") not in self._ORDERED_WRITES:
+            tool = self._tools.get(call.get("name"))
+            if tool is not None and tool.get("executionMode") == "parallel":
                 pending.append((index, call))
                 continue
             await flush()

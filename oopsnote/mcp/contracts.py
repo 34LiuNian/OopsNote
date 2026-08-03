@@ -29,6 +29,8 @@ def load_tool_contract(*, validate_registry: bool = True) -> dict[str, Any]:
             raise ValueError(f"Managed MCP tool {name} has no object schema")
         if parameters.get("additionalProperties") is not False:
             raise ValueError(f"Managed MCP tool {name} must reject additional properties")
+        if validate_registry and tool.get("executionMode") not in {"parallel", "barrier"}:
+            raise ValueError(f"Managed MCP tool {name} has no valid execution mode")
         names.add(name)
         remote_names.add(remote_name)
     if validate_registry:
@@ -74,6 +76,7 @@ def build_tool_contract() -> dict[str, Any]:
                 "name": definition.name,
                 "remoteName": definition.remote_name,
                 "description": definition.description,
+                "executionMode": definition.execution_mode,
                 "parameters": canonicalize_tool_schema(runtime[definition.remote_name]),
             }
             for definition in MANAGED_TOOL_DEFINITIONS

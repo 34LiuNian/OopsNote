@@ -75,15 +75,38 @@ They are available only when explicitly listed in
 `OOPSNOTE_ENABLED_AI_BACKENDS`, for example `langchain,pi`; production should
 normally leave the value unset so only `langchain` is admitted.
 
-Build the cohort evidence without mutating the evaluation storage:
+Generate an intentionally incomplete evidence manifest from the persisted
+cohort. The command writes task IDs only; every `null` review field must be
+filled from the fixed RustPi baseline and human quality review. Record
+cancellation fault-injection tasks with a source beginning
+`langchain-cancellation-` so they remain available for run-ID verification but
+do not enter the 30-task quality denominator.
 
 ```powershell
 .\.venv\Scripts\python.exe scripts\benchmarks\langchain_production_report.py `
   --storage E:/works/2026/OopsNote/storage-langchain-eval `
   --profile-id deepseek-primary --profile-version 3 `
+  --write-evidence-template E:/works/2026/OopsNote/storage-langchain-eval/evidence.json
+```
+
+The version 1 manifest requires a quality result for the LangChain and RustPi
+baseline output of every cohort task, the RustPi baseline P95, at least one
+persisted cancelled run trial, and a measured-cost approval containing limit,
+currency, approver and timestamp. It deliberately cannot carry a claimed
+finalize count: the report derives successful finalize cardinality from the
+canonical `verifier_submission` RunStore artifacts.
+
+After review, build the immutable report without mutating evaluation storage:
+
+```powershell
+.\.venv\Scripts\python.exe scripts\benchmarks\langchain_production_report.py `
+  --storage E:/works/2026/OopsNote/storage-langchain-eval `
+  --evidence E:/works/2026/OopsNote/storage-langchain-eval/evidence.json `
   --output-dir E:/works/2026/OopsNote/storage-langchain-eval/report
 ```
 
 The report intentionally exits nonzero until every deletion gate is supported
-by recorded evidence. It does not treat missing quality, cancellation,
-duplicate-finalize, baseline-P95, or cost-approval data as a pass.
+by recorded evidence. It rejects profile/version mismatches, missing cohort
+runs, duplicate task/run references, non-cancelled trial run IDs, incomplete
+cost coverage and unfilled or malformed evidence rather than treating them as a
+pass.

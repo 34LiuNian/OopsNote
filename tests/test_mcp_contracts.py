@@ -45,6 +45,16 @@ def test_every_task_data_tool_requires_active_run_binding():
         assert "run_id" in tools[name]["parameters"]["required"]
 
 
+def test_contract_marks_only_read_only_tools_as_parallel_safe():
+    tools = {tool["remoteName"]: tool["executionMode"] for tool in TOOL_CONTRACT["tools"]}
+
+    assert {name for name, mode in tools.items() if mode == "parallel"} == {
+        "get_task",
+        "get_asset_path",
+        "list_tags",
+    }
+
+
 def test_contract_loader_rejects_a_registry_mismatch(tmp_path, monkeypatch):
     from oopsnote.mcp import contracts
 
