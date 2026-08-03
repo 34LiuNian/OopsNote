@@ -3,14 +3,10 @@
 import { useQuery } from '@tanstack/react-query';
 import { fetchJson } from '../lib/api';
 import { queryKeys } from '../lib/queryClient';
-import type { PiSettingsResponse } from '../types/api';
-
-export type PiSettings = PiSettingsResponse;
-
-export function usePiSettings() {
+export function useAiRuntimeSettings() {
   return useQuery({
-    queryKey: queryKeys.settings.pi(),
-    queryFn: () => fetchJson<PiSettingsResponse>('/settings/pi'),
+    queryKey: queryKeys.settings.aiRuntime(),
+    queryFn: () => fetchJson<{ max_concurrency: number }>('/settings/ai/runtime'),
   });
 }
 

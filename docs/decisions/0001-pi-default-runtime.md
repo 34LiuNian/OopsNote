@@ -1,7 +1,11 @@
 # ADR 0001: pi_agent_rust is the default RPC runtime
 
 Date: 2026-07-24
-Status: accepted, migration observation in progress
+Status: superseded by ADR 0002
+
+ADR 0002 replaced the default-runtime decision on 2026-08-03. This document
+remains only as the RustPi baseline and diagnostic-backend history; it is no
+longer an active source of runtime-selection policy.
 
 ## Decision
 

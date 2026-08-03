@@ -24,23 +24,26 @@ metadata only, never secret values or credential references.
   --ocr-config .pi\extensions.json
 ```
 
-Create the provider profile through `POST /settings/provider-profiles` with
-non-secret metadata and a `secret`. The server writes the secret under a fresh
-Credential Manager reference, validates one explicit provider call, then
-atomically writes the profile and selects it. Responses expose only profile
-metadata and `has_secret`. Rotate an existing key with:
+Create non-secret provider metadata through `POST /settings/ai/profiles`, then
+set or rotate its credential with:
 
 ```text
-POST /settings/provider-profiles/{profile_id}/secret
+POST /settings/ai/profiles/{profile_id}/credential
 ```
+
+The server writes the submitted secret under a fresh vault reference, validates
+one explicit provider call, then atomically switches the profile version and
+its redacted validation observation. Responses expose only profile metadata,
+`has_secret`, and validation results. Failed validation leaves the previous
+profile and credential unchanged.
 
 The old reference is retained while an active queued/running run snapshot uses
 it. Do not use `.pi/auth.json`, `.pi/extensions.json`, environment variables,
 `storage/`, task JSON, or run logs as a LangChain credential source.
 
 For OCR, select the vault-backed OCR profile by setting the non-secret
-`ocr_profile_id` through `POST /settings/ocr-profile`; select the text model
-through `POST /settings/provider-profiles/{profile_id}/activate`. Their model
+`ocr_profile_id` through `PUT /settings/ai/ocr-profile`; select the text model
+through `PUT /settings/ai/default-profile`. Their model
 and endpoint metadata are used by the existing restricted `ocr_image` MCP tool.
 
 ## Execution and evidence

@@ -15,6 +15,9 @@ dependencies = [
     "pyyaml>=6.0",
     "langchain-core>=1.0",
     "langchain-openai>=1.0",
+    "langchain-anthropic>=1.0",
+    "langchain-deepseek>=1.0",
+    "langchain-google-genai>=4.0",
     "cryptography>=45.0",
 ]
 

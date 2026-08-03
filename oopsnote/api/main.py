@@ -22,7 +22,7 @@ from oopsnote.ai.langchain_tools import McpHttpToolClient
 from oopsnote.ai.providers import ProviderClientFactory
 from oopsnote.ai.secrets import SecretStore, secret_store_from_environment
 from oopsnote.api.auth import AuthenticationError, auth_config_from_env, authenticate_request
-from oopsnote.api.routes import batch, catalog, latex, papers, study, tasks
+from oopsnote.api.routes import ai_settings, batch, catalog, latex, papers, study, tasks
 from oopsnote.api.schemas import TagInput, TagRenameInput, UploadRequest
 from oopsnote.catalog import KNOWLEDGE_TAGS_PATH, KNOWLEDGE_TREES_PATH
 from oopsnote.content import option_label
@@ -144,6 +144,7 @@ def _new_langchain_runner() -> LangChainRunner:
         settings_store=APP_SETTINGS_STORE,
         provider_factory=_langchain_provider_factory,
         tool_client_factory=_langchain_tool_client,
+        max_concurrent_tasks=int(APP_SETTINGS_STORE.get().get("ai_max_concurrency", 1)),
         **_runner_settings(),
     )
 
@@ -568,7 +569,8 @@ async def lifespan(_: FastAPI):
     if isinstance(ocr_profile_id, str):
         for profile in APP_SETTINGS_STORE.provider_profiles():
             if profile.id == ocr_profile_id:
-                configure_ocr_vault(get_secret_store(), profile.credential_ref, model=profile.model, endpoint=str(profile.base_url))
+                if profile.credential_ref and profile.base_url is not None:
+                    configure_ocr_vault(get_secret_store(), profile.credential_ref, model=profile.model, endpoint=str(profile.base_url))
                 break
     try:
         yield
@@ -630,6 +632,7 @@ def health() -> dict[str, Any]:
 
 app.include_router(tasks.router)
 app.include_router(batch.router)
+app.include_router(ai_settings.router)
 app.include_router(catalog.router)
 app.include_router(latex.router)
 app.include_router(papers.router)

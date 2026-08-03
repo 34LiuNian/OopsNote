@@ -90,3 +90,82 @@ class AppSettingsStore:
             current["ocr_profile_id"] = profile.id
             self._write(current)
             return profile
+
+    def remove_provider_profile(self, profile_id: str) -> None:
+        """Atomically remove an unselected profile and its validation observation."""
+        with self._lock:
+            current = self.get()
+            if current.get("ai_provider_profile_id") == profile_id or current.get("ocr_profile_id") == profile_id:
+                raise ValueError("selected provider profile cannot be deleted")
+            profiles = current.get("provider_profiles", [])
+            remaining = [item for item in profiles if isinstance(item, dict) and item.get("id") != profile_id]
+            if len(remaining) == len(profiles):
+                raise KeyError(profile_id)
+            current["provider_profiles"] = remaining
+            validations = current.get("provider_validation_results")
+            if isinstance(validations, dict):
+                validations.pop(profile_id, None)
+            self._write(current)
+
+    def clear_provider_credential(self, profile: Any) -> Any:
+        """Atomically persist a secretless version and clear invalid selections."""
+        with self._lock:
+            current = self.get()
+            self._upsert_profile(current, profile)
+            if current.get("ai_provider_profile_id") == profile.id:
+                current.pop("ai_provider_profile_id", None)
+            if current.get("ocr_profile_id") == profile.id:
+                current.pop("ocr_profile_id", None)
+            validations = current.get("provider_validation_results")
+            if isinstance(validations, dict):
+                validations.pop(profile.id, None)
+            self._write(current)
+            return profile
+
+    def record_provider_validation(self, profile_id: str, version: int, result: Any) -> None:
+        """Persist one redacted connection observation outside immutable run snapshots."""
+        with self._lock:
+            current = self.get()
+            validations = current.get("provider_validation_results")
+            if not isinstance(validations, dict):
+                validations = {}
+            validations[profile_id] = {
+                "profile_version": version,
+                "result": result.model_dump(mode="json") if hasattr(result, "model_dump") else result,
+            }
+            current["provider_validation_results"] = validations
+            self._write(current)
+
+    def commit_validated_provider_profile(
+        self,
+        profile: Any,
+        result: Any,
+        *,
+        select_if_unset: bool = False,
+    ) -> Any:
+        """Atomically commit a validated profile version and its redacted observation."""
+        with self._lock:
+            current = self.get()
+            self._upsert_profile(current, profile)
+            if select_if_unset and not current.get("ai_provider_profile_id"):
+                current["ai_provider_profile_id"] = profile.id
+            validations = current.get("provider_validation_results")
+            if not isinstance(validations, dict):
+                validations = {}
+            validations[profile.id] = {
+                "profile_version": profile.version,
+                "result": result.model_dump(mode="json") if hasattr(result, "model_dump") else result,
+            }
+            current["provider_validation_results"] = validations
+            self._write(current)
+            return profile
+
+    def provider_validation(self, profile_id: str, version: int) -> dict[str, Any] | None:
+        validations = self.get().get("provider_validation_results")
+        if not isinstance(validations, dict):
+            return None
+        observation = validations.get(profile_id)
+        if not isinstance(observation, dict) or observation.get("profile_version") != version:
+            return None
+        result = observation.get("result")
+        return result if isinstance(result, dict) else None

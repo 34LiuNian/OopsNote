@@ -163,13 +163,13 @@ def test_provider_settings_require_an_administrator_role_when_oidc_is_enabled():
         "oopsnote.api.main.authenticate_request", return_value=ordinary
     ), patch("oopsnote.api.main.get_secret_store", return_value=MemorySecretStore()):
         rejected = TestClient(main.app).get(
-            "/settings/provider-profiles", headers={"Authorization": "Bearer test-token"}
+            "/settings/ai/profiles", headers={"Authorization": "Bearer test-token"}
         )
     with patch.dict("os.environ", environment, clear=False), patch(
         "oopsnote.api.main.authenticate_request", return_value=admin
     ), patch("oopsnote.api.main.get_secret_store", return_value=MemorySecretStore()):
         allowed = TestClient(main.app).get(
-            "/settings/provider-profiles", headers={"Authorization": "Bearer test-token"}
+            "/settings/ai/profiles", headers={"Authorization": "Bearer test-token"}
         )
 
     assert rejected.status_code == 403
@@ -179,7 +179,7 @@ def test_provider_settings_require_an_administrator_role_when_oidc_is_enabled():
 
 def test_cors_does_not_allow_an_arbitrary_origin():
     response = TestClient(main.app).options(
-        "/settings/provider-profiles",
+        "/settings/ai/profiles",
         headers={"Origin": "https://attacker.example", "Access-Control-Request-Method": "GET"},
     )
 

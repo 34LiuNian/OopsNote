@@ -69,13 +69,13 @@ class ManagedAiRunner(ABC):
         worker_count = max(1, int(getattr(self, "max_concurrent_tasks", 1)))
         self._dispatcher = ManagedTaskDispatcher(self, worker_count)
 
-    def _run_metadata(self) -> dict[str, Any]:
+    def _run_metadata(self, task_id: str) -> dict[str, Any]:
+        del task_id
         return {}
 
     def _retry_run_metadata(self, previous: TaskRun) -> dict[str, Any]:
         """Return immutable metadata for a fresh retry of the same execution choice."""
-        del previous
-        return self._run_metadata()
+        return self._run_metadata(previous.task_id)
 
     def enqueue(
         self,
@@ -97,7 +97,7 @@ class ManagedAiRunner(ABC):
             metadata = (
                 self._retry_run_metadata(retry_of)
                 if retry_of is not None
-                else self._run_metadata()
+                else self._run_metadata(task_id)
             )
             run = self.run_store.create(
                 task_id,

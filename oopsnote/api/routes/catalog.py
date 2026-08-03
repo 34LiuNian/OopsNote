@@ -6,202 +6,18 @@ from datetime import datetime
 from typing import Any, Optional
 from uuid import NAMESPACE_URL, uuid5
 
-from fastapi import APIRouter, HTTPException, Query, Request
-from pydantic import BaseModel, Field
+from fastapi import APIRouter, HTTPException, Query
 
 from oopsnote.api.schemas import TagInput, TagRenameInput
-from oopsnote.api.auth import AuthenticationError, require_admin_request
-from oopsnote.ai.providers import ProviderClientFactory, ProviderProfile
 from oopsnote.core import Problem, Searcher, SearchQuery, TagDimension, TagItem
-from oopsnote.core import RunStatus
-from oopsnote.mcp.ocr import configure_ocr_vault
 from oopsnote.obsidian.syncer import ObsidianSyncer
 
 router = APIRouter()
-
-class PiConcurrencyUpdate(BaseModel):
-    pi_concurrency: int = Field(ge=1, le=16)
-
 
 def _api():
     from oopsnote.api import main
 
     return main
-
-
-def _require_admin(request: Request) -> None:
-    try:
-        require_admin_request(request)
-    except AuthenticationError as error:
-        raise HTTPException(status_code=error.status_code, detail=error.detail) from error
-
-
-@router.get("/settings/provider-profiles")
-def list_provider_profiles(request: Request) -> dict[str, list[dict[str, Any]]]:
-    _require_admin(request)
-    api = _api()
-    try:
-        secret_store = api.get_secret_store()
-    except RuntimeError as error:
-        raise HTTPException(status_code=503, detail="provider secret store is unavailable") from error
-    settings = api.APP_SETTINGS_STORE.get()
-    return {
-        "items": [
-            {
-                **profile.model_dump(mode="json", exclude={"credential_ref"}),
-                "has_secret": secret_store.has(profile.credential_ref),
-                "active": settings.get("ai_provider_profile_id") == profile.id,
-                "ocr_active": settings.get("ocr_profile_id") == profile.id,
-            }
-            for profile in api.APP_SETTINGS_STORE.provider_profiles()
-        ]
-    }
-
-
-@router.post("/settings/provider-profiles")
-def create_provider_profile(payload: dict[str, Any], request: Request) -> dict[str, Any]:
-    """Create and validate a profile without exposing its credential reference."""
-    api = _api()
-    _require_admin(request)
-    secret = payload.get("secret")
-    if not isinstance(secret, str) or not secret:
-        raise HTTPException(status_code=422, detail="secret is required")
-    if "credential_ref" in payload:
-        raise HTTPException(status_code=422, detail="credential_ref is server-managed")
-    try:
-        vault = api.get_secret_store()
-    except RuntimeError as error:
-        raise HTTPException(status_code=503, detail="provider secret store is unavailable") from error
-    try:
-        reference = vault.put(secret)
-        profile = ProviderProfile.model_validate({
-            **{key: value for key, value in payload.items() if key != "secret"},
-            "version": int(payload.get("version", 1)),
-            "credential_ref": reference,
-        })
-        ProviderClientFactory(vault).validate(profile)
-        api.APP_SETTINGS_STORE.upsert_provider_profile(profile, select_if_unset=True)
-    except ValueError as error:
-        if "reference" in locals():
-            try: vault.delete(reference)
-            except Exception: pass
-        raise HTTPException(status_code=422, detail=str(error)) from error
-    except Exception as error:
-        if "reference" in locals():
-            try: vault.delete(reference)
-            except Exception: pass
-        raise HTTPException(status_code=502, detail="provider validation failed") from error
-    return {"profile": {**profile.model_dump(mode="json", exclude={"credential_ref"}), "has_secret": True}, "validation": {"ok": True}}
-
-
-@router.post("/settings/provider-profiles/{profile_id}/activate")
-def activate_provider_profile(profile_id: str, request: Request) -> dict[str, Any]:
-    """Select one enabled, vault-backed profile for newly admitted runs."""
-    api = _api()
-    _require_admin(request)
-    profile = next((item for item in api.APP_SETTINGS_STORE.provider_profiles() if item.id == profile_id), None)
-    if profile is None:
-        raise HTTPException(status_code=404, detail="provider profile not found")
-    if not profile.enabled:
-        raise HTTPException(status_code=409, detail="provider profile is disabled")
-    try:
-        if not api.get_secret_store().has(profile.credential_ref):
-            raise HTTPException(status_code=409, detail="provider profile has no secret")
-    except RuntimeError as error:
-        raise HTTPException(status_code=503, detail=str(error)) from error
-    api.APP_SETTINGS_STORE.update({"ai_provider_profile_id": profile.id})
-    return {"profile_id": profile.id, "version": profile.version, "active": True}
-
-
-@router.post("/settings/ocr-profile")
-def activate_ocr_profile(payload: dict[str, Any], request: Request) -> dict[str, Any]:
-    """Select the vault-backed OCR profile used by future LangChain runs."""
-    api = _api()
-    _require_admin(request)
-    profile_id = payload.get("profile_id")
-    if not isinstance(profile_id, str) or not profile_id:
-        raise HTTPException(status_code=422, detail="profile_id is required")
-    profile = next((item for item in api.APP_SETTINGS_STORE.provider_profiles() if item.id == profile_id), None)
-    if profile is None:
-        raise HTTPException(status_code=404, detail="provider profile not found")
-    if not profile.enabled:
-        raise HTTPException(status_code=409, detail="provider profile is disabled")
-    try:
-        if not api.get_secret_store().has(profile.credential_ref):
-            raise HTTPException(status_code=409, detail="OCR profile has no secret")
-    except RuntimeError as error:
-        raise HTTPException(status_code=503, detail=str(error)) from error
-    api.APP_SETTINGS_STORE.update({"ocr_profile_id": profile.id})
-    configure_ocr_vault(
-        api.get_secret_store(),
-        profile.credential_ref,
-        model=profile.model,
-        endpoint=str(profile.base_url),
-    )
-    return {"profile_id": profile.id, "version": profile.version, "active": True}
-
-
-@router.post("/settings/provider-profiles/{profile_id}/secret")
-def rotate_provider_secret(profile_id: str, payload: dict[str, Any], request: Request) -> dict[str, Any]:
-    """Validate a new secret, atomically activate its profile version, then retire old ref."""
-    api = _api()
-    _require_admin(request)
-    secret = payload.get("secret")
-    if not isinstance(secret, str) or not secret:
-        raise HTTPException(status_code=422, detail="secret is required")
-    try:
-        vault = api.get_secret_store()
-    except RuntimeError as error:
-        raise HTTPException(status_code=503, detail=str(error)) from error
-    profiles = {profile.id: profile for profile in api.APP_SETTINGS_STORE.provider_profiles()}
-    previous = profiles.get(profile_id)
-    if previous is None:
-        raise HTTPException(status_code=404, detail="provider profile not found")
-    reference = vault.put(secret)
-    updates = {
-        key: payload[key]
-        for key in ("provider", "model", "base_url", "enabled")
-        if key in payload
-    }
-    try:
-        candidate = ProviderProfile.model_validate({
-            **previous.model_dump(mode="json"),
-            **updates,
-            "version": previous.version + 1,
-            "credential_ref": reference,
-        })
-    except ValueError as error:
-        vault.delete(reference)
-        raise HTTPException(status_code=422, detail=str(error)) from error
-    try:
-        ProviderClientFactory(vault).validate(candidate)
-        api.APP_SETTINGS_STORE.upsert_provider_profile(candidate)
-        if api.APP_SETTINGS_STORE.get().get("ocr_profile_id") == candidate.id:
-            configure_ocr_vault(
-                vault,
-                candidate.credential_ref,
-                model=candidate.model,
-                endpoint=str(candidate.base_url),
-            )
-    except Exception as error:
-        try:
-            vault.delete(reference)
-        except Exception:
-            pass
-        raise HTTPException(status_code=502, detail="provider validation failed") from error
-    active_references = {
-        snapshot.get("credential_ref")
-        for run in api.RUN_STORE.list_all()
-        if run.status in {RunStatus.QUEUED, RunStatus.RUNNING}
-        for snapshot in [run.provider_profile_snapshot]
-        if isinstance(snapshot, dict)
-    }
-    if previous.credential_ref != reference and previous.credential_ref not in active_references:
-        try:
-            vault.delete(previous.credential_ref)
-        except Exception:
-            pass
-    return {"profile": {**candidate.model_dump(mode="json", exclude={"credential_ref"}), "has_secret": True}, "validation": {"ok": True}}
 
 
 def _tag_reference_count(dimension: TagDimension, value: str) -> int:
@@ -311,29 +127,6 @@ def _replace_tag_references(
             tasks_modified += 1
             fields_modified += changed_fields
     return tasks_modified, fields_modified
-
-@router.get("/settings/pi")
-def get_pi_settings() -> dict[str, Any]:
-    api = _api()
-    configured = int(api.APP_SETTINGS_STORE.get().get("pi_concurrency", 3))
-    return {
-        "pi_concurrency": api.PI_RUNNER.max_concurrent_tasks if api.PI_RUNNER else configured,
-        "workers": api.PI_RUNNER.dispatcher_status()["workers"] if api.PI_RUNNER else 0,
-        "enabled": api.PI_RUNNER is not None,
-        "applies_on_restart": True,
-    }
-
-@router.put("/settings/pi")
-def update_pi_settings(payload: PiConcurrencyUpdate) -> dict[str, Any]:
-    api = _api()
-    api.APP_SETTINGS_STORE.update({"pi_concurrency": payload.pi_concurrency})
-    return {
-        "pi_concurrency": payload.pi_concurrency,
-        "workers": api.PI_RUNNER.dispatcher_status()["workers"] if api.PI_RUNNER else 0,
-        "enabled": api.PI_RUNNER is not None,
-        "applies_on_restart": True,
-    }
-
 
 def _parse_iso(value: Optional[str]) -> Optional[datetime]:
     if not value:

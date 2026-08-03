@@ -26,7 +26,8 @@ class HermesRunner(ManagedAiRunner):
         )
     )
 
-    def _run_metadata(self) -> dict[str, str]:
+    def _run_metadata(self, task_id: str) -> dict[str, str]:
+        del task_id
         return {"prompt_version": "hermes-legacy"}
 
     def build_command(self, task_id: str, run_id: str) -> list[str]:

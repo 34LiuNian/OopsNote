@@ -184,7 +184,8 @@ class PiRpcRunner(ManagedAiRunner):
         self._workers_by_process: dict[int, RpcWorkerState] = {}
         self._child_environment: dict[str, str] = {}
 
-    def _run_metadata(self) -> dict[str, Any]:
+    def _run_metadata(self, task_id: str) -> dict[str, Any]:
+        del task_id
         return {
             "provider": self.backend.provider,
             "model": self.backend.model,

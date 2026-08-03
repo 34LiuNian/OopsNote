@@ -34,8 +34,10 @@ class LangChainRunner(ManagedAiRunner):
         settings_store: AppSettingsStore,
         provider_factory: Callable[[], ProviderClientFactory],
         tool_client_factory: Callable[[], RestrictedMcpToolClient],
+        max_concurrent_tasks: int = 1,
         **kwargs: Any,
     ) -> None:
+        self.max_concurrent_tasks = max(1, int(max_concurrent_tasks))
         super().__init__(**kwargs)
         self.settings_store = settings_store
         self.provider_factory = provider_factory
@@ -47,18 +49,27 @@ class LangChainRunner(ManagedAiRunner):
         del task_id, run_id
         return []
 
-    def _selected_profile(self) -> ProviderProfile:
+    def _selected_profile(self, task_id: str | None = None) -> ProviderProfile:
         settings = self.settings_store.get()
-        profile_id = settings.get("ai_provider_profile_id")
+        profile_id = None
+        if task_id is not None:
+            task_profile_id = self.task_store.get(task_id).metadata.get("ai_provider_profile_id")
+            if isinstance(task_profile_id, str) and task_profile_id:
+                profile_id = task_profile_id
+        if profile_id is None:
+            profile_id = settings.get("ai_provider_profile_id")
         if not isinstance(profile_id, str) or not profile_id:
             raise RuntimeError("no enabled LangChain provider profile is selected")
         for profile in self.settings_store.provider_profiles():
             if profile.id == profile_id and profile.enabled:
+                factory = self.provider_factory()
+                if not profile.credential_ref or not factory.secret_store.has(profile.credential_ref):
+                    raise RuntimeError("selected LangChain provider profile has no credential")
                 return profile
         raise RuntimeError("selected LangChain provider profile is unavailable")
 
-    def _run_metadata(self) -> dict[str, Any]:
-        profile = self._selected_profile()
+    def _run_metadata(self, task_id: str) -> dict[str, Any]:
+        profile = self._selected_profile(task_id)
         return {
             "provider": profile.provider,
             "model": profile.model,

@@ -370,13 +370,3 @@ export interface TagDimensionsResponse {
 export interface TagDimensionsUpdateRequest {
   dimensions: Record<string, TagDimensionStyle>;
 }
-
-export interface PiSettingsResponse {
-  pi_concurrency: number;
-  workers: number;
-  applies_on_restart: boolean;
-}
-
-export interface PiSettingsUpdateRequest {
-  pi_concurrency: number;
-}

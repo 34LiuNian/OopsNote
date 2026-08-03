@@ -12,7 +12,12 @@ import pytest
 from fastapi.testclient import TestClient
 
 from oopsnote.ai.langchain_tools import ContractBoundToolDispatcher, langchain_tool_schemas
-from oopsnote.ai.providers import ProviderClientFactory, ProviderProfile, collect_unreferenced_profile_secrets
+from oopsnote.ai.providers import (
+    ProviderClientFactory,
+    ProviderProfile,
+    ProviderValidationResult,
+    collect_unreferenced_profile_secrets,
+)
 from oopsnote.ai.secrets import EncryptedFileSecretStore, MemorySecretStore, SecretStoreCorruptionError
 from oopsnote.mcp import ocr
 from oopsnote.core import AppSettingsStore, RunStatus, RunStore, TaskCreateRequest, TaskStatus, TaskStore
@@ -107,24 +112,30 @@ def test_provider_profile_public_view_never_exposes_credential_reference():
         credential_ref="opaque-reference",
     )
 
-    assert profile.public_view(FakeSecretStore({"opaque-reference"})) == {
-        "id": "deepseek-primary",
-        "version": 3,
-        "provider": "deepseek",
-        "model": "deepseek-v4-flash",
-        "base_url": "https://provider.example/v1",
-        "enabled": True,
-        "has_secret": True,
-    }
+    public = profile.public_view(FakeSecretStore({"opaque-reference"}))
+    assert public["id"] == "deepseek-primary"
+    assert public["display_name"] == "deepseek-primary"
+    assert public["version"] == 3
+    assert public["provider"] == "deepseek"
+    assert public["model"] == "deepseek-v4-flash"
+    assert public["base_url"] == "https://provider.example/v1"
+    assert public["enabled"] is True
+    assert public["has_secret"] is True
+    assert "credential_ref" not in public
 
 
 def test_provider_api_reports_unavailable_vault_instead_of_missing_secrets(monkeypatch, tmp_path):
     from oopsnote.api import main
 
-    monkeypatch.setattr(main, "APP_SETTINGS_STORE", AppSettingsStore(tmp_path / "settings.json"))
+    settings = AppSettingsStore(tmp_path / "settings.json")
+    settings.upsert_provider_profile(ProviderProfile(
+        id="primary", version=1, provider="deepseek", model="model",
+        base_url="https://provider.example/v1", credential_ref="missing-ref",
+    ))
+    monkeypatch.setattr(main, "APP_SETTINGS_STORE", settings)
     monkeypatch.setattr(main, "get_secret_store", lambda: (_ for _ in ()).throw(RuntimeError("unavailable")))
 
-    response = TestClient(main.app).get("/settings/provider-profiles")
+    response = TestClient(main.app).get("/settings/ai/profiles")
 
     assert response.status_code == 503
     assert response.json() == {"detail": "provider secret store is unavailable"}
@@ -132,7 +143,7 @@ def test_provider_api_reports_unavailable_vault_instead_of_missing_secrets(monke
 
 def test_ocr_profile_activation_updates_persisted_and_live_configuration(monkeypatch, tmp_path):
     from oopsnote.api import main
-    from oopsnote.api.routes import catalog
+    from oopsnote.api.routes import ai_settings
 
     settings = AppSettingsStore(tmp_path / "settings.json")
     vault = MemorySecretStore()
@@ -145,11 +156,11 @@ def test_ocr_profile_activation_updates_persisted_and_live_configuration(monkeyp
     configured = {}
     monkeypatch.setattr(main, "APP_SETTINGS_STORE", settings)
     monkeypatch.setattr(main, "get_secret_store", lambda: vault)
-    monkeypatch.setattr(catalog, "configure_ocr_vault", lambda store, ref, **kwargs: configured.update(
+    monkeypatch.setattr(ai_settings, "configure_ocr_vault", lambda store, ref, **kwargs: configured.update(
         store=store, reference=ref, **kwargs
     ))
 
-    response = TestClient(main.app).post("/settings/ocr-profile", json={"profile_id": "ocr"})
+    response = TestClient(main.app).put("/settings/ai/ocr-profile", json={"profile_id": "ocr"})
 
     assert response.status_code == 200
     assert settings.get()["ocr_profile_id"] == "ocr"
@@ -161,7 +172,7 @@ def test_ocr_profile_activation_updates_persisted_and_live_configuration(monkeyp
     }
 
 
-def test_provider_rotation_commits_metadata_as_a_new_nonsecret_version(monkeypatch, tmp_path):
+def test_provider_rotation_commits_a_validated_new_nonsecret_version(monkeypatch, tmp_path):
     from oopsnote.api import main
 
     settings = AppSettingsStore(tmp_path / "settings.json")
@@ -176,25 +187,22 @@ def test_provider_rotation_commits_metadata_as_a_new_nonsecret_version(monkeypat
     monkeypatch.setattr(main, "RUN_STORE", RunStore(tmp_path / "storage" / "runs"))
     monkeypatch.setattr(main, "get_secret_store", lambda: vault)
 
-    with patch("oopsnote.api.routes.catalog.ProviderClientFactory.validate", return_value=None):
+    validation = ProviderValidationResult(
+        success=True, provider="deepseek", model="old-model", message="Connection validated"
+    )
+    with patch("oopsnote.api.routes.ai_settings.ProviderClientFactory.check", return_value=validation):
         response = TestClient(main.app).post(
-            "/settings/provider-profiles/primary/secret",
-            json={
-                "secret": "new-secret",
-                "provider": "openai-compatible",
-                "model": "new-model",
-                "base_url": "https://new.example/v1",
-                "enabled": True,
-            },
+            "/settings/ai/profiles/primary/credential",
+            json={"secret": "new-secret"},
         )
 
     assert response.status_code == 200
     body = response.json()
     assert "credential_ref" not in str(body)
     assert body["profile"]["version"] == 4
-    assert body["profile"]["provider"] == "openai-compatible"
-    assert body["profile"]["model"] == "new-model"
-    assert body["profile"]["base_url"] == "https://new.example/v1"
+    assert body["profile"]["provider"] == "deepseek"
+    assert body["profile"]["model"] == "old-model"
+    assert body["validation"]["success"] is True
     current = settings.provider_profiles()[0]
     assert vault.get(current.credential_ref) == "new-secret"
     assert not vault.has(old_reference)
@@ -219,17 +227,54 @@ def test_rotating_an_inactive_profile_does_not_switch_the_default_model(monkeypa
     monkeypatch.setattr(main, "RUN_STORE", RunStore(tmp_path / "storage" / "runs"))
     monkeypatch.setattr(main, "get_secret_store", lambda: vault)
 
-    with patch("oopsnote.api.routes.catalog.ProviderClientFactory.validate", return_value=None):
+    validation = ProviderValidationResult(
+        success=True, provider="deepseek", model="old-model", message="Connection validated"
+    )
+    with patch("oopsnote.api.routes.ai_settings.ProviderClientFactory.check", return_value=validation):
         response = TestClient(main.app).post(
-            "/settings/provider-profiles/inactive/secret",
-            json={"secret": "new-secret", "model": "new-model"},
+            "/settings/ai/profiles/inactive/credential",
+            json={"secret": "new-secret"},
         )
 
     assert response.status_code == 200
     assert settings.get()["ai_provider_profile_id"] == "active"
     profiles = {profile.id: profile for profile in settings.provider_profiles()}
     assert profiles["inactive"].version == 2
-    assert profiles["inactive"].model == "new-model"
+    assert profiles["inactive"].model == "old-model"
+
+
+def test_failed_provider_validation_keeps_previous_profile_and_secret(monkeypatch, tmp_path):
+    from oopsnote.api import main
+
+    settings = AppSettingsStore(tmp_path / "settings.json")
+    vault = MemorySecretStore()
+    old_reference = vault.put("old-secret")
+    profile = ProviderProfile(
+        id="primary", version=2, provider="deepseek", model="model",
+        base_url="https://provider.example/v1", credential_ref=old_reference,
+    )
+    settings.activate_provider_profile(profile)
+    monkeypatch.setattr(main, "APP_SETTINGS_STORE", settings)
+    monkeypatch.setattr(main, "RUN_STORE", RunStore(tmp_path / "storage" / "runs"))
+    monkeypatch.setattr(main, "get_secret_store", lambda: vault)
+    validation = ProviderValidationResult(
+        success=False,
+        provider="deepseek",
+        model="model",
+        error_code="authentication_failed",
+        message="Provider connection validation failed",
+    )
+
+    with patch("oopsnote.api.routes.ai_settings.ProviderClientFactory.check", return_value=validation):
+        response = TestClient(main.app).post(
+            "/settings/ai/profiles/primary/credential",
+            json={"secret": "invalid-secret"},
+        )
+
+    assert response.status_code == 422
+    assert settings.provider_profiles() == [profile]
+    assert vault.get(old_reference) == "old-secret"
+    assert len(vault._values) == 1
 
 
 def test_profile_store_replaces_only_same_or_newer_version(tmp_path):
@@ -506,6 +551,61 @@ def test_profile_snapshot_is_durable_when_settings_profile_rotates(tmp_path):
     assert settings.provider_profiles()[0].credential_ref == "new-ref"
 
 
+def test_task_profile_selection_is_frozen_at_run_admission(tmp_path):
+    model = ScriptedModel([model_response(1)])
+    runner, task_store, run_store, vault, default = langchain_runner_fixture(tmp_path, model)
+    selected = ProviderProfile(
+        id="selected", version=4, display_name="Selected", provider="openai-compatible",
+        model="selected-model", base_url="https://selected.example/v1",
+        credential_ref=vault.put("selected-secret"),
+    )
+    runner.settings_store.upsert_provider_profile(selected)
+    task = task_store.create(TaskCreateRequest(
+        subject="math", metadata={"ai_provider_profile_id": selected.id}
+    ))
+
+    run = runner.enqueue(task.id)
+    runner.settings_store.upsert_provider_profile(selected.model_copy(update={
+        "version": 5, "model": "later-model",
+    }))
+
+    assert run.provider == "openai-compatible"
+    assert run.model == "selected-model"
+    assert run.provider_profile_snapshot == selected.model_dump(mode="json")
+    assert default.id == "primary"
+
+
+def test_provider_profile_used_by_active_run_cannot_be_deleted(monkeypatch, tmp_path):
+    from oopsnote.api import main
+
+    settings = AppSettingsStore(tmp_path / "settings.json")
+    vault = MemorySecretStore()
+    profile = ProviderProfile(
+        id="active", version=1, provider="deepseek", model="model",
+        credential_ref=vault.put("secret"),
+    )
+    settings.upsert_provider_profile(profile)
+    task_store = TaskStore(tmp_path / "storage")
+    run_store = RunStore(tmp_path / "storage" / "runs")
+    task = task_store.create(TaskCreateRequest(subject="math"))
+    run_store.create(
+        task.id,
+        backend="langchain",
+        provider_profile_snapshot=profile.model_dump(mode="json"),
+    )
+    monkeypatch.setattr(main, "APP_SETTINGS_STORE", settings)
+    monkeypatch.setattr(main, "TASK_STORE", task_store)
+    monkeypatch.setattr(main, "RUN_STORE", run_store)
+    monkeypatch.setattr(main, "get_secret_store", lambda: vault)
+
+    response = TestClient(main.app).delete("/settings/ai/profiles/active")
+
+    assert response.status_code == 409
+    assert response.json() == {"detail": "profile_in_use"}
+    assert settings.provider_profiles() == [profile]
+    assert vault.has(profile.credential_ref)
+
+
 def test_fresh_retry_keeps_failed_run_profile_snapshot(tmp_path):
     from oopsnote.ai.backends.langchain import LangChainRunner
 
@@ -557,7 +657,7 @@ def test_provider_factory_disables_sdk_retries(monkeypatch):
     vault = MemorySecretStore()
     reference = vault.put("secret")
     profile = ProviderProfile(
-        id="p", version=1, provider="deepseek", model="m",
+        id="p", version=1, provider="openai-compatible", model="m",
         base_url="https://provider.example", credential_ref=reference,
     )
 

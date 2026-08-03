@@ -103,13 +103,35 @@ def cancel_task(task_id: str) -> dict[str, Any]:
 def _enqueue(
     task_id: str,
     backend: Optional[str],
+    profile_id: Optional[str] = None,
 ) -> dict[str, Any]:
     api = _api()
     try:
-        api.TASK_STORE.get(task_id)
+        task = api.TASK_STORE.get(task_id)
     except KeyError:
         raise HTTPException(status_code=404, detail="Task not found")
     selected_backend = api._configured_backend(backend)
+    if profile_id is not None:
+        if selected_backend != "langchain":
+            raise HTTPException(status_code=422, detail="profile_id requires the langchain backend")
+        profile = next(
+            (item for item in api.APP_SETTINGS_STORE.provider_profiles() if item.id == profile_id),
+            None,
+        )
+        if profile is None:
+            raise HTTPException(status_code=404, detail="provider profile not found")
+        if not profile.enabled or not profile.credential_ref:
+            raise HTTPException(status_code=409, detail="provider profile is disabled or has no credential")
+        try:
+            has_secret = api.get_secret_store().has(profile.credential_ref)
+        except RuntimeError as error:
+            raise HTTPException(status_code=503, detail="provider secret store is unavailable") from error
+        if not has_secret:
+            raise HTTPException(status_code=409, detail="provider profile has no credential")
+        api.TASK_STORE.update(
+            task_id,
+            metadata={**task.metadata, "ai_provider_profile_id": profile.id},
+        )
     runner = api._runner_for(selected_backend)
     runner.recover_stale()
     try:
@@ -126,8 +148,9 @@ def _enqueue(
 def process_task(
     task_id: str,
     backend: Optional[str] = Query(default=None),
+    profile_id: Optional[str] = Query(default=None, min_length=1, max_length=128),
 ) -> dict[str, Any]:
-    return _enqueue(task_id, backend)
+    return _enqueue(task_id, backend, profile_id)
 
 
 @router.post("/tasks/{task_id}/retry")

@@ -3,6 +3,8 @@
 Date: 2026-08-03
 Status: accepted; production evaluation required before Pi removal
 
+Supersedes: ADR 0001
+
 ## Decision
 
 `ManagedAiRunner` remains the sole owner of task/run state, timeouts,
@@ -13,7 +15,8 @@ LangGraph persistence, `create_agent`, provider fallback, dynamic routing, or
 provider-native tools.
 
 Provider profiles are non-secret AppSettings metadata. Each admitted run stores
-an immutable profile snapshot; credentials are resolved only through the local
+an immutable profile snapshot selected either by the task or the current
+default; later profile edits affect only future runs. Credentials are resolved only through the local
 SecretStore. Windows uses Credential Manager. Linux and containers use an
 encrypted file vault whose master key is supplied as a read-only mounted file;
 the key value is never an application environment variable. OCR uses the same
@@ -32,5 +35,7 @@ evaluation gate, not merely unit-test success.
   classified transport/429/5xx failures may create a fresh managed retry.
 - Provider SDK retries are disabled; shared lifecycle retry policy remains the
   only retry authority and retains the original run's profile snapshot.
+- The administrator provider API is the only profile and credential management
+  boundary. It never returns credential references or secret material.
 - RustPi removal is a separate, irreversible step gated by isolated real-task
   evidence. Hermes retirement remains a later independent decision.
