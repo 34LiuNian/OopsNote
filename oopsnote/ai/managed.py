@@ -206,6 +206,18 @@ class ManagedAiRunner(ABC):
                 exit_code=exit_code,
             )
         else:
+            # Cancellation is idempotent after any terminal transition.  In
+            # particular, a late request must never rewrite a successful
+            # finalize or turn an already diagnosed failure into a new state.
+            task = self.task_store.get(task_id)
+            if task.status in {
+                TaskStatus.COMPLETED,
+                TaskStatus.FAILED,
+                TaskStatus.CANCELLED,
+            }:
+                return
+            if task.status == TaskStatus.PROCESSING:
+                raise RuntimeError("Task is processing without an active managed run")
             self.task_store.transition(
                 task_id,
                 expected_statuses={TaskStatus.PENDING},

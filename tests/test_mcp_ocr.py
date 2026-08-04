@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from types import SimpleNamespace
 
 import httpx
 import pytest
@@ -50,6 +51,57 @@ class FakeResponse:
                 }
             ]
         }
+
+
+def _vision_ocr_payload() -> dict[str, object]:
+    return {
+        "content_format": "oopsmark-v1",
+        "subject": "math",
+        "question_type": "填空题",
+        "printed_question_no": 6,
+        "printed_chapter": "函数",
+        "problem_text": "求 $1+1$。",
+        "options": [],
+        "has_diagram": False,
+        "student_response_status": "unanswered",
+        "student_response": "",
+        "uncertain_regions": [],
+        "confidence": 1,
+    }
+
+
+@pytest.mark.parametrize(
+    "content",
+    [
+        lambda payload: json.dumps(payload, ensure_ascii=False),
+        lambda payload: f"```json\n{json.dumps(payload, ensure_ascii=False)}\n```",
+        lambda payload: f"```\n{json.dumps(payload, ensure_ascii=False)}\n```",
+    ],
+)
+def test_vision_ocr_accepts_only_one_json_object_or_fence(tmp_path, content):
+    image = tmp_path / "question.png"
+    image.write_bytes(b"image")
+    payload = _vision_ocr_payload()
+
+    class VisionModel:
+        def invoke(self, _messages):
+            return SimpleNamespace(content=content(payload))
+
+    assert ocr._ocr_image_path(image, VisionModel()) == payload
+
+
+def test_vision_ocr_rejects_json_surrounded_by_explanatory_prose(tmp_path):
+    image = tmp_path / "question.png"
+    image.write_bytes(b"image")
+
+    class VisionModel:
+        def invoke(self, _messages):
+            return SimpleNamespace(content=f"Here is the result: {json.dumps(_vision_ocr_payload())}")
+
+    with pytest.raises(ocr.OcrProviderError, match="invalid OCR response") as captured:
+        ocr._ocr_image_path(image, VisionModel())
+
+    assert captured.value.code == "ocr_invalid_response"
 
 
 def test_restricted_surface_contains_exactly_ocr_and_pipeline_tools():
@@ -406,3 +458,32 @@ def test_ocr_and_asset_resolution_reject_wrong_run_and_unmanaged_paths(tmp_path,
     task_store.update(task.id, asset_path="/assets/../secret.png")
     with pytest.raises(ValueError, match="outside"):
         server.get_asset_path(task.id, "run-1")
+
+
+def test_langchain_ocr_never_falls_back_to_legacy_pi_configuration(tmp_path, monkeypatch):
+    """A staged LangChain run must require its frozen Vision model."""
+    storage = tmp_path / "storage"
+    image = storage / "assets" / "question.png"
+    image.parent.mkdir(parents=True)
+    image.write_bytes(b"image")
+    task_store = TaskStore(storage)
+    task = task_store.create(TaskCreateRequest(asset_path="/assets/question.png"))
+    task_store.update(task.id, status=TaskStatus.PROCESSING, active_run_id="run-1")
+    run_store = RunStore(storage / "runs")
+    run_store._write(TaskRun(
+        id="run-1",
+        task_id=task.id,
+        status=RunStatus.RUNNING,
+        provider_profile_snapshot={"vision": {"provider": "google", "model": "vision"}},
+    ))
+    monkeypatch.setattr(server, "TASK_STORE", task_store)
+    monkeypatch.setattr(server, "ASSET_STORE", AssetStore(storage / "assets"))
+    monkeypatch.setattr(server, "RUN_STORE", run_store)
+    legacy = tmp_path / "extensions.json"
+    legacy.write_text('{"ocr_image":{"dashscope_api_key":"legacy","model":"legacy"}}', encoding="utf-8")
+    monkeypatch.setenv("OOPSNOTE_OCR_CONFIG", str(legacy))
+    monkeypatch.setattr(ocr, "_RUN_MODEL_RESOLVER", None)
+    monkeypatch.setattr(ocr, "_load_ocr_config", lambda: pytest.fail("legacy OCR configuration was read"))
+
+    with pytest.raises(RuntimeError, match="LangChain Vision resolver is unavailable"):
+        ocr.ocr_image(task.id, "run-1")

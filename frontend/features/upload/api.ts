@@ -1,4 +1,4 @@
-import { fetchApi, fetchJson, fetchRawUpload } from "../../lib/api";
+import { apiErrorFromResponse, fetchApi, fetchJson, fetchRawUpload } from "../../lib/api";
 import type { TaskResponse } from "../../types/api";
 
 export type CreateUploadTaskPayload = {
@@ -108,6 +108,20 @@ export type BatchProcessResult = {
   session: BatchSession;
 };
 
+export type BatchUploadLimits = {
+  source_max_bytes: number;
+};
+
+let batchUploadLimitsPromise: Promise<BatchUploadLimits> | null = null;
+
+export function getBatchUploadLimits(): Promise<BatchUploadLimits> {
+  batchUploadLimitsPromise ??= fetchJson<BatchUploadLimits>("/batch-sessions/upload-limits").catch((error) => {
+    batchUploadLimitsPromise = null;
+    throw error;
+  });
+  return batchUploadLimitsPromise;
+}
+
 export async function listBatchSessions(): Promise<BatchSession[]> {
   return (await fetchJson<{ items: BatchSession[] }>("/batch-sessions")).items;
 }
@@ -115,7 +129,7 @@ export async function listBatchSessions(): Promise<BatchSession[]> {
 export async function getBatchSession(fileHash: string): Promise<BatchSession | null> {
   const response = await fetchApi(`/batch-sessions/${encodeURIComponent(fileHash)}`);
   if (response.status === 404) return null;
-  if (!response.ok) throw new Error(await response.text());
+  if (!response.ok) throw await apiErrorFromResponse(response);
   return (await response.json() as { session: BatchSession }).session;
 }
 
@@ -129,7 +143,7 @@ export async function uploadBatchSource(fileHash: string, file: File, pageCount:
     },
     body: file,
   });
-  if (!response.ok) throw new Error(await response.text());
+  if (!response.ok) throw await apiErrorFromResponse(response);
   return (await response.json() as { session: BatchSession }).session;
 }
 

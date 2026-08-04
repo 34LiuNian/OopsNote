@@ -10,6 +10,7 @@ import React, {
   useState,
 } from "react";
 import { MantineProvider } from "@mantine/core";
+import { ModalsProvider } from "@mantine/modals";
 import { oopsTheme } from "@/theme";
 
 export type ThemePreference = "system" | "light" | "dark";
@@ -117,7 +118,12 @@ export function ThemeProvider({
   return (
     <ThemeContext.Provider value={value}>
       <MantineProvider theme={oopsTheme} forceColorScheme={resolvedTheme} withCssVariables withGlobalClasses>
-        {children}
+        <ModalsProvider
+          modalProps={{ centered: true, radius: "md", overlayProps: { backgroundOpacity: 0.35, blur: 2 } }}
+          labels={{ cancel: "取消", confirm: "确认" }}
+        >
+          {children}
+        </ModalsProvider>
       </MantineProvider>
     </ThemeContext.Provider>
   );

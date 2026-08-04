@@ -24,15 +24,15 @@ import { formatApiError, getErrorDetails } from "../lib/errorFormatter";
  * ```
  */
 export function useApiError(options?: {
-  /** 是否自动显示 toast 提示 */
-  autoShowToast?: boolean;
+  /** 是否自动显示全局通知 */
+  autoNotify?: boolean;
   /** 默认错误信息 */
   defaultFallback?: string;
   /** 错误发生时的回调 */
   onError?: (error: string, details?: string) => void;
 }) {
   const {
-    autoShowToast = true,
+    autoNotify = true,
     defaultFallback = "操作失败，请稍后重试",
     onError,
   } = options ?? {};
@@ -63,8 +63,7 @@ export function useApiError(options?: {
       setErrorDetails(options?.showDetails ? details : null);
       setIsLoading(false);
 
-      // 自动显示 toast
-      if (autoShowToast) {
+      if (autoNotify) {
         notify.error({
           title: options?.title ?? "操作失败",
           description: formattedError,
@@ -79,7 +78,7 @@ export function useApiError(options?: {
         console.error("[API Error]", formattedError, details);
       }
     },
-    [autoShowToast, defaultFallback, onError]
+    [autoNotify, defaultFallback, onError]
   );
 
   /**

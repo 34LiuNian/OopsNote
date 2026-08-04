@@ -17,7 +17,7 @@ from oopsnote.api import main
 from oopsnote.api import auth
 from oopsnote.api.auth import AuthConfig, AuthenticatedUser, AuthenticationError
 from oopsnote.ai import HermesRunner
-from oopsnote.core import AssetStore, BatchProcessJobStore, BatchSessionStore, Problem, ProblemMergeStore, RunArtifact, RunStatus, RunStore, TagStore, TaskCreateRequest, TaskRun, TaskStore, TaskStage, TaskStatus
+from oopsnote.core import AssetStore, BatchProcessJobStore, BatchSegment, BatchSegmentPart, BatchSessionRecord, BatchSessionStore, Problem, ProblemMergeStore, RunArtifact, RunStatus, RunStore, TagStore, TaskCreateRequest, TaskRecord, TaskRun, TaskStore, TaskStage, TaskStatus
 
 
 class RecordingBatchRunner:
@@ -117,6 +117,41 @@ def test_enabled_runner_registry_does_not_construct_disabled_backends(monkeypatc
     assert runners == {"langchain": langchain_runner}
 
 
+def test_batch_projection_preserves_admission_failure_for_pending_task(monkeypatch):
+    task = TaskRecord(
+        id="task-1",
+        status=TaskStatus.PENDING,
+        asset_path="/assets/selection.png",
+    )
+
+    class StubTaskStore:
+        def get(self, task_id: str) -> TaskRecord:
+            assert task_id == task.id
+            return task
+
+    monkeypatch.setattr(main, "TASK_STORE", StubTaskStore())
+    record = BatchSessionRecord(
+        file_hash="a" * 64,
+        filename="questions.pdf",
+        asset_path="/assets/questions.pdf",
+        page_count=1,
+        segments=[
+            BatchSegment(
+                parts=[BatchSegmentPart(page_index=0, x=0, y=0, width=1, height=1)],
+                question_no=1,
+                status="failed",
+                task_id=task.id,
+                error="selected LangChain channel has no credential",
+            )
+        ],
+    )
+
+    projected = main._sync_batch_session_tasks(record)
+
+    assert projected.segments[0].status == "failed"
+    assert projected.segments[0].error == "selected LangChain channel has no credential"
+
+
 def test_task_routes_require_bearer_token_when_oidc_is_configured():
     with patch.dict(
         "os.environ",
@@ -163,13 +198,13 @@ def test_provider_settings_require_an_administrator_role_when_oidc_is_enabled():
         "oopsnote.api.main.authenticate_request", return_value=ordinary
     ), patch("oopsnote.api.main.get_secret_store", return_value=MemorySecretStore()):
         rejected = TestClient(main.app).get(
-            "/settings/ai/profiles", headers={"Authorization": "Bearer test-token"}
+            "/settings/ai/channels", headers={"Authorization": "Bearer test-token"}
         )
     with patch.dict("os.environ", environment, clear=False), patch(
         "oopsnote.api.main.authenticate_request", return_value=admin
     ), patch("oopsnote.api.main.get_secret_store", return_value=MemorySecretStore()):
         allowed = TestClient(main.app).get(
-            "/settings/ai/profiles", headers={"Authorization": "Bearer test-token"}
+            "/settings/ai/channels", headers={"Authorization": "Bearer test-token"}
         )
 
     assert rejected.status_code == 403
@@ -1009,7 +1044,7 @@ def test_process_endpoint_creates_observable_run(tmp_path, monkeypatch):
     client = TestClient(main.app)
     task = client.post("/tasks", json={"subject": "math"}).json()["task"]
 
-    response = client.post(f"/tasks/{task['id']}/process?backend=hermes")
+    response = client.post(f"/tasks/{task['id']}/process")
     assert response.status_code == 200
     assert response.json()["run"]["attempt"] == 1
     deadline = time.monotonic() + 2
@@ -1020,19 +1055,15 @@ def test_process_endpoint_creates_observable_run(tmp_path, monkeypatch):
         time.sleep(0.01)
     assert runs[0]["status"] == "completed"
     assert client.get(f"/tasks/{task['id']}").json()["task"]["status"] == "completed"
-    assert runs[0]["backend"] == "hermes"
+    assert runs[0]["backend"] == "langchain"
     assert runs[0]["retry_count"] == 0
 
 
-def test_process_rejects_unknown_backend(tmp_path, monkeypatch):
-    storage = tmp_path / "storage"
-    task_store = TaskStore(storage)
-    monkeypatch.setattr(main, "TASK_STORE", task_store)
-    client = TestClient(main.app)
-    task = client.post("/tasks", json={"subject": "math"}).json()["task"]
-
-    response = client.post(f"/tasks/{task['id']}/process?backend=unknown")
-    assert response.status_code == 422
+def test_process_endpoint_does_not_publish_task_backend_selection():
+    parameters = main.app.openapi()["paths"]["/tasks/{task_id}/process"]["post"].get(
+        "parameters", []
+    )
+    assert "backend" not in {parameter["name"] for parameter in parameters}
 
 
 def test_problem_views_derive_lettered_option_labels_from_order():

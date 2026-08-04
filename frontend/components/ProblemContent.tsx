@@ -5,6 +5,7 @@ import { Box } from "@/components/ui/primitives";
 import { Button, Spinner } from "@/components/ui/primitives";
 import { Text } from "@/components/ui/primitives";
 import { NativeImage } from "@/components/ui/NativeImage";
+import { useAuthenticatedAssetUrl } from "@/hooks/useAuthenticatedAssetUrl";
 import { MarkdownRenderer } from "./renderers/MarkdownRenderer";
 import { SvgMarkup } from "./renderers/SvgMarkup";
 import { TikzRenderer } from "./renderers/TikzRenderer";
@@ -113,9 +114,7 @@ export function ProblemContent({
     };
   }, [hasIllustration, diagramKind, diagramImagePath, diagramSvg, diagramTikzSource]);
 
-  const imageUrl = diagramImagePath
-    ? diagramImagePath.startsWith("/assets/") ? `/api${diagramImagePath}` : diagramImagePath
-    : "";
+  const imageUrl = useAuthenticatedAssetUrl(diagramImagePath);
   const figureHeight = contentHeight > 0 ? `${contentHeight * safeScale / 100}px` : undefined;
 
   return (

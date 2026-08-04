@@ -1,11 +1,10 @@
 "use client";
 
 import { useCallback, useState, useRef, useEffect } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { Box, FormControl, Select, Text } from "@/components/ui/primitives";
+import { Box, Text } from "@/components/ui/primitives";
 import { useTagDimensions } from "@/features/tags";
 import { useApiError } from "@/hooks/useApiError";
-import { createUploadTaskAndProcessWithProfile, getTaskProviderOptions } from "../profileSelection";
+import { createUploadTaskAndProcess } from "../profileSelection";
 import { ImagePreview } from "@/components/upload/ImagePreview";
 import { notify } from "@/lib/notify";
 import { AnnotationForm } from "@/components/upload/AnnotationForm";
@@ -31,14 +30,9 @@ export function UploadForm() {
   const [isLoading, setIsLoading] = useState(false);
   const [lastTaskId, setLastTaskId] = useState<string>("");
   const [showAdvanced, setShowAdvanced] = useState(false);
-  const [providerProfileId, setProviderProfileId] = useState<string | null>(null);
-  const providerOptions = useQuery({
-    queryKey: ["ai", "provider-options"],
-    queryFn: getTaskProviderOptions,
-  });
   const [autoRecognize, setAutoRecognize] = useState(false);
   const autoRecognizedKeyRef = useRef("");
-  const { error, handleError, clearError } = useApiError({
+  const { handleError, clearError } = useApiError({
     defaultFallback: "上传失败，请稍后重试",
   });
 
@@ -173,7 +167,7 @@ export function UploadForm() {
         mime_type: optimizedBlob.type || currentFile.type || "image/png",
       };
 
-      const data = await createUploadTaskAndProcessWithProfile(payload, providerProfileId);
+      const data = await createUploadTaskAndProcess(payload);
       const id = data.task.id;
 
       setLastTaskId(id);
@@ -208,7 +202,6 @@ export function UploadForm() {
     sourceTags,
     subject,
     optimizeImageBlob,
-    providerProfileId,
   ]);
 
   useEffect(() => {
@@ -286,27 +279,7 @@ export function UploadForm() {
             isLoading={isLoading}
             hasFile={!!currentFile}
           />
-          {showAdvanced && providerOptions.data && providerOptions.data.length > 0 && (
-            <FormControl sx={{ mt: 3 }}>
-              <FormControl.Label>AI Provider</FormControl.Label>
-              <Select
-                value={providerProfileId ?? ""}
-                onValueChange={(value) => setProviderProfileId(value || null)}
-                block
-              >
-                <Select.Option value="">默认 Profile</Select.Option>
-                {providerOptions.data.map((profile) => (
-                  <Select.Option key={profile.id} value={profile.id}>
-                    {profile.display_name} · {profile.provider} / {profile.model}
-                    {profile.is_default ? "（默认）" : ""}
-                  </Select.Option>
-                ))}
-              </Select>
-              <FormControl.Caption>选择仅影响本次新 run，入队后会冻结 profile 版本。</FormControl.Caption>
-            </FormControl>
-          )}
         </Box>
-        {error && <Text className="capture-error" role="alert">{error}</Text>}
       </Box>
 
       <Box className="capture-preview-panel">

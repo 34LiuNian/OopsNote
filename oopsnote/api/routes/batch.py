@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
-import hashlib
 from typing import Any
 from urllib.parse import unquote
 
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import APIRouter, HTTPException, Request
 
 from oopsnote.api.schemas import BatchProcessRequest, BatchSessionPatchRequest
 from oopsnote.core import (
@@ -14,6 +13,7 @@ from oopsnote.core import (
     BatchSessionUpdateRequest,
     StateConflict,
 )
+from oopsnote.core.assets import AssetUploadTooLargeError
 from oopsnote.api.services.batch_processing import (
     BatchProcessError,
     BatchProcessingContext,
@@ -22,12 +22,29 @@ from oopsnote.api.services.batch_processing import (
 
 router = APIRouter()
 
+# DNS-only access is intentionally used for the public OopsNote origin, so the
+# bounded server-side upload contract can support full scanned documents.
+BATCH_SOURCE_MAX_BYTES = 500 * 1024 * 1024
+
 
 def _api():
     from oopsnote.api import main
 
     return main
 
+
+def _validate_batch_source_length(request: Request) -> None:
+    """Reject known oversized requests before creating any temporary asset."""
+    content_length = request.headers.get("content-length")
+    if content_length:
+        try:
+            if int(content_length) > BATCH_SOURCE_MAX_BYTES:
+                raise HTTPException(
+                    status_code=413,
+                    detail=f"Batch source exceeds the {BATCH_SOURCE_MAX_BYTES} byte limit",
+                )
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail="Invalid Content-Length") from error
 
 @router.get("/batch-sessions")
 def list_batch_sessions() -> dict[str, list[dict[str, Any]]]:
@@ -38,6 +55,11 @@ def list_batch_sessions() -> dict[str, list[dict[str, Any]]]:
             for record in api.BATCH_SESSION_STORE.list_all()
         ]
     }
+
+
+@router.get("/batch-sessions/upload-limits")
+def get_batch_upload_limits() -> dict[str, int]:
+    return {"source_max_bytes": BATCH_SOURCE_MAX_BYTES}
 
 
 @router.get("/batch-sessions/{file_hash}")
@@ -63,19 +85,22 @@ async def upload_batch_source(file_hash: str, request: Request) -> dict[str, Any
         page_count = max(0, int(request.headers.get("x-oopsnote-page-count", "0")))
     except ValueError as exc:
         raise HTTPException(status_code=400, detail="Invalid batch page count") from exc
-    payload = await request.body()
-    if not payload:
-        raise HTTPException(status_code=400, detail="Empty batch source")
-    if hashlib.sha256(payload).hexdigest() != file_hash:
-        raise HTTPException(status_code=400, detail="File hash mismatch")
+    _validate_batch_source_length(request)
     try:
         record = api.BATCH_SESSION_STORE.get(file_hash)
     except KeyError:
-        asset_path = api.ASSET_STORE.save_bytes(
-            payload,
-            filename,
-            stable_name=f"batch-{file_hash}",
-        )
+        try:
+            asset_path = await api.ASSET_STORE.save_stream(
+                request.stream(),
+                filename,
+                stable_name=f"batch-{file_hash}",
+                expected_sha256=file_hash,
+                max_bytes=BATCH_SOURCE_MAX_BYTES,
+            )
+        except AssetUploadTooLargeError as error:
+            raise HTTPException(status_code=413, detail=str(error)) from error
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
         record = api.BATCH_SESSION_STORE.create(
             BatchSessionRecord(
                 file_hash=file_hash,
@@ -118,11 +143,12 @@ def update_batch_session(
 def process_batch_session(
     file_hash: str,
     payload: BatchProcessRequest,
-    backend: str | None = Query(default=None),
 ) -> dict[str, Any]:
     """Render, create, bind, and enqueue every persisted pending segment."""
     api = _api()
-    selected_backend = api._configured_backend(backend)
+    # Batch admission uses the same process-wide backend as individual tasks;
+    # callers cannot split one batch across runtime backends.
+    selected_backend = api._configured_backend()
     runner = api._runner_for(selected_backend)
     try:
         return run_batch_process(

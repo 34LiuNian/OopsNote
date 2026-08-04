@@ -1,8 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { Box, Button, Flash, IconButton, Label, Spinner, Text, TextInput } from "@/components/ui/primitives";
+import { Box, Button, IconButton, Label, Spinner, Text } from "@/components/ui/primitives";
+import { ErrorBanner } from "@/components/ui/ErrorBanner";
+import { RenameDialog } from "@/components/ui/RenameDialog";
 import { PencilIcon, TrashIcon } from "@/components/ui/icons";
+import { confirmAction } from "@/lib/confirm";
 import type { TagItem } from "@/types/api";
 
 type TagsResultListProps = {
@@ -46,16 +49,11 @@ export function TagsResultList({
 }: TagsResultListProps) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingValue, setEditingValue] = useState("");
-  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [pendingId, setPendingId] = useState<string | null>(null);
 
-  const visibleEditingId = editingId && pagedItems.some((item) => item.id === editingId) ? editingId : null;
-  const visibleDeleteConfirmId = deleteConfirmId && pagedItems.some((item) => item.id === deleteConfirmId)
-    ? deleteConfirmId
-    : null;
+  const editingItem = editingId ? pagedItems.find((item) => item.id === editingId) ?? null : null;
 
   const startRename = (item: TagItem) => {
-    setDeleteConfirmId(null);
     setEditingId(item.id);
     setEditingValue(item.value);
   };
@@ -81,19 +79,23 @@ export function TagsResultList({
     }
   };
 
-  const requestDelete = async (item: TagItem) => {
-    if (deleteConfirmId !== item.id) {
-      setDeleteConfirmId(item.id);
-      return;
-    }
-
+  const performDelete = async (item: TagItem) => {
     setPendingId(item.id);
     try {
       await onDelete(item);
-      setDeleteConfirmId(null);
     } finally {
       setPendingId((current) => (current === item.id ? null : current));
     }
+  };
+
+  const requestDelete = (item: TagItem) => {
+    confirmAction({
+      title: "删除标签",
+      message: `删除“${item.value}”？引用该标签的题目不会被删除。`,
+      confirmLabel: "删除",
+      destructive: true,
+      onConfirm: () => performDelete(item),
+    });
   };
 
   if (loading || isLoadingDims) {
@@ -105,11 +107,21 @@ export function TagsResultList({
   }
 
   if (error) {
-    return <Flash variant="danger">{error}</Flash>;
+    return <ErrorBanner message={error} />;
   }
 
   return (
     <Box sx={{ display: "flex", flexDirection: "column", gap: 3 }}>
+      <RenameDialog
+        opened={editingItem !== null}
+        title="重命名标签"
+        label="标签名称"
+        value={editingValue}
+        onChange={setEditingValue}
+        onCancel={cancelRename}
+        onConfirm={() => editingItem ? submitRename(editingItem) : undefined}
+        loading={editingItem ? pendingId === editingItem.id : false}
+      />
       <Box
         sx={{
           display: "flex",
@@ -174,33 +186,7 @@ export function TagsResultList({
                     {shouldShowDimLabel ? (
                       <Label variant={getDimVariant(item.dimension)}>{getDimLabel(item.dimension)}</Label>
                     ) : null}
-                    {visibleEditingId === item.id ? (
-                      <Box sx={{ display: "flex", gap: 1, alignItems: "center", flexWrap: "wrap", minWidth: 0 }}>
-                        <TextInput
-                          value={editingValue}
-                          onChange={(e) => setEditingValue(e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter") {
-                              e.preventDefault();
-                              void submitRename(item);
-                            }
-                            if (e.key === "Escape") {
-                              e.preventDefault();
-                              cancelRename();
-                            }
-                          }}
-                          sx={{ minWidth: 200 }}
-                        />
-                        <Button size="small" variant="primary" disabled={pendingId === item.id} onClick={() => void submitRename(item)}>
-                          保存
-                        </Button>
-                        <Button size="small" onClick={cancelRename} disabled={pendingId === item.id}>
-                          取消
-                        </Button>
-                      </Box>
-                    ) : (
-                      <Text sx={{ fontWeight: 600, fontSize: 2, wordBreak: "break-word" }}>{item.value}</Text>
-                    )}
+                    <Text sx={{ fontWeight: 600, fontSize: 2, wordBreak: "break-word" }}>{item.value}</Text>
                   </Box>
 
                   <Box sx={{ display: "flex", alignItems: "center", gap: 2, flexWrap: "wrap" }}>
@@ -235,19 +221,11 @@ export function TagsResultList({
                     aria-label="删除"
                     icon={TrashIcon}
                     size="small"
-                    variant={visibleDeleteConfirmId === item.id ? "danger" : "default"}
+                    variant="default"
                     disabled={pendingId === item.id}
-                    onClick={() => {
-                      void requestDelete(item);
-                    }}
+                    onClick={() => requestDelete(item)}
                   />
                 </Box>
-
-                {visibleDeleteConfirmId === item.id ? (
-                  <Box sx={{ gridColumn: ["1", "1 / -1"] }}>
-                    <Text sx={{ color: "danger.fg", fontSize: 1 }}>再次点击删除按钮以确认删除该标签。</Text>
-                  </Box>
-                ) : null}
               </Box>
             );
           })}

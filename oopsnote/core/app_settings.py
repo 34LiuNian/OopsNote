@@ -41,131 +41,122 @@ class AppSettingsStore:
                 temp.unlink()
 
     @staticmethod
-    def _upsert_profile(current: dict[str, Any], profile: Any) -> None:
-        from oopsnote.ai.providers import ProviderProfile
+    def _upsert_channel(current: dict[str, Any], channel: Any) -> None:
+        from oopsnote.ai.providers import ProviderChannel
 
-        profiles = [ProviderProfile.model_validate(item) for item in current.get("provider_profiles", [])]
-        for existing in profiles:
-            if existing.id == profile.id and existing.version > profile.version:
-                raise ValueError("provider profile version cannot move backwards")
-            if existing.id == profile.id and existing.version == profile.version and existing != profile:
-                raise ValueError("provider profile changes require a new version")
-        profiles = [item for item in profiles if item.id != profile.id]
-        profiles.append(profile)
-        current["provider_profiles"] = [item.model_dump(mode="json") for item in profiles]
+        channels = [ProviderChannel.model_validate(item) for item in current.get("provider_channels", [])]
+        for existing in channels:
+            if existing.id == channel.id and existing.version > channel.version:
+                raise ValueError("provider channel version cannot move backwards")
+            if existing.id == channel.id and existing.version == channel.version and existing != channel:
+                raise ValueError("provider channel changes require a new version")
+        channels = [item for item in channels if item.id != channel.id]
+        channels.append(channel)
+        current["provider_channels"] = [item.model_dump(mode="json") for item in channels]
 
-    def provider_profiles(self) -> list[Any]:
-        """Read the one authoritative non-secret provider profile collection."""
-        from oopsnote.ai.providers import ProviderProfile
+    @staticmethod
+    def _policy_is_runnable(current: dict[str, Any]) -> bool:
+        """Keep stored policy references valid when a channel catalogue changes."""
+        from oopsnote.ai.providers import LangChainModelPolicy, ProviderChannel
 
-        profiles = self.get().get("provider_profiles", [])
-        if not isinstance(profiles, list):
-            raise StorageCorruptionError(self.path, ValueError("provider_profiles must be a list"))
-        return [ProviderProfile.model_validate(item) for item in profiles]
-
-    def upsert_provider_profile(self, profile: Any, *, select_if_unset: bool = False) -> Any:
-        """Atomically replace one profile version, optionally selecting the first."""
-        with self._lock:
-            current = self.get()
-            self._upsert_profile(current, profile)
-            if select_if_unset and not current.get("ai_provider_profile_id"):
-                current["ai_provider_profile_id"] = profile.id
-            self._write(current)
-            return profile
-
-    def activate_provider_profile(self, profile: Any) -> Any:
-        """Atomically persist one validated profile version and select it."""
-        with self._lock:
-            current = self.get()
-            self._upsert_profile(current, profile)
-            current["ai_provider_profile_id"] = profile.id
-            self._write(current)
-            return profile
-
-    def activate_ocr_profile(self, profile: Any) -> Any:
-        """Atomically persist one validated profile version and select it for OCR."""
-        with self._lock:
-            current = self.get()
-            self._upsert_profile(current, profile)
-            current["ocr_profile_id"] = profile.id
-            self._write(current)
-            return profile
-
-    def remove_provider_profile(self, profile_id: str) -> None:
-        """Atomically remove an unselected profile and its validation observation."""
-        with self._lock:
-            current = self.get()
-            if current.get("ai_provider_profile_id") == profile_id or current.get("ocr_profile_id") == profile_id:
-                raise ValueError("selected provider profile cannot be deleted")
-            profiles = current.get("provider_profiles", [])
-            remaining = [item for item in profiles if isinstance(item, dict) and item.get("id") != profile_id]
-            if len(remaining) == len(profiles):
-                raise KeyError(profile_id)
-            current["provider_profiles"] = remaining
-            validations = current.get("provider_validation_results")
-            if isinstance(validations, dict):
-                validations.pop(profile_id, None)
-            self._write(current)
-
-    def clear_provider_credential(self, profile: Any) -> Any:
-        """Atomically persist a secretless version and clear invalid selections."""
-        with self._lock:
-            current = self.get()
-            self._upsert_profile(current, profile)
-            if current.get("ai_provider_profile_id") == profile.id:
-                current.pop("ai_provider_profile_id", None)
-            if current.get("ocr_profile_id") == profile.id:
-                current.pop("ocr_profile_id", None)
-            validations = current.get("provider_validation_results")
-            if isinstance(validations, dict):
-                validations.pop(profile.id, None)
-            self._write(current)
-            return profile
-
-    def record_provider_validation(self, profile_id: str, version: int, result: Any) -> None:
-        """Persist one redacted connection observation outside immutable run snapshots."""
-        with self._lock:
-            current = self.get()
-            validations = current.get("provider_validation_results")
-            if not isinstance(validations, dict):
-                validations = {}
-            validations[profile_id] = {
-                "profile_version": version,
-                "result": result.model_dump(mode="json") if hasattr(result, "model_dump") else result,
+        raw_policy = current.get("langchain_model_policy")
+        if not isinstance(raw_policy, dict):
+            return False
+        try:
+            policy = LangChainModelPolicy.model_validate(raw_policy)
+            channels = {
+                channel.id: channel
+                for channel in (
+                    ProviderChannel.model_validate(item)
+                    for item in current.get("provider_channels", [])
+                )
             }
-            current["provider_validation_results"] = validations
-            self._write(current)
+        except ValueError:
+            return False
+        for stage, selection in (
+            ("vision", policy.vision),
+            ("agent", policy.agent),
+            ("review", policy.review),
+        ):
+            channel = channels.get(selection.channel_id)
+            if channel is None or not channel.enabled or not channel.credential_ref:
+                return False
+            try:
+                model = channel.model(selection.model_id)
+            except KeyError:
+                return False
+            if not model.enabled:
+                return False
+            if stage == "vision" and not model.capability.vision:
+                return False
+            if stage != "vision" and not model.capability.tool_calling:
+                return False
+        return True
 
-    def commit_validated_provider_profile(
-        self,
-        profile: Any,
-        result: Any,
-        *,
-        select_if_unset: bool = False,
-    ) -> Any:
-        """Atomically commit a validated profile version and its redacted observation."""
+    def provider_channels(self) -> list[Any]:
+        """Read channels; legacy single-model profiles are intentionally excluded."""
+        from oopsnote.ai.providers import ProviderChannel
+
+        channels = self.get().get("provider_channels", [])
+        if not isinstance(channels, list):
+            raise StorageCorruptionError(self.path, ValueError("provider_channels must be a list"))
+        return [ProviderChannel.model_validate(item) for item in channels]
+
+    def upsert_provider_channel(self, channel: Any) -> Any:
         with self._lock:
             current = self.get()
-            self._upsert_profile(current, profile)
-            if select_if_unset and not current.get("ai_provider_profile_id"):
-                current["ai_provider_profile_id"] = profile.id
-            validations = current.get("provider_validation_results")
-            if not isinstance(validations, dict):
-                validations = {}
-            validations[profile.id] = {
-                "profile_version": profile.version,
-                "result": result.model_dump(mode="json") if hasattr(result, "model_dump") else result,
-            }
-            current["provider_validation_results"] = validations
+            self._upsert_channel(current, channel)
+            if "langchain_model_policy" in current and not self._policy_is_runnable(current):
+                current.pop("langchain_model_policy", None)
             self._write(current)
-            return profile
+            return channel
 
-    def provider_validation(self, profile_id: str, version: int) -> dict[str, Any] | None:
-        validations = self.get().get("provider_validation_results")
-        if not isinstance(validations, dict):
-            return None
-        observation = validations.get(profile_id)
-        if not isinstance(observation, dict) or observation.get("profile_version") != version:
-            return None
-        result = observation.get("result")
-        return result if isinstance(result, dict) else None
+    def remove_provider_channel(self, channel_id: str) -> None:
+        with self._lock:
+            current = self.get()
+            channels = current.get("provider_channels", [])
+            remaining = [item for item in channels if isinstance(item, dict) and item.get("id") != channel_id]
+            if len(remaining) == len(channels):
+                raise KeyError(channel_id)
+            current["provider_channels"] = remaining
+            policy = current.get("langchain_model_policy")
+            if isinstance(policy, dict) and any(
+                isinstance(policy.get(stage), dict) and policy[stage].get("channel_id") == channel_id
+                for stage in ("vision", "agent", "review")
+            ):
+                current.pop("langchain_model_policy", None)
+            self._write(current)
+
+    def langchain_model_policy(self) -> Any | None:
+        from oopsnote.ai.providers import LangChainModelPolicy
+
+        value = self.get().get("langchain_model_policy")
+        return LangChainModelPolicy.model_validate(value) if isinstance(value, dict) else None
+
+    def set_langchain_model_policy(self, policy: Any) -> Any:
+        with self._lock:
+            current = self.get()
+            current["langchain_model_policy"] = policy.model_dump(mode="json")
+            if not self._policy_is_runnable(current):
+                raise ValueError("LangChain policy references an unavailable channel or model")
+            self._write(current)
+            return policy
+
+    def retire_legacy_provider_secrets(self) -> list[str]:
+        """Remove retired profile-shaped settings and return their opaque refs."""
+        with self._lock:
+            current = self.get()
+            raw = current.get("provider_profiles", [])
+            if not isinstance(raw, list) or not raw:
+                return []
+            references = [
+                item.get("credential_ref")
+                for item in raw
+                if isinstance(item, dict) and isinstance(item.get("credential_ref"), str)
+            ]
+            current.pop("provider_profiles", None)
+            current.pop("provider_validation_results", None)
+            current.pop("ai_provider_profile_id", None)
+            current.pop("ocr_profile_id", None)
+            self._write(current)
+            return references

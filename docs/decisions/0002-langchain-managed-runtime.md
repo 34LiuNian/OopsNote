@@ -14,9 +14,10 @@ invocation plus the bounded 24-round restricted MCP tool loop. It does not use
 LangGraph persistence, `create_agent`, provider fallback, dynamic routing, or
 provider-native tools.
 
-Provider profiles are non-secret AppSettings metadata. Each admitted run stores
-an immutable profile snapshot selected either by the task or the current
-default; later profile edits affect only future runs. Credentials are resolved only through the local
+Provider channels and the global three-stage policy are non-secret AppSettings
+metadata. Each admitted run stores immutable `vision`, `agent`, and `review`
+snapshots from that policy; later channel or policy edits affect only future
+runs. Credentials are resolved only through the local
 SecretStore. Windows uses Credential Manager. Linux and containers use an
 encrypted file vault whose master key is supplied as a read-only mounted file;
 the key value is never an application environment variable. OCR uses the same
@@ -34,8 +35,9 @@ evaluation gate, not merely unit-test success.
 - 401/403, model/configuration and validation failures are terminal; only
   classified transport/429/5xx failures may create a fresh managed retry.
 - Provider SDK retries are disabled; shared lifecycle retry policy remains the
-  only retry authority and retains the original run's profile snapshot.
-- The administrator provider API is the only profile and credential management
+  only retry authority and retains the original run's three-stage strategy
+  snapshot.
+- The administrator provider API is the only channel and credential management
   boundary. It never returns credential references or secret material.
 - RustPi removal is a separate, irreversible step gated by isolated real-task
   evidence. Hermes retirement remains a later independent decision.

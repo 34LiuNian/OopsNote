@@ -19,7 +19,7 @@ from fastapi.staticfiles import StaticFiles
 
 from oopsnote.ai import HermesRunner, LangChainRunner, PiRpcBackend, PiRpcRunner
 from oopsnote.ai.langchain_tools import McpHttpToolClient
-from oopsnote.ai.providers import ProviderClientFactory
+from oopsnote.ai.providers import ProviderClientFactory, ProviderProfile
 from oopsnote.ai.secrets import SecretStore, secret_store_from_environment
 from oopsnote.api.auth import AuthenticationError, auth_config_from_env, authenticate_request
 from oopsnote.api.routes import ai_settings, batch, catalog, latex, papers, study, tasks
@@ -44,7 +44,12 @@ from oopsnote.core import (
     TaskStore,
 )
 from oopsnote.mcp.http_runtime import SharedMcpHttpRuntime
-from oopsnote.mcp.ocr import clear_ocr_vault, close_ocr_client, configure_ocr_vault
+from oopsnote.mcp.ocr import (
+    clear_ocr_run_model_resolver,
+    clear_ocr_vault,
+    close_ocr_client,
+    configure_ocr_run_model_resolver,
+)
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 STORAGE_DIR = Path(os.getenv("OOPSNOTE_STORAGE_DIR", str(PROJECT_ROOT / "storage")))
@@ -147,6 +152,16 @@ def _new_langchain_runner() -> LangChainRunner:
         max_concurrent_tasks=int(APP_SETTINGS_STORE.get().get("ai_max_concurrency", 1)),
         **_runner_settings(),
     )
+
+
+def _langchain_vision_model(run_id: str) -> Any | None:
+    """Resolve Vision from the immutable run strategy at the shared MCP boundary."""
+    run = RUN_STORE.get(run_id)
+    snapshot = run.provider_profile_snapshot
+    if not isinstance(snapshot, dict) or not isinstance(snapshot.get("vision"), dict):
+        return None
+    profile = ProviderProfile.model_validate(snapshot["vision"])
+    return _langchain_provider_factory().create_vision_ocr_model(profile)
 
 
 def _build_enabled_runners(enabled: frozenset[str]) -> dict[str, Any]:
@@ -300,8 +315,15 @@ def _sync_batch_session_tasks_locked(record: BatchSessionRecord) -> BatchSession
                 task_status = "completed"
             elif task.status in {TaskStatus.FAILED, TaskStatus.CANCELLED}:
                 task_status = "failed"
-            else:
+            elif task.status == TaskStatus.PROCESSING:
                 task_status = "processing"
+            else:
+                # Admission can fail before the managed lifecycle creates a
+                # run (for example, when a provider credential is missing).
+                # A pending task is not processing in that state; preserve
+                # the session's durable failure evidence instead of showing a
+                # phantom in-flight task.
+                task_status = "pending"
             task_review_reason = task.metadata.get("intake_review_reason")
             if task_review_reason not in BATCH_REVIEW_REASONS:
                 task_review_reason = None
@@ -314,7 +336,7 @@ def _sync_batch_session_tasks_locked(record: BatchSessionRecord) -> BatchSession
                 review_reason = task_review_reason
                 review_previous_status = task_status
             else:
-                status = task_status
+                status = "failed" if task_status == "pending" and segment.status == "failed" else task_status
                 review_reason = None
                 review_previous_status = None
             next_segment = segment.model_copy(
@@ -323,7 +345,11 @@ def _sync_batch_session_tasks_locked(record: BatchSessionRecord) -> BatchSession
                     "review_reason": review_reason,
                     "review_previous_status": review_previous_status,
                     "problem_ids": [task.problem.id] if task.problem else [],
-                    "error": task.last_error if task.status in {TaskStatus.FAILED, TaskStatus.CANCELLED} else None,
+                    "error": (
+                        task.last_error
+                        if task.status in {TaskStatus.FAILED, TaskStatus.CANCELLED}
+                        else segment.error if status == "failed" else None
+                    ),
                 }
             )
         changed = changed or next_segment != segment
@@ -544,8 +570,9 @@ def _runner_for(backend: str):
         raise HTTPException(status_code=422, detail=f"backend {backend} is not enabled")
 
 
-def _configured_backend(backend: Optional[str]) -> str:
-    return backend or _DEFAULT_AI_BACKEND
+def _configured_backend() -> str:
+    """Return the process-wide backend selected by deployment configuration."""
+    return _DEFAULT_AI_BACKEND
 
 
 def _run_managed(task_id: str, run_id: str, backend: str) -> None:
@@ -554,6 +581,7 @@ def _run_managed(task_id: str, run_id: str, backend: str) -> None:
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    ai_settings.retire_legacy_provider_configuration()
     runners = list(_RUNNERS.values())
     for runner in runners:
         runner.recover_orphaned_running()
@@ -563,15 +591,7 @@ async def lifespan(_: FastAPI):
     for runner in runners:
         runner.start_dispatcher()
         runner.recover_queued()
-    # New backends resolve OCR credentials from the vault. Legacy Pi remains
-    # compatible with .pi/extensions.json only until its explicit retirement.
-    ocr_profile_id = APP_SETTINGS_STORE.get().get("ocr_profile_id")
-    if isinstance(ocr_profile_id, str):
-        for profile in APP_SETTINGS_STORE.provider_profiles():
-            if profile.id == ocr_profile_id:
-                if profile.credential_ref and profile.base_url is not None:
-                    configure_ocr_vault(get_secret_store(), profile.credential_ref, model=profile.model, endpoint=str(profile.base_url))
-                break
+    configure_ocr_run_model_resolver(_langchain_vision_model)
     try:
         yield
     finally:
@@ -581,6 +601,7 @@ async def lifespan(_: FastAPI):
             PI_RUNNER.shutdown()
         MCP_HTTP_RUNTIME.shutdown()
         clear_ocr_vault()
+        clear_ocr_run_model_resolver()
         close_ocr_client()
 
 

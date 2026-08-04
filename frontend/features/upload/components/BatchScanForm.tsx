@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import {
-  AlertCircle,
   ArrowLeft,
   Check,
   Contrast,
@@ -34,11 +33,14 @@ import { ImageSelectionStage, NormalizedRectEditor } from "@/components/image-se
 import { PageHeader } from "@/components/layout/PageHeader";
 import { useTheme } from "@/components/providers/ThemeProvider";
 import { Box, Button, IconButton, Spinner, Text } from "@/components/ui/primitives";
+import { RenameDialog } from "@/components/ui/RenameDialog";
 import { notify } from "@/lib/notify";
-import { ApiError } from "@/lib/api";
+import { confirmAction } from "@/lib/confirm";
+import { ApiError, apiErrorFromResponse, fetchApi } from "@/lib/api";
 import { selectionsToSessionSegments, sessionSegmentsToSelections } from "../adapters/batchSessionSelectionAdapter";
 import {
   deleteBatchSession,
+  getBatchUploadLimits,
   getBatchSession,
   listBatchSessions,
   processBatchSession,
@@ -114,7 +116,9 @@ export function BatchScanForm() {
   const [saveState, setSaveState] = useState<SaveState>("idle");
   const [isImporting, setIsImporting] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [error, setError] = useState("");
+  const [renameTarget, setRenameTarget] = useState<BatchSession | null>(null);
+  const [renameValue, setRenameValue] = useState("");
+  const [isRenaming, setIsRenaming] = useState(false);
 
   selectionsRef.current = selections;
   const excludedPageSet = useMemo(() => new Set(excludedPageIndices), [excludedPageIndices]);
@@ -139,9 +143,17 @@ export function BatchScanForm() {
     try { setSavedSessions(await listBatchSessions()); } catch { /* landing remains usable */ }
   }, []);
 
-  const renameSession = useCallback(async (session: BatchSession) => {
-    const filename = window.prompt("重命名最近文件", session.filename)?.trim();
+  const openRenameSession = useCallback((session: BatchSession) => {
+    setRenameTarget(session);
+    setRenameValue(session.filename);
+  }, []);
+
+  const renameSession = useCallback(async () => {
+    if (!renameTarget) return;
+    const session = renameTarget;
+    const filename = renameValue.trim();
     if (!filename || filename === session.filename) return;
+    setIsRenaming(true);
     try {
       await updateBatchSession(session.file_hash, session.revision, {
         filename,
@@ -154,12 +166,15 @@ export function BatchScanForm() {
         segments: session.segments,
       });
       await refreshSavedSessions();
+      setRenameTarget(null);
       notify.success({ title: "文件已重命名" });
     } catch (reason) {
       await refreshSavedSessions();
       notify.error({ title: reason instanceof Error ? reason.message : "重命名文件失败" });
+    } finally {
+      setIsRenaming(false);
     }
-  }, [refreshSavedSessions]);
+  }, [refreshSavedSessions, renameTarget, renameValue]);
 
   useEffect(() => { void refreshSavedSessions(); }, [refreshSavedSessions]);
 
@@ -209,7 +224,6 @@ export function BatchScanForm() {
     sessionRevisionRef.current = 0;
     saveQueueRef.current = Promise.resolve();
     submissionRef.current = false;
-    setError("");
   }, []);
 
   useEffect(() => () => clearWorkspace(), [clearWorkspace]);
@@ -267,7 +281,7 @@ export function BatchScanForm() {
       setImageUrls((current) => ({ ...current, [pageIndex]: url }));
     }).catch((reason) => {
       if (!(reason instanceof StaleWorkspaceError)) {
-        setError(reason instanceof Error ? reason.message : "页面加载失败");
+        notify.error({ id: "batch-operation-error", title: reason instanceof Error ? reason.message : "页面加载失败" });
       }
     });
   }, [ensurePageFile]);
@@ -342,8 +356,12 @@ export function BatchScanForm() {
 
   const importFile = useCallback(async (file: File) => {
     setIsImporting(true);
-    setError("");
     try {
+      const { source_max_bytes: sourceMaxBytes } = await getBatchUploadLimits();
+      if (file.size > sourceMaxBytes) {
+        const maxMiB = Math.floor(sourceMaxBytes / (1024 * 1024));
+        throw new Error(`文件超过批量导入上限（${maxMiB} MiB），请压缩或拆分后重试`);
+      }
       const fileHash = await hashFile(file);
       const existing = await getBatchSession(fileHash);
       await openWorkspace(file, existing);
@@ -357,7 +375,7 @@ export function BatchScanForm() {
       }
     } catch (reason) {
       if (!(reason instanceof StaleWorkspaceError)) {
-        setError(reason instanceof Error ? reason.message : "导入失败");
+        notify.error({ id: "batch-operation-error", title: reason instanceof Error ? reason.message : "导入失败" });
       }
     } finally {
       setIsImporting(false);
@@ -366,10 +384,9 @@ export function BatchScanForm() {
 
   const resumeSession = useCallback(async (session: BatchSession, requestedPage?: number) => {
     setIsImporting(true);
-    setError("");
     try {
-      const response = await fetch(`/api${session.asset_path}`);
-      if (!response.ok) throw new Error("无法读取已保存的原始文件");
+      const response = await fetchApi(session.asset_path);
+      if (!response.ok) throw await apiErrorFromResponse(response);
       const file = new File([await response.blob()], session.filename, { type: session.mime_type });
       await openWorkspace(file, session);
       if (requestedPage) {
@@ -385,7 +402,7 @@ export function BatchScanForm() {
       }
     } catch (reason) {
       if (!(reason instanceof StaleWorkspaceError)) {
-        setError(reason instanceof Error ? reason.message : "恢复批量扫描失败");
+        notify.error({ id: "batch-operation-error", title: reason instanceof Error ? reason.message : "恢复批量扫描失败" });
       }
     } finally {
       setIsImporting(false);
@@ -594,19 +611,31 @@ export function BatchScanForm() {
       notify.error({ title: "已有已提交题目跨过该位置，不能恢复页面" });
       return;
     }
-    if (bridging.length && !window.confirm(`恢复第 ${pageIndex + 1} 页会删除跨过该位置的 ${bridging.length} 个待提交选框，是否继续？`)) return;
-    const nextExcluded = excludedPageIndices.filter((index) => index !== pageIndex);
-    const removedIds = new Set(bridging.map((selection) => selection.id));
-    const nextSelections = reprojectSelections(
-      selectionsRef.current.filter((selection) => !removedIds.has(selection.id)),
-      nextExcluded,
-    );
-    selectionsRef.current = nextSelections;
-    setSelections(nextSelections);
-    if (activeSelectionId && removedIds.has(activeSelectionId)) setActiveSelectionId(undefined);
-    setExcludedPageIndices(nextExcluded);
-    focusPageAfterLayoutChange(pageIndex);
-    void persistSession(nextSelections, { excluded_page_indices: nextExcluded, active_page: pageIndex }).catch(() => undefined);
+    const applyRestore = () => {
+      const nextExcluded = excludedPageIndices.filter((index) => index !== pageIndex);
+      const removedIds = new Set(bridging.map((selection) => selection.id));
+      const nextSelections = reprojectSelections(
+        selectionsRef.current.filter((selection) => !removedIds.has(selection.id)),
+        nextExcluded,
+      );
+      selectionsRef.current = nextSelections;
+      setSelections(nextSelections);
+      if (activeSelectionId && removedIds.has(activeSelectionId)) setActiveSelectionId(undefined);
+      setExcludedPageIndices(nextExcluded);
+      focusPageAfterLayoutChange(pageIndex);
+      void persistSession(nextSelections, { excluded_page_indices: nextExcluded, active_page: pageIndex }).catch(() => undefined);
+    };
+    if (bridging.length) {
+      confirmAction({
+        title: "恢复页面",
+        message: `恢复第 ${pageIndex + 1} 页会删除跨过该位置的 ${bridging.length} 个待提交选框，是否继续？`,
+        confirmLabel: "恢复",
+        destructive: true,
+        onConfirm: applyRestore,
+      });
+      return;
+    }
+    applyRestore();
   }, [activeSelectionId, excludedPageIndices, focusPageAfterLayoutChange, persistSession, reprojectSelections]);
 
   const deleteActiveSelection = useCallback(() => {
@@ -621,7 +650,6 @@ export function BatchScanForm() {
     if (!pending.length) return;
     submissionRef.current = true;
     setIsSubmitting(true);
-    setError("");
     try {
       await persistSession(selectionsRef.current);
       const result = await processBatchSession(
@@ -637,7 +665,6 @@ export function BatchScanForm() {
       }
     } catch (reason) {
       const message = reason instanceof Error ? reason.message : "批量启动失败";
-      setError(message);
       notify.error({ title: message });
     } finally {
       submissionRef.current = false;
@@ -731,6 +758,16 @@ export function BatchScanForm() {
   const renderDocument = cropConfirmed || cropView === "preview";
   return (
     <Box className={`batch-scan-page${pages.length ? " is-active" : ""}`}>
+      <RenameDialog
+        opened={renameTarget !== null}
+        title="重命名最近文件"
+        label="文件名"
+        value={renameValue}
+        onChange={setRenameValue}
+        onCancel={() => setRenameTarget(null)}
+        onConfirm={renameSession}
+        loading={isRenaming}
+      />
       <input
         ref={inputRef}
         className="batch-scan-toolbar__input"
@@ -755,12 +792,18 @@ export function BatchScanForm() {
           <BatchSessionHistory
             sessions={savedSessions}
             isImporting={isImporting}
-            onRename={(session) => void renameSession(session)}
+            onRename={openRenameSession}
             onResume={(session) => void resumeSession(session)}
-            onDelete={(session) => {
-              if (!window.confirm("删除整次批量扫描记录？已生成的任务和题目会保留。")) return;
-              void deleteBatchSession(session.file_hash).then(refreshSavedSessions);
-            }}
+            onDelete={(session) => confirmAction({
+              title: "删除批量扫描记录",
+              message: "已生成的任务和题目会保留。此操作无法撤销。",
+              confirmLabel: "删除",
+              destructive: true,
+              onConfirm: async () => {
+                await deleteBatchSession(session.file_hash);
+                await refreshSavedSessions();
+              },
+            })}
           />
         </>
       ) : (
@@ -919,7 +962,6 @@ export function BatchScanForm() {
         </>
       )}
 
-      {error && <Box className="batch-scan-error" role="alert"><AlertCircle size={16} /><span>{error}</span></Box>}
     </Box>
   );
 }

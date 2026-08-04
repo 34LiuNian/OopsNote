@@ -6,11 +6,13 @@ import base64
 import json
 import mimetypes
 import os
+import re
 import threading
 from collections import OrderedDict
 from copy import deepcopy
 from pathlib import Path
 from typing import Any
+from collections.abc import Callable
 
 import httpx
 
@@ -31,6 +33,8 @@ _OCR_RESULT_LIMIT = 128
 _VAULT_SECRET_STORE: SecretStore | None = None
 _VAULT_CREDENTIAL_REF: str | None = None
 _VAULT_OCR_CONFIG: dict[str, Any] = {}
+_RUN_MODEL_RESOLVER: Callable[[str], Any] | None = None
+_JSON_FENCE = re.compile(r"^\s*```(?:json)?\s*\n?(?P<body>\{.*\})\s*```\s*$", re.IGNORECASE | re.DOTALL)
 
 
 class OcrProviderError(RuntimeError):
@@ -78,6 +82,17 @@ def clear_ocr_vault() -> None:
     _VAULT_OCR_CONFIG = {}
 
 
+def configure_ocr_run_model_resolver(resolver: Callable[[str], Any]) -> None:
+    """Resolve a vision model from an immutable run snapshot at the MCP boundary."""
+    global _RUN_MODEL_RESOLVER
+    _RUN_MODEL_RESOLVER = resolver
+
+
+def clear_ocr_run_model_resolver() -> None:
+    global _RUN_MODEL_RESOLVER
+    _RUN_MODEL_RESOLVER = None
+
+
 def ocr_vault_is_configured() -> bool:
     return _VAULT_SECRET_STORE is not None and bool(_VAULT_CREDENTIAL_REF)
 
@@ -105,7 +120,32 @@ def _load_ocr_config() -> dict[str, Any]:
     return config
 
 
-def _ocr_image_path(image_path: Path) -> dict[str, Any]:
+def _vision_json_object(content: Any) -> dict[str, Any]:
+    """Parse one provider response without accepting explanatory prose.
+
+    Providers commonly wrap an otherwise valid JSON response in one Markdown
+    fence. The Vision adapter owns that transport normalization; the OCR
+    contract remains the sole authority for the resulting object.
+    """
+
+    if isinstance(content, list):
+        content = "".join(
+            str(item.get("text", "")) if isinstance(item, dict) else str(item)
+            for item in content
+        )
+    if isinstance(content, dict):
+        return content
+    text = str(content).strip()
+    fenced = _JSON_FENCE.fullmatch(text)
+    if fenced:
+        text = fenced.group("body")
+    parsed = json.loads(text)
+    if not isinstance(parsed, dict):
+        raise ValueError("Vision model returned a non-object OCR result")
+    return parsed
+
+
+def _ocr_image_path(image_path: Path, vision_model: Any | None = None) -> dict[str, Any]:
     """Send one already-authorized managed image to the OCR provider."""
     mime, _ = mimetypes.guess_type(image_path.name)
     if mime not in {"image/jpeg", "image/png", "image/webp", "image/gif"}:
@@ -116,6 +156,42 @@ def _ocr_image_path(image_path: Path) -> dict[str, Any]:
         raise ValueError(f"OCR image cannot be read: {image_path}") from error
     if len(image) > MAX_IMAGE_BYTES:
         raise ValueError("OCR image exceeds 12 MiB limit")
+
+    if vision_model is not None:
+        try:
+            from langchain_core.messages import HumanMessage
+
+            content = vision_model.invoke([HumanMessage(content=[
+                {"type": "text", "text": OCR_INSTRUCTION},
+                {"type": "image_url", "image_url": {"url": f"data:{mime};base64,{base64.b64encode(image).decode('ascii')}"}},
+            ])])
+            content = getattr(content, "content", content)
+            parsed = _vision_json_object(content)
+        except OcrProviderError:
+            raise
+        except (TypeError, ValueError, json.JSONDecodeError) as error:
+            raise OcrProviderError("ocr_invalid_response", "Vision model returned an invalid OCR response") from error
+        except Exception as error:
+            status = getattr(error, "status_code", None)
+            if status is None:
+                status = getattr(getattr(error, "response", None), "status_code", None)
+            if status in {401, 403}:
+                code = "ocr_authorization"
+            elif status == 429:
+                code = "ocr_rate_limit"
+            elif status in {408, 500, 502, 503, 504}:
+                code = "ocr_provider_unavailable"
+            else:
+                is_transport = isinstance(error, httpx.TransportError)
+                is_timeout = isinstance(error, httpx.TimeoutException)
+                if is_timeout or isinstance(error, (TimeoutError,)):  # noqa: UP038
+                    code = "ocr_timeout"
+                elif is_transport or isinstance(error, ConnectionError):
+                    code = "ocr_network_error"
+                else:
+                    code = "ocr_provider_error"
+            raise OcrProviderError(code, "Vision model OCR request failed") from error
+        return parsed
 
     config = _load_ocr_config()
     api_key = str(config.get("dashscope_api_key") or "")
@@ -214,7 +290,14 @@ def ocr_image(task_id: str, run_id: str) -> dict[str, Any]:
             _OCR_RESULTS.move_to_end(cache_key)
             return deepcopy(cached)
     image_path = server.ASSET_STORE.resolve(task.asset_path)
-    parsed = _ocr_image_path(image_path)
+    snapshot = run.provider_profile_snapshot
+    is_langchain_snapshot = isinstance(snapshot, dict) and isinstance(snapshot.get("vision"), dict)
+    if is_langchain_snapshot and _RUN_MODEL_RESOLVER is None:
+        raise RuntimeError("LangChain Vision resolver is unavailable")
+    vision_model = _RUN_MODEL_RESOLVER(run_id) if _RUN_MODEL_RESOLVER is not None else None
+    if is_langchain_snapshot and vision_model is None:
+        raise RuntimeError("LangChain Vision model is unavailable")
+    parsed = _ocr_image_path(image_path, vision_model) if vision_model is not None else _ocr_image_path(image_path)
     expected_question_no = (
         task.metadata.get("question_no")
         or task.metadata.get("batch_question_no")
@@ -259,4 +342,4 @@ def ocr_image(task_id: str, run_id: str) -> dict[str, Any]:
     return result
 
 
-__all__ = ["OCR_ENDPOINT", "OcrProviderError", "clear_ocr_vault", "close_ocr_client", "configure_ocr_vault", "ocr_image", "ocr_vault_is_configured"]
+__all__ = ["OCR_ENDPOINT", "OcrProviderError", "clear_ocr_run_model_resolver", "clear_ocr_vault", "close_ocr_client", "configure_ocr_run_model_resolver", "configure_ocr_vault", "ocr_image", "ocr_vault_is_configured"]

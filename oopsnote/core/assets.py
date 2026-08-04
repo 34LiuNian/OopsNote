@@ -14,7 +14,7 @@ import mimetypes
 import re
 from io import BytesIO
 from pathlib import Path
-from typing import Any, Mapping, Optional
+from typing import Any, AsyncIterable, Mapping, Optional
 from uuid import uuid4
 
 from PIL import Image, ImageOps, UnidentifiedImageError
@@ -29,6 +29,10 @@ _IMAGE_FORMATS = {
     "WEBP": (".webp", "image/webp"),
     "GIF": (".gif", "image/gif"),
 }
+
+
+class AssetUploadTooLargeError(ValueError):
+    """Raised when a streamed asset exceeds its caller-defined size limit."""
 
 
 class AssetStore:
@@ -97,6 +101,49 @@ class AssetStore:
         if not path.exists() or hashlib.sha256(path.read_bytes()).digest() != hashlib.sha256(data).digest():
             self._write_atomic(path, data)
         return f"/assets/{safe_name}"
+
+    async def save_stream(
+        self,
+        chunks: AsyncIterable[bytes],
+        filename: str,
+        *,
+        stable_name: str,
+        expected_sha256: str,
+        max_bytes: int,
+    ) -> str:
+        """Atomically persist one bounded upload without materializing it in memory."""
+        if max_bytes <= 0:
+            raise ValueError("Upload size limit must be positive")
+        ext = Path(filename).suffix or ".bin"
+        safe_name = f"{stable_name}{ext}".replace("/", "_").replace("\\", "_")
+        path = self.base_dir / safe_name
+        temporary = path.with_name(f".{path.name}.{uuid4().hex}.uploading")
+        digest = hashlib.sha256()
+        size = 0
+        try:
+            with temporary.open("xb") as output:
+                async for chunk in chunks:
+                    if not isinstance(chunk, bytes):
+                        raise ValueError("Upload stream yielded a non-bytes chunk")
+                    size += len(chunk)
+                    if size > max_bytes:
+                        raise AssetUploadTooLargeError(
+                            f"Uploaded asset exceeds the {max_bytes} byte limit"
+                        )
+                    output.write(chunk)
+                    digest.update(chunk)
+            if not size:
+                raise ValueError("Empty upload source")
+            if digest.hexdigest() != expected_sha256:
+                raise ValueError("File hash mismatch")
+            if path.exists() and self._file_sha256(path) == expected_sha256:
+                temporary.unlink()
+            else:
+                temporary.replace(path)
+            return f"/assets/{safe_name}"
+        finally:
+            if temporary.exists():
+                temporary.unlink()
 
     def save_image_crop(
         self,
@@ -193,6 +240,14 @@ class AssetStore:
         finally:
             if temporary.exists():
                 temporary.unlink()
+
+    @staticmethod
+    def _file_sha256(path: Path) -> str:
+        digest = hashlib.sha256()
+        with path.open("rb") as source:
+            while chunk := source.read(1024 * 1024):
+                digest.update(chunk)
+        return digest.hexdigest()
 
     @staticmethod
     def _guess_ext(filename: Optional[str], mime: Optional[str]) -> str:

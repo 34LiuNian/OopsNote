@@ -6,6 +6,7 @@ import { ChevronDown } from "lucide-react";
 import { Box, Button, Select, Text, TextInput, Textarea } from "@/components/ui/primitives";
 import { ProblemCard } from "@/components/ProblemCard";
 import { fetchJson } from "@/lib/api";
+import { confirmAction } from "@/lib/confirm";
 import type { TaskResponse } from "@/types/api";
 
 type DuplicateCandidate = { task: TaskResponse["task"]; source: string };
@@ -52,10 +53,6 @@ export function ProblemStudyPanel({ taskId, problem, mergedInto, onStatusMessage
   }, [mergedInto, onError, problem.problem_id, section, taskId]);
 
   const merge = async (candidateTaskId: string, mergeDirection: "into_current" | "into_candidate") => {
-    const message = mergeDirection === "into_current"
-      ? "确认将候选题并入此当前题？"
-      : "确认将此当前题并入候选题？";
-    if (!window.confirm(message)) return;
     setIsMerging(true);
     try {
       await fetchJson(`/tasks/${taskId}/duplicates/${candidateTaskId}/merge`, {
@@ -72,6 +69,19 @@ export function ProblemStudyPanel({ taskId, problem, mergedInto, onStatusMessage
       setIsMerging(false);
       setReverseOpenFor("");
     }
+  };
+
+  const requestMerge = (candidateTaskId: string, mergeDirection: "into_current" | "into_candidate") => {
+    const message = mergeDirection === "into_current"
+      ? "确认将候选题并入此当前题？"
+      : "确认将此当前题并入候选题？";
+    confirmAction({
+      title: "归并相同题",
+      message,
+      confirmLabel: "归并",
+      destructive: true,
+      onConfirm: () => merge(candidateTaskId, mergeDirection),
+    });
   };
 
   const generate = async () => {
@@ -146,12 +156,12 @@ export function ProblemStudyPanel({ taskId, problem, mergedInto, onStatusMessage
                       showMeta={false}
                     />
                     <Box sx={{ display: "flex", alignItems: "flex-start", gap: 1, mt: 3 }}>
-                      <Button size="small" disabled={isMerging} onClick={() => void merge(task.id, "into_current")}>并入此当前题</Button>
+                      <Button size="small" disabled={isMerging} onClick={() => requestMerge(task.id, "into_current")}>并入此当前题</Button>
                       <Button size="small" variant="secondary" aria-label="展开反向并入操作" title="展开反向并入操作" disabled={isMerging} onClick={() => setReverseOpenFor((value) => value === task.id ? "" : task.id)}><ChevronDown size={15} /></Button>
                     </Box>
                     {reverseOpenFor === task.id && (
                       <Box sx={{ mt: 2 }}>
-                        <Button size="small" variant="secondary" disabled={isMerging} onClick={() => void merge(task.id, "into_candidate")}>并入候选题</Button>
+                        <Button size="small" variant="secondary" disabled={isMerging} onClick={() => requestMerge(task.id, "into_candidate")}>并入候选题</Button>
                       </Box>
                     )}
                   </Box>

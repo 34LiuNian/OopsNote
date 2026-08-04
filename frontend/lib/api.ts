@@ -22,17 +22,29 @@ export class ApiError extends Error {
 }
 
 function parseErrorMessage(rawText: string, status: number): string {
-  if (!rawText) return `请求失败：${status}`;
-  try {
-    const parsed = JSON.parse(rawText) as { detail?: string | { message?: string } };
-    if (typeof parsed?.detail === "string") return parsed.detail;
-    if (parsed?.detail && typeof parsed.detail === "object") {
-      return parsed.detail.message || rawText;
+  if (rawText) {
+    try {
+      const parsed = JSON.parse(rawText) as { detail?: string | { message?: string } };
+      if (typeof parsed?.detail === "string") return parsed.detail;
+      if (parsed?.detail && typeof parsed.detail === "object") {
+        return parsed.detail.message || rawText;
+      }
+    } catch {
+      if (/^\s*<(!doctype\s+html|html)\b/i.test(rawText)) {
+        return `服务返回了无效响应（${status}）`;
+      }
     }
-  } catch {
-    return rawText;
   }
+  if (status === 413) return "上传内容超过服务允许的大小，请压缩或拆分文件后重试";
+  if (!rawText) return `请求失败：${status}`;
   return rawText;
+}
+
+export async function apiErrorFromResponse(response: Response): Promise<ApiError> {
+  return new ApiError(
+    parseErrorMessage(await response.text(), response.status),
+    response.status,
+  );
 }
 
 export async function fetchApi(path: string, init?: ApiRequestInit): Promise<Response> {
@@ -72,8 +84,7 @@ export async function fetchJson<T>(path: string, init?: ApiRequestInit): Promise
   });
 
   if (!response.ok) {
-    const errorText = await response.text();
-    throw new ApiError(parseErrorMessage(errorText, response.status), response.status);
+    throw await apiErrorFromResponse(response);
   }
 
   return (await response.json()) as T;

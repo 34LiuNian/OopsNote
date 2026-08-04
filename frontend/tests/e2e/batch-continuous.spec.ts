@@ -217,7 +217,7 @@ test("clearing a workspace prevents an in-flight PDF render from publishing a st
   await page.waitForTimeout(1_200);
 
   expect(await blobUrlStats(page)).toEqual({ activePageUrls: 0, peakPageUrls: 0, revokedPageUrls: 0, pendingPageEncodes: 0 });
-  await expect(page.locator(".batch-scan-error")).toHaveCount(0);
+  await expect(page.locator(".mantine-Notification-root")).toHaveCount(0);
 });
 
 test("recent files expose delete directly without a secondary menu", async ({ page }) => {

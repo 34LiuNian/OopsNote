@@ -52,13 +52,41 @@ class ProcessRunControl(ActiveRunControl):
 class AsyncioTaskRunControl(ActiveRunControl):
     """Thread-safe cancellation adapter for a task owned by an event loop."""
 
-    def __init__(self, task: asyncio.Task[Any], loop: asyncio.AbstractEventLoop) -> None:
+    def __init__(
+        self,
+        task: asyncio.Task[Any],
+        loop: asyncio.AbstractEventLoop,
+        *,
+        wake_interval: float = 0.05,
+    ) -> None:
         self._task = task
         self._loop = loop
         self._cancelled = threading.Event()
         self._done = threading.Event()
         self._owner_thread_id = threading.get_ident()
-        task.add_done_callback(lambda _: self._done.set())
+        self._wake_handle: asyncio.TimerHandle | None = None
+        self._wake_interval = max(0.01, wake_interval)
+        task.add_done_callback(self._on_done)
+        # Some supported runtimes do not wake a selector immediately for a
+        # cross-thread call_soon_threadsafe while an await is idle. A bounded
+        # timer keeps the loop responsive to the cancellation callback without
+        # owning task state or adding another lifecycle.
+        self._arm_wake_timer()
+
+    def _arm_wake_timer(self) -> None:
+        if self._loop.is_closed() or self._task.done():
+            return
+        self._wake_handle = self._loop.call_later(self._wake_interval, self._wake)
+
+    def _wake(self) -> None:
+        self._wake_handle = None
+        self._arm_wake_timer()
+
+    def _on_done(self, _: asyncio.Future[Any]) -> None:
+        if self._wake_handle is not None:
+            self._wake_handle.cancel()
+            self._wake_handle = None
+        self._done.set()
 
     def cancel(self) -> None:
         self._cancelled.set()

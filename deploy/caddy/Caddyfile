@@ -3,7 +3,24 @@
 
 oopsnote.alan-ztr.eu.org {
     encode zstd gzip
-    reverse_proxy 127.0.0.1:13000
+
+    @batch_source_upload {
+        method PUT
+        path_regexp batch_source_upload ^/api/batch-sessions/[0-9a-f]{64}/source$
+    }
+    handle @batch_source_upload {
+        uri strip_prefix /api
+        reverse_proxy 127.0.0.1:18000
+    }
+
+    handle {
+        reverse_proxy 127.0.0.1:13000
+    }
+}
+
+dev-oopsnote.alan-ztr.eu.org {
+    encode zstd gzip
+    reverse_proxy 127.0.0.1:13001
 }
 
 auth.alan-ztr.eu.org {

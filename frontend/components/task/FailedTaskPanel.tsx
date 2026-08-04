@@ -7,11 +7,35 @@ import { useCallback, useState } from "react";
 
 import { SUBJECT_OPTIONS } from "@/config/subjects";
 import { deleteTask, deleteTasks, retryTask } from "@/features/tasks";
-import { API_BASE } from "@/lib/api";
+import { confirmAction } from "@/lib/confirm";
 import { formatApiError } from "@/lib/errorFormatter";
 import { notify } from "@/lib/notify";
 import type { TaskStage, TaskSummary } from "@/types/api";
 import { Box, Button, Spinner, Text } from "@/components/ui/primitives";
+import { useAuthenticatedAssetUrl } from "@/hooks/useAuthenticatedAssetUrl";
+
+function AuthenticatedTaskImage({
+  path,
+  alt,
+  onLoad,
+}: {
+  path: string;
+  alt: string;
+  onLoad: (event: React.SyntheticEvent<HTMLImageElement>) => void;
+}) {
+  const src = useAuthenticatedAssetUrl(path);
+  if (!src) return null;
+  return (
+    <Image
+      fill
+      unoptimized
+      sizes="100vw"
+      src={src}
+      alt={alt}
+      onLoad={onLoad}
+    />
+  );
+}
 
 const STAGE_LABELS: Partial<Record<TaskStage, string>> = {
   queued: "等待处理",
@@ -113,9 +137,8 @@ export function FailedTaskPanel({
     }
   }, [isBatchRetrying, leaveSelectionMode, refreshActiveTasks, refreshFailedTasks, selectedIds, tasks]);
 
-  const deleteOne = useCallback(async (taskId: string) => {
+  const performDeleteOne = useCallback(async (taskId: string) => {
     if (deletingIds[taskId]) return;
-    if (!window.confirm("删除这个失败任务？任务记录将从列表移除，且无法撤销。")) return;
 
     setDeletingIds((current) => ({ ...current, [taskId]: true }));
     try {
@@ -129,10 +152,20 @@ export function FailedTaskPanel({
     }
   }, [deletingIds, refreshFailedTasks]);
 
-  const deleteSelected = useCallback(async () => {
+  const deleteOne = useCallback((taskId: string) => {
+    if (deletingIds[taskId]) return;
+    confirmAction({
+      title: "删除失败任务",
+      message: "任务记录将从列表移除，且无法撤销。",
+      confirmLabel: "删除",
+      destructive: true,
+      onConfirm: () => performDeleteOne(taskId),
+    });
+  }, [deletingIds, performDeleteOne]);
+
+  const performDeleteSelected = useCallback(async () => {
     const taskIds = tasks.filter((task) => selectedIds[task.id]).map((task) => task.id);
     if (taskIds.length === 0 || isBatchBusy) return;
-    if (!window.confirm(`删除选中的 ${taskIds.length} 个失败任务？任务记录将从列表移除，且无法撤销。`)) return;
 
     setIsBatchDeleting(true);
     try {
@@ -149,6 +182,18 @@ export function FailedTaskPanel({
       setIsBatchDeleting(false);
     }
   }, [isBatchBusy, leaveSelectionMode, refreshFailedTasks, selectedIds, tasks]);
+
+  const deleteSelected = useCallback(() => {
+    const taskIds = tasks.filter((task) => selectedIds[task.id]).map((task) => task.id);
+    if (taskIds.length === 0 || isBatchBusy) return;
+    confirmAction({
+      title: "删除失败任务",
+      message: `删除选中的 ${taskIds.length} 个失败任务？任务记录将从列表移除，且无法撤销。`,
+      confirmLabel: "删除",
+      destructive: true,
+      onConfirm: performDeleteSelected,
+    });
+  }, [isBatchBusy, performDeleteSelected, selectedIds, tasks]);
 
   if (isLoading && tasks.length === 0) {
     return <Box className="failed-task-panel__loading"><Spinner size="small" /></Box>;
@@ -252,11 +297,8 @@ export function FailedTaskPanel({
                 aria-hidden="true"
               >
                 {task.asset?.path ? (
-                  <Image
-                    fill
-                    unoptimized
-                    sizes="100vw"
-                    src={`${API_BASE}${task.asset.path}`}
+                  <AuthenticatedTaskImage
+                    path={task.asset.path}
                     alt=""
                     onLoad={(event) => {
                       const image = event.currentTarget;

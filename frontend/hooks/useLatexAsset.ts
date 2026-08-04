@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { API_BASE } from "../lib/api";
+import { apiErrorFromResponse, fetchApi } from "../lib/api";
 
 type LatexAssetKind = "tikz";
 
@@ -30,7 +30,7 @@ function buildCacheKey(kind: LatexAssetKind, content: string, inline?: boolean):
 }
 
 async function requestAsset(kind: LatexAssetKind, content: string, inline?: boolean): Promise<string> {
-  const response = await fetch(`${API_BASE}${ASSET_ENDPOINTS[kind]}`, {
+  const response = await fetchApi(ASSET_ENDPOINTS[kind], {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -42,8 +42,7 @@ async function requestAsset(kind: LatexAssetKind, content: string, inline?: bool
   });
 
   if (!response.ok) {
-    const text = await response.text();
-    throw new Error(text || `请求失败: ${response.status}`);
+    throw await apiErrorFromResponse(response);
   }
 
   return response.text();

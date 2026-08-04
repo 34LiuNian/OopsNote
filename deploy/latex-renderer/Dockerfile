@@ -6,7 +6,7 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
-COPY app.py /app/app.py
+COPY --chmod=644 app.py /app/app.py
 RUN useradd --system --uid 10001 --create-home renderer
 USER renderer
 EXPOSE 8080

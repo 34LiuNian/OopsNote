@@ -33,7 +33,7 @@ export function AuthStatusScreen({ phase, error }: AuthStatusScreenProps) {
         <h1>{title}</h1>
         <p>{detail}</p>
         {isError && (
-          <button type="button" onClick={() => window.location.replace("/")}>
+          <button type="button" onClick={() => window.location.reload()}>
             <RotateCcw size={16} aria-hidden="true" />
             重新登录
           </button>

@@ -62,14 +62,35 @@ class CostApproval(BaseModel):
     approved_at: datetime
 
 
+class StageStrategy(BaseModel):
+    """One immutable LangChain stage selection, excluding credential references."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    channel_id: str = Field(min_length=1, max_length=128)
+    provider: str = Field(min_length=1, max_length=64)
+    model: str = Field(min_length=1, max_length=256)
+    version: PositiveInt
+
+
+class LangChainStrategy(BaseModel):
+    """The three-stage policy snapshot that identifies one evaluation cohort."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    policy_version: PositiveInt
+    vision: StageStrategy
+    agent: StageStrategy
+    review: StageStrategy
+
+
 class EvaluationEvidence(BaseModel):
     """Versioned human-review evidence joined to authoritative persisted runs."""
 
     model_config = ConfigDict(extra="forbid")
 
-    schema_version: Literal[1]
-    profile_id: str = Field(min_length=1)
-    profile_version: PositiveInt
+    schema_version: Literal[2]
+    strategy: LangChainStrategy
     baseline_p95_ms: PositiveInt
     task_results: list[TaskEvaluation]
     cancellation_trials: list[CancellationTrial]
@@ -97,22 +118,46 @@ def _p95(values: list[int]) -> Optional[int]:
     return ordered[math.ceil(len(ordered) * 0.95) - 1]
 
 
+def _strategy_from_snapshot(snapshot: Any) -> LangChainStrategy | None:
+    if not isinstance(snapshot, dict):
+        return None
+    stages: dict[str, StageStrategy] = {}
+    for stage in ("vision", "agent", "review"):
+        raw = snapshot.get(stage)
+        if not isinstance(raw, dict):
+            return None
+        try:
+            stages[stage] = StageStrategy.model_validate({
+                "channel_id": raw.get("channel_id"),
+                "provider": raw.get("provider"),
+                "model": raw.get("model"),
+                "version": raw.get("version"),
+            })
+        except ValueError:
+            return None
+    try:
+        return LangChainStrategy(
+            policy_version=snapshot.get("policy_version"),
+            vision=stages["vision"],
+            agent=stages["agent"],
+            review=stages["review"],
+        )
+    except ValueError:
+        return None
+
+
 def build_report(
     tasks: Iterable[TaskRecord],
     runs: Iterable[TaskRun],
     *,
-    profile_id: Optional[str] = None,
-    profile_version: Optional[int] = None,
+    policy_version: Optional[int] = None,
     include_synthetic: bool = False,
     evidence: EvaluationEvidence | None = None,
 ) -> dict[str, Any]:
     if evidence is not None:
-        if profile_id is not None and profile_id != evidence.profile_id:
-            raise ValueError("evidence profile_id does not match the report filter")
-        if profile_version is not None and profile_version != evidence.profile_version:
-            raise ValueError("evidence profile_version does not match the report filter")
-        profile_id = evidence.profile_id
-        profile_version = evidence.profile_version
+        if policy_version is not None and policy_version != evidence.strategy.policy_version:
+            raise ValueError("evidence policy_version does not match the report filter")
+        policy_version = evidence.strategy.policy_version
     cohort_task_ids = (
         {item.task_id for item in evidence.task_results}
         if evidence is not None
@@ -123,14 +168,14 @@ def build_report(
     attempts: dict[str, list[TaskRun]] = defaultdict(list)
     matching_terminal_runs: dict[str, TaskRun] = {}
     for run in all_runs:
-        snapshot = run.provider_profile_snapshot
         if run.backend != "langchain" or run.status not in TERMINAL or run.task_id not in tasks_by_id:
             continue
-        if not isinstance(snapshot, dict):
+        strategy = _strategy_from_snapshot(run.provider_profile_snapshot)
+        if strategy is None:
             continue
-        if profile_id is not None and snapshot.get("id") != profile_id:
+        if policy_version is not None and strategy.policy_version != policy_version:
             continue
-        if profile_version is not None and snapshot.get("version") != profile_version:
+        if evidence is not None and strategy != evidence.strategy:
             continue
         matching_terminal_runs[run.id] = run
         if cohort_task_ids is not None and run.task_id not in cohort_task_ids:
@@ -153,7 +198,12 @@ def build_report(
             "attempt_count": len(task_attempts),
             "retry_count": max(run.retry_count for run in task_attempts),
             "cost": final.cost,
-            "profile": {key: final.provider_profile_snapshot.get(key) for key in ("id", "version", "provider", "model")},
+            "verifier_submission_count": sum(
+                artifact.kind == "verifier_submission"
+                for attempt in task_attempts
+                for artifact in attempt.artifacts
+            ),
+            "strategy": _strategy_from_snapshot(final.provider_profile_snapshot).model_dump(mode="json"),
         })
     outcomes.sort(key=lambda item: item["task_id"])
     durations = [item["duration_ms"] for item in outcomes]
@@ -178,10 +228,7 @@ def build_report(
             and (baseline_quality_count - quality_count) / denominator <= 0.02
         )
         integrity_gate = bool(exact_cohort and all(
-            sum(
-                artifact.kind == "verifier_submission"
-                for artifact in matching_terminal_runs[item["final_run_id"]].artifacts
-            ) == (1 if item["status"] == RunStatus.COMPLETED.value else 0)
+            item["verifier_submission_count"] == (1 if item["status"] == RunStatus.COMPLETED.value else 0)
             for item in outcomes
         ))
         cancellation_gate = bool(
@@ -220,7 +267,7 @@ def build_report(
     }
     return {
         "generated_at": datetime.now(timezone.utc),
-        "filters": {"backend": "langchain", "profile_id": profile_id, "profile_version": profile_version, "include_synthetic": include_synthetic},
+        "filters": {"backend": "langchain", "policy_version": policy_version, "include_synthetic": include_synthetic},
         "population": {"tasks": total, "completed": completed, "completion_rate": completed / total if total else None},
         "metrics": {
             "p50_duration_ms": round(statistics.median(durations)) if durations else None,
@@ -230,8 +277,7 @@ def build_report(
         },
         "evidence": None if evidence is None else {
             "schema_version": evidence.schema_version,
-            "profile_id": evidence.profile_id,
-            "profile_version": evidence.profile_version,
+            "strategy": evidence.strategy.model_dump(mode="json"),
             "cohort_matches_persisted_runs": exact_cohort,
             "baseline_p95_ms": evidence.baseline_p95_ms,
             "cost_currency": evidence.cost_approval.currency,
@@ -265,12 +311,11 @@ def markdown_report(report: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def evidence_template(report: dict[str, Any], *, profile_id: str, profile_version: int) -> dict[str, Any]:
+def evidence_template(report: dict[str, Any], *, strategy: LangChainStrategy) -> dict[str, Any]:
     """Create an intentionally incomplete review manifest for one persisted cohort."""
     return {
-        "schema_version": 1,
-        "profile_id": profile_id,
-        "profile_version": profile_version,
+        "schema_version": 2,
+        "strategy": strategy.model_dump(mode="json"),
         "baseline_p95_ms": None,
         "task_results": [
             {
@@ -294,8 +339,7 @@ def evidence_template(report: dict[str, Any], *, profile_id: str, profile_versio
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--storage", type=Path, default=ROOT / "storage")
-    parser.add_argument("--profile-id")
-    parser.add_argument("--profile-version", type=int)
+    parser.add_argument("--policy-version", type=int)
     parser.add_argument("--include-synthetic", action="store_true")
     parser.add_argument("--evidence", type=Path)
     parser.add_argument("--write-evidence-template", type=Path)
@@ -303,22 +347,26 @@ def main() -> int:
     args = parser.parse_args()
     if args.evidence and args.write_evidence_template:
         parser.error("--evidence and --write-evidence-template are mutually exclusive")
-    if args.write_evidence_template and (not args.profile_id or args.profile_version is None):
-        parser.error("evidence templates require --profile-id and --profile-version")
+    if args.write_evidence_template and args.policy_version is None:
+        parser.error("evidence templates require --policy-version")
     tasks = TaskStore(args.storage).list_all()
     runs = RunStore(args.storage / "runs").list_all()
     if args.write_evidence_template:
         preliminary = build_report(
             tasks,
             runs,
-            profile_id=args.profile_id,
-            profile_version=args.profile_version,
+            policy_version=args.policy_version,
             include_synthetic=args.include_synthetic,
         )
+        strategies = {
+            json.dumps(item["strategy"], sort_keys=True)
+            for item in preliminary["outcomes"]
+        }
+        if len(strategies) != 1:
+            parser.error("the selected cohort must contain exactly one frozen three-stage strategy")
         template = evidence_template(
             preliminary,
-            profile_id=args.profile_id,
-            profile_version=args.profile_version,
+            strategy=LangChainStrategy.model_validate(json.loads(strategies.pop())),
         )
         args.write_evidence_template.parent.mkdir(parents=True, exist_ok=True)
         args.write_evidence_template.write_text(
@@ -335,8 +383,7 @@ def main() -> int:
     report = build_report(
         tasks,
         runs,
-        profile_id=args.profile_id,
-        profile_version=args.profile_version,
+        policy_version=args.policy_version,
         include_synthetic=args.include_synthetic,
         evidence=evidence,
     )

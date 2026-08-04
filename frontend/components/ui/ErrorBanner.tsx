@@ -1,7 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
-import { notify } from "@/lib/notify";
+import { Alert } from "@mantine/core";
 
 type ErrorBannerProps = {
   message: string;
@@ -9,12 +8,6 @@ type ErrorBannerProps = {
 };
 
 export function ErrorBanner({ message, marginBottom = 3 }: ErrorBannerProps) {
-  useEffect(() => {
-    if (message) {
-      notify.error({ title: message });
-    }
-  }, [message]);
-
-  // 返回 null，因为我们不再渲染 Flash
-  return null;
+  if (!message) return null;
+  return <Alert color="red" title="操作失败" mb={marginBottom}>{message}</Alert>;
 }

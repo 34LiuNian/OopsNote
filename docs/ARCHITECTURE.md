@@ -30,7 +30,7 @@ restricted MCP HTTP -> OCR + pipeline tools -> Core stores
 
 共享生命周期只由 `ManagedAiRunner` 管理：run 所有权、heartbeat、timeout、abort、陈旧任务恢复、日志、重试资格和 finalize 后检查。Backend 只负责模型调用与受控工具循环，并通过 `ActiveRunControl` 暴露可取消执行句柄。
 
-默认运行时是 LangChain 的显式 provider adapter。每次 run 固定其 profile snapshot，solver 与 verifier 使用独立上下文，最多 24 轮受限 MCP tool loop。Pi 与 Hermes 仅可由显式 backend 选择用于诊断，任一 run 都不得自动切换。
+默认运行时是 LangChain 的显式 provider adapter。每次 run 固定其三阶段 channel/model policy snapshot，solver 与 verifier 使用独立上下文，最多 24 轮受限 MCP tool loop；Vision/OCR 从同一 run snapshot 解析模型。Pi 与 Hermes 仅可由显式 backend 选择用于诊断，任一 run 都不得自动切换。
 
 LangChain run 使用受管 asyncio task；完整模型与工具循环受同一个超时约束，取消时只取消当前 run。Pi 诊断后端仍复用有界 worker 进程并通过 RPC `abort` 取消。持久化队列先写入 `TaskRun`，应用重启后恢复 `queued` run，遗失的 `running` run 以 fresh retry 处理。
 
@@ -47,7 +47,7 @@ Frontend   -> REST ----------> Core
 - AI 只开放 `ocr_image`、`get_task`、`get_asset_path`、`list_tags`、`create_tag`、`report_task_stage`、`submit_solution_candidate`、`finalize_task`、`fail_task`。`submit_solution_candidate` 只写入当前 `TaskRun` 的未提交候选，必须由新会话复核后才可 `finalize_task`。
 - `run_id` 必须属于当前任务；finalize 必须幂等且最多成功一次。
 - 同一 run 不允许从 Pi 自动切换到 Hermes。
-- 仅瞬时网络、429 或明确 5xx 最多产生两个全新 retry run；401/403、无效模型、schema/validation 与未 finalize 均不可重试。retry 保留原 run 的 provider profile snapshot，且不会切换 backend。
+- 仅瞬时网络、429 或明确 5xx 最多产生两个全新 retry run；401/403、无效模型、schema/validation 与未 finalize 均不可重试。retry 保留原 run 的三阶段 strategy snapshot，且不会切换 backend。
 
 ## 4. 内容协议
 
@@ -77,7 +77,7 @@ OCR / AI / manual edit -> OopsMark v1 -> Web renderer
 
 ## 6. 配置与密钥
 
-AppSettings 只保存非敏感 provider profile 与 opaque credential reference。Windows 使用 Credential Manager；Linux/容器使用由只读挂载 master key 加密的持久化 vault。密钥明文绝不写入 `storage/`、TaskRun、日志、环境变量或 REST 响应。`.pi/extensions.json` 只为显式旧 Pi 后端保留；LangChain 与 OCR 不会把它作为 vault 失败的回退。
+AppSettings 只保存非敏感 provider channel、模型目录、三阶段策略与 opaque credential reference。Windows 使用 Credential Manager；Linux/容器使用由只读挂载 master key 加密的持久化 vault。密钥明文绝不写入 `storage/`、TaskRun、日志、环境变量或 REST 响应。`.pi/extensions.json` 只为显式旧 Pi 后端保留；LangChain 与 OCR 不会把它作为 vault 失败的回退。
 
 `.pi/skills/` 是 `skills/` 的生成镜像。修改 skill 后运行 `scripts/setup/setup_pi.py --sync`。
 

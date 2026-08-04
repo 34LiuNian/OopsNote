@@ -3,9 +3,10 @@ import Script from "next/script";
 import "./globals.css";
 import "katex/dist/katex.min.css";
 import "@mantine/core/styles.css";
+import "@mantine/notifications/styles.css";
 import { AppLayout, SplashScreen } from "@/components/layout";
 import { AuthBoundary, AuthProvider, ThemeProvider, ReactQueryProvider } from "@/components/providers";
-import { SileoToaster } from "@/components/ui";
+import { MantineNotifications } from "@/components/ui";
 import { KatexAutoRender } from "@/components/renderers";
 
 export const viewport: Viewport = {
@@ -60,7 +61,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <AuthProvider>
             <ThemeProvider initialPreference="system">
               <KatexAutoRender />
-              <SileoToaster />
+              <MantineNotifications />
               <AuthBoundary>
                 <AppLayout>{children}</AppLayout>
               </AuthBoundary>

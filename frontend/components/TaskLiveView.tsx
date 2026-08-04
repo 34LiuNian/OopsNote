@@ -12,6 +12,8 @@ import {
   Spinner,
 } from "@/components/ui/primitives";
 import { fetchJson } from "@/lib/api";
+import { useAuthenticatedAssetUrl } from "@/hooks/useAuthenticatedAssetUrl";
+import { confirmAction } from "@/lib/confirm";
 import type { TaskResponse, TaskRunSummary } from "@/types/api";
 import { TaskActions } from "./task/TaskActions";
 import { TaskProblemDetail } from "./task/TaskProblemList";
@@ -23,7 +25,7 @@ import { TaskProgressBar } from "./task/TaskProgressBar";
 import { ErrorBanner } from "./ui/ErrorBanner";
 import { TaskLiveStream } from "./task/TaskLiveStream";
 import { TaskMathRenderer } from "./task/TaskMathRenderer";
-import { TaskStatusToaster } from "./task/TaskStatusToaster";
+import { TaskStatusNotifications } from "./task/TaskStatusNotifications";
 import { CheckIcon, ChevronDownIcon, ChevronUpIcon } from "./ui/icons";
 import { ProblemStudyPanel } from "./task/ProblemStudyPanel";
 
@@ -73,6 +75,7 @@ export function TaskLiveView({ taskId }: { taskId: string }) {
     onStatusMessage: setStatusMessage,
   });
   const viewData = data;
+  const screenshotUrl = useAuthenticatedAssetUrl(viewData?.task.trace?.screenshot_path);
 
   const cancelTask = useCallback(async () => {
     if (!viewData) return;
@@ -115,14 +118,21 @@ export function TaskLiveView({ taskId }: { taskId: string }) {
   }, [loadOnce, resetStream, taskId, viewData]);
 
 
-  const removeTask = useCallback(async () => {
-    if (!window.confirm("确认删除这个任务及其题目？")) return;
-    try {
-      await deleteTask(taskId);
-      window.location.href = "/library";
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "删除任务失败");
-    }
+  const removeTask = useCallback(() => {
+    confirmAction({
+      title: "删除任务",
+      message: "确认删除这个任务及其题目？此操作无法撤销。",
+      confirmLabel: "删除",
+      destructive: true,
+      onConfirm: async () => {
+        try {
+          await deleteTask(taskId);
+          window.location.href = "/library";
+        } catch (err) {
+          setError(err instanceof Error ? err.message : "删除任务失败");
+        }
+      },
+    });
   }, [taskId]);
 
   const progressState = useTaskProgress({
@@ -140,8 +150,7 @@ export function TaskLiveView({ taskId }: { taskId: string }) {
       {/* Math renderer */}
       <TaskMathRenderer data={viewData} />
 
-      {/* Status toaster */}
-      <TaskStatusToaster statusMessage={statusMessage} status={viewData?.task?.status} />
+      <TaskStatusNotifications taskId={taskId} statusMessage={statusMessage} status={viewData?.task?.status} />
 
       {/* Task header card */}
       <Box
@@ -242,14 +251,14 @@ export function TaskLiveView({ taskId }: { taskId: string }) {
 
       {viewData?.task.trace && (
         <Modal opened={isScreenshotOpen} onClose={() => setIsScreenshotOpen(false)} title={viewData.task.trace.kind === "batch_segment" ? "选框截图" : "原图"} centered size="lg">
-          <Image
-            className="task-trace-image"
-            src={`/api${viewData.task.trace.screenshot_path}`}
-            alt={viewData.task.trace.screenshot_filename ?? "题目图片"}
-            width={1280}
-            height={760}
-            unoptimized
-          />
+          {screenshotUrl ? <Image
+              className="task-trace-image"
+              src={screenshotUrl}
+              alt={viewData.task.trace.screenshot_filename ?? "题目图片"}
+              width={1280}
+              height={760}
+              unoptimized
+            /> : <Spinner size="small" />}
         </Modal>
       )}
 

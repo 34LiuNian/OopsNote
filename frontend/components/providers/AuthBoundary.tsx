@@ -6,8 +6,8 @@ import { AuthStatusScreen } from "./AuthStatusScreen";
 
 export function AuthBoundary({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const { authenticated, loading } = useAuth();
+  const { authenticated, error, loading } = useAuth();
   if (pathname === "/auth/callback") return <>{children}</>;
-  if (loading || !authenticated) return <AuthStatusScreen phase="signin" />;
+  if (loading || !authenticated) return <AuthStatusScreen phase="signin" error={error} />;
   return <>{children}</>;
 }

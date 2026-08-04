@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Box, Button, Spinner, Text } from "@/components/ui/primitives";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { deletePaper, listPapers } from "@/features/papers";
+import { confirmAction } from "@/lib/confirm";
 import type { PaperDraft } from "@/types/api";
 
 export default function PapersPage() {
@@ -20,10 +21,17 @@ export default function PapersPage() {
       .finally(() => setLoading(false));
   }, []);
 
-  async function removePaper(paper: PaperDraft) {
-    if (!window.confirm(`删除“${paper.title}”？题库中的原题不会删除。`)) return;
-    await deletePaper(paper.id);
-    setPapers((current) => current.filter((item) => item.id !== paper.id));
+  function removePaper(paper: PaperDraft) {
+    confirmAction({
+      title: "删除试卷草稿",
+      message: `删除“${paper.title}”？题库中的原题不会删除。`,
+      confirmLabel: "删除",
+      destructive: true,
+      onConfirm: async () => {
+        await deletePaper(paper.id);
+        setPapers((current) => current.filter((item) => item.id !== paper.id));
+      },
+    });
   }
 
   return (

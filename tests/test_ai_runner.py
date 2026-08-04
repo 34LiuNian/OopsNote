@@ -185,6 +185,19 @@ def test_recover_stale_run_preserves_completed_task(tmp_path):
     assert task_store.get(task.id).status == TaskStatus.COMPLETED
 
 
+@pytest.mark.parametrize("terminal_status", [TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.CANCELLED])
+def test_cancel_is_idempotent_for_terminal_tasks(tmp_path, terminal_status):
+    runner, task_store, _run_store = make_runner(tmp_path)
+    task = task_store.create(TaskCreateRequest(subject="math"))
+    task_store.mark_status(task.id, terminal_status, "existing terminal evidence")
+
+    runner.cancel(task.id)
+
+    current = task_store.get(task.id)
+    assert current.status == terminal_status
+    assert current.last_error == "existing terminal evidence"
+
+
 def test_recover_stale_run_cannot_overwrite_newer_run_ownership(tmp_path):
     runner, task_store, run_store = make_runner(tmp_path, stale_seconds=60)
     task = task_store.create(TaskCreateRequest(subject="math"))

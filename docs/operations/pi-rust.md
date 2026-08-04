@@ -58,8 +58,9 @@ Run the repeatable checks:
 
 FastAPI defaults to LangChain and does not admit Pi unless operators explicitly
 include it in `OOPSNOTE_ENABLED_AI_BACKENDS`, for example `langchain,pi`. Select
-`backend=pi` for a diagnostic run; `OOPSNOTE_RPC_RUNTIME=pi-rust` chooses the
-Rust adapter and `OOPSNOTE_RPC_RUNTIME=pi` chooses upstream Pi. A failed run is
-retried fresh on the same runtime and never changes runtime or backend inside
-the run. This path has a removal deadline governed by ADR 0002's evaluation
-gate and must not regain default status.
+Pi only by deploying an explicit diagnostic backend configuration;
+`OOPSNOTE_RPC_RUNTIME=pi-rust` chooses the Rust adapter and
+`OOPSNOTE_RPC_RUNTIME=pi` chooses upstream Pi. A failed run is retried fresh on
+the same runtime and never changes runtime or backend inside the run. This path
+has a removal deadline governed by ADR 0002's evaluation gate and must not
+regain default status.

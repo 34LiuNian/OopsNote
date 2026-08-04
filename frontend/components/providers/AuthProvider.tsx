@@ -1,12 +1,13 @@
 "use client";
 
-import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import { beginSignin, beginSignout, currentUser, hasAccessToken, refreshCurrentUser, type AuthUser } from "@/lib/auth";
 
 type AuthContextValue = {
   authenticated: boolean;
   loading: boolean;
+  error: string | null;
   user: AuthUser | null;
   signOut: () => void;
 };
@@ -14,6 +15,7 @@ type AuthContextValue = {
 const AuthContext = createContext<AuthContextValue>({
   authenticated: false,
   loading: true,
+  error: null,
   user: null,
   signOut: () => undefined,
 });
@@ -24,11 +26,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const initialAuthenticated = !isCallback && hasAccessToken();
   const [loading, setLoading] = useState(!isCallback && !initialAuthenticated);
   const [authenticated, setAuthenticated] = useState(initialAuthenticated);
+  const [error, setError] = useState<string | null>(null);
   const [user, setUser] = useState<AuthUser | null>(() => initialAuthenticated ? currentUser() : null);
+  const signinStarted = useRef(false);
 
   useEffect(() => {
-    if (isCallback || authenticated) return;
-    void beginSignin(pathname).catch(() => undefined);
+    if (isCallback || authenticated || signinStarted.current) return;
+    signinStarted.current = true;
+    void beginSignin(pathname).catch((reason: unknown) => {
+      const message = reason instanceof Error ? reason.message : "无法启动 OIDC 登录";
+      console.error("Unable to start OIDC sign-in", reason);
+      setError(message);
+      setLoading(false);
+    });
   }, [authenticated, isCallback, pathname]);
 
   useEffect(() => {
@@ -41,14 +51,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const value = useMemo<AuthContextValue>(() => ({
     authenticated,
     loading,
+    error,
     user,
     signOut: () => {
       setAuthenticated(false);
       setLoading(true);
+      setError(null);
       setUser(null);
       void Promise.resolve().then(beginSignout);
     },
-  }), [authenticated, loading, user]);
+  }), [authenticated, error, loading, user]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

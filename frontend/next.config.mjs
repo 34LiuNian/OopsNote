@@ -11,7 +11,7 @@ const withSerwist = withSerwistInit({
 const nextConfig = {
   reactStrictMode: true,
   distDir: process.env.NEXT_DIST_DIR || '.next',
-  allowedDevOrigins: ['127.0.0.1', 'localhost'],
+  allowedDevOrigins: ['127.0.0.1', 'localhost', 'dev-oopsnote.alan-ztr.eu.org'],
   // Enable standalone output for production deployment
   output: 'standalone',
   async rewrites() {

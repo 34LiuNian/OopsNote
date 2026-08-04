@@ -11,6 +11,7 @@ import {
   Button,
 } from "@/components/ui/primitives";
 import { notify } from "@/lib/notify";
+import { confirmAction } from "@/lib/confirm";
 import { formatApiError } from "@/lib/errorFormatter";
 import { deleteTasks, useActiveTaskList, useProblemList, useTaskList } from "../../features/tasks";
 import { ProblemListItem } from "../../components/ProblemListItem";
@@ -111,12 +112,11 @@ export default function LibraryPage() {
     setSelectedIds({});
   }, []);
 
-  const deleteSelected = useCallback(async () => {
+  const performDeleteSelected = useCallback(async () => {
     const selected = items.filter((item) => (
       selectedIds[problemSelectionKey(item.task_id, item.problem_id)]
     ));
     if (selected.length === 0 || isBatchDeleting) return;
-    if (!window.confirm(`删除选中的 ${selected.length} 道题？对应任务记录也会删除，此操作无法撤销。`)) return;
 
     setIsBatchDeleting(true);
     const results = await deleteTasks(selected.map((item) => item.task_id));
@@ -150,6 +150,20 @@ export default function LibraryPage() {
       setIsBatchDeleting(false);
     }
   }, [isBatchDeleting, items, leaveSelectionMode, refreshProblems, selectedIds]);
+
+  const deleteSelected = useCallback(() => {
+    const selected = items.filter((item) => (
+      selectedIds[problemSelectionKey(item.task_id, item.problem_id)]
+    ));
+    if (selected.length === 0 || isBatchDeleting) return;
+    confirmAction({
+      title: "删除题目",
+      message: `删除选中的 ${selected.length} 道题？对应任务记录也会删除，此操作无法撤销。`,
+      confirmLabel: "删除",
+      destructive: true,
+      onConfirm: performDeleteSelected,
+    });
+  }, [isBatchDeleting, items, performDeleteSelected, selectedIds]);
 
   // 显示错误通知
   useEffect(() => {

@@ -5,6 +5,8 @@ import { Box, Button, FormControl, IconButton, Spinner, Text, TextInput, Textare
 import { PlusIcon, TrashIcon } from "@/components/ui/icons";
 import { optionLabel } from "@/lib/content/options";
 import { notify } from "@/lib/notify";
+import { confirmAction } from "@/lib/confirm";
+import { useAuthenticatedAssetUrl } from "@/hooks/useAuthenticatedAssetUrl";
 import type { DiagramImageTone, NormalizedRect, TagDimensionStyle } from "../types/api";
 import { overrideProblem } from "../features/tasks";
 import { TagPicker } from "./TagPicker";
@@ -299,7 +301,16 @@ export function ProblemEditPanel({ taskId, taskAssetPath, problem, tagStyles, on
   ]);
 
   const requestClose = useCallback(() => {
-    if (isDirty && !isSaving && !window.confirm("放弃未保存的修改？")) return;
+    if (isDirty && !isSaving) {
+      confirmAction({
+        title: "放弃未保存的修改",
+        message: "关闭后，本次未保存的修改将丢失。",
+        confirmLabel: "放弃修改",
+        destructive: true,
+        onConfirm: onClose,
+      });
+      return;
+    }
     onClose();
   }, [isDirty, isSaving, onClose]);
 
@@ -325,9 +336,7 @@ export function ProblemEditPanel({ taskId, taskAssetPath, problem, tagStyles, on
 
   const diagramImagePath = problem.diagram_image_path || taskAssetPath || null;
   const diagramCropSourcePath = taskAssetPath || diagramImagePath;
-  const diagramImageUrl = diagramCropSourcePath
-    ? diagramCropSourcePath.startsWith("/assets/") ? `/api${diagramCropSourcePath}` : diagramCropSourcePath
-    : "";
+  const diagramImageUrl = useAuthenticatedAssetUrl(diagramCropSourcePath);
 
   return (
     <Box className="oops-card" sx={{ overflow: "hidden", animation: "slideUp 0.25s ease-out" }}>

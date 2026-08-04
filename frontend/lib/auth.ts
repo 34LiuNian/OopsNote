@@ -158,7 +158,7 @@ export async function refreshCurrentUser(): Promise<AuthUser> {
   return user;
 }
 
-export async function beginSignin(returnTo?: string): Promise<never> {
+export async function beginSignin(returnTo?: string): Promise<void> {
   const config = authConfig();
   const verifier = randomString();
   const state = randomString();
@@ -178,7 +178,6 @@ export async function beginSignin(returnTo?: string): Promise<never> {
   url.searchParams.set("code_challenge_method", "S256");
   url.searchParams.set("state", state);
   window.location.assign(url.toString());
-  throw new Error("Redirecting to sign-in");
 }
 
 export async function completeSignin(urlString: string): Promise<string> {
@@ -223,7 +222,8 @@ export async function completeSignin(urlString: string): Promise<string> {
 export async function accessTokenOrRedirect(): Promise<string> {
   const session = loadSession();
   if (session) return session.access_token;
-  return beginSignin(window.location.pathname + window.location.search);
+  await beginSignin(window.location.pathname + window.location.search);
+  throw new Error("Redirecting to sign-in");
 }
 
 export function hasAccessToken(): boolean {

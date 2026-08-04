@@ -1,0 +1,86 @@
+services:
+  frontend:
+    image: node:24-bookworm-slim
+    working_dir: /app
+    environment:
+      NODE_ENV: development
+      OOPSNOTE_BACKEND_URL: http://backend:8000
+      NEXT_PUBLIC_OIDC_AUTHORITY: https://auth.alan-ztr.eu.org
+      NEXT_PUBLIC_OIDC_CLIENT_ID: oopsnote-dev
+      NEXT_PUBLIC_OIDC_REDIRECT_URI: https://dev-oopsnote.alan-ztr.eu.org/auth/callback
+      NEXT_PUBLIC_OIDC_POST_LOGOUT_REDIRECT_URI: https://dev-oopsnote.alan-ztr.eu.org/
+      NEXT_PUBLIC_OIDC_SCOPE: openid profile email
+    command: >-
+      sh -c 'if [ ! -x node_modules/.bin/next ]; then npm ci; fi; npx next dev --webpack -H 0.0.0.0'
+    ports:
+      - "127.0.0.1:13001:3000"
+    volumes:
+      - ./frontend:/app
+      - oopsnote-dev-frontend-node-modules:/app/node_modules
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - dev-app
+
+  backend:
+    build:
+      context: .
+      dockerfile: deploy/backend/Dockerfile
+    # The development checkout is intentionally mode 0700 under /root.
+    user: "0:0"
+    command: ["uvicorn", "oopsnote.api.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+    environment:
+      OOPSNOTE_STORAGE_DIR: /data
+      OOPSNOTE_LATEX_RENDERER_URL: http://latex-renderer:8080
+      OOPSNOTE_RPC_MAX_WORKERS: "1"
+      OOPSNOTE_AUTH_ISSUER: https://auth.alan-ztr.eu.org
+      OOPSNOTE_AUTH_AUDIENCE: oopsnote-dev
+      OOPSNOTE_AUTH_JWKS_URL: http://pocket-id:1411/.well-known/jwks.json
+    volumes:
+      - ./:/app
+      - oopsnote-dev-data:/data
+      - ./deploy/pi:/app/.pi:ro
+      - ./deploy/pi-rust:/app/.pi-rust:ro
+    depends_on:
+      latex-renderer:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    networks:
+      - dev-app
+      - pocket-id
+
+  latex-renderer:
+    build:
+      context: ./deploy/latex-renderer
+    read_only: true
+    tmpfs:
+      - /tmp:size=256m,noexec,nosuid
+    mem_limit: 768m
+    cpus: 1.0
+    pids_limit: 64
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health')"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    networks:
+      - dev-app
+
+volumes:
+  oopsnote-dev-data:
+  oopsnote-dev-frontend-node-modules:
+
+networks:
+  dev-app:
+  pocket-id:
+    external: true
+    name: oopsnote_app

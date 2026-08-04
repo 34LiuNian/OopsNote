@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import argparse
 import json
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from oopsnote.ai.providers import ProviderProfile
+from oopsnote.ai.providers import ChannelModel, ProviderChannel
 from oopsnote.ai.secrets import SecretStore, secret_store_from_environment
 from oopsnote.core import AppSettingsStore
 
@@ -19,49 +20,53 @@ def _payload(path: Path) -> dict[str, Any]:
     return value
 
 
-def _next_version(settings: AppSettingsStore, profile_id: str) -> int:
-    previous = next((item for item in settings.provider_profiles() if item.id == profile_id), None)
+def _next_version(settings: AppSettingsStore, channel_id: str) -> int:
+    previous = next((item for item in settings.provider_channels() if item.id == channel_id), None)
     return previous.version + 1 if previous else 1
 
 
-def import_model_profile(
+def import_model_channel(
     path: Path,
     *,
     store: SecretStore,
     settings: AppSettingsStore,
-    profile_id: str,
+    channel_id: str,
     provider: str,
     model: str,
     base_url: str,
-) -> ProviderProfile:
+) -> ProviderChannel:
     provider_config = _payload(path).get(provider)
     secret = provider_config.get("key") if isinstance(provider_config, dict) else None
     if not isinstance(secret, str) or not secret:
         raise ValueError(f"legacy auth has no {provider}.key credential")
     reference = store.put(secret)
     try:
-        profile = ProviderProfile(
-            id=profile_id,
-            version=_next_version(settings, profile_id),
+        now = datetime.now(timezone.utc)
+        channel = ProviderChannel(
+            id=channel_id,
+            version=_next_version(settings, channel_id),
+            display_name=channel_id,
             provider=provider,
-            model=model,
             base_url=base_url,
             credential_ref=reference,
+            models=(ChannelModel(id=model, source=provider),),
+            created_at=now,
+            updated_at=now,
         )
-        settings.activate_provider_profile(profile)
+        settings.upsert_provider_channel(channel)
     except Exception:
         store.delete(reference)
         raise
-    return profile
+    return channel
 
 
-def import_ocr_profile(
+def import_ocr_channel(
     path: Path,
     *,
     store: SecretStore,
     settings: AppSettingsStore,
-    profile_id: str,
-) -> ProviderProfile:
+    channel_id: str,
+) -> ProviderChannel:
     config = _payload(path).get("ocr_image")
     if not isinstance(config, dict):
         raise ValueError("legacy config has no ocr_image section")
@@ -76,19 +81,23 @@ def import_ocr_profile(
         raise ValueError("legacy OCR config has no endpoint")
     reference = store.put(secret)
     try:
-        profile = ProviderProfile(
-            id=profile_id,
-            version=_next_version(settings, profile_id),
+        now = datetime.now(timezone.utc)
+        channel = ProviderChannel(
+            id=channel_id,
+            version=_next_version(settings, channel_id),
+            display_name=channel_id,
             provider="openai-compatible",
-            model=model,
             base_url=base_url,
             credential_ref=reference,
+            models=(ChannelModel(id=model, source="DashScope"),),
+            created_at=now,
+            updated_at=now,
         )
-        settings.activate_ocr_profile(profile)
+        settings.upsert_provider_channel(channel)
     except Exception:
         store.delete(reference)
         raise
-    return profile
+    return channel
 
 
 def migrate(path: Path, *, store: SecretStore | None = None) -> dict[str, str]:
@@ -107,39 +116,39 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--settings", type=Path, required=True)
     parser.add_argument("--pi-auth", type=Path)
-    parser.add_argument("--profile-id", default="deepseek-primary")
+    parser.add_argument("--channel-id", default="deepseek-primary")
     parser.add_argument("--provider", default="deepseek")
     parser.add_argument("--model", default="deepseek-v4-flash")
     parser.add_argument("--base-url", default="https://api.deepseek.com/v1")
     parser.add_argument("--ocr-config", type=Path)
-    parser.add_argument("--ocr-profile-id", default="dashscope-ocr")
+    parser.add_argument("--ocr-channel-id", default="dashscope-ocr")
     args = parser.parse_args()
     if args.pi_auth is None and args.ocr_config is None:
         parser.error("at least one of --pi-auth or --ocr-config is required")
     store = secret_store_from_environment()
     settings = AppSettingsStore(args.settings)
-    profiles: list[ProviderProfile] = []
+    channels: list[ProviderChannel] = []
     if args.pi_auth is not None:
-        profiles.append(import_model_profile(
+        channels.append(import_model_channel(
             args.pi_auth,
             store=store,
             settings=settings,
-            profile_id=args.profile_id,
+            channel_id=args.channel_id,
             provider=args.provider,
             model=args.model,
             base_url=args.base_url,
         ))
     if args.ocr_config is not None:
-        profiles.append(import_ocr_profile(
+        channels.append(import_ocr_channel(
             args.ocr_config,
             store=store,
             settings=settings,
-            profile_id=args.ocr_profile_id,
+            channel_id=args.ocr_channel_id,
         ))
     print(json.dumps({
-        "profiles": [
-            profile.model_dump(mode="json", exclude={"credential_ref"})
-            for profile in profiles
+        "channels": [
+            channel.model_dump(mode="json", exclude={"credential_ref"})
+            for channel in channels
         ]
     }, ensure_ascii=False))
     return 0

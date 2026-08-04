@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import { Box } from "@/components/ui/primitives";
-import { API_BASE } from "@/lib/api";
+import { useAuthenticatedAssetUrl } from "@/hooks/useAuthenticatedAssetUrl";
 
 interface TaskThumbnailProps {
   asset?: {
@@ -21,6 +21,7 @@ const SIZE_MAP = {
 
 export function TaskThumbnail({ asset, size = "medium" }: TaskThumbnailProps) {
   const { width, height } = SIZE_MAP[size];
+  const imageUrl = useAuthenticatedAssetUrl(asset?.path);
 
   if (!asset?.path) {
     return (
@@ -42,10 +43,7 @@ export function TaskThumbnail({ asset, size = "medium" }: TaskThumbnailProps) {
     );
   }
 
-  // asset.path is a relative URL like "/assets/xxx.jpg"
-  // Prepend API_BASE to route through Next.js proxy
-  const imageUrl = `${API_BASE}${asset.path}`;
-
+  // Protected files are loaded as authenticated blob URLs by the shared hook.
   return (
     <Box
       sx={{
@@ -59,7 +57,7 @@ export function TaskThumbnail({ asset, size = "medium" }: TaskThumbnailProps) {
         justifyContent: "center",
       }}
     >
-      <Image
+      {imageUrl ? <Image
         width={width}
         height={height}
         unoptimized
@@ -82,7 +80,7 @@ export function TaskThumbnail({ asset, size = "medium" }: TaskThumbnailProps) {
             parent.textContent = "加载失败";
           }
         }}
-      />
+      /> : null}
     </Box>
   );
 }

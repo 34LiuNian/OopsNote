@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import time
+import hashlib
 from datetime import datetime, timezone
 from typing import Any, Iterable
 
@@ -18,8 +19,98 @@ SUPPORTED_PROVIDERS = frozenset({"deepseek", "openai", "anthropic", "google", "o
 class ProviderCapabilities(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    tool_calling: bool = True
+    tool_calling: bool = False
     vision: bool = False
+
+
+class ChannelModel(BaseModel):
+    """One model discovered through a channel, with admin-confirmed capabilities."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    id: str = Field(min_length=1, max_length=256)
+    source: str = Field(default="其他", min_length=1, max_length=128)
+    enabled: bool = False
+    capability: ProviderCapabilities = Field(default_factory=ProviderCapabilities)
+    discovered_at: datetime | None = None
+
+
+class ProviderChannel(BaseModel):
+    """One credential boundary and its provider-owned model catalogue."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    id: str = Field(min_length=1, max_length=128)
+    version: int = Field(ge=1)
+    display_name: str = Field(min_length=1, max_length=128)
+    provider: str = Field(min_length=1, max_length=64)
+    base_url: HttpUrl | None = None
+    credential_ref: str | None = Field(default=None, min_length=1, max_length=128)
+    enabled: bool = True
+    models: tuple[ChannelModel, ...] = ()
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+    secret_updated_at: datetime | None = None
+
+    @field_validator("provider")
+    @classmethod
+    def normalize_provider(cls, value: str) -> str:
+        normalized = value.strip().lower().replace("_", "-")
+        if normalized not in SUPPORTED_PROVIDERS:
+            raise ValueError(f"unsupported provider: {value}")
+        return normalized
+
+    def model(self, model_id: str) -> ChannelModel:
+        for item in self.models:
+            if item.id == model_id:
+                return item
+        raise KeyError(model_id)
+
+    def public_view(self, secret_store: SecretStore) -> dict[str, Any]:
+        value = self.model_dump(mode="json")
+        value.pop("credential_ref")
+        value["has_secret"] = secret_store.has(self.credential_ref)
+        return value
+
+
+class StageModelSelection(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    channel_id: str = Field(min_length=1, max_length=128)
+    model_id: str = Field(min_length=1, max_length=256)
+
+
+class LangChainModelPolicy(BaseModel):
+    """The only mutable selection authority for new LangChain runs."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    version: int = Field(ge=1)
+    vision: StageModelSelection
+    agent: StageModelSelection
+    review: StageModelSelection
+    updated_at: datetime | None = None
+
+
+def profile_for_channel_model(channel: ProviderChannel, model_id: str) -> "ProviderProfile":
+    """Adapt a selected channel model to the existing provider client boundary."""
+    item = channel.model(model_id)
+    stable_model_key = hashlib.sha256(item.id.encode("utf-8")).hexdigest()[:16]
+    return ProviderProfile(
+        id=f"{channel.id}:{stable_model_key}",
+        version=channel.version,
+        channel_id=channel.id,
+        display_name=channel.display_name,
+        provider=channel.provider,
+        model=item.id,
+        base_url=channel.base_url,
+        credential_ref=channel.credential_ref,
+        enabled=channel.enabled and item.enabled,
+        capability=item.capability,
+        created_at=channel.created_at,
+        updated_at=channel.updated_at,
+        secret_updated_at=channel.secret_updated_at,
+    )
 
 
 class ProviderValidationResult(BaseModel):
@@ -45,6 +136,7 @@ class ProviderProfile(BaseModel):
 
     id: str = Field(min_length=1, max_length=128)
     version: int = Field(ge=1)
+    channel_id: str | None = Field(default=None, max_length=128)
     display_name: str | None = Field(default=None, max_length=128)
     provider: str = Field(min_length=1, max_length=64)
     model: str = Field(min_length=1, max_length=256)
@@ -73,7 +165,12 @@ class ProviderProfile(BaseModel):
 
 
 class ProviderClientFactory:
-    """The sole provider adapter boundary; no environment credential lookup."""
+    """The sole provider adapter boundary; no environment credential lookup.
+
+    ManagedAiRunner owns run cancellation and the deadline for the complete
+    model/tool loop. Provider clients therefore disable SDK retries but do not
+    impose a competing per-request deadline.
+    """
 
     def __init__(self, secret_store: SecretStore) -> None:
         self.secret_store = secret_store
@@ -95,7 +192,6 @@ class ProviderClientFactory:
                 api_key=api_key,
                 base_url=str(profile.base_url or "https://api.deepseek.com/v1"),
                 max_retries=0,
-                timeout=60,
             )
         if provider in {"openai", "openai-compatible"}:
             if provider == "openai-compatible" and profile.base_url is None:
@@ -109,7 +205,6 @@ class ProviderClientFactory:
                 base_url=str(profile.base_url) if profile.base_url else None,
                 api_key=api_key,
                 max_retries=0,
-                timeout=60,
             )
         if provider == "anthropic":
             try:
@@ -120,7 +215,6 @@ class ProviderClientFactory:
                 model=profile.model,
                 api_key=api_key,
                 max_retries=0,
-                timeout=60,
             )
         if provider == "google":
             try:
@@ -132,9 +226,113 @@ class ProviderClientFactory:
                 api_key=api_key,
                 vertexai=False,
                 retries=0,
-                request_timeout=60,
             )
         raise ValueError(f"unsupported provider: {profile.provider}")
+
+    def create_vision_ocr_model(self, profile: ProviderProfile) -> Any:
+        """Build a Vision model with the provider's native JSON-output mode.
+
+        OCR is a structured extraction boundary. OpenAI-compatible providers
+        expose a JSON-object response mode, which prevents otherwise valid
+        prompts from intermittently producing Markdown or invalid escapes.
+        Other provider adapters keep their documented default response mode.
+        """
+
+        model = self.create_chat_model(profile)
+        if profile.provider in {"deepseek", "openai", "openai-compatible"}:
+            return model.bind(
+                response_format={"type": "json_object"},
+                temperature=0,
+            )
+        return model
+
+    @staticmethod
+    def _catalog_url(channel: ProviderChannel) -> str:
+        base_url = str(channel.base_url or "").rstrip("/")
+        if channel.provider == "deepseek":
+            return f"{base_url or 'https://api.deepseek.com/v1'}/models"
+        if channel.provider in {"openai", "openai-compatible"}:
+            if not base_url:
+                base_url = "https://api.openai.com/v1"
+            return f"{base_url}/models"
+        if channel.provider == "anthropic":
+            return f"{base_url or 'https://api.anthropic.com'}/v1/models"
+        if channel.provider == "google":
+            return f"{base_url or 'https://generativelanguage.googleapis.com'}/v1beta/models"
+        raise ValueError(f"unsupported provider: {channel.provider}")
+
+    def discover_models(self, channel: ProviderChannel) -> list[ChannelModel]:
+        """Read the provider model catalogue without persisting secrets or guessing capabilities."""
+        if not channel.credential_ref:
+            raise ValueError("channel has no credential")
+        if not channel.enabled:
+            raise ValueError("channel is disabled")
+        try:
+            import httpx
+        except ImportError as error:
+            raise RuntimeError("httpx is required for provider model discovery") from error
+        secret = self.secret_store.get(channel.credential_ref)
+        headers: dict[str, str] = {}
+        params: dict[str, str] = {}
+        if channel.provider == "google":
+            params["key"] = secret
+        elif channel.provider == "anthropic":
+            headers = {"x-api-key": secret, "anthropic-version": "2023-06-01"}
+        else:
+            headers = {"Authorization": f"Bearer {secret}"}
+        try:
+            response = httpx.get(self._catalog_url(channel), headers=headers, params=params, timeout=20)
+            response.raise_for_status()
+            payload = response.json()
+        except Exception as error:
+            result = ProviderValidationResult(
+                success=False,
+                provider=channel.provider,
+                model="catalog",
+                error_code=self._error_code(error),
+                message="Provider model discovery failed",
+            )
+            raise ProviderConnectionError(result) from error
+        raw_items = payload.get("models") if channel.provider == "google" else payload.get("data")
+        if not isinstance(raw_items, list):
+            raise ProviderConnectionError(ProviderValidationResult(
+                success=False,
+                provider=channel.provider,
+                model="catalog",
+                error_code="validation_failed",
+                message="Provider model discovery returned an invalid catalogue",
+            ))
+        discovered_at = datetime.now(timezone.utc)
+        items: list[ChannelModel] = []
+        seen: set[str] = set()
+        for raw in raw_items:
+            if not isinstance(raw, dict):
+                continue
+            model_id = raw.get("id") or raw.get("name")
+            if not isinstance(model_id, str) or not model_id.strip():
+                continue
+            model_id = model_id.removeprefix("models/")
+            if model_id in seen:
+                continue
+            seen.add(model_id)
+            source = raw.get("owned_by") or raw.get("display_name") or channel.display_name
+            items.append(ChannelModel(
+                id=model_id,
+                source=str(source).strip() or channel.display_name,
+                # Provider catalogues do not consistently publish tool/vision support.
+                # Unknown capabilities are deliberately closed until an admin confirms them.
+                capability=ProviderCapabilities(),
+                discovered_at=discovered_at,
+            ))
+        if not items:
+            raise ProviderConnectionError(ProviderValidationResult(
+                success=False,
+                provider=channel.provider,
+                model="catalog",
+                error_code="validation_failed",
+                message="Provider model discovery returned no usable models",
+            ))
+        return items
 
     @staticmethod
     def _error_code(error: Exception) -> str:
@@ -186,27 +384,44 @@ class ProviderClientFactory:
         return result.model_dump(mode="json")
 
 
-def collect_unreferenced_profile_secrets(
+def collect_unreferenced_channel_secrets(
     secret_store: SecretStore,
-    profiles: Iterable[ProviderProfile],
+    configured_channels: Iterable[Any],
     runs: Iterable[Any],
 ) -> int:
-    """Delete historical refs only after no profile or active run retains them."""
-    profile_references = {profile.credential_ref for profile in profiles if profile.credential_ref}
+    """Delete historical refs only after no configured channel or active run retains them."""
+    configured_references = {
+        reference
+        for item in configured_channels
+        for reference in [getattr(item, "credential_ref", None)]
+        if isinstance(reference, str) and reference
+    }
     historical_references: set[str] = set()
     active_references: set[str] = set()
+
+    def credential_refs(value: Any) -> set[str]:
+        if isinstance(value, dict):
+            refs = {value["credential_ref"]} if isinstance(value.get("credential_ref"), str) and value["credential_ref"] else set()
+            for child in value.values():
+                refs.update(credential_refs(child))
+            return refs
+        if isinstance(value, list):
+            refs: set[str] = set()
+            for child in value:
+                refs.update(credential_refs(child))
+            return refs
+        return set()
+
     for run in runs:
         snapshot = getattr(run, "provider_profile_snapshot", None)
         if not isinstance(snapshot, dict):
             continue
-        reference = snapshot.get("credential_ref")
-        if not isinstance(reference, str) or not reference:
-            continue
-        historical_references.add(reference)
+        references = credential_refs(snapshot)
+        historical_references.update(references)
         if getattr(run, "status", None) in {RunStatus.QUEUED, RunStatus.RUNNING}:
-            active_references.add(reference)
+            active_references.update(references)
     deleted = 0
-    for reference in historical_references - profile_references - active_references:
+    for reference in historical_references - configured_references - active_references:
         try:
             secret_store.delete(reference)
         except SecretNotFoundError:
@@ -216,11 +431,16 @@ def collect_unreferenced_profile_secrets(
 
 
 __all__ = [
+    "ChannelModel",
+    "LangChainModelPolicy",
     "ProviderCapabilities",
+    "ProviderChannel",
     "ProviderClientFactory",
     "ProviderConnectionError",
     "ProviderProfile",
     "ProviderValidationResult",
     "SUPPORTED_PROVIDERS",
-    "collect_unreferenced_profile_secrets",
+    "StageModelSelection",
+    "collect_unreferenced_channel_secrets",
+    "profile_for_channel_model",
 ]

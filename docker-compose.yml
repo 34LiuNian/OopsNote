@@ -31,6 +31,10 @@ services:
       OOPSNOTE_ADMIN_SUBJECTS: 5cf94ffe-c14b-4c32-9092-7ff8ab947579
       OOPSNOTE_SECRET_STORE_PATH: /vault/credentials.json
       OOPSNOTE_SECRET_STORE_KEY_FILE: /run/secrets/oopsnote_secret_store_key
+    ports:
+      # Caddy reaches the large batch-source upload route through this
+      # loopback-only port, bypassing the Next.js rewrite body limit.
+      - "127.0.0.1:18000:8000"
     volumes:
       - oopsnote-data:/data
       - oopsnote-vault:/vault

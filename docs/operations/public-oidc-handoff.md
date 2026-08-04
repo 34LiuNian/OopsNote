@@ -15,10 +15,11 @@ Pocket ID is a public PKCE client. It has no client secret. Registration should 
 ## Running architecture
 
 ```text
-Cloudflare (Full strict)
-  -> 1Panel Caddy (host network)
-     -> oopsnote.alan-ztr.eu.org -> 127.0.0.1:13000 -> frontend container
-     -> auth.alan-ztr.eu.org     -> 127.0.0.1:14110 -> Pocket ID container
+Public Internet
+  -> oopsnote.alan-ztr.eu.org (DNS-only) -> 1Panel Caddy (host network)
+     -> 127.0.0.1:13000 -> frontend container
+     -> batch source PUT only -> 127.0.0.1:18000 -> backend container
+  -> Cloudflare (Full strict) -> auth.alan-ztr.eu.org -> Caddy -> 127.0.0.1:14110 -> Pocket ID container
 
 frontend container -> backend container -> latex-renderer internal network
 backend container  -> Pocket ID JWKS over the Docker app network
@@ -60,9 +61,20 @@ This split is deliberate: Python's JWKS client received Cloudflare `403` when it
 
 The current authorization boundary is a single authenticated-admin gate. OopsNote storage is not yet partitioned by OIDC `sub`. Do not enable self-registration or multiple independent users until Core/API storage ownership isolation is designed and implemented.
 
-## Cloudflare requirement
+## Cloudflare and uploads
 
-Cloudflare SSL/TLS is `Full (strict)`. Rocket Loader must remain disabled for `auth.alan-ztr.eu.org`; it injected inline scripts that Pocket ID CSP correctly blocked, causing a blank setup page.
+`oopsnote.alan-ztr.eu.org` is DNS-only so batch source uploads up to 500 MiB
+can reach the Caddy origin without Cloudflare's proxied request-size limit.
+Caddy must retain its valid public origin certificate. `auth.alan-ztr.eu.org`
+remains Cloudflare-proxied with SSL/TLS set to `Full (strict)`; Rocket Loader
+must remain disabled there because it injected inline scripts that Pocket ID CSP
+correctly blocked, causing a blank setup page.
+
+Next.js rejects proxied request bodies above its default 10 MiB limit. Caddy
+therefore routes only `PUT /api/batch-sessions/<sha256>/source` directly to the
+loopback-only backend port `18000`; it strips `/api` before proxying. The
+backend remains responsible for bearer-token validation, streaming, hash
+validation, and the 500 MiB limit. All other `/api` paths stay behind Next.
 
 ## Deployment commands
 

@@ -13,10 +13,17 @@ from fastapi.testclient import TestClient
 
 from oopsnote.ai.langchain_tools import ContractBoundToolDispatcher, langchain_tool_schemas
 from oopsnote.ai.providers import (
+    ChannelModel,
+    LangChainModelPolicy,
+    ProviderCapabilities,
+    ProviderChannel,
     ProviderClientFactory,
+    ProviderConnectionError,
     ProviderProfile,
     ProviderValidationResult,
-    collect_unreferenced_profile_secrets,
+    StageModelSelection,
+    collect_unreferenced_channel_secrets,
+    profile_for_channel_model,
 )
 from oopsnote.ai.secrets import EncryptedFileSecretStore, MemorySecretStore, SecretStoreCorruptionError
 from oopsnote.mcp import ocr
@@ -74,11 +81,19 @@ def langchain_runner_fixture(tmp_path, model, tool_client=None, *, timeout_secon
     run_store = RunStore(tmp_path / "storage" / "runs")
     vault = MemorySecretStore()
     reference = vault.put("provider-secret")
-    profile = ProviderProfile(
-        id="primary", version=1, provider="deepseek", model="model",
+    channel = ProviderChannel(
+        id="primary", version=1, display_name="Primary", provider="deepseek",
         base_url="https://provider.example", credential_ref=reference,
+        models=(ChannelModel(
+            id="model", source="DeepSeek", enabled=True,
+            capability=ProviderCapabilities(tool_calling=True, vision=True),
+        ),),
     )
-    settings.activate_provider_profile(profile)
+    settings.upsert_provider_channel(channel)
+    selection = StageModelSelection(channel_id=channel.id, model_id="model")
+    settings.set_langchain_model_policy(LangChainModelPolicy(
+        version=1, vision=selection, agent=selection, review=selection,
+    ))
     factory = FakeProviderFactory(model, vault)
     runner = LangChainRunner(
         project_root=Path(__file__).resolve().parents[1],
@@ -91,7 +106,7 @@ def langchain_runner_fixture(tmp_path, model, tool_client=None, *, timeout_secon
         poll_seconds=0.01,
         heartbeat_seconds=0.05,
     )
-    return runner, task_store, run_store, vault, profile
+    return runner, task_store, run_store, vault, profile_for_channel_model(channel, "model")
 
 
 class FakeSecretStore:
@@ -124,88 +139,122 @@ def test_provider_profile_public_view_never_exposes_credential_reference():
     assert "credential_ref" not in public
 
 
+@pytest.mark.parametrize(
+    ("provider", "expects_json_mode"),
+    [
+        ("deepseek", True),
+        ("openai", True),
+        ("openai-compatible", True),
+        ("anthropic", False),
+        ("google", False),
+    ],
+)
+def test_vision_ocr_model_uses_native_json_mode_only_when_supported(monkeypatch, provider, expects_json_mode):
+    vault = MemorySecretStore()
+    profile = ProviderProfile(
+        id="vision", version=1, provider=provider, model="vision-model",
+        base_url="https://provider.example/v1", credential_ref=vault.put("secret"),
+    )
+    calls = []
+
+    class FakeModel:
+        def bind(self, **kwargs):
+            calls.append(kwargs)
+            return "json-mode-model"
+
+    factory = ProviderClientFactory(vault)
+    monkeypatch.setattr(factory, "create_chat_model", lambda _profile: FakeModel())
+
+    result = factory.create_vision_ocr_model(profile)
+
+    if expects_json_mode:
+        assert result == "json-mode-model"
+        assert calls == [{"response_format": {"type": "json_object"}, "temperature": 0}]
+    else:
+        assert isinstance(result, FakeModel)
+        assert calls == []
+
+
 def test_provider_api_reports_unavailable_vault_instead_of_missing_secrets(monkeypatch, tmp_path):
     from oopsnote.api import main
 
     settings = AppSettingsStore(tmp_path / "settings.json")
-    settings.upsert_provider_profile(ProviderProfile(
-        id="primary", version=1, provider="deepseek", model="model",
+    settings.upsert_provider_channel(ProviderChannel(
+        id="primary", version=1, display_name="Primary", provider="deepseek",
         base_url="https://provider.example/v1", credential_ref="missing-ref",
     ))
     monkeypatch.setattr(main, "APP_SETTINGS_STORE", settings)
     monkeypatch.setattr(main, "get_secret_store", lambda: (_ for _ in ()).throw(RuntimeError("unavailable")))
 
-    response = TestClient(main.app).get("/settings/ai/profiles")
+    response = TestClient(main.app).get("/settings/ai/channels")
 
     assert response.status_code == 503
     assert response.json() == {"detail": "provider secret store is unavailable"}
 
 
-def test_task_provider_options_only_expose_runnable_nonsecret_profiles(monkeypatch, tmp_path):
+def test_provider_api_reports_unreadable_vault_instead_of_crashing(monkeypatch, tmp_path):
     from oopsnote.api import main
 
     settings = AppSettingsStore(tmp_path / "settings.json")
-    vault = MemorySecretStore()
-    runnable = ProviderProfile(
-        id="primary", version=2, display_name="Primary", provider="deepseek",
-        model="chat", credential_ref=vault.put("secret"),
-    )
-    disabled = ProviderProfile(
-        id="disabled", version=1, provider="openai", model="chat",
-        credential_ref=vault.put("disabled-secret"), enabled=False,
-    )
-    missing = ProviderProfile(
-        id="missing", version=1, provider="anthropic", model="chat",
-        credential_ref="missing-ref",
-    )
-    settings.activate_provider_profile(runnable)
-    settings.upsert_provider_profile(disabled)
-    settings.upsert_provider_profile(missing)
+    settings.upsert_provider_channel(ProviderChannel(
+        id="primary", version=1, display_name="Primary", provider="deepseek",
+        base_url="https://provider.example/v1", credential_ref="unreadable-ref",
+    ))
+
+    class UnreadableVault:
+        def has(self, _reference):
+            raise SecretStoreCorruptionError("vault file cannot be read")
+
     monkeypatch.setattr(main, "APP_SETTINGS_STORE", settings)
-    monkeypatch.setattr(main, "get_secret_store", lambda: vault)
+    monkeypatch.setattr(main, "get_secret_store", lambda: UnreadableVault())
 
-    response = TestClient(main.app).get("/ai/provider-options")
+    response = TestClient(main.app).get("/settings/ai/channels")
 
-    assert response.status_code == 200
-    assert response.json() == {"items": [{
-        "id": "primary",
-        "display_name": "Primary",
-        "provider": "deepseek",
-        "model": "chat",
-        "is_default": True,
-    }]}
-    assert "credential" not in response.text
+    assert response.status_code == 503
+    assert response.json() == {"detail": "provider secret store is unavailable"}
 
 
-def test_ocr_profile_activation_updates_persisted_and_live_configuration(monkeypatch, tmp_path):
+def test_task_provider_options_endpoint_is_removed():
     from oopsnote.api import main
-    from oopsnote.api.routes import ai_settings
+
+    assert TestClient(main.app).get("/ai/provider-options").status_code == 404
+
+
+def test_model_policy_selects_the_vision_stage(monkeypatch, tmp_path):
+    from oopsnote.api import main
 
     settings = AppSettingsStore(tmp_path / "settings.json")
     vault = MemorySecretStore()
     reference = vault.put("ocr-secret")
-    profile = ProviderProfile(
-        id="ocr", version=1, provider="openai-compatible", model="vision-model",
+    channel = ProviderChannel(
+        id="ocr", version=1, display_name="OCR", provider="openai-compatible",
         base_url="https://ocr.example/v1", credential_ref=reference,
+        models=(
+            ChannelModel(id="vision-model", source="OCR", enabled=True, capability=ProviderCapabilities(vision=True)),
+            ChannelModel(id="agent-model", source="OCR", enabled=True, capability=ProviderCapabilities(tool_calling=True)),
+        ),
     )
-    settings.upsert_provider_profile(profile)
-    configured = {}
+    settings.upsert_provider_channel(channel)
     monkeypatch.setattr(main, "APP_SETTINGS_STORE", settings)
     monkeypatch.setattr(main, "get_secret_store", lambda: vault)
-    monkeypatch.setattr(ai_settings, "configure_ocr_vault", lambda store, ref, **kwargs: configured.update(
-        store=store, reference=ref, **kwargs
-    ))
 
-    response = TestClient(main.app).put("/settings/ai/ocr-profile", json={"profile_id": "ocr"})
+    response = TestClient(main.app).put("/settings/ai/policy", json={
+        "vision": {"channel_id": "ocr", "model_id": "vision-model"},
+        "agent": {"channel_id": "ocr", "model_id": "agent-model"},
+        "review": {"channel_id": "ocr", "model_id": "agent-model"},
+    })
 
     assert response.status_code == 200
-    assert settings.get()["ocr_profile_id"] == "ocr"
-    assert configured == {
-        "store": vault,
-        "reference": reference,
-        "model": "vision-model",
-        "endpoint": "https://ocr.example/v1",
-    }
+    assert settings.langchain_model_policy().vision == StageModelSelection(channel_id="ocr", model_id="vision-model")
+
+    disabled = TestClient(main.app).patch(
+        "/settings/ai/channels/ocr/models/vision-model",
+        json={"enabled": False},
+    )
+
+    assert disabled.status_code == 200
+    assert disabled.json()["policy_cleared"] is True
+    assert settings.langchain_model_policy() is None
 
 
 def test_provider_rotation_commits_a_validated_new_nonsecret_version(monkeypatch, tmp_path):
@@ -214,69 +263,76 @@ def test_provider_rotation_commits_a_validated_new_nonsecret_version(monkeypatch
     settings = AppSettingsStore(tmp_path / "settings.json")
     vault = MemorySecretStore()
     old_reference = vault.put("old-secret")
-    old = ProviderProfile(
-        id="primary", version=3, provider="deepseek", model="old-model",
+    old = ProviderChannel(
+        id="primary", version=3, display_name="Primary", provider="deepseek",
         base_url="https://old.example/v1", credential_ref=old_reference,
+        models=(ChannelModel(id="old-model", source="DeepSeek", enabled=True, capability=ProviderCapabilities(tool_calling=True)),),
     )
-    settings.activate_provider_profile(old)
+    settings.upsert_provider_channel(old)
     monkeypatch.setattr(main, "APP_SETTINGS_STORE", settings)
     monkeypatch.setattr(main, "RUN_STORE", RunStore(tmp_path / "storage" / "runs"))
     monkeypatch.setattr(main, "get_secret_store", lambda: vault)
 
-    validation = ProviderValidationResult(
-        success=True, provider="deepseek", model="old-model", message="Connection validated"
-    )
-    with patch("oopsnote.api.routes.ai_settings.ProviderClientFactory.check", return_value=validation):
+    with patch("oopsnote.api.routes.ai_settings.ProviderClientFactory.discover_models", return_value=[
+        ChannelModel(id="old-model", source="DeepSeek"),
+    ]):
         response = TestClient(main.app).post(
-            "/settings/ai/profiles/primary/credential",
+            "/settings/ai/channels/primary/credential",
             json={"secret": "new-secret"},
         )
 
     assert response.status_code == 200
     body = response.json()
     assert "credential_ref" not in str(body)
-    assert body["profile"]["version"] == 4
-    assert body["profile"]["provider"] == "deepseek"
-    assert body["profile"]["model"] == "old-model"
+    assert body["channel"]["version"] == 4
+    assert body["channel"]["provider"] == "deepseek"
+    assert body["channel"]["models"][0]["capability"]["tool_calling"] is True
     assert body["validation"]["success"] is True
-    current = settings.provider_profiles()[0]
+    assert body["validation"]["provider"] == "deepseek"
+    assert body["validation"]["model"] == "catalog"
+    assert body["validation"]["error_code"] is None
+    assert body["validation"]["message"] == "Credentials and model catalog validated"
+    assert isinstance(body["validation"]["latency_ms"], int)
+    assert body["validation"]["tested_at"]
+    assert "credential_ref" not in str(body["validation"])
+    current = settings.provider_channels()[0]
     assert vault.get(current.credential_ref) == "new-secret"
     assert not vault.has(old_reference)
 
 
-def test_rotating_an_inactive_profile_does_not_switch_the_default_model(monkeypatch, tmp_path):
+def test_rotating_a_channel_does_not_change_the_global_policy(monkeypatch, tmp_path):
     from oopsnote.api import main
 
     settings = AppSettingsStore(tmp_path / "settings.json")
     vault = MemorySecretStore()
-    active = ProviderProfile(
-        id="active", version=1, provider="deepseek", model="active-model",
+    active = ProviderChannel(
+        id="active", version=1, display_name="Active", provider="deepseek",
         base_url="https://active.example/v1", credential_ref=vault.put("active-secret"),
+        models=(ChannelModel(id="active-model", source="DeepSeek", enabled=True, capability=ProviderCapabilities(tool_calling=True, vision=True)),),
     )
-    inactive = ProviderProfile(
-        id="inactive", version=1, provider="deepseek", model="old-model",
+    inactive = ProviderChannel(
+        id="inactive", version=1, display_name="Inactive", provider="deepseek",
         base_url="https://inactive.example/v1", credential_ref=vault.put("old-secret"),
+        models=(ChannelModel(id="old-model", source="DeepSeek"),),
     )
-    settings.activate_provider_profile(active)
-    settings.upsert_provider_profile(inactive)
+    settings.upsert_provider_channel(active)
+    settings.upsert_provider_channel(inactive)
+    selection = StageModelSelection(channel_id="active", model_id="active-model")
+    settings.set_langchain_model_policy(LangChainModelPolicy(version=1, vision=selection, agent=selection, review=selection))
     monkeypatch.setattr(main, "APP_SETTINGS_STORE", settings)
     monkeypatch.setattr(main, "RUN_STORE", RunStore(tmp_path / "storage" / "runs"))
     monkeypatch.setattr(main, "get_secret_store", lambda: vault)
 
-    validation = ProviderValidationResult(
-        success=True, provider="deepseek", model="old-model", message="Connection validated"
-    )
-    with patch("oopsnote.api.routes.ai_settings.ProviderClientFactory.check", return_value=validation):
+    with patch("oopsnote.api.routes.ai_settings.ProviderClientFactory.discover_models", return_value=[ChannelModel(id="old-model", source="DeepSeek")]):
         response = TestClient(main.app).post(
-            "/settings/ai/profiles/inactive/credential",
+            "/settings/ai/channels/inactive/credential",
             json={"secret": "new-secret"},
         )
 
     assert response.status_code == 200
-    assert settings.get()["ai_provider_profile_id"] == "active"
-    profiles = {profile.id: profile for profile in settings.provider_profiles()}
-    assert profiles["inactive"].version == 2
-    assert profiles["inactive"].model == "old-model"
+    assert settings.langchain_model_policy().agent == selection
+    channels = {channel.id: channel for channel in settings.provider_channels()}
+    assert channels["inactive"].version == 2
 
 
 def test_failed_provider_validation_keeps_previous_profile_and_secret(monkeypatch, tmp_path):
@@ -285,11 +341,11 @@ def test_failed_provider_validation_keeps_previous_profile_and_secret(monkeypatc
     settings = AppSettingsStore(tmp_path / "settings.json")
     vault = MemorySecretStore()
     old_reference = vault.put("old-secret")
-    profile = ProviderProfile(
-        id="primary", version=2, provider="deepseek", model="model",
+    channel = ProviderChannel(
+        id="primary", version=2, display_name="Primary", provider="deepseek",
         base_url="https://provider.example/v1", credential_ref=old_reference,
     )
-    settings.activate_provider_profile(profile)
+    settings.upsert_provider_channel(channel)
     monkeypatch.setattr(main, "APP_SETTINGS_STORE", settings)
     monkeypatch.setattr(main, "RUN_STORE", RunStore(tmp_path / "storage" / "runs"))
     monkeypatch.setattr(main, "get_secret_store", lambda: vault)
@@ -301,60 +357,16 @@ def test_failed_provider_validation_keeps_previous_profile_and_secret(monkeypatc
         message="Provider connection validation failed",
     )
 
-    with patch("oopsnote.api.routes.ai_settings.ProviderClientFactory.check", return_value=validation):
+    with patch("oopsnote.api.routes.ai_settings.ProviderClientFactory.discover_models", side_effect=ProviderConnectionError(validation)):
         response = TestClient(main.app).post(
-            "/settings/ai/profiles/primary/credential",
+            "/settings/ai/channels/primary/credential",
             json={"secret": "invalid-secret"},
         )
 
     assert response.status_code == 422
-    assert settings.provider_profiles() == [profile]
+    assert settings.provider_channels() == [channel]
     assert vault.get(old_reference) == "old-secret"
     assert len(vault._values) == 1
-
-
-def test_profile_store_replaces_only_same_or_newer_version(tmp_path):
-    store = AppSettingsStore(tmp_path / "settings.json")
-    first = ProviderProfile(
-        id="deepseek-primary", version=1, provider="deepseek", model="m1",
-        base_url="https://provider.example", credential_ref="one",
-    )
-    second = first.model_copy(update={"version": 2, "model": "m2", "credential_ref": "two"})
-    store.upsert_provider_profile(first)
-    store.upsert_provider_profile(second)
-
-    assert store.provider_profiles() == [second]
-    assert "two" in (tmp_path / "settings.json").read_text(encoding="utf-8")
-
-
-def test_first_profile_selection_is_atomic_and_does_not_switch_on_later_create(tmp_path):
-    store = AppSettingsStore(tmp_path / "settings.json")
-    first = ProviderProfile(
-        id="first", version=1, provider="deepseek", model="m1",
-        base_url="https://first.example", credential_ref="first-ref",
-    )
-    second = ProviderProfile(
-        id="second", version=1, provider="deepseek", model="m2",
-        base_url="https://second.example", credential_ref="second-ref",
-    )
-
-    store.upsert_provider_profile(first, select_if_unset=True)
-    store.upsert_provider_profile(second, select_if_unset=True)
-
-    assert store.get()["ai_provider_profile_id"] == "first"
-
-
-def test_profile_activation_persists_profile_and_selection_atomically(tmp_path):
-    store = AppSettingsStore(tmp_path / "settings.json")
-    profile = ProviderProfile(
-        id="primary", version=1, provider="deepseek", model="m1",
-        base_url="https://provider.example", credential_ref="one",
-    )
-
-    store.activate_provider_profile(profile)
-
-    assert store.provider_profiles() == [profile]
-    assert store.get()["ai_provider_profile_id"] == "primary"
 
 
 def test_encrypted_file_store_never_writes_plaintext_and_rejects_wrong_key(tmp_path):
@@ -385,8 +397,8 @@ def test_secret_store_key_initialization_is_idempotent(tmp_path):
     assert path.stat().st_mode & 0o777 == 0o600
 
 
-def test_legacy_model_and_ocr_import_create_profiles_without_persisting_secrets(tmp_path):
-    from scripts.migrate_local_secrets import import_model_profile, import_ocr_profile
+def test_legacy_model_and_ocr_import_create_channels_without_persisting_secrets(tmp_path):
+    from scripts.migrate_local_secrets import import_model_channel, import_ocr_channel
 
     auth = tmp_path / "auth.json"
     auth.write_text(json.dumps({"deepseek": {"key": "model-secret"}}), encoding="utf-8")
@@ -401,29 +413,29 @@ def test_legacy_model_and_ocr_import_create_profiles_without_persisting_secrets(
     settings = AppSettingsStore(tmp_path / "settings.json")
     vault = MemorySecretStore()
 
-    model_profile = import_model_profile(
+    model_channel = import_model_channel(
         auth,
         store=vault,
         settings=settings,
-        profile_id="primary",
+        channel_id="primary",
         provider="deepseek",
         model="chat-model",
         base_url="https://provider.example/v1",
     )
-    ocr_profile = import_ocr_profile(
+    ocr_channel = import_ocr_channel(
         extensions,
         store=vault,
         settings=settings,
-        profile_id="ocr",
+        channel_id="ocr",
     )
 
     persisted = (tmp_path / "settings.json").read_text(encoding="utf-8")
     assert "model-secret" not in persisted
     assert "ocr-secret" not in persisted
-    assert vault.get(model_profile.credential_ref) == "model-secret"
-    assert vault.get(ocr_profile.credential_ref) == "ocr-secret"
-    assert settings.get()["ai_provider_profile_id"] == "primary"
-    assert settings.get()["ocr_profile_id"] == "ocr"
+    assert vault.get(model_channel.credential_ref) == "model-secret"
+    assert vault.get(ocr_channel.credential_ref) == "ocr-secret"
+    assert settings.provider_channels() == [model_channel, ocr_channel]
+    assert all(not item.enabled for channel in settings.provider_channels() for item in channel.models)
 
 
 def test_reference_collection_waits_for_active_runs_then_deletes_old_secret(tmp_path):
@@ -445,11 +457,11 @@ def test_reference_collection_waits_for_active_runs_then_deletes_old_secret(tmp_
         ).model_dump(mode="json"),
     )
 
-    assert collect_unreferenced_profile_secrets(vault, [profile], run_store.list_all()) == 0
+    assert collect_unreferenced_channel_secrets(vault, [profile], run_store.list_all()) == 0
     assert vault.has(old_reference)
     run_store.finish(run.id, RunStatus.FAILED)
 
-    assert collect_unreferenced_profile_secrets(vault, [profile], run_store.list_all()) == 1
+    assert collect_unreferenced_channel_secrets(vault, [profile], run_store.list_all()) == 1
     assert not vault.has(old_reference)
     assert vault.has(current_reference)
 
@@ -573,73 +585,76 @@ def test_ocr_vault_state_is_explicit():
         ocr.clear_ocr_vault()
 
 
-def test_profile_snapshot_is_durable_when_settings_profile_rotates(tmp_path):
+def test_stage_snapshot_is_durable_when_channel_rotates(tmp_path):
     settings = AppSettingsStore(tmp_path / "settings.json")
     task_store = TaskStore(tmp_path / "storage")
     run_store = RunStore(tmp_path / "storage" / "runs")
-    first = ProviderProfile(id="p", version=1, provider="deepseek", model="old", base_url="https://provider.example", credential_ref="old-ref")
-    settings.upsert_provider_profile(first)
-    task = task_store.create(TaskCreateRequest(subject="math"))
-    run = run_store.create(task.id, backend="langchain", provider_profile_snapshot=first.model_dump(mode="json"))
-    settings.upsert_provider_profile(first.model_copy(update={"version": 2, "model": "new", "credential_ref": "new-ref"}))
-
-    assert run_store.get(run.id).provider_profile_snapshot["credential_ref"] == "old-ref"
-    assert settings.provider_profiles()[0].credential_ref == "new-ref"
-
-
-def test_task_profile_selection_is_frozen_at_run_admission(tmp_path):
-    model = ScriptedModel([model_response(1)])
-    runner, task_store, run_store, vault, default = langchain_runner_fixture(tmp_path, model)
-    selected = ProviderProfile(
-        id="selected", version=4, display_name="Selected", provider="openai-compatible",
-        model="selected-model", base_url="https://selected.example/v1",
-        credential_ref=vault.put("selected-secret"),
+    first = ProviderChannel(
+        id="p", version=1, display_name="P", provider="deepseek",
+        base_url="https://provider.example", credential_ref="old-ref",
+        models=(ChannelModel(id="old", source="DeepSeek", enabled=True, capability=ProviderCapabilities(tool_calling=True, vision=True)),),
     )
-    runner.settings_store.upsert_provider_profile(selected)
-    task = task_store.create(TaskCreateRequest(
-        subject="math", metadata={"ai_provider_profile_id": selected.id}
-    ))
+    settings.upsert_provider_channel(first)
+    task = task_store.create(TaskCreateRequest(subject="math"))
+    profile = profile_for_channel_model(first, "old")
+    run = run_store.create(task.id, backend="langchain", provider_profile_snapshot={"policy_version": 1, "vision": profile.model_dump(mode="json"), "agent": profile.model_dump(mode="json"), "review": profile.model_dump(mode="json")})
+    settings.upsert_provider_channel(first.model_copy(update={"version": 2, "credential_ref": "new-ref"}))
+
+    assert run_store.get(run.id).provider_profile_snapshot["agent"]["credential_ref"] == "old-ref"
+    assert settings.provider_channels()[0].credential_ref == "new-ref"
+
+
+def test_global_stage_policy_is_frozen_at_run_admission(tmp_path):
+    model = ScriptedModel([model_response(1)])
+    runner, task_store, run_store, vault, _ = langchain_runner_fixture(tmp_path, model)
+    selected = ProviderChannel(
+        id="selected", version=4, display_name="Selected", provider="openai-compatible",
+        base_url="https://selected.example/v1", credential_ref=vault.put("selected-secret"),
+        models=(ChannelModel(id="selected-model", source="Selected", enabled=True, capability=ProviderCapabilities(tool_calling=True, vision=True)),),
+    )
+    runner.settings_store.upsert_provider_channel(selected)
+    selection = StageModelSelection(channel_id="selected", model_id="selected-model")
+    runner.settings_store.set_langchain_model_policy(LangChainModelPolicy(version=2, vision=selection, agent=selection, review=selection))
+    task = task_store.create(TaskCreateRequest(subject="math"))
 
     run = runner.enqueue(task.id)
-    runner.settings_store.upsert_provider_profile(selected.model_copy(update={
-        "version": 5, "model": "later-model",
-    }))
+    runner.settings_store.upsert_provider_channel(selected.model_copy(update={"version": 5}))
 
     assert run.provider == "openai-compatible"
     assert run.model == "selected-model"
-    assert run.provider_profile_snapshot == selected.model_dump(mode="json")
-    assert default.id == "primary"
+    assert run.provider_profile_snapshot["policy_version"] == 2
+    assert run.provider_profile_snapshot["agent"]["model"] == "selected-model"
 
 
-def test_provider_profile_used_by_active_run_cannot_be_deleted(monkeypatch, tmp_path):
+def test_provider_channel_used_by_active_run_cannot_be_deleted(monkeypatch, tmp_path):
     from oopsnote.api import main
 
     settings = AppSettingsStore(tmp_path / "settings.json")
     vault = MemorySecretStore()
-    profile = ProviderProfile(
-        id="active", version=1, provider="deepseek", model="model",
+    channel = ProviderChannel(
+        id="active", version=1, display_name="Active", provider="deepseek",
         credential_ref=vault.put("secret"),
     )
-    settings.upsert_provider_profile(profile)
+    settings.upsert_provider_channel(channel)
     task_store = TaskStore(tmp_path / "storage")
     run_store = RunStore(tmp_path / "storage" / "runs")
     task = task_store.create(TaskCreateRequest(subject="math"))
     run_store.create(
         task.id,
         backend="langchain",
-        provider_profile_snapshot=profile.model_dump(mode="json"),
+        provider_profile_snapshot={"agent": {"channel_id": channel.id, "credential_ref": channel.credential_ref}},
     )
     monkeypatch.setattr(main, "APP_SETTINGS_STORE", settings)
     monkeypatch.setattr(main, "TASK_STORE", task_store)
     monkeypatch.setattr(main, "RUN_STORE", run_store)
     monkeypatch.setattr(main, "get_secret_store", lambda: vault)
 
-    response = TestClient(main.app).delete("/settings/ai/profiles/active")
+    response = TestClient(main.app).delete("/settings/ai/channels/active")
 
     assert response.status_code == 409
-    assert response.json() == {"detail": "profile_in_use"}
-    assert settings.provider_profiles() == [profile]
-    assert vault.has(profile.credential_ref)
+    assert response.json() == {"detail": "channel_in_use"}
+    assert settings.provider_channels() == [channel]
+    assert vault.has(channel.credential_ref)
 
 
 def test_fresh_retry_keeps_failed_run_profile_snapshot(tmp_path):
@@ -648,11 +663,14 @@ def test_fresh_retry_keeps_failed_run_profile_snapshot(tmp_path):
     settings = AppSettingsStore(tmp_path / "settings.json")
     task_store = TaskStore(tmp_path / "storage")
     run_store = RunStore(tmp_path / "storage" / "runs")
-    old = ProviderProfile(
-        id="p", version=1, provider="deepseek", model="old",
+    old = ProviderChannel(
+        id="p", version=1, display_name="P", provider="deepseek",
         base_url="https://provider.example", credential_ref="old-ref",
+        models=(ChannelModel(id="old", source="DeepSeek", enabled=True, capability=ProviderCapabilities(tool_calling=True, vision=True)),),
     )
-    settings.activate_provider_profile(old)
+    settings.upsert_provider_channel(old)
+    selection = StageModelSelection(channel_id="p", model_id="old")
+    settings.set_langchain_model_policy(LangChainModelPolicy(version=1, vision=selection, agent=selection, review=selection))
     runner = LangChainRunner(
         project_root=Path(__file__).resolve().parents[1],
         task_store=task_store,
@@ -668,21 +686,24 @@ def test_fresh_retry_keeps_failed_run_profile_snapshot(tmp_path):
         provider="deepseek",
         model="old",
         prompt_version=runner.prompt_version,
-        provider_profile_snapshot=old.model_dump(mode="json"),
+        provider_profile_snapshot={
+            "policy_version": 1,
+            "vision": profile_for_channel_model(old, "old").model_dump(mode="json"),
+            "agent": profile_for_channel_model(old, "old").model_dump(mode="json"),
+            "review": profile_for_channel_model(old, "old").model_dump(mode="json"),
+        },
     )
     run_store.finish(failed.id, RunStatus.FAILED)
     task_store.mark_status(task.id, TaskStatus.FAILED, "transient")
-    settings.activate_provider_profile(old.model_copy(
-        update={"version": 2, "model": "new", "credential_ref": "new-ref"}
-    ))
+    settings.upsert_provider_channel(old.model_copy(update={"version": 2, "credential_ref": "new-ref"}))
 
     retry = runner.enqueue(task.id, retry_of=run_store.get(failed.id))
 
-    assert retry.provider_profile_snapshot == old.model_dump(mode="json")
+    assert retry.provider_profile_snapshot == failed.provider_profile_snapshot
     assert retry.model == "old"
 
 
-def test_provider_factory_disables_sdk_retries(monkeypatch):
+def test_provider_factory_leaves_run_timeout_to_managed_lifecycle(monkeypatch):
     captured = {}
 
     class ChatModel:
@@ -701,7 +722,7 @@ def test_provider_factory_disables_sdk_retries(monkeypatch):
 
     assert captured["api_key"] == "secret"
     assert captured["max_retries"] == 0
-    assert captured["timeout"] == 60
+    assert "timeout" not in captured
 
 
 def test_langchain_runner_enforces_24_round_limit_and_accumulates_usage(tmp_path):
@@ -824,4 +845,17 @@ def test_langchain_event_writer_redacts_credentials(tmp_path):
 def test_api_defaults_to_langchain_backend():
     from oopsnote.api.main import _configured_backend
 
-    assert _configured_backend(None) == "langchain"
+    assert _configured_backend() == "langchain"
+
+
+def test_task_and_batch_admission_do_not_expose_task_backend_selection():
+    from oopsnote.api.main import app
+
+    schema = app.openapi()
+    for path in (
+        "/tasks/{task_id}/process",
+        "/tasks/{task_id}/retry",
+        "/batch-sessions/{file_hash}/process",
+    ):
+        parameters = schema["paths"][path]["post"].get("parameters", [])
+        assert "backend" not in {parameter["name"] for parameter in parameters}

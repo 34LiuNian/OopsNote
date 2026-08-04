@@ -2,10 +2,13 @@
 
 import { useState } from "react";
 import { Box, Button, Heading, Text, Textarea } from "@/components/ui/primitives";
+import { RenameDialog } from "@/components/ui/RenameDialog";
 import { MarkdownRenderer } from "../../components/renderers/MarkdownRenderer";
 import { ProblemContent } from "../../components/ProblemContent";
 import { TaskProgressBar } from "../../components/task/TaskProgressBar";
 import { useTaskProgress, ProgressStepKey } from "../../hooks/useTaskProgress";
+import { confirmAction } from "@/lib/confirm";
+import { notify } from "@/lib/notify";
 
 const DEFAULT_TEXT = [
   "# Debug 页面",
@@ -62,6 +65,8 @@ export default function DebugPage() {
   const [latestLine, setLatestLine] = useState<string>("");
   const [isFailed, setIsFailed] = useState(false);
   const [isRunning, setIsRunning] = useState(true);
+  const [renameOpen, setRenameOpen] = useState(false);
+  const [renameValue, setRenameValue] = useState("示例文件.pdf");
 
   const progressState = useTaskProgress({
     status: isFailed ? "failed" : isRunning ? "processing" : "completed",
@@ -138,6 +143,38 @@ export default function DebugPage() {
             完成
           </Button>
         </Box>
+      </Box>
+
+      <Box sx={{ p: 3, border: "1px solid", borderColor: "border.default", borderRadius: 2 }}>
+        <Heading as="h3" sx={{ fontSize: 2, mb: 1 }}>通知与对话框测试</Heading>
+        <Text sx={{ fontSize: 0, color: "fg.muted", mb: 2 }}>
+          验证 Mantine 通知、危险操作确认和表单对话框的明暗主题表现。
+        </Text>
+        <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap" }}>
+          <Button size="small" variant="primary" onClick={() => notify.success({ title: "保存成功", description: "示例内容已保存。" })}>成功通知</Button>
+          <Button size="small" onClick={() => notify.info({ title: "正在同步", description: "这是信息提示。" })}>信息通知</Button>
+          <Button size="small" variant="danger" onClick={() => notify.error({ title: "操作失败", description: "这是错误提示。" })}>错误通知</Button>
+          <Button size="small" onClick={() => confirmAction({
+            title: "删除示例内容",
+            message: "确认后会显示成功提示，不会删除实际数据。",
+            confirmLabel: "删除",
+            destructive: true,
+            onConfirm: () => { notify.success({ title: "已确认删除", description: "这只是调试操作。" }); },
+          })}>确认对话框</Button>
+          <Button size="small" onClick={() => setRenameOpen(true)}>重命名对话框</Button>
+        </Box>
+        <RenameDialog
+          opened={renameOpen}
+          title="重命名示例文件"
+          label="文件名"
+          value={renameValue}
+          onChange={setRenameValue}
+          onCancel={() => setRenameOpen(false)}
+          onConfirm={() => {
+            setRenameOpen(false);
+            notify.success({ title: "已重命名", description: renameValue.trim() });
+          }}
+        />
       </Box>
 
       <Box sx={{ display: "flex", gap: 2 }}>

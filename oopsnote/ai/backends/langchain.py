@@ -12,11 +12,16 @@ from typing import Any, Callable
 
 from oopsnote.ai.langchain_tools import ContractBoundToolDispatcher, RestrictedMcpToolClient, langchain_tool_schemas
 from oopsnote.ai.managed import ManagedAiRunner
-from oopsnote.ai.providers import ProviderClientFactory, ProviderProfile, collect_unreferenced_profile_secrets
+from oopsnote.ai.providers import (
+    LangChainModelPolicy,
+    ProviderClientFactory,
+    ProviderProfile,
+    collect_unreferenced_channel_secrets,
+    profile_for_channel_model,
+)
 from oopsnote.ai.run_control import AsyncioTaskRunControl
 from oopsnote.ai.skills import load_skill_pack, skill_pack_version
 from oopsnote.core import AppSettingsStore, RunStatus, StateConflict, TaskStage, TaskStatus
-from oopsnote.mcp.ocr import ocr_vault_is_configured
 
 
 logger = logging.getLogger(__name__)
@@ -49,49 +54,72 @@ class LangChainRunner(ManagedAiRunner):
         del task_id, run_id
         return []
 
-    def _selected_profile(self, task_id: str | None = None) -> ProviderProfile:
-        settings = self.settings_store.get()
-        profile_id = None
-        if task_id is not None:
-            task_profile_id = self.task_store.get(task_id).metadata.get("ai_provider_profile_id")
-            if isinstance(task_profile_id, str) and task_profile_id:
-                profile_id = task_profile_id
-        if profile_id is None:
-            profile_id = settings.get("ai_provider_profile_id")
-        if not isinstance(profile_id, str) or not profile_id:
-            raise RuntimeError("no enabled LangChain provider profile is selected")
-        for profile in self.settings_store.provider_profiles():
-            if profile.id == profile_id and profile.enabled:
-                factory = self.provider_factory()
-                if not profile.credential_ref or not factory.secret_store.has(profile.credential_ref):
-                    raise RuntimeError("selected LangChain provider profile has no credential")
-                return profile
-        raise RuntimeError("selected LangChain provider profile is unavailable")
+    def _selected_policy(self) -> LangChainModelPolicy:
+        policy = self.settings_store.langchain_model_policy()
+        if policy is None:
+            raise RuntimeError("no global LangChain model policy is configured")
+        return policy
+
+    def _profile_for_selection(self, selection: Any, stage: str | None = None) -> ProviderProfile:
+        channels = {channel.id: channel for channel in self.settings_store.provider_channels()}
+        channel = channels.get(selection.channel_id)
+        if channel is None or not channel.enabled:
+            raise RuntimeError("selected LangChain channel is unavailable")
+        factory = self.provider_factory()
+        if not channel.credential_ref or not factory.secret_store.has(channel.credential_ref):
+            raise RuntimeError("selected LangChain channel has no credential")
+        try:
+            profile = profile_for_channel_model(channel, selection.model_id)
+        except KeyError as error:
+            raise RuntimeError("selected LangChain model is unavailable") from error
+        if not profile.enabled:
+            raise RuntimeError("selected LangChain model is disabled")
+        if stage == "vision" and not profile.capability.vision:
+            raise RuntimeError("selected LangChain Vision model is not enabled")
+        if stage in {"agent", "review"} and not profile.capability.tool_calling:
+            raise RuntimeError(f"selected LangChain {stage} model has no Tool Calling capability")
+        return profile
+
+    def _selected_profile(self) -> ProviderProfile:
+        policy = self._selected_policy()
+        return self._profile_for_selection(policy.agent, "agent")
 
     def _run_metadata(self, task_id: str) -> dict[str, Any]:
-        profile = self._selected_profile(task_id)
+        del task_id
+        policy = self._selected_policy()
+        vision = self._profile_for_selection(policy.vision, "vision")
+        agent = self._profile_for_selection(policy.agent, "agent")
+        review = self._profile_for_selection(policy.review, "review")
+        snapshot: dict[str, Any] = {
+            "policy_version": policy.version,
+            "vision": vision.model_dump(mode="json"),
+            "agent": agent.model_dump(mode="json"),
+            "review": review.model_dump(mode="json"),
+        }
+        profile = agent
         return {
             "provider": profile.provider,
             "model": profile.model,
             "prompt_version": self.prompt_version,
-            "provider_profile_snapshot": profile.model_dump(mode="json"),
+            "provider_profile_snapshot": snapshot,
         }
 
     def _retry_run_metadata(self, previous: Any) -> dict[str, Any]:
-        profile = self._profile_for_run(previous)
+        profile = self._profile_for_run(previous, "agent")
         return {
             "provider": profile.provider,
             "model": profile.model,
             "prompt_version": previous.prompt_version,
-            "provider_profile_snapshot": profile.model_dump(mode="json"),
+            "provider_profile_snapshot": previous.provider_profile_snapshot,
         }
 
     @staticmethod
-    def _profile_for_run(run: Any) -> ProviderProfile:
+    def _profile_for_run(run: Any, stage: str = "agent") -> ProviderProfile:
         snapshot = run.provider_profile_snapshot
         if not isinstance(snapshot, dict):
             raise RuntimeError("LangChain run has no provider profile snapshot")
-        return ProviderProfile.model_validate(snapshot)
+        staged = snapshot.get(stage)
+        return ProviderProfile.model_validate(staged if isinstance(staged, dict) else snapshot)
 
     def run(self, task_id: str, run_id: str) -> None:
         loop = asyncio.new_event_loop()
@@ -116,9 +144,9 @@ class LangChainRunner(ManagedAiRunner):
         self.retry_if_eligible(task_id, run_id)
         try:
             factory = self.provider_factory()
-            collect_unreferenced_profile_secrets(
+            collect_unreferenced_channel_secrets(
                 factory.secret_store,
-                self.settings_store.provider_profiles(),
+                self.settings_store.provider_channels(),
                 self.run_store.list_all(),
             )
         except Exception:
@@ -150,11 +178,11 @@ class LangChainRunner(ManagedAiRunner):
         return "runner_error"
 
     async def _run_async(self, task_id: str, run_id: str) -> None:
-        if not ocr_vault_is_configured():
-            raise RuntimeError("LangChain OCR requires a configured vault-backed OCR profile")
         run = self.run_store.get(run_id)
-        profile = self._profile_for_run(run)
+        profile = self._profile_for_run(run, "agent")
+        review_profile = self._profile_for_run(run, "review")
         model = self.provider_factory().create_chat_model(profile)
+        review_model = self.provider_factory().create_chat_model(review_profile)
         bound_model = model.bind_tools(langchain_tool_schemas())
         dispatcher = ContractBoundToolDispatcher(
             self.tool_client_factory(),
@@ -163,7 +191,21 @@ class LangChainRunner(ManagedAiRunner):
         )
         started = time.monotonic()
         event_path = self.run_store.base_dir / f"{run_id}.events.jsonl"
-        self._event(event_path, "run_started", {"provider": profile.provider, "model": profile.model, "profile_version": profile.version})
+        self._event(event_path, "run_started", {
+            "provider": profile.provider,
+            "model": profile.model,
+            "profile_version": profile.version,
+            "policy_version": run.provider_profile_snapshot.get("policy_version") if isinstance(run.provider_profile_snapshot, dict) else None,
+            "stages": {
+                "agent": {"provider": profile.provider, "model": profile.model, "version": profile.version},
+                "review": {"provider": review_profile.provider, "model": review_profile.model, "version": review_profile.version},
+                "vision": (
+                    {"provider": run.provider_profile_snapshot["vision"].get("provider"), "model": run.provider_profile_snapshot["vision"].get("model"), "version": run.provider_profile_snapshot["vision"].get("version")}
+                    if isinstance(run.provider_profile_snapshot, dict) and isinstance(run.provider_profile_snapshot.get("vision"), dict)
+                    else None
+                ),
+            },
+        })
         self.run_store.start(run_id, None, f"runs/{event_path.name}")
         self._set_stage(task_id, run_id, TaskStage.STARTING, "LangChain provider started")
 
@@ -226,7 +268,7 @@ class LangChainRunner(ManagedAiRunner):
                 usage_update["cost"] = float(current_usage.cost or 0) + float(cost)
             if usage_update:
                 self.run_store.update(run_id, **usage_update)
-            self._event(event_path, "model_response", {"round": _round + 1, "input_tokens": usage.get("input_tokens"), "output_tokens": usage.get("output_tokens"), "cost": cost})
+            self._event(event_path, "model_response", {"stage": "review" if verification_context else "agent", "round": _round + 1, "input_tokens": usage.get("input_tokens"), "output_tokens": usage.get("output_tokens"), "cost": cost})
             messages.append(response)
             tool_calls = list(getattr(response, "tool_calls", None) or [])
             if not tool_calls:
@@ -286,6 +328,7 @@ class LangChainRunner(ManagedAiRunner):
                 self.run_store.begin_verification(run_id)
                 self._set_stage(task_id, run_id, TaskStage.VERIFYING, "LangChain independent verifier started")
                 messages = [HumanMessage(content=verifier_prompt)]
+                bound_model = review_model.bind_tools(langchain_tool_schemas())
                 verification_context = True
                 self._event(event_path, "verification_started", {"round": _round + 1})
             self.run_store.heartbeat(run_id)

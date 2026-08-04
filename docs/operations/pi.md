@@ -37,10 +37,10 @@ Reports are written to `storage/pi-benchmark/<timestamp>.md` and `.json`.
 Flow:
 
 1. `POST /upload`
-2. `POST /tasks/{task_id}/process?backend=pi`
+2. `POST /tasks/{task_id}/process`
 3. `GET /tasks/{task_id}` and `GET /tasks/{task_id}/runs`
 4. Optional `POST /tasks/{task_id}/cancel`
-5. Retry only with `POST /tasks/{task_id}/retry?backend=pi`
+5. Retry only with `POST /tasks/{task_id}/retry`
 
 Inspect `storage/runs/{run_id}.json`, `.log`, and `.rpc.jsonl`. Never edit task JSON while a run is active.
 
