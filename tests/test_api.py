@@ -97,6 +97,35 @@ def test_health_stays_public_when_oidc_is_configured():
     assert response.status_code == 200
 
 
+def test_explicit_local_auth_mode_bypasses_oidc_for_application_routes():
+    with patch.dict(
+        "os.environ",
+        {
+            "OOPSNOTE_AUTH_MODE": "local",
+            "OOPSNOTE_AUTH_ISSUER": "",
+            "OOPSNOTE_AUTH_AUDIENCE": "",
+            "OOPSNOTE_AUTH_JWKS_URL": "",
+        },
+        clear=False,
+    ):
+        response = TestClient(main.app).get("/tasks")
+
+    assert response.status_code == 200
+
+
+def test_health_reports_explicit_local_auth_mode():
+    with patch.dict("os.environ", {"OOPSNOTE_AUTH_MODE": "local"}, clear=False):
+        response = TestClient(main.app).get("/health")
+
+    assert response.status_code == 200
+    assert response.json()["auth"]["mode"] == "local"
+
+
+def test_auth_config_rejects_unknown_mode():
+    with patch.dict("os.environ", {"OOPSNOTE_AUTH_MODE": "bypass"}, clear=False), pytest.raises(RuntimeError):
+        auth.auth_config_from_env()
+
+
 def test_enabled_runner_registry_does_not_construct_disabled_backends(monkeypatch):
     langchain_runner = object()
 
@@ -922,6 +951,28 @@ def test_batch_process_renders_all_pending_segments_and_enqueues_once(tmp_path, 
     assert repeated.status_code == 200
     assert repeated.json()["requested"] == 0
     assert len(runner.submitted) == 2
+
+    original_task_id = payload["session"]["segments"][0]["task_id"]
+    task_store.update(original_task_id, status=TaskStatus.FAILED, active_run_id=None)
+    assert client.delete(f"/tasks/{original_task_id}").status_code == 200
+    stale_session = client.get(f"/batch-sessions/{digest}").json()["session"]
+    stale_segment = next(segment for segment in stale_session["segments"] if segment["id"] == "segment-1")
+    assert stale_segment["status"] == "failed"
+    assert stale_segment["error"] == "关联任务不存在"
+
+    retried = client.post(
+        f"/batch-sessions/{digest}/segments/segment-1/retry",
+        json={"expected_revision": stale_session["revision"]},
+    )
+    assert retried.status_code == 200
+    retry_payload = retried.json()
+    assert retry_payload["requested"] == 1
+    assert retry_payload["created"] == 1
+    assert retry_payload["queued"] == 1
+    recreated_segment = next(segment for segment in retry_payload["session"]["segments"] if segment["id"] == "segment-1")
+    assert recreated_segment["task_id"] != original_task_id
+    assert task_store.get(recreated_segment["task_id"]).status == TaskStatus.PROCESSING
+    assert len(runner.submitted) == 3
 
 
 def test_batch_session_rejects_invalid_segment_pages_before_persistence(tmp_path, monkeypatch):

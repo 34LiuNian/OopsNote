@@ -20,10 +20,15 @@ class AuthConfig:
     issuer: str
     audience: str
     jwks_url: str
+    mode: str = "oidc"
 
     @property
     def enabled(self) -> bool:
-        return bool(self.issuer and self.audience and self.jwks_url)
+        return self.mode == "oidc" and bool(self.issuer and self.audience and self.jwks_url)
+
+    @property
+    def local(self) -> bool:
+        return self.mode == "local"
 
 
 @dataclass(frozen=True)
@@ -40,6 +45,9 @@ class AuthenticationError(RuntimeError):
 
 
 def auth_config_from_env() -> AuthConfig:
+    mode = os.getenv("OOPSNOTE_AUTH_MODE", "oidc").strip().lower() or "oidc"
+    if mode not in {"oidc", "local"}:
+        raise RuntimeError("OOPSNOTE_AUTH_MODE must be 'oidc' or 'local'")
     issuer = os.getenv("OOPSNOTE_AUTH_ISSUER", "").strip().rstrip("/")
     audience = os.getenv("OOPSNOTE_AUTH_AUDIENCE", "").strip()
     jwks_url = os.getenv("OOPSNOTE_AUTH_JWKS_URL", "").strip()
@@ -49,6 +57,7 @@ def auth_config_from_env() -> AuthConfig:
         issuer=issuer,
         audience=audience,
         jwks_url=jwks_url,
+        mode=mode,
     )
 
 
@@ -114,11 +123,15 @@ def _claim_values(claims: dict[str, Any]) -> set[str]:
 def require_admin_request(request: Request) -> AuthenticatedUser | None:
     """Authorize privileged settings at the API boundary.
 
+    Local mode is an explicit loopback-development mode. The deployment must
+    keep the backend port private because it intentionally has no user identity.
     When OIDC is disabled OopsNote is explicitly local-only and loopback is the
     administrator. Once OIDC is enabled, a verified token must carry a role in
     ``OOPSNOTE_ADMIN_ROLES`` (default: ``admin``) or a configured subject.
     """
     config = auth_config_from_env()
+    if config.local:
+        return None
     if not config.enabled:
         host = (request.client.host if request.client else "").strip().lower()
         if host not in {"127.0.0.1", "::1", "localhost", "testclient"}:

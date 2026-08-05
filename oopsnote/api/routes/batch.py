@@ -169,6 +169,36 @@ def process_batch_session(
         raise HTTPException(status_code=error.status_code, detail=error.detail) from error
 
 
+@router.post("/batch-sessions/{file_hash}/segments/{segment_id}/retry")
+def retry_batch_segment(
+    file_hash: str,
+    segment_id: str,
+    payload: BatchProcessRequest,
+) -> dict[str, Any]:
+    """Retry one batch selection, recreating its task if its link is stale."""
+    api = _api()
+    selected_backend = api._configured_backend()
+    runner = api._runner_for(selected_backend)
+    try:
+        return run_batch_process(
+            BatchProcessingContext(
+                task_store=api.TASK_STORE,
+                asset_store=api.ASSET_STORE,
+                session_store=api.BATCH_SESSION_STORE,
+                job_store=api.BATCH_PROCESS_JOB_STORE,
+                session_view=api._batch_session_view,
+                task_state_view=api._sync_batch_session_tasks,
+            ),
+            file_hash,
+            selected_backend,
+            runner,
+            expected_revision=payload.expected_revision,
+            retry_segment_id=segment_id,
+        )
+    except BatchProcessError as error:
+        raise HTTPException(status_code=error.status_code, detail=error.detail) from error
+
+
 @router.delete("/batch-sessions/{file_hash}")
 def delete_batch_session(file_hash: str) -> dict[str, Any]:
     api = _api()

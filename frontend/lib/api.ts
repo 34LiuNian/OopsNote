@@ -50,7 +50,8 @@ export async function apiErrorFromResponse(response: Response): Promise<ApiError
 export async function fetchApi(path: string, init?: ApiRequestInit): Promise<Response> {
   const headers = new Headers(init?.headers);
   if (!init?.skipAuth) {
-    headers.set("Authorization", `Bearer ${await accessTokenOrRedirect()}`);
+    const token = await accessTokenOrRedirect();
+    if (token) headers.set("Authorization", `Bearer ${token}`);
   }
   return fetch(`${API_BASE}${path}`, {
     ...init,
@@ -63,7 +64,8 @@ export async function fetchApi(path: string, init?: ApiRequestInit): Promise<Res
 export async function fetchRawUpload(path: string, init?: ApiRequestInit): Promise<Response> {
   const headers = new Headers(init?.headers);
   if (!init?.skipAuth) {
-    headers.set("Authorization", `Bearer ${await accessTokenOrRedirect()}`);
+    const token = await accessTokenOrRedirect();
+    if (token) headers.set("Authorization", `Bearer ${token}`);
   }
   const base = directBackendBase() ?? API_BASE;
   return fetch(`${base}${path}`, {

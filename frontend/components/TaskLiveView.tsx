@@ -200,10 +200,10 @@ export function TaskLiveView({ taskId }: { taskId: string }) {
                   onClick={() => setShowTaskDetails((value) => !value)}
                   aria-expanded={showTaskDetails}
                   sx={{ px: 1, color: "var(--fgColor-success)" }}
+                  leadingVisual={CheckIcon}
+                  trailingVisual={showTaskDetails ? ChevronUpIcon : ChevronDownIcon}
                 >
-                  <CheckIcon size={14} />
                   5/5 阶段完成{duration ? ` · ${duration}` : ""}
-                  {showTaskDetails ? <ChevronUpIcon size={14} /> : <ChevronDownIcon size={14} />}
                 </Button>
               )}
             </Box>

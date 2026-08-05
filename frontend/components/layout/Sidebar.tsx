@@ -8,7 +8,7 @@ import {
   ChecklistIcon,
   ScanIcon,
   GearIcon,
-  CpuIcon,
+  BlocksIcon,
   GitBranchIcon,
 } from "@/components/ui/icons";
 import Link from "next/link";
@@ -16,14 +16,14 @@ import { useAuth } from "@/components/providers/AuthProvider";
 import { isAdminUser } from "@/lib/auth";
 
 const NAV_ITEMS = [
-  { href: "/", label: "新建题目", icon: PlusIcon, section: "main" },
-  { href: "/batch-segment", label: "批量扫描", icon: ScanIcon, section: "main" },
   { href: "/library", label: "题库", icon: RepoIcon, section: "main" },
+  { href: "/batch-segment", label: "批量扫描", icon: ScanIcon, section: "main" },
   { href: "/papers", label: "组卷", icon: ChecklistIcon, section: "main" },
+  { href: "/", label: "新建题目", icon: PlusIcon, section: "main", matchExact: true },
   { href: "/paper-builder", label: "快速重练", icon: BookIcon, section: "main" },
   { href: "/debug", label: "渲染调试", icon: BookIcon, section: "tools" },
-  { href: "/settings", label: "设置", icon: GearIcon, section: "tools" },
-  { href: "/settings/channels", label: "AI 渠道", icon: CpuIcon, section: "admin" },
+  { href: "/settings", label: "设置", icon: GearIcon, section: "admin", matchExact: true },
+  { href: "/settings/channels", label: "AI 渠道", icon: BlocksIcon, section: "admin" },
   { href: "/settings/policy", label: "LangChain 策略", icon: GitBranchIcon, section: "admin" },
 ];
 
@@ -43,15 +43,15 @@ function NavigationItems({
   const toolItems = NAV_ITEMS.filter((i) => i.section === "tools");
   const adminItems = NAV_ITEMS.filter((i) => i.section === "admin" && isAdminUser(user));
 
-  const isActive = (href: string) => {
-    if (href === "/") return pathname === "/";
-    return pathname.startsWith(href);
+  const isActive = (item: (typeof NAV_ITEMS)[number]) => {
+    if (item.matchExact) return pathname === item.href;
+    return pathname.startsWith(item.href);
   };
 
   return (
     <nav className="app-sidebar__nav" aria-label={ariaLabel}>
         {mainItems.map((item) => {
-          const active = isActive(item.href);
+          const active = isActive(item);
           return (
             <Link
               key={item.href}
@@ -67,30 +67,11 @@ function NavigationItems({
           );
         })}
 
-        <div className="app-sidebar__divider" />
-        {!collapsed && <span className="app-sidebar__label">工具</span>}
-
-        {toolItems.map((item) => {
-          const active = isActive(item.href);
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={`app-sidebar__link${active ? " is-active" : ""}`}
-              aria-current={active ? "page" : undefined}
-              title={collapsed ? item.label : undefined}
-              onClick={() => onNavigate?.(item.href)}
-            >
-              <item.icon size={17} strokeWidth={1.9} />
-              {!collapsed && <span>{item.label}</span>}
-            </Link>
-          );
-        })}
         {adminItems.length > 0 && <>
           <div className="app-sidebar__divider" />
           {!collapsed && <span className="app-sidebar__label">管理</span>}
           {adminItems.map((item) => {
-            const active = isActive(item.href);
+            const active = isActive(item);
             return (
               <Link key={item.href} href={item.href} className={`app-sidebar__link${active ? " is-active" : ""}`} aria-current={active ? "page" : undefined} title={collapsed ? item.label : undefined} onClick={() => onNavigate?.(item.href)}>
                 <item.icon size={17} strokeWidth={1.9} />
@@ -99,6 +80,24 @@ function NavigationItems({
             );
           })}
         </>}
+        <div className="app-sidebar__divider" />
+        {!collapsed && <span className="app-sidebar__label">工具</span>}
+        {toolItems.map((item) => {
+          const active = isActive(item);
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              className={`app-sidebar__link${active ? " is-active" : ""}`}
+              aria-current={active ? "page" : undefined}
+              title={collapsed ? item.label : undefined}
+              onClick={() => onNavigate?.(item.href)}
+            >
+              <item.icon size={17} strokeWidth={1.9} />
+              {!collapsed && <span>{item.label}</span>}
+            </Link>
+          );
+        })}
     </nav>
   );
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { Box, Button, Label, Spinner, Text } from "@/components/ui/primitives";
+import { Box, Button, IconButton, Label, Spinner, Text } from "@/components/ui/primitives";
 import { ChevronDownIcon, ChevronRightIcon } from "@/components/ui/icons";
 
 type ChapterTree = Record<string, Record<string, number>>;
@@ -77,14 +77,12 @@ export function KnowledgeTreeFilter({
           return (
             <Box key={chapter} sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
               <Box sx={{ display: "grid", gridTemplateColumns: "32px 1fr", gap: 1 }}>
-                <Button
+                <IconButton
                   size="small"
-                  sx={{ px: 0 }}
+                  icon={isChapterExpanded ? ChevronDownIcon : ChevronRightIcon}
                   onClick={() => onToggleChapterExpand(chapter, chapterFilter === chapter)}
                   aria-label={isChapterExpanded ? "收起章节" : "展开章节"}
-                >
-                  {isChapterExpanded ? <ChevronDownIcon size={14} /> : <ChevronRightIcon size={14} />}
-                </Button>
+                />
                 <Button
                   block
                   size="small"

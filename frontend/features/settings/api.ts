@@ -24,6 +24,12 @@ export function updateChannelCredential(channelId: string, secret: string) {
   return fetchJson<ChannelDiscoveryResponse>(`/settings/ai/channels/${encodeURIComponent(channelId)}/credential`, { method: "POST", body: JSON.stringify({ secret }) });
 }
 
+export function getChannelCredential(channelId: string) {
+  return fetchJson<{ secret: string }>(`/settings/ai/channels/${encodeURIComponent(channelId)}/credential`, {
+    cache: "no-store",
+  });
+}
+
 export function syncChannelModels(channelId: string) {
   return fetchJson<ChannelDiscoveryResponse>(`/settings/ai/channels/${encodeURIComponent(channelId)}/models/sync`, { method: "POST" });
 }

@@ -44,7 +44,7 @@ import {
   getBatchSession,
   listBatchSessions,
   processBatchSession,
-  processTaskInBackground,
+  retryBatchSegment,
   type BatchSession,
   updateBatchSession,
   uploadBatchSource,
@@ -673,25 +673,21 @@ export function BatchScanForm() {
   }, [applyServerSession, currentSession, isSubmitting, persistSession]);
 
   const retrySelection = useCallback(async (selection: SelectionModel) => {
-    if (!selection.taskId) return;
-    const next = selectionsRef.current.map((item) => item.id === selection.id ? {
-      ...item,
-      status: "processing" as const,
-      error: undefined,
-      reviewReason: undefined,
-      reviewPreviousStatus: undefined,
-      reviewResolved: false,
-    } : item);
-    setSelections(next);
+    if (!currentSession) return;
     try {
-      await persistSession(next);
-      await processTaskInBackground(selection.taskId);
+      const result = await retryBatchSegment(
+        currentSession.file_hash,
+        selection.id,
+        sessionRevisionRef.current,
+      );
+      applyServerSession(result.session, true);
+      setSaveState("saved");
     } catch (reason) {
       setSelections((current) => current.map((item) => item.id === selection.id
         ? { ...item, status: "failed", error: reason instanceof Error ? reason.message : "重试失败" }
         : item));
     }
-  }, [persistSession]);
+  }, [applyServerSession, currentSession]);
 
   const markSelectionReview = useCallback(async (selection: SelectionModel, reason: SelectionReviewReason | "") => {
     const nextStatus: SelectionStatus = reason
@@ -784,8 +780,8 @@ export function BatchScanForm() {
         <>
           <PageHeader title="批量扫描" description="先统一裁剪页面，再在连续文档上框选题目" />
           <Box className="batch-scan-toolbar">
-            <Button variant="primary" onClick={() => inputRef.current?.click()} disabled={isImporting}>
-              <Upload size={16} />{isImporting ? "正在载入" : "选择 PDF 或图片"}
+            <Button variant="primary" leadingVisual={Upload} onClick={() => inputRef.current?.click()} disabled={isImporting}>
+              {isImporting ? "正在载入" : "选择 PDF 或图片"}
             </Button>
             {isImporting && <Spinner size="small" />}
           </Box>
@@ -850,10 +846,10 @@ export function BatchScanForm() {
             {!cropConfirmed && cropView === "edit" && <Button variant="default" disabled={cropTooSmall} onClick={() => setCropView("preview")}>检查裁剪与分栏</Button>}
             {!cropConfirmed && cropView === "preview" && <Button variant="default" onClick={() => setCropView("edit")}>调整裁剪与分栏</Button>}
             {!cropConfirmed && cropView === "preview" && (
-              <Button variant="primary" disabled={cropTooSmall} onClick={() => {
+              <Button variant="primary" leadingVisual={Check} disabled={cropTooSmall} onClick={() => {
                 setCropConfirmed(true);
                 void persistSession([], { crop_rect: crop, crop_confirmed: true }).catch(() => undefined);
-              }}><Check size={16} />确认裁剪与分栏并开始框题</Button>
+              }}>确认裁剪与分栏并开始框题</Button>
             )}
           </Box>
 

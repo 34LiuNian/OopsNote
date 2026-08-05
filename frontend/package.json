@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "eslint app components features hooks lib types --ext .ts,.tsx",
     "typecheck": "tsc --noEmit",
+    "test:unit": "node --test features/settings/modelOptions.test.mjs",
     "test:e2e": "playwright test",
     "test:e2e:credentialed": "playwright test --config playwright.credentialed.config.ts",
     "renderers:sync": "node scripts/sync-renderer-assets.mjs",

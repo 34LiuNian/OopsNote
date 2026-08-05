@@ -5,6 +5,7 @@ import {
   ArrowDown,
   ArrowLeft,
   ArrowUp,
+  Blocks,
   BookOpen,
   Bug,
   Check,
@@ -69,6 +70,7 @@ export const XCircleFillIcon = CircleX;
 export const XCircleIcon = CircleX;
 export const ZapIcon = Zap;
 export const CpuIcon = Cpu;
+export const BlocksIcon = Blocks;
 export const SyncIcon = RefreshCw;
 export const CodeIcon = Code2;
 export const EyeIcon = Eye;

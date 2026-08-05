@@ -634,6 +634,7 @@ app.mount("/assets", StaticFiles(directory=STORAGE_DIR / "assets"), name="assets
 
 @app.get("/health")
 def health() -> dict[str, Any]:
+    auth_config = auth_config_from_env()
     runner = _RUNNERS[_DEFAULT_AI_BACKEND]
     ai_status = {
         "backend": runner.backend_name,
@@ -647,6 +648,9 @@ def health() -> dict[str, Any]:
     return {
         "status": "ok",
         "version": "0.3.0",
+        "auth": {
+            "mode": auth_config.mode if (auth_config.enabled or auth_config.local) else "disabled",
+        },
         "ai": ai_status,
     }
 

@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from time import monotonic
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request, Response
 from pydantic import BaseModel, ConfigDict, Field, HttpUrl
 
 from oopsnote.ai.providers import (
@@ -267,6 +267,25 @@ def update_credential(channel_id: str, payload: CredentialUpdate, request: Reque
         "validation": validation.model_dump(mode="json"),
         "policy_cleared": had_policy and api.APP_SETTINGS_STORE.langchain_model_policy() is None,
     }
+
+
+@router.get("/channels/{channel_id}/credential")
+def reveal_credential(channel_id: str, request: Request, response: Response) -> dict[str, str]:
+    """Reveal one credential to an authenticated administrator without caching it."""
+
+    _require_admin(request)
+    channel = _channel(channel_id)
+    if not channel.credential_ref:
+        raise HTTPException(status_code=404, detail="channel has no credential")
+    try:
+        secret = _vault().get(channel.credential_ref)
+    except KeyError as error:
+        raise HTTPException(status_code=404, detail="channel credential is unavailable") from error
+    except SecretStoreCorruptionError as error:
+        raise HTTPException(status_code=503, detail="provider secret store is unavailable") from error
+    response.headers["Cache-Control"] = "no-store"
+    response.headers["Pragma"] = "no-cache"
+    return {"secret": secret}
 
 
 @router.post("/channels/{channel_id}/models/sync")

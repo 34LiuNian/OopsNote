@@ -1,23 +1,24 @@
 "use client";
 
-import Link from "next/link";
 import { useMemo, useState } from "react";
-import { Badge } from "@mantine/core";
-import { Save, ShieldAlert } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { BadgeCheck, Bot, Save, ScanText, ShieldAlert } from "lucide-react";
 import { useAuth } from "@/components/providers/AuthProvider";
+import { Box, Button, Heading, Spinner, Text } from "@/components/ui/primitives";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
-import { Box, Button, Flash, FormControl, Heading, Select, Spinner, Text } from "@/components/ui/primitives";
-import { useAiChannels, useAiChannelMutations } from "@/features/settings/useAiProviders";
-import { flattenModels } from "@/features/settings/modelOptions";
-import type { LangChainPolicy, StageSelection } from "@/features/settings/types";
 import { isAdminUser } from "@/lib/auth";
 import { notify } from "@/lib/notify";
+import { useAiChannels, useAiChannelMutations } from "@/features/settings/useAiProviders";
+import { policyModelUnavailableReason, updatePolicyStage } from "@/features/settings/modelOptions";
+import type { LangChainPolicy, StageSelection } from "@/features/settings/types";
+import { ModelPickerDrawer, PolicyStageCard, type PolicyStageDefinition } from "@/components/settings/ai";
+import styles from "@/components/settings/ai/aiSettings.module.css";
 
-const STAGES = [
-  { id: "vision", label: "Vision / OCR", hint: "必须启用 Vision" },
-  { id: "agent", label: "Agent", hint: "必须启用 Tool Calling" },
-  { id: "review", label: "Review", hint: "必须启用 Tool Calling" },
-] as const;
+const STAGES: PolicyStageDefinition[] = [
+  { id: "vision", label: "Vision / OCR", hint: "图像理解与 OCR 阶段", capabilityLabel: "Vision", icon: ScanText },
+  { id: "agent", label: "Agent", hint: "受限 MCP 推理阶段", capabilityLabel: "Tool Calling", icon: Bot },
+  { id: "review", label: "Review", hint: "结果审校与质量检查", capabilityLabel: "Tool Calling", icon: BadgeCheck },
+];
 
 const EMPTY_SELECTION: StageSelection = { channel_id: "", model_id: "" };
 const EMPTY_POLICY: LangChainPolicy = {
@@ -29,35 +30,54 @@ const EMPTY_POLICY: LangChainPolicy = {
 };
 
 function formatUpdatedAt(updatedAt: string | null) {
-  if (!updatedAt) return "未保存过";
+  if (!updatedAt) return "未保存";
   const date = new Date(updatedAt);
   return Number.isNaN(date.getTime()) ? updatedAt : date.toLocaleString("zh-CN");
 }
 
+function sameSelections(left: LangChainPolicy, right: LangChainPolicy): boolean {
+  return STAGES.every((stage) => (
+    left[stage.id].channel_id === right[stage.id].channel_id
+    && left[stage.id].model_id === right[stage.id].model_id
+  ));
+}
+
 export default function LangChainPolicyPage() {
+  const router = useRouter();
   const { user, loading } = useAuth();
   const isAdmin = isAdminUser(user);
   const channels = useAiChannels(!loading && isAdmin);
   const mutations = useAiChannelMutations();
   const items = useMemo(() => channels.data?.items ?? [], [channels.data]);
-  const modelOptions = useMemo(() => flattenModels(items), [items]);
+  const serverPolicy = channels.data?.policy ?? EMPTY_POLICY;
   const [policyDraft, setPolicyDraft] = useState<LangChainPolicy | null>(null);
+  const [pickerStage, setPickerStage] = useState<PolicyStageDefinition | null>(null);
   const [errorMessage, setErrorMessage] = useState("");
 
   if (loading) return <Box sx={{ p: 4 }}><Spinner size="medium" /></Box>;
   if (!isAdmin) return <Box sx={{ p: 4, display: "flex", gap: 2, alignItems: "center" }}><ShieldAlert size={22} /><Box><Heading order={2}>无权访问</Heading><Text sx={{ color: "fg.muted" }}>LangChain 策略仅管理员可用。</Text></Box></Box>;
 
-  const activePolicy = policyDraft ?? channels.data?.policy ?? EMPTY_POLICY;
+  const activePolicy = policyDraft ?? serverPolicy;
   const complete = STAGES.every((stage) => activePolicy[stage.id].channel_id && activePolicy[stage.id].model_id);
-  const busy = mutations.policy.isPending;
+  const valid = STAGES.every((stage) => {
+    const selection = activePolicy[stage.id];
+    const channel = items.find((candidate) => candidate.id === selection.channel_id);
+    const model = channel?.models.find((candidate) => candidate.id === selection.model_id);
+    return Boolean(channel && model && !policyModelUnavailableReason(channel, model, stage.id));
+  });
+  const dirty = !sameSelections(activePolicy, serverPolicy);
+  const canSave = complete && valid && dirty && !mutations.policy.isPending;
 
-  function updateSelection(stage: typeof STAGES[number]["id"], value: string) {
-    const [channel_id = "", model_id = ""] = value.split("::");
-    setPolicyDraft((current) => ({ ...(current ?? EMPTY_POLICY), [stage]: { channel_id, model_id } }));
+  function selectStage(stage: PolicyStageDefinition, selection: StageSelection) {
+    // The server policy is the sole initial draft source. This preserves the
+    // other stage selections when the first local edit is made.
+    setPolicyDraft((current) => updatePolicyStage(current ?? serverPolicy, stage.id, selection));
+    setErrorMessage("");
+    setPickerStage(null);
   }
 
   async function savePolicy() {
-    if (!complete) return;
+    if (!canSave) return;
     setErrorMessage("");
     try {
       const result = await mutations.policy.mutateAsync({
@@ -73,38 +93,61 @@ export default function LangChainPolicyPage() {
   }
 
   return (
-    <Box sx={{ p: [3, 4], pb: ["112px", 4], display: "flex", flexDirection: "column", gap: 4 }}>
-      <Box>
-        <Heading order={2}>LangChain 策略</Heading>
-        <Text sx={{ mt: 1, color: "fg.muted" }}>后续新 run 使用此策略；运行中的 run 保留已冻结快照。</Text>
-      </Box>
-      {channels.isLoading && <Spinner size="medium" />}
-      {channels.isError && <Text sx={{ color: "fg.danger" }}>无法加载渠道，请确认管理员权限和后端状态。</Text>}
-      {!channels.isLoading && !channels.isError && <Box sx={{ display: "flex", flexDirection: "column", gap: 3, width: "100%" }}>
-        <Box sx={{ display: "flex", gap: 2, alignItems: "center", flexWrap: "wrap" }}>
-          <Badge size="sm" color="blue">策略版本 v{activePolicy.version}</Badge>
-          <Text sx={{ color: "fg.muted" }}>更新于 {formatUpdatedAt(activePolicy.updated_at)}</Text>
-        </Box>
-        {!items.length ? <Text sx={{ color: "fg.muted" }}>请先<Link href="/settings/channels">连接渠道并同步模型</Link>。</Text> : <>
-          {channels.data?.policy === null && <Flash variant="warning">策略已被清除，请重新选择三个阶段模型。</Flash>}
-          {STAGES.map((stage) => {
-            const current = activePolicy[stage.id];
-            return <FormControl key={stage.id}>
-              <FormControl.Label>{stage.label}</FormControl.Label>
-              <Select value={`${current.channel_id}::${current.model_id}`} onValueChange={(value) => updateSelection(stage.id, value)}>
-                <Select.Option value="">请选择模型</Select.Option>
-                {modelOptions.map(({ channel, model }) => {
-                  const allowed = stage.id === "vision" ? model.capability.vision : model.capability.tool_calling;
-                  return <Select.Option key={`${stage.id}-${channel.id}-${model.id}`} value={`${channel.id}::${model.id}`} disabled={!allowed}>{channel.display_name} / {model.source} / {model.id}{!allowed ? "（能力未启用）" : ""}</Select.Option>;
-                })}
-              </Select>
-              <FormControl.Caption>{stage.hint}</FormControl.Caption>
-            </FormControl>;
-          })}
-          <Button variant="primary" onClick={() => void savePolicy()} disabled={busy || !complete}><Save size={16} /> 保存阶段策略</Button>
-        </>}
-      </Box>}
-      <ErrorBanner message={errorMessage} />
-    </Box>
+    <div className={styles.policyWorkspace}>
+      <div className={styles.policyInner}>
+        <header className={styles.policyHeader}>
+          <div>
+            <h1 className={styles.policyTitle}>LangChain 策略</h1>
+            <div className={styles.policyDescription}>后续新 run 使用此策略；运行中的 run 保留已冻结快照。</div>
+            <div className={styles.policyMeta}>
+              <span>{activePolicy.updated_at ? `上次保存于 ${formatUpdatedAt(activePolicy.updated_at)}` : "尚未保存"}</span>
+              {dirty && <><span className={styles.dirtyDot} aria-hidden="true" /><span>有未保存更改</span></>}
+            </div>
+          </div>
+          <Button variant="primary" leadingVisual={Save} onClick={() => void savePolicy()} disabled={!canSave}>保存策略</Button>
+        </header>
+
+        {channels.isLoading && <Box sx={{ py: 5 }}><Spinner size="medium" /></Box>}
+        {channels.isError && <Text sx={{ color: "fg.danger", mt: 4 }}>无法加载渠道，请确认管理员权限和后端状态。</Text>}
+        {!channels.isLoading && !channels.isError && !items.length && (
+          <div className={styles.emptyState}>
+            <strong>还没有可编排的 AI 渠道</strong>
+            <p>先连接渠道、保存访问凭据并同步模型，再为三个阶段选择模型。</p>
+            <Button variant="primary" onClick={() => router.push("/settings/channels")}>前往 AI 渠道</Button>
+          </div>
+        )}
+        {!channels.isLoading && !channels.isError && items.length > 0 && (
+          <>
+            {channels.data?.policy === null && (
+              <div className={styles.emptyState} style={{ minHeight: "auto", alignItems: "flex-start", textAlign: "left", padding: "16px 0 0" }}>
+                <strong>策略尚未配置</strong>
+                <p>为每个阶段选择具备所需能力的已启用模型。</p>
+              </div>
+            )}
+            <section className={styles.policyFlow} aria-label="LangChain 阶段编排">
+              {STAGES.map((stage, index) => (
+                <PolicyStageCard
+                  key={stage.id}
+                  channels={items}
+                  definition={stage}
+                  isLast={index === STAGES.length - 1}
+                  selection={activePolicy[stage.id]}
+                  onClick={() => setPickerStage(stage)}
+                />
+              ))}
+            </section>
+          </>
+        )}
+        <ErrorBanner message={errorMessage} />
+      </div>
+      <ModelPickerDrawer
+        channels={items}
+        definition={pickerStage}
+        opened={Boolean(pickerStage)}
+        selection={pickerStage ? activePolicy[pickerStage.id] : EMPTY_SELECTION}
+        onClose={() => setPickerStage(null)}
+        onSelect={(selection) => { if (pickerStage) selectStage(pickerStage, selection); }}
+      />
+    </div>
   );
 }

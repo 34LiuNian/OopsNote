@@ -25,14 +25,16 @@ class ProviderCapabilities(BaseModel):
 
 
 class ChannelModel(BaseModel):
-    """One model discovered through a channel, with admin-confirmed capabilities."""
+    """One model discovered through a channel, with administrator-adjustable capabilities."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     id: str = Field(min_length=1, max_length=256)
     source: str = Field(default="其他", min_length=1, max_length=128)
     enabled: bool = False
-    capability: ProviderCapabilities = Field(default_factory=ProviderCapabilities)
+    capability: ProviderCapabilities = Field(
+        default_factory=lambda: ProviderCapabilities(tool_calling=True),
+    )
     discovered_at: datetime | None = None
 
 
@@ -390,9 +392,8 @@ class ProviderClientFactory:
             items.append(ChannelModel(
                 id=model_id,
                 source=str(source).strip() or channel.display_name,
-                # Provider catalogues do not consistently publish tool/vision support.
-                # Unknown capabilities are deliberately closed until an admin confirms them.
-                capability=ProviderCapabilities(),
+                # Tool Calling is enabled by default; Vision remains opt-in because
+                # provider catalogues do not reliably advertise image support.
                 discovered_at=discovered_at,
             ))
         if not items:

@@ -18,10 +18,10 @@ interface TabItem {
 }
 
 const TABS: TabItem[] = [
-  { href: "/", label: "新建", icon: PlusIcon, matchExact: true },
-  { href: "/batch-segment", label: "批量", icon: ScanIcon },
   { href: "/library", label: "题库", icon: RepoIcon },
+  { href: "/batch-segment", label: "批量", icon: ScanIcon },
   { href: "/papers", label: "组卷", icon: ChecklistIcon },
+  { href: "/", label: "新建", icon: PlusIcon, matchExact: true },
   { href: "/paper-builder", label: "重练", icon: BookIcon },
 ];
 

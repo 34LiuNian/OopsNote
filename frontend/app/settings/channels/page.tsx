@@ -1,16 +1,20 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Badge, Checkbox, PasswordInput } from "@mantine/core";
-import { KeyRound, Plus, RefreshCw, Save, ShieldAlert, Wrench } from "lucide-react";
+import { PasswordInput } from "@mantine/core";
+import { Copy, Save, ShieldAlert, Trash2 } from "lucide-react";
 import { useAuth } from "@/components/providers/AuthProvider";
-import { Box, Button, FormControl, Heading, Select, Spinner, Text, TextInput, ToggleSwitch } from "@/components/ui/primitives";
+import { Box, Button, FormControl, Heading, IconButton, Select, Spinner, Text, TextInput, ToggleSwitch, Tooltip } from "@/components/ui/primitives";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
 import { isAdminUser } from "@/lib/auth";
 import { notify } from "@/lib/notify";
 import { confirmAction } from "@/lib/confirm";
+import { formatApiError } from "@/lib/errorFormatter";
+import { getChannelCredential } from "@/features/settings/api";
 import { useAiChannels, useAiChannelMutations } from "@/features/settings/useAiProviders";
 import type { ChannelDraft, ChannelModel, ProviderChannel } from "@/features/settings/types";
+import { ChannelRail, ModelCatalog, type ModelCatalogFilter, ProviderMark, providerLabel } from "@/components/settings/ai";
+import styles from "@/components/settings/ai/aiSettings.module.css";
 
 const PROVIDERS = [
   { value: "deepseek", label: "DeepSeek" },
@@ -19,6 +23,7 @@ const PROVIDERS = [
   { value: "google", label: "Google Gemini" },
   { value: "openai-compatible", label: "OpenAI Compatible" },
 ];
+
 const PROVIDER_DEFAULT_URLS: Record<string, string | null> = {
   deepseek: "https://api.deepseek.com/v1",
   openai: "https://api.openai.com/v1",
@@ -31,12 +36,26 @@ const EMPTY_DRAFT: ChannelDraft = {
   id: "",
   display_name: "",
   provider: "deepseek",
-  base_url: "https://api.deepseek.com/v1",
+  base_url: PROVIDER_DEFAULT_URLS.deepseek,
   enabled: true,
 };
 
+const MASKED_SECRET = "********";
+
 function draftFrom(channel: ProviderChannel): ChannelDraft {
-  return { id: channel.id, display_name: channel.display_name, provider: channel.provider, base_url: channel.base_url, enabled: channel.enabled };
+  return {
+    id: channel.id,
+    display_name: channel.display_name,
+    provider: channel.provider,
+    base_url: channel.base_url,
+    enabled: channel.enabled,
+  };
+}
+
+function formatDate(value: string | null): string {
+  if (!value) return "未记录";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleString("zh-CN");
 }
 
 export default function AiChannelsPage() {
@@ -46,69 +65,158 @@ export default function AiChannelsPage() {
   const mutations = useAiChannelMutations();
   const items = useMemo(() => channels.data?.items ?? [], [channels.data]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [channelQuery, setChannelQuery] = useState("");
   const [creating, setCreating] = useState(false);
   const [draft, setDraft] = useState<ChannelDraft>(EMPTY_DRAFT);
-  const [secret, setSecret] = useState("");
+  const [secretDraft, setSecretDraft] = useState("");
+  const [secretDirty, setSecretDirty] = useState(false);
+  const [secretRevealed, setSecretRevealed] = useState(false);
+  const [secretVisible, setSecretVisible] = useState(false);
+  const [revealingSecret, setRevealingSecret] = useState(false);
+  const [credentialError, setCredentialError] = useState("");
+  const [modelFilter, setModelFilter] = useState<ModelCatalogFilter>("all");
+  const [modelQuery, setModelQuery] = useState("");
+  const [busyModelId, setBusyModelId] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState("");
-  const selected = items.find((item) => item.id === selectedId) ?? null;
+  const selected = items.find((item) => item.id === selectedId) ?? (!creating ? items[0] ?? null : null);
+  const activeDraft = selected && draft.id === selected.id ? draft : selected ? draftFrom(selected) : draft;
+  const busy = Object.values(mutations).some((mutation) => mutation.isPending);
+  const infoDirty = creating || Boolean(selected && (
+    activeDraft.display_name !== selected.display_name
+    || activeDraft.provider !== selected.provider
+    || activeDraft.base_url !== selected.base_url
+  ));
+  const canSave = Boolean(
+    (creating || infoDirty || secretDirty)
+    && activeDraft.id.trim()
+    && activeDraft.display_name.trim()
+    && (!secretDirty || secretDraft.trim()),
+  );
+  const displayedSecret = secretRevealed || secretDirty
+    ? secretDraft
+    : selected?.has_secret
+      ? MASKED_SECRET
+      : "";
 
   if (loading) return <Box sx={{ p: 4 }}><Spinner size="medium" /></Box>;
   if (!isAdmin) return <Box sx={{ p: 4, display: "flex", gap: 2, alignItems: "center" }}><ShieldAlert size={22} /><Box><Heading order={2}>无权访问</Heading><Text sx={{ color: "fg.muted" }}>AI Provider 配置仅管理员可用。</Text></Box></Box>;
+
+  function resetCredentialDraft() {
+    setSecretDraft("");
+    setSecretDirty(false);
+    setSecretRevealed(false);
+    setSecretVisible(false);
+    setCredentialError("");
+  }
 
   function choose(channel: ProviderChannel) {
     setCreating(false);
     setSelectedId(channel.id);
     setDraft(draftFrom(channel));
-    setSecret("");
+    resetCredentialDraft();
     setErrorMessage("");
+    setModelFilter("all");
+    setModelQuery("");
   }
 
   function beginCreate() {
     setCreating(true);
     setSelectedId(null);
-    setDraft(EMPTY_DRAFT);
-    setSecret("");
+    setDraft({ ...EMPTY_DRAFT });
+    resetCredentialDraft();
     setErrorMessage("");
   }
 
-  async function saveChannel() {
+  async function saveAll() {
     setErrorMessage("");
+    setCredentialError("");
+    let channel = selected;
+    let policyCleared = false;
+    let syncedCount: number | null = null;
+    const wasCreating = creating;
+
     try {
       if (creating) {
-        const result = await mutations.create.mutateAsync(draft);
+        const result = await mutations.create.mutateAsync(activeDraft);
+        channel = result.channel;
         setCreating(false);
         setSelectedId(result.channel.id);
         setDraft(draftFrom(result.channel));
-        notify.success({ title: "渠道已创建", description: "请在右侧输入密钥，保存后会自动同步模型。" });
-      } else if (selected) {
-        const { id: _id, ...payload } = draft;
+      } else if (selected && infoDirty) {
+        const { id: _id, ...payload } = activeDraft;
         const result = await mutations.update.mutateAsync({ channelId: selected.id, payload });
-        notify.success({ title: "渠道元数据已保存" });
-        if (result.policy_cleared) notify.warning({ title: "LangChain 策略已清除", description: "LangChain 策略已清除，请到「LangChain 策略」页重新选择三个阶段模型。" });
+        channel = result.channel;
+        policyCleared ||= result.policy_cleared;
+        setDraft(draftFrom(result.channel));
       }
-    } catch (error) { setErrorMessage(error instanceof Error ? error.message : "保存失败"); }
-  }
-
-  async function saveSecret() {
-    if (!selected || !secret) return;
-    setErrorMessage("");
-    try {
-      const result = await mutations.credential.mutateAsync({ channelId: selected.id, secret });
-      setSecret("");
-      notify.warning({ title: "模型能力需要确认", description: `已同步 ${result.discovery.count} 个模型。Tool Calling 与 Vision 默认关闭，请逐项确认。` });
-      if (result.policy_cleared) notify.warning({ title: "LangChain 策略已清除", description: "LangChain 策略已清除，请到「LangChain 策略」页重新选择三个阶段模型。" });
-      notify.success({ title: "密钥验证成功", description: `${result.validation.message}${result.validation.latency_ms == null ? "" : ` (${result.validation.latency_ms}ms)`}` });
-    } catch (error) { setErrorMessage(error instanceof Error ? error.message : "密钥验证失败"); }
-  }
-
-  async function patchModel(model: ChannelModel, patch: { enabled?: boolean; capability?: { tool_calling: boolean; vision: boolean } }) {
-    if (!selected) return;
-    setErrorMessage("");
-    try {
-      const result = await mutations.model.mutateAsync({ channelId: selected.id, modelId: model.id, payload: patch });
-      if (result.policy_cleared) notify.warning({ title: "LangChain 策略已清除", description: "LangChain 策略已清除，请到「LangChain 策略」页重新选择三个阶段模型。" });
+    } catch (error) {
+      setErrorMessage(formatApiError(error, "渠道信息保存失败"));
+      return;
     }
-    catch (error) { setErrorMessage(error instanceof Error ? error.message : "模型配置失败"); }
+
+    if (!channel) return;
+
+    try {
+      if (secretDirty) {
+        const result = await mutations.credential.mutateAsync({ channelId: channel.id, secret: secretDraft.trim() });
+        channel = result.channel;
+        syncedCount = result.discovery.count;
+        policyCleared ||= result.policy_cleared;
+        resetCredentialDraft();
+      } else if (channel.has_secret) {
+        const result = await mutations.sync.mutateAsync(channel.id);
+        channel = result.channel;
+        syncedCount = result.discovery.count;
+        policyCleared ||= result.policy_cleared;
+      }
+    } catch (error) {
+      setCredentialError(formatApiError(error, secretDirty ? "凭据验证失败" : "模型同步失败"));
+      return;
+    }
+
+    setCreating(false);
+    setSelectedId(channel.id);
+    setDraft(draftFrom(channel));
+    notify.success({
+      title: wasCreating ? "渠道已创建" : "渠道已保存",
+      description: syncedCount == null ? "渠道信息已更新。" : `凭据验证通过，已同步 ${syncedCount} 个模型。`,
+    });
+    if (policyCleared) notify.warning({ title: "LangChain 策略已清除", description: "渠道或模型变化使现有阶段选择失效，请重新配置策略。" });
+  }
+
+  async function revealSecret() {
+    if (!selected?.has_secret || revealingSecret) return;
+    setCredentialError("");
+    setRevealingSecret(true);
+    try {
+      const result = await getChannelCredential(selected.id);
+      setSecretDraft(result.secret);
+      setSecretRevealed(true);
+      setSecretVisible(true);
+    } catch (error) {
+      setCredentialError(formatApiError(error, "无法读取已保存密钥"));
+    } finally {
+      setRevealingSecret(false);
+    }
+  }
+
+  function changeSecret(value: string) {
+    if (!secretRevealed && !secretDirty && selected?.has_secret && value === MASKED_SECRET) return;
+    setSecretDraft(value === MASKED_SECRET && !secretRevealed ? "" : value);
+    setSecretDirty(value !== MASKED_SECRET);
+    setCredentialError("");
+  }
+
+  function changeSecretVisibility(visible: boolean) {
+    if (!visible) {
+      setSecretVisible(false);
+      return;
+    }
+    if (secretRevealed || secretDirty || !selected?.has_secret) {
+      setSecretVisible(true);
+      return;
+    }
+    void revealSecret();
   }
 
   async function syncModels() {
@@ -116,66 +224,186 @@ export default function AiChannelsPage() {
     setErrorMessage("");
     try {
       const result = await mutations.sync.mutateAsync(selected.id);
-      notify.info({ title: "模型目录已同步", description: `${result.validation.message}，已获取 ${result.discovery.count} 个模型。` });
-      if (result.policy_cleared) notify.warning({ title: "LangChain 策略已清除", description: "LangChain 策略已清除，请到「LangChain 策略」页重新选择三个阶段模型。" });
-    } catch (error) { setErrorMessage(error instanceof Error ? error.message : "模型同步失败"); }
+      notify.success({ title: "模型目录已同步", description: `${result.validation.message}，共 ${result.discovery.count} 个模型。` });
+      if (result.policy_cleared) notify.warning({ title: "LangChain 策略已清除", description: "模型目录变化使现有阶段选择失效，请重新配置策略。" });
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "模型同步失败");
+    }
   }
 
-  async function performDisableChannel() {
+  async function patchModel(model: ChannelModel, patch: { enabled?: boolean; capability?: { tool_calling: boolean; vision: boolean } }) {
+    if (!selected) return;
+    setBusyModelId(model.id);
+    setErrorMessage("");
+    try {
+      const result = await mutations.model.mutateAsync({ channelId: selected.id, modelId: model.id, payload: patch });
+      if (result.policy_cleared) notify.warning({ title: "LangChain 策略已清除", description: "模型能力变化使现有阶段选择失效，请重新配置策略。" });
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "模型配置失败");
+    } finally {
+      setBusyModelId(null);
+    }
+  }
+
+  async function setEnabled(enabled: boolean) {
     if (!selected) return;
     setErrorMessage("");
     try {
-      const result = await mutations.update.mutateAsync({ channelId: selected.id, payload: { ...draft, enabled: false } });
-      notify.success({ title: "渠道已禁用" });
-      if (result.policy_cleared) notify.warning({ title: "LangChain 策略已清除", description: "LangChain 策略已清除，请到「LangChain 策略」页重新选择三个阶段模型。" });
-    } catch (error) { setErrorMessage(error instanceof Error ? error.message : "渠道禁用失败"); }
+      const { id: _id, ...payload } = { ...activeDraft, enabled };
+      const result = await mutations.update.mutateAsync({ channelId: selected.id, payload });
+      setDraft(draftFrom(result.channel));
+      notify.success({ title: enabled ? "渠道已启用" : "渠道已停用" });
+      if (result.policy_cleared) notify.warning({ title: "LangChain 策略已清除", description: "停用渠道后，请重新配置策略。" });
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "渠道状态更新失败");
+    }
   }
 
-  function disableChannel() {
-    if (!selected) return;
+  function toggleEnabled(enabled: boolean) {
+    if (enabled || !selected) {
+      void setEnabled(enabled);
+      return;
+    }
     confirmAction({
-      title: "禁用渠道",
+      title: "停用渠道",
       message: "现有 run 不受影响，后续策略不能使用该渠道。",
-      confirmLabel: "禁用",
+      confirmLabel: "停用",
       destructive: true,
-      onConfirm: performDisableChannel,
+      onConfirm: () => setEnabled(false),
     });
   }
 
-  const busy = Object.values(mutations).some((mutation) => mutation.isPending);
+  async function performDelete() {
+    if (!selected) return;
+    setErrorMessage("");
+    try {
+      await mutations.remove.mutateAsync(selected.id);
+      const next = items.find((item) => item.id !== selected.id) ?? null;
+      setSelectedId(next?.id ?? null);
+      setDraft(next ? draftFrom(next) : { ...EMPTY_DRAFT });
+      resetCredentialDraft();
+      notify.success({ title: "渠道已删除" });
+    } catch (error) {
+      setErrorMessage(formatApiError(error, "删除渠道失败"));
+    }
+  }
+
+  function deleteSelected() {
+    if (!selected) return;
+    confirmAction({
+      title: `删除 ${selected.display_name}`,
+      message: "将同时删除该渠道的模型目录和访问凭据。此操作无法撤销。",
+      confirmLabel: "删除渠道",
+      destructive: true,
+      onConfirm: performDelete,
+    });
+  }
+
+  async function copyBaseUrl() {
+    if (!activeDraft.base_url || !navigator.clipboard) return;
+    await navigator.clipboard.writeText(activeDraft.base_url);
+    notify.info({ title: "API 地址已复制" });
+  }
+
+  const showEditor = creating || selected;
   return (
-    <Box sx={{ p: [3, 4], pb: ["112px", 4], display: "flex", flexDirection: "column", gap: 4 }}>
-      <Box sx={{ display: "flex", justifyContent: "space-between", gap: 3, alignItems: "flex-start", flexWrap: "wrap" }}>
-        <Box><Heading order={2}>AI 渠道</Heading><Text sx={{ mt: 1, color: "fg.muted" }}>管理 AI 服务商连接、密钥与模型目录</Text></Box>
-        <Button variant="primary" onClick={beginCreate}><Plus size={16} /> 新建渠道</Button>
-      </Box>
-      {channels.isLoading && <Spinner size="medium" />}
-      {channels.isError && <Text sx={{ color: "fg.danger" }}>无法加载渠道，请确认管理员权限和后端状态。</Text>}
-
-      <Box sx={{ display: "grid", gridTemplateColumns: ["1fr", "280px minmax(0, 1fr)"], gap: 4, alignItems: "start" }}>
-        <Box sx={{ borderRight: ["none", "1px solid"], borderColor: "border.default", pr: [0, 3], display: "flex", flexDirection: "column", gap: 1 }}>
-          {items.map((channel) => <Button key={channel.id} variant={selectedId === channel.id && !creating ? "secondary" : "default"} onClick={() => choose(channel)} sx={{ minHeight: 78, justifyContent: "flex-start", textAlign: "left", whiteSpace: "normal" }}><Box sx={{ minWidth: 0 }}><Text fw={600}>{channel.display_name}</Text><Text sx={{ color: "fg.muted", fontSize: 1, overflowWrap: "anywhere" }}>{channel.provider} · {channel.models.length} 个模型</Text><Box sx={{ display: "flex", gap: 1, mt: 1, flexWrap: "wrap" }}><Badge size="xs" color={channel.has_secret ? "green" : "yellow"}>{channel.has_secret ? "已连接" : "缺少密钥"}</Badge>{!channel.enabled && <Badge size="xs" color="gray">已禁用</Badge>}</Box></Box></Button>)}
-          {!items.length && !channels.isLoading && <Text sx={{ color: "fg.muted" }}>还没有渠道。</Text>}
-        </Box>
-
-        <Box sx={{ display: "flex", flexDirection: "column", gap: 4, minWidth: 0 }}>
-          {(creating || selected) && <>
-            <Box sx={{ display: "flex", justifyContent: "space-between", gap: 2, alignItems: "center" }}><Box><Heading order={3}>{creating ? "新建渠道" : selected?.display_name}</Heading><Text sx={{ color: "fg.muted", mt: 1 }}>密钥只进入后端 SecretStore，不会写入配置或运行记录。</Text></Box>{selected && <Box sx={{ display: "flex", gap: 1, alignItems: "center" }}><Text>启用</Text><ToggleSwitch checked={draft.enabled} onChange={(event) => setDraft({ ...draft, enabled: event.currentTarget.checked })} /></Box>}</Box>
-            <Box sx={{ display: "grid", gridTemplateColumns: ["1fr", "1fr 1fr"], gap: 3 }}>
-              <FormControl><FormControl.Label>渠道 ID</FormControl.Label><TextInput value={draft.id} onChange={(event) => setDraft({ ...draft, id: event.target.value })} disabled={!creating} block /></FormControl>
-              <FormControl><FormControl.Label>显示名称</FormControl.Label><TextInput value={draft.display_name} onChange={(event) => setDraft({ ...draft, display_name: event.target.value })} block /></FormControl>
-              <FormControl><FormControl.Label>Provider 来源</FormControl.Label><Select value={draft.provider} onValueChange={(value) => setDraft({ ...draft, provider: value, base_url: PROVIDER_DEFAULT_URLS[value] ?? null })}>{PROVIDERS.map((provider) => <Select.Option key={provider.value} value={provider.value}>{provider.label}</Select.Option>)}</Select></FormControl>
-              <FormControl><FormControl.Label>Base URL</FormControl.Label><TextInput value={draft.base_url ?? ""} onChange={(event) => setDraft({ ...draft, base_url: event.target.value || null })} placeholder="官方地址可使用默认值" block /></FormControl>
-            </Box>
-            <Box sx={{ display: "flex", gap: 2, alignItems: "end", flexWrap: "wrap" }}><FormControl sx={{ flex: 1, minWidth: 240 }}><FormControl.Label>API Key</FormControl.Label><PasswordInput value={secret} onChange={(event) => setSecret(event.currentTarget.value)} placeholder={selected?.has_secret ? "留空表示保留现有密钥" : "输入后验证并同步模型"} autoComplete="new-password" /></FormControl><Button onClick={() => void saveSecret()} disabled={!selected || !secret || busy}><KeyRound size={16} /> 验证并保存</Button></Box>
-            <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap" }}><Button variant="primary" onClick={() => void saveChannel()} disabled={busy || !draft.id.trim() || !draft.display_name.trim()}><Save size={16} /> 保存渠道</Button>{selected?.has_secret && <Button onClick={() => void syncModels()} disabled={busy}><RefreshCw size={16} /> 同步模型</Button>}</Box>
-            {selected && <Box sx={{ display: "flex", flexDirection: "column", gap: 2, borderTop: "1px solid", borderColor: "border.default", pt: 3 }}><Box><Heading order={4}>模型目录</Heading><Text sx={{ color: "fg.muted", mt: 1 }}>按来源分组。新同步模型的能力默认关闭，请手动确认。</Text></Box>{Object.entries(selected.models.reduce<Record<string, ChannelModel[]>>((groups, model) => { (groups[model.source] ??= []).push(model); return groups; }, {})).map(([source, models]) => <Box key={source} sx={{ display: "flex", flexDirection: "column", gap: 1 }}><Text fw={600}>{source} <Text as="span" sx={{ color: "fg.muted" }}>({models.length})</Text></Text>{models.map((model) => <Box key={model.id} sx={{ display: "grid", gridTemplateColumns: ["1fr", "minmax(0, 1fr) auto auto auto"], gap: 2, alignItems: "center", py: 2, borderBottom: "1px solid", borderColor: "border.muted" }}><Box sx={{ minWidth: 0 }}><Text sx={{ overflowWrap: "anywhere" }}>{model.id}</Text>{!model.capability.tool_calling && !model.capability.vision && <Text sx={{ color: "fg.muted", fontSize: 1 }}>能力未确认</Text>}</Box><Checkbox label="启用" checked={model.enabled} onChange={(event) => void patchModel(model, { enabled: event.currentTarget.checked })} /><Checkbox label="Tool" checked={model.capability.tool_calling} onChange={(event) => void patchModel(model, { capability: { ...model.capability, tool_calling: event.currentTarget.checked } })} /><Checkbox label="Vision" checked={model.capability.vision} onChange={(event) => void patchModel(model, { capability: { ...model.capability, vision: event.currentTarget.checked } })} /></Box>)}</Box>)}</Box>}
-            {selected && <Box sx={{ display: "flex", gap: 2, pt: 2, borderTop: "1px solid", borderColor: "border.default" }}><Button variant="danger" onClick={() => void disableChannel()} disabled={busy || !selected.enabled}><Wrench size={16} /> 禁用渠道</Button><Button onClick={() => void channels.refetch()} disabled={channels.isFetching}><RefreshCw size={16} /> 刷新</Button></Box>}
-          </>}
-        </Box>
-      </Box>
-
-      <ErrorBanner message={errorMessage} />
-    </Box>
+    <div className={styles.channelWorkspace}>
+      <ChannelRail
+        channels={items}
+        query={channelQuery}
+        selectedId={selected?.id ?? selectedId}
+        onCreate={beginCreate}
+        onQueryChange={setChannelQuery}
+        onSelect={choose}
+      />
+      <section className={styles.channelDetail} aria-label="AI 渠道详情">
+        {!showEditor ? (
+          <div className={styles.emptyState} style={{ minHeight: "100%" }}>
+            <ProviderMark provider="openai-compatible" size={52} />
+            <strong>选择一个渠道开始配置</strong>
+            <p>查看模型目录、编辑访问配置，或创建一个新的 AI 渠道。</p>
+            <Button variant="primary" onClick={beginCreate}>新建渠道</Button>
+          </div>
+        ) : (
+          <>
+            <header className={styles.detailHeader}>
+              <div className={styles.detailIdentity}>
+                <ProviderMark provider={activeDraft.provider} size={46} />
+                <div style={{ minWidth: 0 }}>
+                  <h2 className={styles.detailName}>{activeDraft.display_name || "新建渠道"}</h2>
+                  <div className={styles.detailMeta}>{providerLabel(activeDraft.provider)}{selected ? ` · ${selected.id} · ${selected.models.length} 个模型 · 更新于 ${formatDate(selected.updated_at)}` : " · 尚未创建"}</div>
+                </div>
+              </div>
+              <div className={styles.detailActions}>
+                {selected && <span className={styles.destructiveAction}><Tooltip text="删除渠道"><IconButton variant="default" icon={Trash2} aria-label="删除渠道" disabled={busy} onClick={deleteSelected} style={{ color: "var(--fgColor-danger)" }} /></Tooltip></span>}
+                {(creating || canSave) && <Button variant="primary" leadingVisual={Save} disabled={!canSave || busy} onClick={() => void saveAll()}>{creating ? "创建" : "保存"}</Button>}
+                {selected && <span className={styles.statusControl}>
+                  <span className={styles.switchLabel}>{selected.enabled ? "已启用" : "已停用"}</span>
+                  <ToggleSwitch aria-label="启用渠道" checked={selected.enabled} disabled={busy} onChange={(event) => toggleEnabled(event.currentTarget.checked)} />
+                </span>}
+              </div>
+            </header>
+            <div className={styles.detailBody}>
+              <section className={styles.inlineForm} aria-label="渠道配置">
+                <div className={styles.formRow}>
+                  <div><div className={styles.overviewLabel}>显示名称</div><div className={styles.overviewHint}>工作台中显示的渠道名称</div></div>
+                  <div className={styles.formControl}><TextInput block value={activeDraft.display_name} placeholder="例如 DeepSeek 官方" onChange={(event) => setDraft({ ...activeDraft, display_name: event.currentTarget.value })} /></div>
+                </div>
+                <div className={styles.formRow}>
+                  <div><div className={styles.overviewLabel}>Provider</div><div className={styles.overviewHint}>服务商适配器</div></div>
+                  <div className={styles.formControl}>
+                    <Select block value={activeDraft.provider} onValueChange={(provider) => setDraft({ ...activeDraft, provider, base_url: PROVIDER_DEFAULT_URLS[provider] ?? null })}>
+                      {PROVIDERS.map((provider) => <Select.Option key={provider.value} value={provider.value}>{provider.label}</Select.Option>)}
+                    </Select>
+                  </div>
+                </div>
+                {creating && <div className={styles.formRow}>
+                  <div><div className={styles.overviewLabel}>渠道 ID</div><div className={styles.overviewHint}>创建后作为策略与快照的固定标识</div></div>
+                  <div className={styles.formControl}><TextInput block value={activeDraft.id} placeholder="例如 deepseek-primary" onChange={(event) => setDraft({ ...activeDraft, id: event.currentTarget.value })} /></div>
+                </div>}
+                <div className={styles.formRow}>
+                  <div><div className={styles.overviewLabel}>Base URL</div><div className={styles.overviewHint}>Provider API 接入地址</div></div>
+                  <div className={styles.inlineControlGroup}>
+                    <TextInput block value={activeDraft.base_url ?? ""} placeholder="官方渠道可使用默认地址" onChange={(event) => setDraft({ ...activeDraft, base_url: event.currentTarget.value || null })} />
+                    <Tooltip text="复制 API 地址"><IconButton variant="default" icon={Copy} aria-label="复制 API 地址" disabled={!activeDraft.base_url} onClick={() => void copyBaseUrl()} /></Tooltip>
+                  </div>
+                </div>
+                <div className={styles.formRow}>
+                  <div><div className={styles.overviewLabel}>API Key</div><div className={styles.overviewHint}>{selected?.has_secret ? "已保存，可查看或替换" : "保存后自动同步模型"}</div></div>
+                  <div className={styles.formControl}>
+                    <div className={styles.inlineControlGroup}>
+                      <PasswordInput
+                        classNames={{ input: styles.credentialInput }}
+                        value={displayedSecret}
+                        visible={secretVisible}
+                        disabled={revealingSecret}
+                        placeholder="输入 API Key（可稍后填写）"
+                        autoComplete="off"
+                        onFocus={(event) => { if (!secretRevealed && !secretDirty && selected?.has_secret) event.currentTarget.select(); }}
+                        onChange={(event) => changeSecret(event.currentTarget.value)}
+                        onVisibilityChange={changeSecretVisibility}
+                      />
+                    </div>
+                    {credentialError && <div className={styles.formError} role="alert">{credentialError}</div>}
+                  </div>
+                </div>
+              </section>
+              {selected && <ModelCatalog
+                busy={busy}
+                busyModelId={busyModelId}
+                channel={selected}
+                filter={modelFilter}
+                query={modelQuery}
+                onFilterChange={setModelFilter}
+                onPatch={(model, patch) => void patchModel(model, patch)}
+                onQueryChange={setModelQuery}
+                onSync={() => void syncModels()}
+              />}
+              <ErrorBanner message={errorMessage} />
+            </div>
+          </>
+        )}
+      </section>
+    </div>
   );
 }

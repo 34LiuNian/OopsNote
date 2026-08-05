@@ -319,6 +319,59 @@ def test_provider_rotation_commits_a_validated_new_nonsecret_version(monkeypatch
     assert not vault.has(old_reference)
 
 
+def test_new_discovered_models_enable_tool_calling_by_default():
+    model = ChannelModel(id="new-model", source="DeepSeek")
+
+    assert model.capability.tool_calling is True
+    assert model.capability.vision is False
+
+
+def test_admin_can_reveal_one_channel_credential_without_cache_headers(monkeypatch, tmp_path):
+    from oopsnote.api import main
+
+    settings = AppSettingsStore(tmp_path / "settings.json")
+    vault = MemorySecretStore()
+    reference = vault.put("stored-secret")
+    settings.upsert_provider_channel(ProviderChannel(
+        id="primary",
+        version=1,
+        display_name="Primary",
+        provider="deepseek",
+        credential_ref=reference,
+    ))
+    monkeypatch.setattr(main, "APP_SETTINGS_STORE", settings)
+    monkeypatch.setattr(main, "RUN_STORE", RunStore(tmp_path / "storage" / "runs"))
+    monkeypatch.setattr(main, "get_secret_store", lambda: vault)
+
+    response = TestClient(main.app).get("/settings/ai/channels/primary/credential")
+
+    assert response.status_code == 200
+    assert response.json() == {"secret": "stored-secret"}
+    assert response.headers["cache-control"] == "no-store"
+    assert response.headers["pragma"] == "no-cache"
+    assert settings.provider_channels()[0].credential_ref == reference
+
+
+def test_revealing_a_missing_channel_credential_is_explicit(monkeypatch, tmp_path):
+    from oopsnote.api import main
+
+    settings = AppSettingsStore(tmp_path / "settings.json")
+    settings.upsert_provider_channel(ProviderChannel(
+        id="primary",
+        version=1,
+        display_name="Primary",
+        provider="deepseek",
+    ))
+    monkeypatch.setattr(main, "APP_SETTINGS_STORE", settings)
+    monkeypatch.setattr(main, "RUN_STORE", RunStore(tmp_path / "storage" / "runs"))
+    monkeypatch.setattr(main, "get_secret_store", MemorySecretStore)
+
+    response = TestClient(main.app).get("/settings/ai/channels/primary/credential")
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "channel has no credential"
+
+
 def test_rotating_a_channel_does_not_change_the_global_policy(monkeypatch, tmp_path):
     from oopsnote.api import main
 

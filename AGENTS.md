@@ -82,3 +82,11 @@ $env:PYTEST_ADDOPTS='--basetemp=E:/works/2026/OopsNote/.pytest-tmp'
 ```
 
 Do not claim browser E2E, credentialed model behavior, or paper compilation from static checks alone.
+
+## Frontend Button Icon Contract
+
+- The shared `frontend/components/ui/primitives.tsx` `Button` owns icon-and-label alignment.
+- Buttons with a leading icon must declare it with `leadingVisual`; trailing icons must use `trailingVisual`.
+- Do not render icon components directly beside button text as `Button` children. This bypasses Mantine's section layout and causes icon/text collisions.
+- Icon-only actions must use `IconButton` with an accessible `aria-label` rather than a text button containing only an icon.
+- New or changed frontend buttons must preserve a visible icon-label gap and shared vertical alignment.

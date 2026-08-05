@@ -33,6 +33,11 @@ const ERROR_MESSAGE_MAP: Record<string, string> = {
   "服务器错误": "服务器繁忙，请稍后重试",
   "权限不足": "权限不足，无法执行此操作",
   "请求超时": "请求超时，请检查网络连接后重试",
+
+  // Provider 设置
+  "Provider model discovery failed": "模型发现失败，请检查 API Key 和 Base URL",
+  "Authentication failed": "API Key 验证失败",
+  "channel_in_use": "该渠道正被运行中的任务引用，暂时无法删除",
 };
 
 /**

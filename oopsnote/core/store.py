@@ -652,6 +652,63 @@ class BatchSessionStore:
             self._write(records)
             return updated
 
+    def clear_stale_task_link(
+        self,
+        file_hash: str,
+        segment_id: str,
+        task_id: str,
+        *,
+        expected_revision: int,
+    ) -> BatchSessionRecord:
+        """Remove one task link after its absence has been verified by the caller."""
+        with self.session_lock(file_hash), self._lock:
+            records = self._read()
+            current = records.get(file_hash)
+            if not current:
+                raise KeyError(file_hash)
+            if current.revision != expected_revision:
+                raise StateConflict(
+                    f"Batch session {file_hash} revision is {current.revision}, "
+                    f"expected {expected_revision}"
+                )
+            segments = []
+            found = False
+            for segment in current.segments:
+                if segment.id != segment_id:
+                    segments.append(segment)
+                    continue
+                if segment.task_id != task_id:
+                    raise StateConflict(
+                        f"Batch segment {segment_id} no longer links task {task_id}"
+                    )
+                found = True
+                segments.append(
+                    segment.model_copy(
+                        update={
+                            "status": "pending",
+                            "review_reason": None,
+                            "review_previous_status": None,
+                            "review_resolved": False,
+                            "task_id": None,
+                            "problem_ids": [],
+                            "error": None,
+                        }
+                    )
+                )
+            if not found:
+                raise KeyError(segment_id)
+            updated = BatchSessionRecord.model_validate(
+                {
+                    **current.model_dump(),
+                    "updated_at": datetime.now(timezone.utc),
+                    "revision": current.revision + 1,
+                    "segments": segments,
+                }
+            )
+            records[file_hash] = updated
+            self._write(records)
+            return updated
+
     def delete(self, file_hash: str) -> BatchSessionRecord:
         """Delete only the batch workspace record; task assets remain untouched."""
         with self.session_lock(file_hash), self._lock:

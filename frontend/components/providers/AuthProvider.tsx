@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
-import { beginSignin, beginSignout, currentUser, hasAccessToken, refreshCurrentUser, type AuthUser } from "@/lib/auth";
+import { beginSignin, beginSignout, currentUser, hasAccessToken, isLocalAuthMode, refreshCurrentUser, type AuthUser } from "@/lib/auth";
 
 type AuthContextValue = {
   authenticated: boolean;
@@ -31,7 +31,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signinStarted = useRef(false);
 
   useEffect(() => {
-    if (isCallback || authenticated || signinStarted.current) return;
+    if (isLocalAuthMode() || isCallback || authenticated || signinStarted.current) return;
     signinStarted.current = true;
     void beginSignin(pathname).catch((reason: unknown) => {
       const message = reason instanceof Error ? reason.message : "无法启动 OIDC 登录";
@@ -42,7 +42,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [authenticated, isCallback, pathname]);
 
   useEffect(() => {
-    if (!authenticated || user) return;
+    if (isLocalAuthMode() || !authenticated || user) return;
     void refreshCurrentUser().then(setUser).catch((error: unknown) => {
       console.warn("Unable to load the current OIDC user", error);
     });

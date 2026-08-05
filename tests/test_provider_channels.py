@@ -33,7 +33,7 @@ def channel(vault: MemorySecretStore) -> ProviderChannel:
     )
 
 
-def test_discovery_groups_by_provider_source_and_closes_unknown_capabilities():
+def test_discovery_groups_by_provider_source_and_defaults_tool_calling_capability():
     vault = MemorySecretStore()
     configured = channel(vault)
     response = type("Response", (), {
@@ -44,7 +44,8 @@ def test_discovery_groups_by_provider_source_and_closes_unknown_capabilities():
         models = ProviderClientFactory(vault).discover_models(configured)
     assert [(item.id, item.source) for item in models] == [("deepseek-chat", "DeepSeek"), ("other", "Other")]
     assert all(not item.enabled for item in models)
-    assert all(item.capability == ProviderCapabilities() for item in models)
+    assert all(item.capability.tool_calling for item in models)
+    assert all(not item.capability.vision for item in models)
 
 
 def test_policy_and_channel_are_persisted_as_one_authoritative_settings_shape(tmp_path: Path):

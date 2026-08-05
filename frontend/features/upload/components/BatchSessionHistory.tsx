@@ -40,7 +40,7 @@ export function BatchSessionHistory({ sessions, isImporting, onRename, onResume,
             </Box>
             <IconButton icon={Pencil} size="small" variant="invisible" aria-label="重命名最近文件" title="重命名最近文件" onClick={() => onRename(session)} />
             <IconButton className="batch-scan-history__delete" icon={Trash2} size="small" variant="invisible" aria-label="删除最近文件" title="删除最近文件" onClick={() => onDelete(session)} />
-            <Button size="small" variant="default" onClick={() => onResume(session)} disabled={isImporting}><Eye size={16} />查看</Button>
+            <Button size="small" variant="default" leadingVisual={Eye} onClick={() => onResume(session)} disabled={isImporting}>查看</Button>
           </Box>
         );
       })}

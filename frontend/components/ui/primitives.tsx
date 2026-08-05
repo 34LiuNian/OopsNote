@@ -222,11 +222,11 @@ export const Heading = forwardRef<any, HeadingProps>(function Heading({ sx, clas
   return <Title ref={ref} component={component as any} order={order as any} className={[resolved.className, className].filter(Boolean).join(" ") || undefined} style={{ ...resolved.style, ...style }} {...props as any} />;
 });
 
-type ButtonCompatProps = React.ButtonHTMLAttributes<HTMLButtonElement> & { sx?: SxProps; leadingVisual?: React.ElementType; block?: boolean; variant?: string; size?: "small" | "medium" | "large" | "small"; color?: string };
-export const Button = forwardRef<HTMLButtonElement, ButtonCompatProps>(function Button({ sx, className, style, variant, size = "medium", leadingVisual: LeadingVisual, block, color, ...props }, ref) {
+type ButtonCompatProps = React.ButtonHTMLAttributes<HTMLButtonElement> & { sx?: SxProps; leadingVisual?: React.ElementType; trailingVisual?: React.ElementType; block?: boolean; variant?: string; size?: "small" | "medium" | "large" | "small"; color?: string };
+export const Button = forwardRef<HTMLButtonElement, ButtonCompatProps>(function Button({ sx, className, style, variant, size = "medium", leadingVisual: LeadingVisual, trailingVisual: TrailingVisual, block, color, ...props }, ref) {
   const resolved = useSx(sx);
   const mappedVariant = variant === "primary" ? "filled" : variant === "invisible" ? "subtle" : variant === "danger" ? "filled" : variant === "secondary" ? "light" : variant === "default" ? "default" : variant;
-  return <MantineButton ref={ref} className={[resolved.className, className].filter(Boolean).join(" ") || undefined} style={{ ...resolved.style, ...style }} variant={mappedVariant as any} color={color ?? (variant === "danger" ? "red" : undefined)} size={size === "small" ? "xs" : size === "large" ? "md" : "sm"} fullWidth={block} leftSection={LeadingVisual ? <LeadingVisual size={15} /> : undefined} {...props as any} />;
+  return <MantineButton ref={ref} className={[resolved.className, className].filter(Boolean).join(" ") || undefined} style={{ ...resolved.style, ...style }} variant={mappedVariant as any} color={color ?? (variant === "danger" ? "red" : undefined)} size={size === "small" ? "xs" : size === "large" ? "md" : "sm"} fullWidth={block} leftSection={LeadingVisual ? <LeadingVisual size={15} /> : undefined} rightSection={TrailingVisual ? <TrailingVisual size={15} /> : undefined} {...props as any} />;
 });
 
 type IconButtonCompatProps = React.ButtonHTMLAttributes<HTMLButtonElement> & { sx?: SxProps; icon?: React.ElementType; as?: React.ElementType; href?: string; variant?: string; size?: "small" | "medium" | "large" };

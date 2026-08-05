@@ -12,6 +12,18 @@ type AuthConfig = {
   endSessionEndpoint: string;
 };
 
+const LOCAL_USER: AuthUser = {
+  subject: "local-admin",
+  displayName: "本地管理员",
+  email: null,
+  picture: null,
+  roles: ["admin"],
+};
+
+export function isLocalAuthMode(): boolean {
+  return (process.env.NEXT_PUBLIC_AUTH_MODE || "oidc").trim().toLowerCase() === "local";
+}
+
 export type AuthUser = {
   subject: string;
   displayName: string;
@@ -125,6 +137,7 @@ function userFromUserInfo(payload: unknown): AuthUser {
 }
 
 export function isAdminUser(user: AuthUser | null): boolean {
+  if (isLocalAuthMode()) return user?.subject === LOCAL_USER.subject;
   if (!user) return false;
   const subjects = (process.env.NEXT_PUBLIC_ADMIN_SUBJECTS || "").split(",").map((value) => value.trim()).filter(Boolean);
   if (subjects.includes(user.subject)) return true;
@@ -147,10 +160,12 @@ export function clearAuthSession(): void {
 }
 
 export function currentUser(): AuthUser | null {
+  if (isLocalAuthMode()) return LOCAL_USER;
   return loadSession()?.user ?? null;
 }
 
 export async function refreshCurrentUser(): Promise<AuthUser> {
+  if (isLocalAuthMode()) return LOCAL_USER;
   const session = loadSession();
   if (!session) throw new Error("OIDC session is missing");
   const user = await fetchUserInfo(session.access_token);
@@ -159,6 +174,7 @@ export async function refreshCurrentUser(): Promise<AuthUser> {
 }
 
 export async function beginSignin(returnTo?: string): Promise<void> {
+  if (isLocalAuthMode()) return;
   const config = authConfig();
   const verifier = randomString();
   const state = randomString();
@@ -181,6 +197,7 @@ export async function beginSignin(returnTo?: string): Promise<void> {
 }
 
 export async function completeSignin(urlString: string): Promise<string> {
+  if (isLocalAuthMode()) return "/";
   const config = authConfig();
   const callbackUrl = new URL(urlString);
   const code = callbackUrl.searchParams.get("code");
@@ -220,6 +237,7 @@ export async function completeSignin(urlString: string): Promise<string> {
 }
 
 export async function accessTokenOrRedirect(): Promise<string> {
+  if (isLocalAuthMode()) return "";
   const session = loadSession();
   if (session) return session.access_token;
   await beginSignin(window.location.pathname + window.location.search);
@@ -227,10 +245,14 @@ export async function accessTokenOrRedirect(): Promise<string> {
 }
 
 export function hasAccessToken(): boolean {
-  return Boolean(loadSession());
+  return isLocalAuthMode() || Boolean(loadSession());
 }
 
 export function beginSignout(): never {
+  if (isLocalAuthMode()) {
+    window.location.reload();
+    throw new Error("Reloading local session");
+  }
   const config = authConfig();
   clearAuthSession();
   const url = new URL(config.endSessionEndpoint);

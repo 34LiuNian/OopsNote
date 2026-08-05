@@ -99,12 +99,10 @@ export function UploadQueue({
         <Text className="capture-dropzone__hint">支持多选、拖放或相册拍照</Text>
       </Box>
       <Box className="capture-dropzone__actions">
-        <Button variant="primary" onClick={() => singleInputRef.current?.click()} disabled={isLoading}>
-          <UploadIcon size={16} />
+        <Button variant="primary" leadingVisual={UploadIcon} onClick={() => singleInputRef.current?.click()} disabled={isLoading}>
           选择图片
         </Button>
-        <Button onClick={() => folderInputRef.current?.click()} disabled={isLoading} variant="invisible">
-          <FolderOpenIcon size={16} />
+        <Button leadingVisual={FolderOpenIcon} onClick={() => folderInputRef.current?.click()} disabled={isLoading} variant="invisible">
           文件夹
         </Button>
       </Box>

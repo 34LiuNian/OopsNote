@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { ChevronDown } from "lucide-react";
-import { Box, Button, Select, Text, TextInput, Textarea } from "@/components/ui/primitives";
+import { Box, Button, IconButton, Select, Text, TextInput, Textarea } from "@/components/ui/primitives";
 import { ProblemCard } from "@/components/ProblemCard";
 import { fetchJson } from "@/lib/api";
 import { confirmAction } from "@/lib/confirm";
@@ -157,7 +157,7 @@ export function ProblemStudyPanel({ taskId, problem, mergedInto, onStatusMessage
                     />
                     <Box sx={{ display: "flex", alignItems: "flex-start", gap: 1, mt: 3 }}>
                       <Button size="small" disabled={isMerging} onClick={() => requestMerge(task.id, "into_current")}>并入此当前题</Button>
-                      <Button size="small" variant="secondary" aria-label="展开反向并入操作" title="展开反向并入操作" disabled={isMerging} onClick={() => setReverseOpenFor((value) => value === task.id ? "" : task.id)}><ChevronDown size={15} /></Button>
+                      <IconButton size="small" variant="secondary" icon={ChevronDown} aria-label="展开反向并入操作" title="展开反向并入操作" disabled={isMerging} onClick={() => setReverseOpenFor((value) => value === task.id ? "" : task.id)} />
                     </Box>
                     {reverseOpenFor === task.id && (
                       <Box sx={{ mt: 2 }}>

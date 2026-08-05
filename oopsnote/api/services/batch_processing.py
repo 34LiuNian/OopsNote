@@ -147,6 +147,7 @@ def process_batch_session(
     runner: Any,
     *,
     expected_revision: int,
+    retry_segment_id: str | None = None,
 ) -> dict[str, Any]:
     runner.recover_stale()
     with context.session_store.session_lock(file_hash):
@@ -159,7 +160,56 @@ def process_batch_session(
                 409,
                 f"Batch session revision is {record.revision}, expected {expected_revision}",
             )
-        pending = [segment for segment in record.segments if segment.status == "pending"]
+        retrying_segment = None
+        if retry_segment_id is not None:
+            retrying_segment = next(
+                (segment for segment in record.segments if segment.id == retry_segment_id),
+                None,
+            )
+            if retrying_segment is None:
+                raise BatchProcessError(404, "Batch segment not found")
+
+            if retrying_segment.task_id:
+                try:
+                    context.task_store.get(retrying_segment.task_id)
+                except KeyError:
+                    # A batch segment owns this reference. Remove the stale link
+                    # before entering the existing task-creation pipeline.
+                    record = context.session_store.clear_stale_task_link(
+                        record.file_hash,
+                        retrying_segment.id,
+                        retrying_segment.task_id,
+                        expected_revision=record.revision,
+                    )
+                else:
+                    record = _replace_session_segment(
+                        context,
+                        record,
+                        retrying_segment.id,
+                        status="pending",
+                        review_reason=None,
+                        review_previous_status=None,
+                        review_resolved=False,
+                        error=None,
+                    )
+            else:
+                record = _replace_session_segment(
+                    context,
+                    record,
+                    retrying_segment.id,
+                    status="pending",
+                    review_reason=None,
+                    review_previous_status=None,
+                    review_resolved=False,
+                    error=None,
+                )
+
+        pending = [
+            segment
+            for segment in record.segments
+            if segment.status == "pending"
+            and (retry_segment_id is None or segment.id == retry_segment_id)
+        ]
         requested_count = len(pending)
         if not pending:
             return {
@@ -290,7 +340,11 @@ def process_batch_session(
 
                     run_id = task.active_run_id
                     error_message: str | None = None
-                    if task.status == TaskStatus.PENDING:
+                    if task.status == TaskStatus.PENDING or (
+                        retrying_segment is not None
+                        and segment.id == retrying_segment.id
+                        and task.status in {TaskStatus.FAILED, TaskStatus.CANCELLED}
+                    ):
                         try:
                             run = runner.submit(task.id)
                             run_id = run.id

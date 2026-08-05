@@ -165,6 +165,20 @@ export async function processBatchSession(fileHash: string, expectedRevision: nu
   });
 }
 
+export async function retryBatchSegment(
+  fileHash: string,
+  segmentId: string,
+  expectedRevision: number,
+): Promise<BatchProcessResult> {
+  return fetchJson<BatchProcessResult>(
+    `/batch-sessions/${encodeURIComponent(fileHash)}/segments/${encodeURIComponent(segmentId)}/retry`,
+    {
+      method: "POST",
+      body: JSON.stringify({ expected_revision: expectedRevision }),
+    },
+  );
+}
+
 export async function deleteBatchSession(fileHash: string): Promise<void> {
   await fetchJson(`/batch-sessions/${encodeURIComponent(fileHash)}`, { method: "DELETE" });
 }

@@ -1,0 +1,13 @@
+services:
+  frontend:
+    build:
+      args:
+        NEXT_PUBLIC_AUTH_MODE: local
+
+  backend:
+    environment:
+      OOPSNOTE_AUTH_MODE: local
+
+  pocket-id:
+    profiles:
+      - oidc
