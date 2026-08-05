@@ -113,6 +113,27 @@ test("one document rectangle splits across three pages and maps back to source",
   expect(source.height).toBeCloseTo(0.84);
 });
 
+test("page-boundary slices stay within the API normalized coordinate contract", () => {
+  const crop = { x: 0.0029556575079856835, y: 0.04809750884086601, width: 0.9970443424920143, height: 0.9056727700328392 };
+  const metrics = buildPageMetrics(pages, crop, { columnCount: 2, overlapRatio: 0.5 });
+  const slices = splitSelectionAcrossPages({
+    left: metrics[0].contentLeft,
+    right: metrics[0].contentRight,
+    top: metrics[0].documentTop,
+    bottom: metrics[metrics.length - 1].documentBottom,
+  }, metrics);
+
+  expect(slices.length).toBe(metrics.length);
+  for (const slice of slices) {
+    expect(slice.rect.x).toBeGreaterThanOrEqual(0);
+    expect(slice.rect.y).toBeGreaterThanOrEqual(0);
+    expect(slice.rect.x + slice.rect.width).toBeLessThanOrEqual(1);
+    expect(slice.rect.y + slice.rect.height).toBeLessThanOrEqual(1);
+    expect(slice.rect.width).toBeGreaterThan(0);
+    expect(slice.rect.height).toBeGreaterThan(0);
+  }
+});
+
 test("resize changes one logical rectangle and ordering is top then left", () => {
   const original = { left: 100, top: 200, right: 500, bottom: 600 };
   const resized = resizeDocumentRect(original, "se", { x: 720, y: 880 }, { left: 0, top: 0, right: 1000, bottom: 2000 });

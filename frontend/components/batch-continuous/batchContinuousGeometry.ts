@@ -118,6 +118,11 @@ export function intersectSelectionWithPage(selection: DocumentRect, page: PageMe
   const sourceRight = page.coreRect.x + (right - page.coreDisplayLeft) / (page.sourceWidth * page.sourceScale);
   const cropLeft = clamp((sourceLeft - page.crop.x) / page.crop.width, 0, 1);
   const cropRight = clamp((sourceRight - page.crop.x) / page.crop.width, 0, 1);
+  const topRatio = clamp((top - page.documentTop) / page.displayHeight, 0, 1);
+  const bottomRatio = clamp((bottom - page.documentTop) / page.displayHeight, 0, 1);
+  const width = cropRight - cropLeft;
+  const height = bottomRatio - topRatio;
+  if (width <= 0 || height <= 0) return null;
   return {
     pageId: page.sourcePageId,
     pageIndex: page.pageIndex,
@@ -125,9 +130,9 @@ export function intersectSelectionWithPage(selection: DocumentRect, page: PageMe
     order: 0,
     rect: {
       x: cropLeft,
-      y: (top - page.documentTop) / page.displayHeight,
-      width: cropRight - cropLeft,
-      height: (bottom - top) / page.displayHeight,
+      y: topRatio,
+      width,
+      height,
     },
   };
 }
