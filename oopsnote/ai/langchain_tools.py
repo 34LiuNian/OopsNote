@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import asyncio
 from copy import deepcopy
-from typing import Any, Protocol
+from collections.abc import Collection
+from typing import Any, Mapping, Protocol
 
 from oopsnote.mcp.contracts import load_tool_contract
 
@@ -34,19 +35,56 @@ class McpHttpToolClient:
         return result.model_dump(mode="json")
 
 
-def langchain_tool_schemas() -> list[dict[str, Any]]:
-    """Derive provider function schemas directly from the canonical contract."""
-    return [
-        {
+def langchain_tool_schemas(
+    names: Collection[str] | None = None,
+    *,
+    constants: Mapping[str, Mapping[str, Any]] | None = None,
+    required_arguments: Mapping[str, Collection[str]] | None = None,
+    parameter_overrides: Mapping[str, Mapping[str, Mapping[str, Any]]] | None = None,
+) -> list[dict[str, Any]]:
+    """Derive provider schemas and state-scoped restrictions from the MCP contract.
+
+    The contract remains the only source for tool names and parameter shapes.
+    A runner may narrow a currently legal call using authoritative task/run state,
+    but it cannot add a provider-only tool or parameter.
+    """
+    allowed = set(names) if names is not None else None
+    constants = constants or {}
+    required_arguments = required_arguments or {}
+    parameter_overrides = parameter_overrides or {}
+    schemas: list[dict[str, Any]] = []
+    for tool in load_tool_contract()["tools"]:
+        name = tool["name"]
+        if allowed is not None and name not in allowed:
+            continue
+        parameters = deepcopy(tool["parameters"])
+        properties = parameters["properties"]
+        required = list(parameters.get("required") or [])
+        for argument, value in constants.get(name, {}).items():
+            if argument not in properties:
+                raise ValueError(f"{name} has no canonical parameter {argument}")
+            properties[argument] = {**properties[argument], "const": value}
+            if argument not in required:
+                required.append(argument)
+        for argument in required_arguments.get(name, ()):
+            if argument not in properties:
+                raise ValueError(f"{name} has no canonical parameter {argument}")
+            if argument not in required:
+                required.append(argument)
+        for argument, override in parameter_overrides.get(name, {}).items():
+            if argument not in properties:
+                raise ValueError(f"{name} has no canonical parameter {argument}")
+            properties[argument] = {**properties[argument], **deepcopy(override)}
+        parameters["required"] = required
+        schemas.append({
             "type": "function",
             "function": {
-                "name": tool["name"],
+                "name": name,
                 "description": tool["description"],
-                "parameters": deepcopy(tool["parameters"]),
+                "parameters": parameters,
             },
-        }
-        for tool in load_tool_contract()["tools"]
-    ]
+        })
+    return schemas
 
 
 class ContractBoundToolDispatcher:
@@ -62,7 +100,14 @@ class ContractBoundToolDispatcher:
         self._task_id = task_id
         self._run_id = run_id
 
-    async def call(self, name: str, arguments: dict[str, Any]) -> Any:
+    async def call(
+        self,
+        name: str,
+        arguments: dict[str, Any],
+        *,
+        allowed_parameters: Mapping[str, dict[str, Any]] | None = None,
+        fixed_arguments: Mapping[str, Mapping[str, Any]] | None = None,
+    ) -> Any:
         try:
             tool = self._tools[name]
         except KeyError as error:
@@ -75,10 +120,30 @@ class ContractBoundToolDispatcher:
             if actual is not None and actual != expected:
                 raise ValueError(f"{name} may only use the active {field}")
             arguments[field] = expected
+        if fixed_arguments is not None:
+            arguments.update(fixed_arguments.get(name, {}))
+        if allowed_parameters is not None:
+            parameters = allowed_parameters.get(name)
+            if parameters is None:
+                raise ValueError(f"{name} is not legal in the current pipeline transition")
+            try:
+                from jsonschema import Draft202012Validator
+            except ImportError as error:
+                raise RuntimeError("jsonschema is required for managed tool validation") from error
+            validation_errors = list(Draft202012Validator(parameters).iter_errors(arguments))
+            if validation_errors:
+                message = validation_errors[0].message
+                raise ValueError(f"{name} violates the current pipeline transition: {message}")
         # The MCP server remains the authoritative validation boundary.
         return await self.client.call(tool["remoteName"], arguments)
 
-    async def call_many(self, calls: list[dict[str, Any]]) -> list[Any]:
+    async def call_many(
+        self,
+        calls: list[dict[str, Any]],
+        *,
+        allowed_parameters: Mapping[str, dict[str, Any]] | None = None,
+        fixed_arguments: Mapping[str, Mapping[str, Any]] | None = None,
+    ) -> list[Any]:
         """Run independent calls concurrently while preserving write barriers."""
         results: list[Any] = [None] * len(calls)
         pending: list[tuple[int, dict[str, Any]]] = []
@@ -89,7 +154,15 @@ class ContractBoundToolDispatcher:
             batch = list(pending)
             pending.clear()
             values = await asyncio.gather(
-                *(self.call(call["name"], dict(call.get("args") or {})) for _, call in batch),
+                *(
+                    self.call(
+                        call["name"],
+                        dict(call.get("args") or {}),
+                        allowed_parameters=allowed_parameters,
+                        fixed_arguments=fixed_arguments,
+                    )
+                    for _, call in batch
+                ),
                 return_exceptions=True,
             )
             for (index, _), value in zip(batch, values):
@@ -102,7 +175,12 @@ class ContractBoundToolDispatcher:
                 continue
             await flush()
             try:
-                results[index] = await self.call(call["name"], dict(call.get("args") or {}))
+                results[index] = await self.call(
+                    call["name"],
+                    dict(call.get("args") or {}),
+                    allowed_parameters=allowed_parameters,
+                    fixed_arguments=fixed_arguments,
+                )
             except Exception as error:
                 results[index] = error
         await flush()

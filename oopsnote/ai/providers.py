@@ -5,6 +5,7 @@ from __future__ import annotations
 import time
 import hashlib
 from datetime import datetime, timezone
+from collections.abc import Collection
 from typing import Any, Iterable
 
 from pydantic import BaseModel, ConfigDict, Field, HttpUrl, field_validator
@@ -175,6 +176,24 @@ class ProviderClientFactory:
     def __init__(self, secret_store: SecretStore) -> None:
         self.secret_store = secret_store
 
+    @staticmethod
+    def _is_dashscope_compatible(profile: ProviderProfile) -> bool:
+        """Return whether an OpenAI adapter targets DashScope's compatible API."""
+
+        if profile.provider not in {"openai", "openai-compatible"} or profile.base_url is None:
+            return False
+        host = (str(profile.base_url).split("/", 3)[2]).lower()
+        return host == "dashscope.aliyuncs.com" or host.endswith(".maas.aliyuncs.com")
+
+    @classmethod
+    def _uses_managed_non_thinking_mode(cls, profile: ProviderProfile) -> bool:
+        """Whether this provider needs non-thinking mode for a strict tool loop."""
+
+        return (
+            (profile.provider == "deepseek" and profile.model.startswith("deepseek-v4-"))
+            or cls._is_dashscope_compatible(profile)
+        )
+
     def create_chat_model(self, profile: ProviderProfile) -> Any:
         if not profile.enabled:
             raise ValueError("provider profile is disabled")
@@ -187,12 +206,26 @@ class ProviderClientFactory:
                 from langchain_deepseek import ChatDeepSeek
             except ImportError as error:
                 raise RuntimeError("LangChain DeepSeek integration is not installed") from error
-            return ChatDeepSeek(
-                model=profile.model,
-                api_key=api_key,
-                base_url=str(profile.base_url or "https://api.deepseek.com/v1"),
-                max_retries=0,
-            )
+            kwargs: dict[str, Any] = {
+                "model": profile.model,
+                "api_key": api_key,
+                "base_url": str(profile.base_url or "https://api.deepseek.com/v1"),
+                "max_retries": 0,
+            }
+            if self._uses_managed_non_thinking_mode(profile):
+                # DeepSeek V4 thinking mode requires replaying provider-specific
+                # reasoning content with every tool result. The managed loop
+                # owns only canonical messages, so select the documented
+                # non-thinking mode instead.
+                kwargs["extra_body"] = {"thinking": {"type": "disabled"}}
+                kwargs["temperature"] = 0
+                # Candidate/finalize tools carry an OopsMark JSON string. The
+                # provider's default output cap can truncate that argument
+                # before its closing JSON delimiter, which LangChain correctly
+                # treats as an invalid tool call. This is a request-size limit,
+                # not a lifecycle timeout or retry policy.
+                kwargs["max_tokens"] = 8192
+            return ChatDeepSeek(**kwargs)
         if provider in {"openai", "openai-compatible"}:
             if provider == "openai-compatible" and profile.base_url is None:
                 raise ValueError("openai-compatible provider requires base_url")
@@ -200,11 +233,19 @@ class ProviderClientFactory:
                 from langchain_openai import ChatOpenAI
             except ImportError as error:
                 raise RuntimeError("LangChain OpenAI integration is not installed") from error
+            kwargs: dict[str, Any] = {
+                "model": profile.model,
+                "base_url": str(profile.base_url) if profile.base_url else None,
+                "api_key": api_key,
+                "max_retries": 0,
+            }
+            if self._is_dashscope_compatible(profile):
+                # DashScope Qwen thinking mode rejects required tool choice and
+                # may emit prose after a long tool history. Tool-driven OopsNote
+                # stages need the provider's non-thinking mode.
+                kwargs["extra_body"] = {"enable_thinking": False}
             return ChatOpenAI(
-                model=profile.model,
-                base_url=str(profile.base_url) if profile.base_url else None,
-                api_key=api_key,
-                max_retries=0,
+                **kwargs,
             )
         if provider == "anthropic":
             try:
@@ -228,6 +269,36 @@ class ProviderClientFactory:
                 retries=0,
             )
         raise ValueError(f"unsupported provider: {profile.provider}")
+
+    def bind_managed_tools(
+        self,
+        model: Any,
+        profile: ProviderProfile,
+        *,
+        tool_names: Collection[str] | None = None,
+        constants: dict[str, dict[str, Any]] | None = None,
+        required_arguments: dict[str, Collection[str]] | None = None,
+        parameter_overrides: dict[str, dict[str, dict[str, Any]]] | None = None,
+    ) -> Any:
+        """Bind phase-legal canonical tools with provider loop constraints."""
+
+        from oopsnote.ai.langchain_tools import langchain_tool_schemas
+
+        kwargs: dict[str, Any] = {}
+        if self._uses_managed_non_thinking_mode(profile):
+            # Required calls are valid once thinking mode is disabled. Every
+            # managed turn must either call a pipeline tool or reach a
+            # lifecycle-owned terminal state; prose cannot complete a run.
+            kwargs = {"tool_choice": "required", "parallel_tool_calls": False}
+        return model.bind_tools(
+            langchain_tool_schemas(
+                tool_names,
+                constants=constants,
+                required_arguments=required_arguments,
+                parameter_overrides=parameter_overrides,
+            ),
+            **kwargs,
+        )
 
     def create_vision_ocr_model(self, profile: ProviderProfile) -> Any:
         """Build a Vision model with the provider's native JSON-output mode.

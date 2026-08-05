@@ -51,7 +51,6 @@ def test_contract_marks_only_read_only_tools_as_parallel_safe():
     assert {name for name, mode in tools.items() if mode == "parallel"} == {
         "get_task",
         "get_asset_path",
-        "list_tags",
     }
 
 

@@ -34,13 +34,13 @@ metadata:
 ## 步骤
 
 ### 1. 查询标签候选
-调用 Pi 暴露的 OopsNote `list_tags` 直连工具渐进获取 AI 可选标签。查询知识点时必须传入题目的英文 `subject`，普通题默认使用 `scope=core`。
+调用绑定的 canonical OopsNote `mcp__oopsnote_pipeline_list_tags` 工具渐进获取 AI 可选标签。不得使用 `list_tags` remoteName 别名。查询知识点时必须传入题目的英文 `subject`，普通题默认使用 `scope=core`。
 
-1. 调用 `list_tags(task_id=<当前任务>, run_id=<当前运行>, dimension="knowledge", subject=<题目学科>, scope="core")`，读取 `mode="branches"` 下的一级分组和二级分支。
+1. 调用 `mcp__oopsnote_pipeline_list_tags(task_id=<当前任务>, run_id=<当前运行>, dimension="knowledge", subject=<题目学科>, scope="core")`，读取 `mode="branches"` 下的一级分组和二级分支。
 2. 根据题目直接考查内容选择 **1-6 个**最相关的二级分支 ID。禁止传一级分组名称或 ID。
 3. 在同一轮并行调用以下两个互不依赖的查询：
-   - `list_tags(task_id=<当前任务>, run_id=<当前运行>, dimension="knowledge", subject=<题目学科>, scope="core", branch_ids=[...])`，读取 `mode="leaves"` 的 `items`；
-   - `list_tags(task_id=<当前任务>, run_id=<当前运行>, dimension="error", subject=<题目学科>)`，读取 `mode="values"` 下的已有错因标签。
+   - `mcp__oopsnote_pipeline_list_tags(task_id=<当前任务>, run_id=<当前运行>, dimension="knowledge", subject=<题目学科>, scope="core", branch_ids=[...])`，读取 `mode="leaves"` 的 `items`；
+   - `mcp__oopsnote_pipeline_list_tags(task_id=<当前任务>, run_id=<当前运行>, dimension="error", subject=<题目学科>)`，读取 `mode="values"` 下的已有错因标签。
 
 知识点必须从第二次调用返回的叶子标签中选择。父级目录、未加载标签和自由生成标签会被最终提交校验拒绝。
 

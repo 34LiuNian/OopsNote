@@ -7,7 +7,7 @@ from typing import Annotated, Literal, Optional
 from mcp.server.fastmcp import FastMCP
 from pydantic import Field
 
-from oopsnote.core import TagDimension
+from oopsnote.core import TagDimension, subjects_match
 from oopsnote.mcp import server
 from oopsnote.mcp import ocr
 from oopsnote.mcp.tool_registry import AI_TOOL_NAMES, MANAGED_TOOL_DEFINITIONS
@@ -26,7 +26,7 @@ def _require_verifier_context(task_id: str, run_id: str):
 def _managed_subject(task, subject: Optional[str]) -> str:
     requested = (subject or "").strip()
     if task.subject not in {"", "auto"}:
-        if requested and requested != task.subject:
+        if requested and not subjects_match(requested, task.subject):
             raise ValueError(
                 f"subject {requested} does not match managed task subject {task.subject}"
             )
@@ -56,7 +56,28 @@ def managed_list_tags(
         scope=scope,
         branch_ids=branch_ids,
     )
-    if dimension == TagDimension.KNOWLEDGE.value and result.get("mode") == "leaves":
+    if dimension == TagDimension.KNOWLEDGE.value and result.get("mode") == "branches":
+        metadata = dict(task.metadata)
+        metadata["_managed_knowledge_branches"] = {
+            "run_id": run_id,
+            "subject": effective_subject,
+            "scope": scope,
+            "branch_ids": [
+                child["id"]
+                for group in result["items"]
+                if isinstance(group, dict)
+                for child in group.get("children", [])
+                if isinstance(child, dict) and isinstance(child.get("id"), str)
+            ],
+        }
+        metadata.pop("_managed_tag_selection", None)
+        server.TASK_STORE.transition(
+            task_id,
+            expected_statuses={server.TaskStatus.PROCESSING},
+            expected_active_run_id=run_id,
+            metadata=metadata,
+        )
+    elif dimension == TagDimension.KNOWLEDGE.value and result.get("mode") == "leaves":
         metadata = dict(task.metadata)
         metadata["_managed_tag_selection"] = {
             "run_id": run_id,
@@ -64,6 +85,7 @@ def managed_list_tags(
             "scope": scope,
             "branch_ids": result["branch_ids"],
         }
+        metadata.pop("_managed_knowledge_branches", None)
         server.TASK_STORE.transition(
             task_id,
             expected_statuses={server.TaskStatus.PROCESSING},
@@ -129,12 +151,24 @@ def managed_create_tag(
             raise ValueError(
                 f"error tag {proposed.strip()} matches existing candidate {equivalent}; use it instead"
             )
-    return server.create_tag(
+    created = server.create_tag(
         dimension=dimension,
         value=value,
         aliases=aliases,
         subject=effective_subject,
     )
+    metadata = dict(task.metadata)
+    metadata["_managed_error_candidates"] = {
+        **candidates,
+        "values": list(dict.fromkeys([*candidates.get("values", []), created.value])),
+    }
+    server.TASK_STORE.transition(
+        task_id,
+        expected_statuses={server.TaskStatus.PROCESSING},
+        expected_active_run_id=run_id,
+        metadata=metadata,
+    )
+    return created
 
 
 def managed_ocr_image(task_id: str, run_id: str):

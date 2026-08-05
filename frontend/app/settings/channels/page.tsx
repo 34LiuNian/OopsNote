@@ -1,16 +1,16 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Badge, Checkbox, PasswordInput, Switch } from "@mantine/core";
-import { Check, Eye, KeyRound, Plus, RefreshCw, Save, ShieldAlert, Trash2, Wrench } from "lucide-react";
+import { Badge, Checkbox, PasswordInput } from "@mantine/core";
+import { KeyRound, Plus, RefreshCw, Save, ShieldAlert, Wrench } from "lucide-react";
 import { useAuth } from "@/components/providers/AuthProvider";
-import { Box, Button, FormControl, Heading, Select, Spinner, Text, TextInput } from "@/components/ui/primitives";
+import { Box, Button, FormControl, Heading, Select, Spinner, Text, TextInput, ToggleSwitch } from "@/components/ui/primitives";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
 import { isAdminUser } from "@/lib/auth";
 import { notify } from "@/lib/notify";
 import { confirmAction } from "@/lib/confirm";
 import { useAiChannels, useAiChannelMutations } from "@/features/settings/useAiProviders";
-import type { ChannelDraft, ChannelModel, LangChainPolicy, ProviderChannel, StageSelection } from "@/features/settings/types";
+import type { ChannelDraft, ChannelModel, ProviderChannel } from "@/features/settings/types";
 
 const PROVIDERS = [
   { value: "deepseek", label: "DeepSeek" },
@@ -35,21 +35,11 @@ const EMPTY_DRAFT: ChannelDraft = {
   enabled: true,
 };
 
-const STAGES = [
-  { id: "vision", label: "Vision / OCR", hint: "必须启用 Vision" },
-  { id: "agent", label: "Agent", hint: "必须启用 Tool Calling" },
-  { id: "review", label: "Review", hint: "必须启用 Tool Calling" },
-] as const;
-
 function draftFrom(channel: ProviderChannel): ChannelDraft {
   return { id: channel.id, display_name: channel.display_name, provider: channel.provider, base_url: channel.base_url, enabled: channel.enabled };
 }
 
-function flattenModels(channels: ProviderChannel[]) {
-  return channels.flatMap((channel) => channel.models.filter((model) => model.enabled).map((model) => ({ channel, model })));
-}
-
-export default function ProviderSettingsPage() {
+export default function AiChannelsPage() {
   const { user, loading } = useAuth();
   const isAdmin = isAdminUser(user);
   const channels = useAiChannels(!loading && isAdmin);
@@ -60,10 +50,7 @@ export default function ProviderSettingsPage() {
   const [draft, setDraft] = useState<ChannelDraft>(EMPTY_DRAFT);
   const [secret, setSecret] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
-  const [policyDraft, setPolicyDraft] = useState<LangChainPolicy | null>(null);
   const selected = items.find((item) => item.id === selectedId) ?? null;
-  const modelOptions = useMemo(() => flattenModels(items), [items]);
-  const activePolicy = policyDraft ?? channels.data?.policy ?? { version: 1, vision: { channel_id: "", model_id: "" }, agent: { channel_id: "", model_id: "" }, review: { channel_id: "", model_id: "" }, updated_at: null };
 
   if (loading) return <Box sx={{ p: 4 }}><Spinner size="medium" /></Box>;
   if (!isAdmin) return <Box sx={{ p: 4, display: "flex", gap: 2, alignItems: "center" }}><ShieldAlert size={22} /><Box><Heading order={2}>无权访问</Heading><Text sx={{ color: "fg.muted" }}>AI Provider 配置仅管理员可用。</Text></Box></Box>;
@@ -97,7 +84,7 @@ export default function ProviderSettingsPage() {
         const { id: _id, ...payload } = draft;
         const result = await mutations.update.mutateAsync({ channelId: selected.id, payload });
         notify.success({ title: "渠道元数据已保存" });
-        if (result.policy_cleared) notify.warning({ title: "LangChain 策略已清除", description: "渠道已不满足现有阶段策略，请重新选择三个阶段模型。" });
+        if (result.policy_cleared) notify.warning({ title: "LangChain 策略已清除", description: "LangChain 策略已清除，请到「LangChain 策略」页重新选择三个阶段模型。" });
       }
     } catch (error) { setErrorMessage(error instanceof Error ? error.message : "保存失败"); }
   }
@@ -109,7 +96,7 @@ export default function ProviderSettingsPage() {
       const result = await mutations.credential.mutateAsync({ channelId: selected.id, secret });
       setSecret("");
       notify.warning({ title: "模型能力需要确认", description: `已同步 ${result.discovery.count} 个模型。Tool Calling 与 Vision 默认关闭，请逐项确认。` });
-      if (result.policy_cleared) notify.warning({ title: "LangChain 策略已清除", description: "新模型目录不再满足原策略，请重新选择三个阶段模型。" });
+      if (result.policy_cleared) notify.warning({ title: "LangChain 策略已清除", description: "LangChain 策略已清除，请到「LangChain 策略」页重新选择三个阶段模型。" });
       notify.success({ title: "密钥验证成功", description: `${result.validation.message}${result.validation.latency_ms == null ? "" : ` (${result.validation.latency_ms}ms)`}` });
     } catch (error) { setErrorMessage(error instanceof Error ? error.message : "密钥验证失败"); }
   }
@@ -119,7 +106,7 @@ export default function ProviderSettingsPage() {
     setErrorMessage("");
     try {
       const result = await mutations.model.mutateAsync({ channelId: selected.id, modelId: model.id, payload: patch });
-      if (result.policy_cleared) notify.warning({ title: "LangChain 策略已清除", description: "该模型变更使原策略不可运行，请重新选择三个阶段模型。" });
+      if (result.policy_cleared) notify.warning({ title: "LangChain 策略已清除", description: "LangChain 策略已清除，请到「LangChain 策略」页重新选择三个阶段模型。" });
     }
     catch (error) { setErrorMessage(error instanceof Error ? error.message : "模型配置失败"); }
   }
@@ -130,7 +117,7 @@ export default function ProviderSettingsPage() {
     try {
       const result = await mutations.sync.mutateAsync(selected.id);
       notify.info({ title: "模型目录已同步", description: `${result.validation.message}，已获取 ${result.discovery.count} 个模型。` });
-      if (result.policy_cleared) notify.warning({ title: "LangChain 策略已清除", description: "新模型目录不再满足原策略，请重新选择三个阶段模型。" });
+      if (result.policy_cleared) notify.warning({ title: "LangChain 策略已清除", description: "LangChain 策略已清除，请到「LangChain 策略」页重新选择三个阶段模型。" });
     } catch (error) { setErrorMessage(error instanceof Error ? error.message : "模型同步失败"); }
   }
 
@@ -140,7 +127,7 @@ export default function ProviderSettingsPage() {
     try {
       const result = await mutations.update.mutateAsync({ channelId: selected.id, payload: { ...draft, enabled: false } });
       notify.success({ title: "渠道已禁用" });
-      if (result.policy_cleared) notify.warning({ title: "LangChain 策略已清除", description: "渠道已禁用，请重新选择三个阶段模型。" });
+      if (result.policy_cleared) notify.warning({ title: "LangChain 策略已清除", description: "LangChain 策略已清除，请到「LangChain 策略」页重新选择三个阶段模型。" });
     } catch (error) { setErrorMessage(error instanceof Error ? error.message : "渠道禁用失败"); }
   }
 
@@ -155,25 +142,11 @@ export default function ProviderSettingsPage() {
     });
   }
 
-  function selectionFor(stage: typeof STAGES[number]["id"]): StageSelection {
-    return activePolicy[stage];
-  }
-
-  async function savePolicy() {
-    if (!activePolicy.vision.channel_id || !activePolicy.agent.channel_id || !activePolicy.review.channel_id) return;
-    setErrorMessage("");
-    try {
-      const result = await mutations.policy.mutateAsync({ vision: activePolicy.vision, agent: activePolicy.agent, review: activePolicy.review });
-      setPolicyDraft(result.policy);
-      notify.success({ title: "LangChain 策略已保存", description: `策略版本 ${result.policy.version} 将用于后续新 run。` });
-    } catch (error) { setErrorMessage(error instanceof Error ? error.message : "策略保存失败"); }
-  }
-
   const busy = Object.values(mutations).some((mutation) => mutation.isPending);
   return (
     <Box sx={{ p: [3, 4], pb: ["112px", 4], display: "flex", flexDirection: "column", gap: 4 }}>
       <Box sx={{ display: "flex", justifyContent: "space-between", gap: 3, alignItems: "flex-start", flexWrap: "wrap" }}>
-        <Box><Heading order={2}>AI Provider</Heading><Text sx={{ mt: 1, color: "fg.muted" }}>渠道、模型目录与 LangChain 三阶段策略</Text></Box>
+        <Box><Heading order={2}>AI 渠道</Heading><Text sx={{ mt: 1, color: "fg.muted" }}>管理 AI 服务商连接、密钥与模型目录</Text></Box>
         <Button variant="primary" onClick={beginCreate}><Plus size={16} /> 新建渠道</Button>
       </Box>
       {channels.isLoading && <Spinner size="medium" />}
@@ -187,7 +160,7 @@ export default function ProviderSettingsPage() {
 
         <Box sx={{ display: "flex", flexDirection: "column", gap: 4, minWidth: 0 }}>
           {(creating || selected) && <>
-            <Box sx={{ display: "flex", justifyContent: "space-between", gap: 2, alignItems: "center" }}><Box><Heading order={3}>{creating ? "新建渠道" : selected?.display_name}</Heading><Text sx={{ color: "fg.muted", mt: 1 }}>密钥只进入后端 SecretStore，不会写入配置或运行记录。</Text></Box>{selected && <Switch label="启用" checked={draft.enabled} onChange={(event) => setDraft({ ...draft, enabled: event.currentTarget.checked })} />}</Box>
+            <Box sx={{ display: "flex", justifyContent: "space-between", gap: 2, alignItems: "center" }}><Box><Heading order={3}>{creating ? "新建渠道" : selected?.display_name}</Heading><Text sx={{ color: "fg.muted", mt: 1 }}>密钥只进入后端 SecretStore，不会写入配置或运行记录。</Text></Box>{selected && <Box sx={{ display: "flex", gap: 1, alignItems: "center" }}><Text>启用</Text><ToggleSwitch checked={draft.enabled} onChange={(event) => setDraft({ ...draft, enabled: event.currentTarget.checked })} /></Box>}</Box>
             <Box sx={{ display: "grid", gridTemplateColumns: ["1fr", "1fr 1fr"], gap: 3 }}>
               <FormControl><FormControl.Label>渠道 ID</FormControl.Label><TextInput value={draft.id} onChange={(event) => setDraft({ ...draft, id: event.target.value })} disabled={!creating} block /></FormControl>
               <FormControl><FormControl.Label>显示名称</FormControl.Label><TextInput value={draft.display_name} onChange={(event) => setDraft({ ...draft, display_name: event.target.value })} block /></FormControl>
@@ -202,7 +175,6 @@ export default function ProviderSettingsPage() {
         </Box>
       </Box>
 
-      <Box sx={{ borderTop: "1px solid", borderColor: "border.default", pt: 4, display: "flex", flexDirection: "column", gap: 3 }}><Box><Heading order={3}>LangChain 阶段策略</Heading><Text sx={{ color: "fg.muted", mt: 1 }}>后续新 run 使用此策略；运行中的 run 保留已冻结快照。</Text></Box>{!modelOptions.length && <Text sx={{ color: "fg.muted" }}>请先连接渠道并同步模型。</Text>}{STAGES.map((stage) => { const current = selectionFor(stage.id); return <FormControl key={stage.id}><FormControl.Label>{stage.label}</FormControl.Label><Select value={`${current.channel_id}::${current.model_id}`} onValueChange={(value) => { const [channel_id, model_id] = value.split("::"); setPolicyDraft((state) => ({ ...(state ?? activePolicy), [stage.id]: { channel_id, model_id } })); }}><Select.Option value="">请选择模型</Select.Option>{modelOptions.map(({ channel, model }) => { const allowed = stage.id === "vision" ? model.capability.vision : model.capability.tool_calling; return <Select.Option key={`${stage.id}-${channel.id}-${model.id}`} value={`${channel.id}::${model.id}`} disabled={!allowed}>{channel.display_name} / {model.source} / {model.id}{!allowed ? "（能力未启用）" : ""}</Select.Option>; })}</Select><FormControl.Caption>{stage.hint}</FormControl.Caption></FormControl>; })}<Button variant="primary" onClick={() => void savePolicy()} disabled={busy}><Save size={16} /> 保存阶段策略</Button></Box>
       <ErrorBanner message={errorMessage} />
     </Box>
   );

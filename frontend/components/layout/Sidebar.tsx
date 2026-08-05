@@ -9,6 +9,7 @@ import {
   ScanIcon,
   GearIcon,
   CpuIcon,
+  GitBranchIcon,
 } from "@/components/ui/icons";
 import Link from "next/link";
 import { useAuth } from "@/components/providers/AuthProvider";
@@ -22,7 +23,8 @@ const NAV_ITEMS = [
   { href: "/paper-builder", label: "快速重练", icon: BookIcon, section: "main" },
   { href: "/debug", label: "渲染调试", icon: BookIcon, section: "tools" },
   { href: "/settings", label: "设置", icon: GearIcon, section: "tools" },
-  { href: "/settings/providers", label: "AI Provider", icon: CpuIcon, section: "tools" },
+  { href: "/settings/channels", label: "AI 渠道", icon: CpuIcon, section: "admin" },
+  { href: "/settings/policy", label: "LangChain 策略", icon: GitBranchIcon, section: "admin" },
 ];
 
 function NavigationItems({
@@ -38,7 +40,8 @@ function NavigationItems({
   const { user } = useAuth();
 
   const mainItems = NAV_ITEMS.filter((i) => i.section === "main");
-  const toolItems = NAV_ITEMS.filter((i) => i.section === "tools" && (i.href !== "/settings/providers" || isAdminUser(user)));
+  const toolItems = NAV_ITEMS.filter((i) => i.section === "tools");
+  const adminItems = NAV_ITEMS.filter((i) => i.section === "admin" && isAdminUser(user));
 
   const isActive = (href: string) => {
     if (href === "/") return pathname === "/";
@@ -83,6 +86,19 @@ function NavigationItems({
             </Link>
           );
         })}
+        {adminItems.length > 0 && <>
+          <div className="app-sidebar__divider" />
+          {!collapsed && <span className="app-sidebar__label">管理</span>}
+          {adminItems.map((item) => {
+            const active = isActive(item.href);
+            return (
+              <Link key={item.href} href={item.href} className={`app-sidebar__link${active ? " is-active" : ""}`} aria-current={active ? "page" : undefined} title={collapsed ? item.label : undefined} onClick={() => onNavigate?.(item.href)}>
+                <item.icon size={17} strokeWidth={1.9} />
+                {!collapsed && <span>{item.label}</span>}
+              </Link>
+            );
+          })}
+        </>}
     </nav>
   );
 }

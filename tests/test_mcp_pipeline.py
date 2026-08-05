@@ -128,6 +128,24 @@ def test_solver_candidate_requires_a_runner_started_verifier_session(tmp_path, m
     with pytest.raises(ValueError, match="runner-started independent session"):
         server.report_task_stage(task.id, "verifying", run_id="run-1")
 
+
+def test_solver_candidate_accepts_equivalent_localized_subject(tmp_path, monkeypatch):
+    task_store = configure_stores(tmp_path, monkeypatch)
+    task = task_store.create(TaskCreateRequest(subject="数学"))
+    task_store.update(task.id, status=TaskStatus.PROCESSING, active_run_id="run-1")
+    server.RUN_STORE._write(TaskRun(id="run-1", task_id=task.id, status=RunStatus.RUNNING))
+    server.report_task_stage(task.id, "ocr", run_id="run-1")
+    server.report_task_stage(task.id, "solving", run_id="run-1")
+
+    result = server.submit_solution_candidate(
+        task.id,
+        json.dumps(valid_problem(), ensure_ascii=False),
+        run_id="run-1",
+    )
+
+    assert result["candidate_submitted"] is True
+    assert server.RUN_STORE.get("run-1").solution_candidate is not None
+
     task_store.update(task.id, stage=TaskStage.FINALIZING)
     with pytest.raises(ValueError, match="reviewed in an independent session"):
         server.finalize_task(
@@ -522,6 +540,7 @@ def test_ai_tag_tool_progressively_returns_branches_then_leaves(tmp_path, monkey
     configure_stores(tmp_path, monkeypatch)
 
     catalog = server.list_tags(dimension="knowledge", subject="math")
+    localized_catalog = server.list_tags(dimension="knowledge", subject="数学")
     branch_ids = [
         child["id"]
         for group in catalog["items"]
@@ -534,6 +553,7 @@ def test_ai_tag_tool_progressively_returns_branches_then_leaves(tmp_path, monkey
     )
 
     assert catalog["mode"] == "branches"
+    assert localized_catalog == catalog
     assert catalog["max_branches"] == 6
     assert leaves["mode"] == "leaves"
     assert leaves["items"]
@@ -636,3 +656,41 @@ def test_managed_ai_cannot_create_knowledge_tag(tmp_path, monkeypatch):
             run_id="wrong-run",
             subject="math",
         )
+
+
+def test_managed_knowledge_tag_queries_persist_progress_and_cleanup(tmp_path, monkeypatch):
+    task_store = configure_stores(tmp_path, monkeypatch)
+    task = task_store.create(TaskCreateRequest(subject="math"))
+    task_store.update(task.id, status=TaskStatus.PROCESSING, active_run_id="run-1")
+    advance_to_finalizing(task.id, authorize_candidate_knowledge=False)
+    task_store.update(task.id, stage=TaskStage.TAGGING)
+
+    branches = managed_list_tags(
+        dimension="knowledge",
+        task_id=task.id,
+        run_id="run-1",
+        subject="math",
+    )
+    branch_ids = [
+        child["id"]
+        for group in branches["items"]
+        for child in group["children"]
+    ]
+    persisted = task_store.get(task.id).metadata["_managed_knowledge_branches"]
+    assert persisted["run_id"] == "run-1"
+    assert persisted["branch_ids"] == branch_ids
+
+    managed_list_tags(
+        dimension="knowledge",
+        task_id=task.id,
+        run_id="run-1",
+        subject="math",
+        branch_ids=[branch_ids[0]],
+    )
+    metadata = task_store.get(task.id).metadata
+    assert "_managed_knowledge_branches" not in metadata
+    assert metadata["_managed_tag_selection"]["branch_ids"] == [branch_ids[0]]
+
+    cleaned = server._task_metadata_with_review(task_store.get(task.id), "")
+    assert "_managed_knowledge_branches" not in cleaned
+    assert "_managed_tag_selection" not in cleaned

@@ -27,7 +27,7 @@ from oopsnote.ai.providers import (
 )
 from oopsnote.ai.secrets import EncryptedFileSecretStore, MemorySecretStore, SecretStoreCorruptionError
 from oopsnote.mcp import ocr
-from oopsnote.core import AppSettingsStore, RunStatus, RunStore, TaskCreateRequest, TaskStatus, TaskStore
+from oopsnote.core import AppSettingsStore, RunStatus, RunStore, TaskCreateRequest, TaskStage, TaskStatus, TaskStore
 from oopsnote.mcp.contracts import load_tool_contract
 
 
@@ -36,13 +36,14 @@ class ScriptedModel:
         self.responses = list(responses)
         self.calls = 0
         self.bound_tools = None
+        self.messages = []
 
-    def bind_tools(self, tools):
+    def bind_tools(self, tools, **kwargs):
         self.bound_tools = tools
         return self
 
     async def ainvoke(self, messages):
-        del messages
+        self.messages.append(list(messages))
         response = self.responses[min(self.calls, len(self.responses) - 1)]
         self.calls += 1
         return response
@@ -56,6 +57,24 @@ class FakeProviderFactory:
     def create_chat_model(self, profile):
         del profile
         return self.model
+
+    def bind_managed_tools(
+        self,
+        model,
+        profile,
+        *,
+        tool_names=None,
+        constants=None,
+        required_arguments=None,
+        parameter_overrides=None,
+    ):
+        del profile
+        return model.bind_tools(langchain_tool_schemas(
+            tool_names,
+            constants=constants,
+            required_arguments=required_arguments,
+            parameter_overrides=parameter_overrides,
+        ))
 
 
 class ReturningToolClient:
@@ -509,6 +528,68 @@ def test_contract_dispatcher_binds_model_calls_to_the_active_run():
         raise AssertionError("cross-task tool call was accepted")
 
 
+def test_contract_dispatcher_rejects_stale_phase_call_before_mcp_execution():
+    calls = []
+
+    class Client:
+        async def call(self, remote_name, arguments):
+            calls.append((remote_name, arguments))
+            return {"ok": True}
+
+    dispatcher = ContractBoundToolDispatcher(Client(), task_id="active-task", run_id="active-run")
+    [schema] = langchain_tool_schemas(
+        ["mcp__oopsnote_pipeline_list_tags"],
+        constants={"mcp__oopsnote_pipeline_list_tags": {"dimension": "error"}},
+    )
+    result = asyncio.run(dispatcher.call_many(
+        [{
+            "name": "mcp__oopsnote_pipeline_list_tags",
+            "args": {"dimension": "knowledge"},
+            "id": "stale-call",
+        }],
+        allowed_parameters={
+            schema["function"]["name"]: schema["function"]["parameters"],
+        },
+    ))
+
+    assert isinstance(result[0], ValueError)
+    assert "current pipeline transition" in str(result[0])
+    assert calls == []
+
+
+def test_contract_dispatcher_binds_authoritative_phase_arguments():
+    calls = []
+
+    class Client:
+        async def call(self, remote_name, arguments):
+            calls.append((remote_name, arguments))
+            return {"ok": True}
+
+    name = "mcp__oopsnote_pipeline_list_tags"
+    constants = {name: {"dimension": "knowledge", "subject": "数学", "scope": "core"}}
+    [schema] = langchain_tool_schemas([name], constants=constants)
+    dispatcher = ContractBoundToolDispatcher(Client(), task_id="active-task", run_id="active-run")
+
+    result = asyncio.run(dispatcher.call_many(
+        [{
+            "name": name,
+            "args": {"dimension": "error", "subject": "math"},
+            "id": "call-1",
+        }],
+        allowed_parameters={name: schema["function"]["parameters"]},
+        fixed_arguments=constants,
+    ))
+
+    assert result == [{"ok": True}]
+    assert calls == [("list_tags", {
+        "dimension": "knowledge",
+        "subject": "数学",
+        "scope": "core",
+        "task_id": "active-task",
+        "run_id": "active-run",
+    })]
+
+
 def test_contract_dispatcher_preserves_terminal_write_barriers():
     events = []
 
@@ -725,6 +806,341 @@ def test_provider_factory_leaves_run_timeout_to_managed_lifecycle(monkeypatch):
     assert "timeout" not in captured
 
 
+def test_provider_factory_configures_dashscope_non_thinking_tool_loop(monkeypatch):
+    captured = {}
+
+    class ChatModel:
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+
+        def bind_tools(self, tools, **kwargs):
+            captured["tools"] = tools
+            captured["bind_kwargs"] = kwargs
+            return self
+
+    monkeypatch.setitem(sys.modules, "langchain_openai", SimpleNamespace(ChatOpenAI=ChatModel))
+    vault = MemorySecretStore()
+    reference = vault.put("secret")
+    profile = ProviderProfile(
+        id="p", version=1, provider="openai", model="qwen3.7-flash",
+        base_url="https://llm-b36ftbhf6tqtv374.cn-beijing.maas.aliyuncs.com/compatible-mode/v1",
+        credential_ref=reference,
+    )
+
+    factory = ProviderClientFactory(vault)
+    model = factory.create_chat_model(profile)
+    factory.bind_managed_tools(model, profile)
+
+    assert captured["extra_body"] == {"enable_thinking": False}
+    assert captured["bind_kwargs"] == {"tool_choice": "required", "parallel_tool_calls": False}
+
+
+def test_provider_factory_configures_deepseek_non_thinking_tool_loop(monkeypatch):
+    captured = {}
+
+    class ChatModel:
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+
+        def bind_tools(self, tools, **kwargs):
+            captured["tools"] = tools
+            captured["bind_kwargs"] = kwargs
+            return self
+
+    monkeypatch.setitem(sys.modules, "langchain_deepseek", SimpleNamespace(ChatDeepSeek=ChatModel))
+    vault = MemorySecretStore()
+    profile = ProviderProfile(
+        id="p", version=1, provider="deepseek", model="deepseek-v4-flash",
+        base_url="https://api.deepseek.com/v1", credential_ref=vault.put("secret"),
+    )
+
+    factory = ProviderClientFactory(vault)
+    model = factory.create_chat_model(profile)
+    factory.bind_managed_tools(model, profile)
+
+    assert captured["extra_body"] == {"thinking": {"type": "disabled"}}
+    assert captured["temperature"] == 0
+    assert captured["max_tokens"] == 8192
+    assert captured["bind_kwargs"] == {"tool_choice": "required", "parallel_tool_calls": False}
+
+
+def test_langchain_places_immutable_rules_in_system_message(tmp_path):
+    from langchain_core.messages import HumanMessage, SystemMessage
+
+    model = ScriptedModel([model_response(1)])
+    runner, task_store, run_store, vault, profile = langchain_runner_fixture(tmp_path, model)
+    task = task_store.create(TaskCreateRequest(subject="math", metadata={"notes": "untrusted"}))
+    run = runner.enqueue(task.id)
+    ocr.configure_ocr_vault(vault, profile.credential_ref, model="ocr")
+    try:
+        runner.run(task.id, run.id)
+    finally:
+        ocr.clear_ocr_vault()
+
+    assert isinstance(model.messages[0][0], SystemMessage)
+    assert "submit_solution_candidate exactly once" in model.messages[0][0].content
+    assert "problem_json at most 8000 characters" in model.messages[0][0].content
+    assert isinstance(model.messages[0][1], HumanMessage)
+    assert "Untrusted task context follows" in model.messages[0][1].content
+
+
+def test_langchain_phase_tool_sets_are_disjoint_from_illegal_capabilities():
+    from oopsnote.ai.backends.langchain import LangChainRunner
+
+    assert "ocr_image" in LangChainRunner._SOLVER_TOOL_NAMES
+    assert "mcp__oopsnote_pipeline_submit_solution_candidate" in LangChainRunner._SOLVER_TOOL_NAMES
+    assert "mcp__oopsnote_pipeline_ocr_image" not in LangChainRunner._REVIEW_TOOL_NAMES
+    assert "ocr_image" not in LangChainRunner._REVIEW_TOOL_NAMES
+    assert "mcp__oopsnote_pipeline_finalize_task" in LangChainRunner._REVIEW_TOOL_NAMES
+    assert "mcp__oopsnote_pipeline_submit_solution_candidate" not in LangChainRunner._REVIEW_TOOL_NAMES
+
+
+def test_langchain_tag_selection_advances_to_error_catalog_without_branch_metadata():
+    from oopsnote.ai.backends.langchain import LangChainRunner
+
+    runner = object.__new__(LangChainRunner)
+    task = SimpleNamespace(
+        stage=TaskStage.TAGGING,
+        subject="math",
+        metadata={"_managed_tag_selection": {
+            "run_id": "run-1",
+            "subject": "math",
+            "scope": "core",
+            "branch_ids": ["algebra"],
+        }},
+    )
+    run = SimpleNamespace(id="run-1", solution_candidate=SimpleNamespace(problem=SimpleNamespace(subject="math")))
+
+    names, constants, required, overrides = runner._tool_binding_for(
+        task=task,
+        run=run,
+        verification_context=True,
+    )
+
+    assert names == frozenset({runner._LIST_TAGS_TOOL})
+    assert constants[runner._LIST_TAGS_TOOL]["dimension"] == "error"
+    assert required == {}
+    assert overrides == {}
+
+
+def test_langchain_tool_schema_restrictions_are_derived_without_mutating_contract():
+    before = load_tool_contract()
+    tool_name = "mcp__oopsnote_pipeline_list_tags"
+
+    [schema] = langchain_tool_schemas(
+        [tool_name],
+        constants={tool_name: {"dimension": "knowledge", "subject": "math"}},
+        required_arguments={tool_name: ("branch_ids",)},
+        parameter_overrides={tool_name: {"branch_ids": {
+            "items": {"type": "string", "enum": ["algebra"]},
+            "minItems": 1,
+            "maxItems": 1,
+            "type": "array",
+        }}},
+    )
+    parameters = schema["function"]["parameters"]
+
+    assert schema["function"]["name"] == tool_name
+    assert parameters["properties"]["dimension"]["const"] == "knowledge"
+    assert parameters["properties"]["subject"]["const"] == "math"
+    assert parameters["properties"]["branch_ids"]["items"]["enum"] == ["algebra"]
+    assert "branch_ids" in parameters["required"]
+    assert load_tool_contract() == before
+
+
+def test_tool_call_summary_redacts_content_and_keeps_repeat_fingerprint():
+    from oopsnote.ai.backends.langchain import LangChainRunner
+
+    call = {
+        "name": "mcp__oopsnote_pipeline_list_tags",
+        "args": {"dimension": "knowledge", "branch_ids": ["algebra"], "message": "untrusted content"},
+    }
+    summary = LangChainRunner._tool_call_summary(call)
+
+    assert summary["name"] == call["name"]
+    assert summary["dimension"] == "knowledge"
+    assert summary["branch_ids_count"] == 1
+    assert summary["message_bytes"] == len("untrusted content")
+    assert "untrusted content" not in json.dumps(summary)
+
+
+def test_tool_result_summary_does_not_persist_error_content():
+    from oopsnote.ai.backends.langchain import LangChainRunner
+
+    summary = LangChainRunner._tool_result_summary(ValueError("untrusted task content"))
+
+    assert summary["ok"] is False
+    assert summary["error_type"] == "ValueError"
+    assert "untrusted task content" not in json.dumps(summary)
+
+
+def test_langchain_no_tool_event_does_not_persist_model_content(tmp_path):
+    model = ScriptedModel([SimpleNamespace(
+        tool_calls=[],
+        invalid_tool_calls=[],
+        content="model text must not be persisted",
+        usage_metadata={},
+        response_metadata={"finish_reason": "stop"},
+        additional_kwargs={},
+    )])
+    runner, task_store, run_store, vault, profile = langchain_runner_fixture(tmp_path, model)
+    task = task_store.create(TaskCreateRequest(subject="math"))
+    run = runner.enqueue(task.id)
+    ocr.configure_ocr_vault(vault, profile.credential_ref, model="ocr")
+    try:
+        runner.run(task.id, run.id)
+    finally:
+        ocr.clear_ocr_vault()
+
+    event_text = (run_store.base_dir / f"{run.id}.events.jsonl").read_text(encoding="utf-8")
+    assert '"event": "model_no_tool_call"' in event_text
+    assert "model text must not be persisted" not in event_text
+
+
+def test_langchain_invalid_tool_call_has_bounded_in_run_recovery(tmp_path):
+    invalid = SimpleNamespace(
+        tool_calls=[],
+        invalid_tool_calls=[{"name": "mcp__oopsnote_pipeline_submit_solution_candidate", "args": "", "error": "truncated"}],
+        content="",
+        usage_metadata={},
+        response_metadata={"finish_reason": "length"},
+        additional_kwargs={},
+    )
+    model = ScriptedModel([invalid])
+    runner, task_store, run_store, vault, profile = langchain_runner_fixture(tmp_path, model)
+    task = task_store.create(TaskCreateRequest(subject="math"))
+    run = runner.enqueue(task.id)
+    ocr.configure_ocr_vault(vault, profile.credential_ref, model="ocr")
+    try:
+        runner.run(task.id, run.id)
+    finally:
+        ocr.clear_ocr_vault()
+
+    events = (run_store.base_dir / f"{run.id}.events.jsonl").read_text(encoding="utf-8")
+    assert events.count('"event": "invalid_tool_recovery"') == 2
+    assert run_store.get(run.id).error_code == "not_finalized"
+
+
+def test_langchain_invalid_tool_calls_are_acknowledged_before_next_model_request(tmp_path):
+    raw_calls = [
+        {"id": "bad-1", "type": "function", "function": {"name": "first", "arguments": "{"}},
+        {"id": "bad-2", "type": "function", "function": {"name": "second", "arguments": "{"}},
+    ]
+    invalid = SimpleNamespace(
+        tool_calls=[],
+        invalid_tool_calls=[
+            {"id": "bad-1", "name": "first", "args": "{", "error": "truncated"},
+            {"id": "bad-2", "name": "second", "args": "{", "error": "truncated"},
+        ],
+        content="",
+        usage_metadata={},
+        response_metadata={"finish_reason": "tool_calls"},
+        additional_kwargs={"tool_calls": raw_calls},
+    )
+    model = ScriptedModel([invalid])
+    runner, task_store, run_store, vault, profile = langchain_runner_fixture(tmp_path, model)
+    task = task_store.create(TaskCreateRequest(subject="math"))
+    run = runner.enqueue(task.id)
+    ocr.configure_ocr_vault(vault, profile.credential_ref, model="ocr")
+    try:
+        runner.run(task.id, run.id)
+    finally:
+        ocr.clear_ocr_vault()
+
+    second_request = model.messages[1]
+    assert [message.tool_call_id for message in second_request if hasattr(message, "tool_call_id")] == [
+        "bad-1",
+        "bad-2",
+    ]
+    events = (run_store.base_dir / f"{run.id}.events.jsonl").read_text(encoding="utf-8")
+    assert '"history_action": "tool_results"' in events
+
+
+def test_langchain_truncated_tool_call_is_removed_even_when_ids_are_complete(tmp_path):
+    invalid = SimpleNamespace(
+        tool_calls=[],
+        invalid_tool_calls=[{"id": "bad-1", "name": "candidate", "args": "{", "error": "truncated"}],
+        content="",
+        usage_metadata={},
+        response_metadata={"finish_reason": "length"},
+        additional_kwargs={"tool_calls": [{
+            "id": "bad-1",
+            "type": "function",
+            "function": {"name": "candidate", "arguments": "{"},
+        }]},
+    )
+    model = ScriptedModel([invalid])
+    runner, task_store, run_store, vault, profile = langchain_runner_fixture(tmp_path, model)
+    task = task_store.create(TaskCreateRequest(subject="math"))
+    run = runner.enqueue(task.id)
+    ocr.configure_ocr_vault(vault, profile.credential_ref, model="ocr")
+    try:
+        runner.run(task.id, run.id)
+    finally:
+        ocr.clear_ocr_vault()
+
+    assert invalid not in model.messages[1]
+    assert not any(hasattr(message, "tool_call_id") for message in model.messages[1])
+    events = (run_store.base_dir / f"{run.id}.events.jsonl").read_text(encoding="utf-8")
+    assert '"history_action": "truncated_response_removed"' in events
+
+
+def test_langchain_invalid_tool_call_without_id_is_removed_from_history(tmp_path):
+    invalid = SimpleNamespace(
+        tool_calls=[],
+        invalid_tool_calls=[{"name": "candidate", "args": "{", "error": "truncated"}],
+        content="",
+        usage_metadata={},
+        response_metadata={"finish_reason": "tool_calls"},
+        additional_kwargs={"tool_calls": [{
+            "type": "function",
+            "function": {"name": "candidate", "arguments": "{"},
+        }]},
+    )
+    model = ScriptedModel([invalid])
+    runner, task_store, run_store, vault, profile = langchain_runner_fixture(tmp_path, model)
+    task = task_store.create(TaskCreateRequest(subject="math"))
+    run = runner.enqueue(task.id)
+    ocr.configure_ocr_vault(vault, profile.credential_ref, model="ocr")
+    try:
+        runner.run(task.id, run.id)
+    finally:
+        ocr.clear_ocr_vault()
+
+    assert invalid not in model.messages[1]
+    events = (run_store.base_dir / f"{run.id}.events.jsonl").read_text(encoding="utf-8")
+    assert '"history_action": "response_removed"' in events
+
+
+def test_langchain_tool_execution_error_adds_bounded_current_binding_recovery(tmp_path):
+    class ErrorToolClient:
+        async def call(self, remote_name, arguments):
+            del remote_name, arguments
+            raise ValueError("deterministic pipeline validation error")
+
+    model = ScriptedModel([model_response(1, tool="mcp__oopsnote_pipeline_report_task_stage")])
+    runner, task_store, run_store, vault, profile = langchain_runner_fixture(
+        tmp_path,
+        model,
+        ErrorToolClient(),
+    )
+    task = task_store.create(TaskCreateRequest(subject="math"))
+    run = runner.enqueue(task.id)
+    ocr.configure_ocr_vault(vault, profile.credential_ref, model="ocr")
+    try:
+        runner.run(task.id, run.id)
+    finally:
+        ocr.clear_ocr_vault()
+
+    assert any(
+        "emit exactly one call to the tool currently bound" in message.content
+        for message in model.messages[1]
+        if hasattr(message, "content")
+    )
+    events = (run_store.base_dir / f"{run.id}.events.jsonl").read_text(encoding="utf-8")
+    assert events.count('"event": "tool_execution_recovery"') == 2
+
+
 def test_langchain_runner_enforces_24_round_limit_and_accumulates_usage(tmp_path):
     response = model_response(
         1,
@@ -762,7 +1178,15 @@ def test_langchain_timeout_covers_inflight_tool_call(tmp_path):
             started.set()
             await asyncio.Event().wait()
 
-    model = ScriptedModel([model_response(1, tool="mcp__oopsnote_pipeline_get_task")])
+    model = ScriptedModel([SimpleNamespace(
+        tool_calls=[{
+            "name": "mcp__oopsnote_pipeline_report_task_stage",
+            "args": {"stage": "ocr"},
+            "id": "call-1",
+        }],
+        usage_metadata={},
+        response_metadata={},
+    )])
     runner, task_store, run_store, vault, profile = langchain_runner_fixture(
         tmp_path, model, BlockingToolClient(), timeout_seconds=1
     )
@@ -796,7 +1220,7 @@ def test_langchain_cancel_stops_active_async_work_without_overwriting_terminal_s
             started.set()
             await asyncio.Event().wait()
 
-    model = BlockingModel([model_response(1, tool="mcp__oopsnote_pipeline_get_task")])
+    model = BlockingModel([model_response(1, tool="mcp__oopsnote_pipeline_report_task_stage")])
     tool_client = BlockingToolClient() if phase == "tool" else ReturningToolClient()
     runner, task_store, run_store, vault, profile = langchain_runner_fixture(
         tmp_path, model, tool_client, timeout_seconds=10

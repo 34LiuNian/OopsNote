@@ -22,6 +22,7 @@ import {
   Eye,
   FileText,
   FolderOpen,
+  GitBranch,
   ImageIcon as LucideImageIcon,
   Info,
   LibraryBig,
@@ -94,3 +95,4 @@ export const FolderOpenIcon = FolderOpen;
 export const ImageIcon = LucideImageIcon;
 export const UploadIcon = Upload;
 export const ScanIcon = ScanLine;
+export const GitBranchIcon = GitBranch;

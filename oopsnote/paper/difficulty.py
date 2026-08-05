@@ -6,7 +6,7 @@ import random
 import re
 from typing import Iterable, Optional
 
-from oopsnote.core import PaperDraftCreateRequest, PaperDraftItem, TaskRecord
+from oopsnote.core import PaperDraftCreateRequest, PaperDraftItem, TaskRecord, subjects_match
 
 
 QUESTION_TYPE_ORDER = {
@@ -21,15 +21,6 @@ DIFFICULTY_BOUNDS = {
     "medium": (0.5, 0.8),
     "hard": (0.8, 1.0),
 }
-
-SUBJECT_ALIASES = {
-    "math": {"math", "数学"},
-    "physics": {"physics", "物理"},
-    "chemistry": {"chemistry", "化学"},
-    "biology": {"biology", "生物"},
-    "english": {"english", "英语"},
-}
-
 
 def _question_number(task: TaskRecord) -> Optional[int]:
     match = re.search(r"\d+", task.effective_question_no() or "")
@@ -47,8 +38,7 @@ def _source_key(task: TaskRecord) -> Optional[str]:
 
 
 def subject_matches(candidate: str, requested: str) -> bool:
-    requested_values = SUBJECT_ALIASES.get(requested, {requested})
-    return candidate in requested_values
+    return subjects_match(candidate, requested)
 
 
 def difficulty_review_reason(task: TaskRecord) -> Optional[str]:

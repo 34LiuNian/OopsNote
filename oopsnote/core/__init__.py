@@ -54,6 +54,7 @@ from .store import (
     ProblemMergeStore,
 )
 from .tags import TagStore
+from .subjects import SUBJECT_ALIASES, canonical_subject, subjects_match
 
 __all__ = [
     "AssetStore",
@@ -93,6 +94,9 @@ __all__ = [
     "TagItem",
     "TagsResponse",
     "TagStore",
+    "SUBJECT_ALIASES",
+    "canonical_subject",
+    "subjects_match",
     "TaskCreateRequest",
     "TaskRecord",
     "TaskRun",

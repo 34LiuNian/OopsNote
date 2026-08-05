@@ -420,6 +420,7 @@ class TestTagStore:
                 for index in range(7)
             ],
         }]
+        assert tags.ai_knowledge_branches("数学", scope="core") == groups
         assert values == [f"叶子标签{index}" for index in range(6)]
         assert "竞赛叶子" not in values
         assert "竞赛叶子" in tags.knowledge_leaf_values("math")
@@ -431,6 +432,20 @@ class TestTagStore:
             )
         with pytest.raises(ValueError, match="unknown level-two"):
             tags.ai_knowledge_leaves("math", ["level-one"])
+
+    def test_subject_aliases_share_one_user_tag_namespace(self, tmp_path):
+        tags = TagStore(
+            user_path=tmp_path / "tags_user.json",
+            builtin_path=tmp_path / "tags_builtin.json",
+            tree_path=tmp_path / "knowledge_trees.json",
+        )
+
+        created = tags.upsert(TagDimension.ERROR, "计算失误", subject="数学")
+        matched = tags.upsert(TagDimension.ERROR, "计算失误", subject="math")
+
+        assert created.id == matched.id
+        assert matched.subject == "math"
+        assert [item.id for item in tags.search(TagDimension.ERROR, subject="数学")] == [created.id]
 
     def test_instances_serialize_writes_to_shared_file(self, tmp_path):
         user_path = tmp_path / "tags_user.json"

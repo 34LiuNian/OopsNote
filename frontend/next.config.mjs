@@ -26,6 +26,9 @@ const nextConfig = {
       },
     ];
   },
+  async redirects() {
+    return [{ source: '/settings/providers', destination: '/settings/channels', permanent: false }];
+  },
 };
 
 export default withSerwist(nextConfig);

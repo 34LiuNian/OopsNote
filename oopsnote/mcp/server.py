@@ -35,6 +35,7 @@ from oopsnote.core import (
     TaskStage,
     TaskStatus,
     TaskStore,
+    subjects_match,
 )
 from oopsnote.obsidian.syncer import OBSIDIAN_SYNC_QUEUE, ObsidianSyncer
 
@@ -74,6 +75,7 @@ def _require_active_run(task_id: str, run_id: str) -> TaskRecord:
 
 def _task_metadata_with_review(task: TaskRecord, review_reason: str) -> dict:
     metadata = dict(task.metadata)
+    metadata.pop("_managed_knowledge_branches", None)
     metadata.pop("_managed_tag_selection", None)
     metadata.pop("_managed_error_candidates", None)
     metadata.pop("intake_review_reason", None)
@@ -225,7 +227,7 @@ def _parse_pipeline_problem(task: TaskRecord, problem_json: str) -> tuple[Proble
     subject = task.subject
     if not subject or subject == "auto":
         subject = problem.subject
-    elif problem.subject != subject:
+    elif not subjects_match(problem.subject, subject):
         raise ValueError(
             f"problem subject {problem.subject} does not match task subject {subject}"
         )

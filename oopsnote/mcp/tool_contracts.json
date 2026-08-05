@@ -71,7 +71,7 @@
       "name": "mcp__oopsnote_pipeline_list_tags",
       "remoteName": "list_tags",
       "description": "List tag branches, selected branch leaves, or non-knowledge tag values.",
-      "executionMode": "parallel",
+      "executionMode": "barrier",
       "parameters": {
         "properties": {
           "dimension": {

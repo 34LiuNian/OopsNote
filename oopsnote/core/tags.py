@@ -10,6 +10,7 @@ from typing import Any, Optional
 from oopsnote.catalog import KNOWLEDGE_TAGS_PATH, KNOWLEDGE_TREES_PATH
 
 from .models import TagCreateRequest, TagDimension, TagItem
+from .subjects import canonical_subject
 
 
 class TagStore:
@@ -79,7 +80,7 @@ class TagStore:
         seen: set[tuple[TagDimension, Optional[str], str]] = set()
         result: list[TagItem] = []
         for item in user + builtin:
-            key = (item.dimension, item.subject, item.value.casefold())
+            key = (item.dimension, canonical_subject(item.subject), item.value.casefold())
             if key not in seen:
                 seen.add(key)
                 result.append(item)
@@ -108,9 +109,10 @@ class TagStore:
         if dimension:
             items = [t for t in items if t.dimension == dimension]
         if subject:
+            requested_subject = canonical_subject(subject)
             items = [
                 t for t in items
-                if t.subject == subject
+                if canonical_subject(t.subject) == requested_subject
                 or (t.subject is None and t.dimension != TagDimension.KNOWLEDGE)
             ]
         if scope:
@@ -178,8 +180,9 @@ class TagStore:
         return list(dict.fromkeys(item.value for item in items))
 
     def _knowledge_subject_root(self, subject: str) -> dict[str, Any]:
-        document = self.knowledge_tree(subject)
-        tree = document.get("subjects", {}).get(subject)
+        subject_key = canonical_subject(subject) or subject
+        document = self.knowledge_tree(subject_key)
+        tree = document.get("subjects", {}).get(subject_key)
         if not isinstance(tree, dict) or not isinstance(tree.get("root"), dict):
             raise ValueError(f"knowledge tree is unavailable for subject: {subject}")
         return tree["root"]
@@ -267,10 +270,11 @@ class TagStore:
             self._tree_cache = document
         if not subject:
             return document
-        item = document.get("subjects", {}).get(subject)
+        subject_key = canonical_subject(subject) or subject
+        item = document.get("subjects", {}).get(subject_key)
         return {
             "schema_version": document.get("schema_version", "xkw-knowledge-tree-v1"),
-            "subjects": {subject: item} if item else {},
+            "subjects": {subject_key: item} if item else {},
         }
 
     # ── 增删改 ────────────────────────────────────────
@@ -287,12 +291,17 @@ class TagStore:
         if not value:
             raise ValueError("tag value is required")
         aliases = [a.strip() for a in (aliases or []) if a.strip()]
+        subject = canonical_subject(subject)
 
         with self._lock:
             user = self._load_user()
             key = (dimension, subject, value.casefold())
             for item in user:
-                if (item.dimension, item.subject, item.value.casefold()) == key:
+                if (
+                    item.dimension,
+                    canonical_subject(item.subject),
+                    item.value.casefold(),
+                ) == key:
                     # 更新 aliases
                     merged = list(dict.fromkeys(item.aliases + aliases))
                     if merged != item.aliases:

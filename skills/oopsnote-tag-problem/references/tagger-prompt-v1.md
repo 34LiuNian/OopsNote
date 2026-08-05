@@ -6,17 +6,17 @@
 
 ### 1. 查询已有标签
 
-受管 Web 模式调用 `mcp__oopsnote_pipeline__list_tags`，交互模式调用 `mcp__oopsnote__list_tags` 渐进获取 AI 可选标签：
+受管模式调用 canonical `mcp__oopsnote_pipeline_list_tags` 渐进获取 AI 可选标签；不得使用 remoteName 别名：
 
 ```python
 # 第一次：获取一级分组和二级分支
-branches = mcp__oopsnote_pipeline__list_tags(
+branches = mcp__oopsnote_pipeline_list_tags(
     task_id=task_id, run_id=run_id,
     dimension="knowledge", subject="math", scope="core"
 )
 
 # 从 branches.items 中选择 1-6 个二级分支 ID，再获取对应叶子标签
-leaves = mcp__oopsnote_pipeline__list_tags(
+leaves = mcp__oopsnote_pipeline_list_tags(
     task_id=task_id,
     run_id=run_id,
     dimension="knowledge",
@@ -26,7 +26,7 @@ leaves = mcp__oopsnote_pipeline__list_tags(
 )
 
 # 获取错因标签
-mcp__oopsnote_pipeline__list_tags(
+mcp__oopsnote_pipeline_list_tags(
     task_id=task_id, run_id=run_id, dimension="error", subject="math"
 )
 ```
@@ -46,7 +46,7 @@ mcp__oopsnote_pipeline__list_tags(
 ### 3. 创建新标签（如果需要）
 
 ```python
-mcp__oopsnote_pipeline__create_tag(
+mcp__oopsnote_pipeline_create_tag(
     task_id=task_id,
     run_id=run_id,
     dimension="error",
