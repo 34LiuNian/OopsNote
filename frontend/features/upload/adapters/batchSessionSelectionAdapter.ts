@@ -3,7 +3,7 @@ import {
   type PageMetric,
   type SelectionModel,
 } from "@/components/batch-continuous";
-import type { BatchSessionSegment } from "../api";
+import type { BatchSessionSegment, BatchSubmittedSelection } from "../api";
 
 export function sessionSegmentsToSelections(
   segments: BatchSessionSegment[],
@@ -63,4 +63,18 @@ export function selectionsToSessionSegments(selections: SelectionModel[]): Batch
     problem_ids: selection.problemIds ?? [],
     error: selection.error ?? null,
   }));
+}
+
+export function submittedSelectionsToSelections(
+  submitted: BatchSubmittedSelection[],
+  metrics: PageMetric[],
+): SelectionModel[] {
+  return sessionSegmentsToSelections(submitted.map((item) => ({
+    id: item.id,
+    parts: item.parts.map((part) => ({ ...part, column_index: part.column_index ?? 0 })),
+    question_no: item.question_no ?? undefined,
+    status: item.status === "cancelled" ? "failed" : item.status,
+    task_id: item.task_id,
+    problem_ids: [],
+  })), metrics);
 }

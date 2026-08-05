@@ -96,6 +96,7 @@ type Props = {
   imageUrls: Record<number, string>;
   loadPage: (pageIndex: number) => void;
   selections: SelectionModel[];
+  historicalSelections?: SelectionModel[];
   activeSelectionId?: string;
   inverted?: boolean;
   zoom: number;
@@ -115,6 +116,7 @@ export function BatchContinuousSurface({
   imageUrls,
   loadPage,
   selections,
+  historicalSelections = [],
   activeSelectionId,
   inverted = false,
   zoom,
@@ -190,7 +192,7 @@ export function BatchContinuousSurface({
       {selectionEnabled && (
         <BatchSelectionOverlay
           metrics={metrics}
-          selections={selections}
+          selections={[...selections, ...historicalSelections.filter((item) => !selections.some((current) => current.id === item.id))]}
           activeSelectionId={activeSelectionId}
           viewportRef={viewportRef}
           onActiveSelectionChange={onActiveSelectionChange}

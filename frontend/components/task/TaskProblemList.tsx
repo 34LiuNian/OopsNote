@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { Box, Button, Heading, IconButton, Label, Text, Tooltip } from "@/components/ui/primitives";
-import { PencilIcon, CopyIcon, ChevronDownIcon, ChevronUpIcon } from "@/components/ui/icons";
+import { PencilIcon, CopyIcon, ChevronDownIcon, ChevronUpIcon, ZapIcon } from "@/components/ui/icons";
 import type { ContentFormat, DiagramImageTone, NormalizedRect, SourceTrace, TagDimensionStyle } from "@/types/api";
 import { MarkdownRenderer } from "../renderers/MarkdownRenderer";
 import { ProblemCard } from "../ProblemCard";
@@ -61,6 +61,7 @@ type TaskProblemDetailProps = {
   onStatusMessage?: (message: string) => void;
   onError?: (message: string) => void;
   onOpenSourceImage?: () => void;
+  onOpenVariations?: () => void;
 };
 
 export function TaskProblemDetail({
@@ -79,6 +80,7 @@ export function TaskProblemDetail({
   onStatusMessage,
   onError,
   onOpenSourceImage,
+  onOpenVariations,
 }: TaskProblemDetailProps) {
   const copyMarkdown = async () => {
     if (!problem) return;
@@ -168,6 +170,7 @@ export function TaskProblemDetail({
           onCopy={copyMarkdown}
           onRetryDiagram={retryDiagram}
           onOpenSourceImage={onOpenSourceImage}
+          onOpenVariations={onOpenVariations}
         />
       )}
     </Box>
@@ -190,6 +193,7 @@ function ProblemDetailCard({
   onCopy,
   onRetryDiagram,
   onOpenSourceImage,
+  onOpenVariations,
 }: {
   problem: TaskProblem;
   solution: TaskSolution | null;
@@ -206,6 +210,7 @@ function ProblemDetailCard({
   onCopy: () => void;
   onRetryDiagram: () => Promise<void>;
   onOpenSourceImage?: () => void;
+  onOpenVariations?: () => void;
 }) {
   const [showAnswer, setShowAnswer] = useState(true);
   const [isRetryingDiagram, setIsRetryingDiagram] = useState(false);
@@ -281,7 +286,12 @@ function ProblemDetailCard({
             </Button>
           )}
         </Box>
-        <Box sx={{ display: "flex", gap: 1, flexShrink: 0 }}>
+        <Box sx={{ display: "flex", gap: 1, flexShrink: 0, alignItems: "center" }}>
+          {onOpenVariations && (
+            <Button size="small" variant="secondary" onClick={onOpenVariations} leadingVisual={ZapIcon}>
+              举一反三
+            </Button>
+          )}
           <Tooltip text="编辑" direction="s">
             <IconButton icon={PencilIcon} aria-label="编辑" size="small" variant="invisible" onClick={onEdit} />
           </Tooltip>

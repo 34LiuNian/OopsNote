@@ -48,6 +48,19 @@ def test_discovery_groups_by_provider_source_and_defaults_tool_calling_capabilit
     assert all(not item.capability.vision for item in models)
 
 
+def test_openai_catalog_normalizes_an_origin_to_v1():
+    vault = MemorySecretStore()
+    configured = channel(vault).model_copy(update={"base_url": "https://gateway.example"})
+    response = type("Response", (), {
+        "raise_for_status": lambda self: None,
+        "json": lambda self: {"data": [{"id": "text", "owned_by": "Gateway"}]},
+    })()
+    with patch("httpx.get", return_value=response) as request:
+        ProviderClientFactory(vault).discover_models(configured)
+
+    assert request.call_args.args[0] == "https://gateway.example/v1/models"
+
+
 def test_policy_and_channel_are_persisted_as_one_authoritative_settings_shape(tmp_path: Path):
     vault = MemorySecretStore()
     store = AppSettingsStore(tmp_path / "settings.json")
@@ -59,6 +72,19 @@ def test_policy_and_channel_are_persisted_as_one_authoritative_settings_shape(tm
     assert store.provider_channels() == [configured]
     assert store.langchain_model_policy() == policy
     assert "provider_profiles" not in store.get()
+
+
+def test_channel_icon_is_normalized_and_persisted_as_presentation_metadata(tmp_path: Path):
+    vault = MemorySecretStore()
+    store = AppSettingsStore(tmp_path / "settings.json")
+    configured = channel(vault).model_copy(update={"icon": " OpenAI "})
+
+    store.upsert_provider_channel(configured)
+
+    stored = store.provider_channels()[0]
+    assert stored.icon == "openai"
+    assert stored.provider == "openai-compatible"
+    assert stored.public_view(vault)["icon"] == "openai"
 
 
 def test_channel_mutation_atomically_clears_a_policy_that_is_no_longer_runnable(tmp_path: Path):

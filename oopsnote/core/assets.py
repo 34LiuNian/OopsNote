@@ -212,6 +212,18 @@ class AssetStore:
             raise FileNotFoundError(candidate)
         return candidate
 
+    def delete(self, asset_path: str) -> None:
+        """Delete one managed asset after resolving it inside the asset store."""
+        self.resolve(asset_path).unlink()
+
+    def is_available(self, asset_path: str, expected_sha256: str | None = None) -> bool:
+        """Check existence and, when supplied, content identity of one asset."""
+        try:
+            path = self.resolve(asset_path)
+        except (FileNotFoundError, ValueError, OSError):
+            return False
+        return expected_sha256 is None or self._file_sha256(path) == expected_sha256
+
     @staticmethod
     def _extract(data: str) -> tuple[str, Optional[str]]:
         m = DATA_URI_RE.match(data)

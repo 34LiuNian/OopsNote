@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import sys
 import threading
 from pathlib import Path
@@ -451,7 +452,8 @@ def test_encrypted_file_store_never_writes_plaintext_and_rejects_wrong_key(tmp_p
 
     assert store.get(reference) == "never-write-this-secret"
     assert b"never-write-this-secret" not in path.read_bytes()
-    assert path.stat().st_mode & 0o777 == 0o600
+    if os.name != "nt":
+        assert path.stat().st_mode & 0o777 == 0o600
     wrong_key = tmp_path / "wrong.key"
     wrong_key.write_bytes(EncryptedFileSecretStore.generate_key())
     with pytest.raises(SecretStoreCorruptionError):
@@ -466,7 +468,8 @@ def test_secret_store_key_initialization_is_idempotent(tmp_path):
     original = path.read_bytes()
     assert not initialize(path)
     assert path.read_bytes() == original
-    assert path.stat().st_mode & 0o777 == 0o600
+    if os.name != "nt":
+        assert path.stat().st_mode & 0o777 == 0o600
 
 
 def test_legacy_model_and_ocr_import_create_channels_without_persisting_secrets(tmp_path):
@@ -855,6 +858,7 @@ def test_provider_factory_leaves_run_timeout_to_managed_lifecycle(monkeypatch):
     ProviderClientFactory(vault).create_chat_model(profile)
 
     assert captured["api_key"] == "secret"
+    assert captured["base_url"] == "https://provider.example/v1"
     assert captured["max_retries"] == 0
     assert "timeout" not in captured
 

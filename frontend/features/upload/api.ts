@@ -78,6 +78,7 @@ export type BatchSession = {
   filename: string;
   mime_type: string;
   asset_path: string;
+  source_available: boolean;
   page_count: number;
   subject: string;
   notes: string;
@@ -87,9 +88,28 @@ export type BatchSession = {
   column_layout: { column_count: number; overlap_ratio: number };
   excluded_page_indices: number[];
   segments: BatchSessionSegment[];
+  submitted_selections: BatchSubmittedSelection[];
   revision: number;
   created_at: string;
   updated_at: string;
+};
+
+export type BatchSubmittedSelection = {
+  id: string;
+  task_id: string;
+  question_no?: number | null;
+  status: "pending" | "processing" | "completed" | "failed" | "cancelled";
+  parts: Array<{
+    page_index: number;
+    column_index?: number;
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    order: number;
+  }>;
+  crop_rect?: { x: number; y: number; width: number; height: number } | null;
+  column_layout?: { column_count: number; overlap_ratio: number } | null;
 };
 
 export type BatchProcessResult = {
@@ -181,4 +201,8 @@ export async function retryBatchSegment(
 
 export async function deleteBatchSession(fileHash: string): Promise<void> {
   await fetchJson(`/batch-sessions/${encodeURIComponent(fileHash)}`, { method: "DELETE" });
+}
+
+export async function deleteBatchSource(fileHash: string): Promise<void> {
+  await fetchJson(`/batch-sessions/${encodeURIComponent(fileHash)}/source`, { method: "DELETE" });
 }

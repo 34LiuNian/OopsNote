@@ -73,6 +73,19 @@ def _metadata(
             "screenshot_path": asset_path,
             "screenshot_filename": filename,
         },
+        "selection_snapshot": {
+            "schema_version": 1,
+            "source_file_hash": record.file_hash,
+            "source_file_name": record.filename,
+            "source_file_path": record.asset_path,
+            "page_count": record.page_count,
+            "crop_rect": record.crop_rect.model_dump(mode="json"),
+            "column_layout": record.column_layout.model_dump(mode="json"),
+            "excluded_page_indices": list(record.excluded_page_indices),
+            "segment_id": segment.id,
+            "question_no": segment.question_no,
+            "parts": [part.model_dump(mode="json") for part in segment.parts],
+        },
     }
 
 

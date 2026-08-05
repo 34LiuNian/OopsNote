@@ -447,7 +447,9 @@ class BatchSessionRecord(BaseModel):
 
 
 class BatchSessionUpdateRequest(BaseModel):
+    asset_path: Optional[str] = None
     filename: Optional[str] = Field(default=None, min_length=1, max_length=255)
+    mime_type: Optional[str] = None
     page_count: Optional[int] = Field(default=None, ge=0)
     subject: Optional[str] = None
     notes: Optional[str] = None

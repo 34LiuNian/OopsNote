@@ -95,7 +95,7 @@ export function ModelCatalog({
           const rowBusy = busyModelId === model.id;
           return (
             <div className={styles.modelRow} key={model.id}>
-              <ProviderMark provider={channel.provider} size={36} />
+              <ProviderMark provider={channel.provider} icon={channel.icon} size={36} />
               <div style={{ minWidth: 0 }}>
                 <div className={styles.modelNameLine}>
                   <span className={styles.modelName}>{model.id}</span>

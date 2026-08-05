@@ -32,6 +32,7 @@ class ChannelCreate(BaseModel):
     id: str = Field(min_length=1, max_length=128)
     display_name: str = Field(min_length=1, max_length=128)
     provider: str = Field(min_length=1, max_length=64)
+    icon: str | None = Field(default=None, min_length=1, max_length=64)
     base_url: HttpUrl | None = None
     enabled: bool = True
 
@@ -41,6 +42,7 @@ class ChannelPatch(BaseModel):
 
     display_name: str | None = Field(default=None, min_length=1, max_length=128)
     provider: str | None = Field(default=None, min_length=1, max_length=64)
+    icon: str | None = Field(default=None, min_length=1, max_length=64)
     base_url: HttpUrl | None = None
     enabled: bool | None = None
 

@@ -1,23 +1,27 @@
 import { Plus, Search } from "lucide-react";
-import { IconButton, TextInput, Tooltip } from "@/components/ui/primitives";
+import { IconButton, TextInput, ToggleSwitch, Tooltip } from "@/components/ui/primitives";
 import type { ProviderChannel } from "@/features/settings/types";
 import { ProviderMark } from "./ProviderMark";
 import styles from "./aiSettings.module.css";
 
 export function ChannelRail({
   channels,
+  busy,
   query,
   selectedId,
   onCreate,
   onQueryChange,
   onSelect,
+  onToggle,
 }: {
   channels: ProviderChannel[];
+  busy: boolean;
   query: string;
   selectedId: string | null;
   onCreate: () => void;
   onQueryChange: (value: string) => void;
   onSelect: (channel: ProviderChannel) => void;
+  onToggle: (channel: ProviderChannel, enabled: boolean) => void;
 }) {
   const normalizedQuery = query.trim().toLocaleLowerCase();
   const visibleChannels = channels.filter((channel) => (
@@ -48,26 +52,45 @@ export function ChannelRail({
       <div className={styles.railList}>
         {visibleChannels.map((channel) => {
           const selected = selectedId === channel.id;
-          const statusClass = !channel.enabled
-            ? styles.statusDisabled
-            : channel.has_secret
-              ? styles.statusConnected
-              : styles.statusMissing;
+          const configured = channel.has_secret;
+          const switchClass = !configured
+            ? styles.channelSwitchIncomplete
+            : channel.enabled
+              ? styles.channelSwitchEnabled
+              : styles.channelSwitchDisabled;
+          const statusText = !configured ? "配置未完成：缺少 API Key" : channel.enabled ? "已启用" : "已停用";
           return (
-            <button
+            <div
               key={channel.id}
-              type="button"
               className={`${styles.channelItem}${selected ? ` ${styles.channelItemActive}` : ""}`}
-              aria-current={selected ? "true" : undefined}
-              onClick={() => onSelect(channel)}
             >
-              <ProviderMark provider={channel.provider} size={34} />
-              <span style={{ minWidth: 0 }}>
-                <span className={styles.channelItemName}>{channel.display_name}</span>
-                <span className={styles.channelItemMeta}>{channel.models.length} 个模型 · {channel.id}</span>
+              <button
+                type="button"
+                className={styles.channelSelect}
+                aria-current={selected ? "true" : undefined}
+                onClick={() => onSelect(channel)}
+              >
+                <ProviderMark provider={channel.provider} icon={channel.icon} size={34} />
+                <span style={{ minWidth: 0 }}>
+                  <span className={styles.channelItemName}>{channel.display_name}</span>
+                  <span className={styles.channelItemMeta}>{channel.models.length} 个模型 · {channel.id}</span>
+                </span>
+              </button>
+              <span className={styles.channelSwitchWrap}>
+                <Tooltip text={statusText}>
+                  <span>
+                    <ToggleSwitch
+                      className={`${styles.channelSwitch} ${switchClass}`}
+                      aria-label={`${channel.display_name}：${statusText}`}
+                      checked={configured && channel.enabled}
+                      disabled={busy || !configured}
+                      color="green"
+                      onChange={(event) => onToggle(channel, event.currentTarget.checked)}
+                    />
+                  </span>
+                </Tooltip>
               </span>
-              <span className={`${styles.statusDot} ${statusClass}`} aria-hidden="true" />
-            </button>
+            </div>
           );
         })}
         {!visibleChannels.length && (

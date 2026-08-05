@@ -56,7 +56,7 @@ export function PolicyStageCard({
         </span>
 
         <span className={styles.stageSelection}>
-          {selected ? <ProviderMark provider={selected.channel.provider} size={42} /> : <ProviderMark provider="openai-compatible" size={42} />}
+          {selected ? <ProviderMark provider={selected.channel.provider} icon={selected.channel.icon} size={42} /> : <ProviderMark provider="openai-compatible" size={42} />}
           <span style={{ minWidth: 0 }}>
             <span className={styles.stageChannel}>{selected ? selected.channel.display_name : "等待配置"}</span>
             <span className={styles.stageModel}>{selected ? selected.model.id : "选择阶段模型"}</span>
@@ -124,7 +124,7 @@ export function ModelPickerDrawer({
       {definition && visibleChannels.map(({ channel, models }) => (
         <section className={styles.pickerGroup} key={channel.id}>
           <div className={styles.pickerGroupTitle}>
-            <ProviderMark provider={channel.provider} size={24} />
+            <ProviderMark provider={channel.provider} icon={channel.icon} size={24} />
             {channel.display_name} · {models.length}
           </div>
           {models.map((model) => {

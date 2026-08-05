@@ -84,6 +84,9 @@ test("completed task stays compact and editing replaces the reading card", async
   await page.route(`**/api/tasks/${taskId}`, async (route) => {
     await route.fulfill({ json: { task } });
   });
+  await page.route(`**/api/tasks/${taskId}/duplicates`, async (route) => {
+    await route.fulfill({ json: { items: [] } });
+  });
   await page.route("**/api/assets/task-ui-test.png", async (route) => {
     await route.fulfill({
       contentType: "image/svg+xml",
@@ -114,6 +117,17 @@ test("completed task stays compact and editing replaces the reading card", async
   await expect(page.getByText("界面测试试卷.pdf", { exact: true })).toBeVisible();
   await expect(page.getByText("第 2 页", { exact: true })).toBeVisible();
   await expect(page.getByRole("link", { name: "定位到批量扫描" })).toBeVisible();
+  const problemHeading = page.getByRole("heading", { name: "题目与解答" });
+  const taskCardBox = await taskCard.boundingBox();
+  const problemHeadingBox = await problemHeading.boundingBox();
+  if (!taskCardBox || !problemHeadingBox) throw new Error("任务详情布局未完成");
+  expect(problemHeadingBox.y - (taskCardBox.y + taskCardBox.height)).toBeLessThan(40);
+  await page.getByRole("button", { name: "举一反三" }).click();
+  const variationDialog = page.getByRole("dialog", { name: "举一反三" });
+  await expect(variationDialog).toBeVisible();
+  await expect(variationDialog.getByLabel("变式方向")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(variationDialog).toHaveCount(0);
   await expect(page.locator("[data-option-item='true']").first().locator(".katex")).toBeVisible();
   await expect(page.getByText("OCR 识别", { exact: true })).toHaveCount(0);
   await progressSummary.click();

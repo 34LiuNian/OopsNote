@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { PasswordInput } from "@mantine/core";
 import { Copy, Save, ShieldAlert, Trash2 } from "lucide-react";
 import { useAuth } from "@/components/providers/AuthProvider";
-import { Box, Button, FormControl, Heading, IconButton, Select, Spinner, Text, TextInput, ToggleSwitch, Tooltip } from "@/components/ui/primitives";
+import { Box, Button, FormControl, Heading, IconButton, Select, Spinner, Text, TextInput, Tooltip } from "@/components/ui/primitives";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
 import { isAdminUser } from "@/lib/auth";
 import { notify } from "@/lib/notify";
@@ -13,7 +13,7 @@ import { formatApiError } from "@/lib/errorFormatter";
 import { getChannelCredential } from "@/features/settings/api";
 import { useAiChannels, useAiChannelMutations } from "@/features/settings/useAiProviders";
 import type { ChannelDraft, ChannelModel, ProviderChannel } from "@/features/settings/types";
-import { ChannelRail, ModelCatalog, type ModelCatalogFilter, ProviderMark, providerLabel } from "@/components/settings/ai";
+import { ChannelRail, ModelCatalog, type ModelCatalogFilter, ProviderIconPicker, ProviderMark, providerLabel } from "@/components/settings/ai";
 import styles from "@/components/settings/ai/aiSettings.module.css";
 
 const PROVIDERS = [
@@ -36,6 +36,7 @@ const EMPTY_DRAFT: ChannelDraft = {
   id: "",
   display_name: "",
   provider: "deepseek",
+  icon: null,
   base_url: PROVIDER_DEFAULT_URLS.deepseek,
   enabled: true,
 };
@@ -47,6 +48,7 @@ function draftFrom(channel: ProviderChannel): ChannelDraft {
     id: channel.id,
     display_name: channel.display_name,
     provider: channel.provider,
+    icon: channel.icon,
     base_url: channel.base_url,
     enabled: channel.enabled,
   };
@@ -67,6 +69,7 @@ export default function AiChannelsPage() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [channelQuery, setChannelQuery] = useState("");
   const [creating, setCreating] = useState(false);
+  const [iconPickerOpen, setIconPickerOpen] = useState(false);
   const [draft, setDraft] = useState<ChannelDraft>(EMPTY_DRAFT);
   const [secretDraft, setSecretDraft] = useState("");
   const [secretDirty, setSecretDirty] = useState(false);
@@ -84,6 +87,7 @@ export default function AiChannelsPage() {
   const infoDirty = creating || Boolean(selected && (
     activeDraft.display_name !== selected.display_name
     || activeDraft.provider !== selected.provider
+    || activeDraft.icon !== selected.icon
     || activeDraft.base_url !== selected.base_url
   ));
   const canSave = Boolean(
@@ -111,6 +115,7 @@ export default function AiChannelsPage() {
 
   function choose(channel: ProviderChannel) {
     setCreating(false);
+    setIconPickerOpen(false);
     setSelectedId(channel.id);
     setDraft(draftFrom(channel));
     resetCredentialDraft();
@@ -121,6 +126,7 @@ export default function AiChannelsPage() {
 
   function beginCreate() {
     setCreating(true);
+    setIconPickerOpen(false);
     setSelectedId(null);
     setDraft({ ...EMPTY_DRAFT });
     resetCredentialDraft();
@@ -245,13 +251,11 @@ export default function AiChannelsPage() {
     }
   }
 
-  async function setEnabled(enabled: boolean) {
-    if (!selected) return;
+  async function setEnabled(channel: ProviderChannel, enabled: boolean) {
     setErrorMessage("");
     try {
-      const { id: _id, ...payload } = { ...activeDraft, enabled };
-      const result = await mutations.update.mutateAsync({ channelId: selected.id, payload });
-      setDraft(draftFrom(result.channel));
+      const result = await mutations.update.mutateAsync({ channelId: channel.id, payload: { enabled } });
+      if (selected?.id === channel.id) setDraft((current) => ({ ...current, enabled }));
       notify.success({ title: enabled ? "渠道已启用" : "渠道已停用" });
       if (result.policy_cleared) notify.warning({ title: "LangChain 策略已清除", description: "停用渠道后，请重新配置策略。" });
     } catch (error) {
@@ -259,17 +263,17 @@ export default function AiChannelsPage() {
     }
   }
 
-  function toggleEnabled(enabled: boolean) {
-    if (enabled || !selected) {
-      void setEnabled(enabled);
+  function toggleEnabled(channel: ProviderChannel, enabled: boolean) {
+    if (enabled) {
+      void setEnabled(channel, true);
       return;
     }
     confirmAction({
-      title: "停用渠道",
+      title: `停用 ${channel.display_name}`,
       message: "现有 run 不受影响，后续策略不能使用该渠道。",
       confirmLabel: "停用",
       destructive: true,
-      onConfirm: () => setEnabled(false),
+      onConfirm: () => setEnabled(channel, false),
     });
   }
 
@@ -310,11 +314,13 @@ export default function AiChannelsPage() {
     <div className={styles.channelWorkspace}>
       <ChannelRail
         channels={items}
+        busy={busy}
         query={channelQuery}
         selectedId={selected?.id ?? selectedId}
         onCreate={beginCreate}
         onQueryChange={setChannelQuery}
         onSelect={choose}
+        onToggle={toggleEnabled}
       />
       <section className={styles.channelDetail} aria-label="AI 渠道详情">
         {!showEditor ? (
@@ -328,7 +334,24 @@ export default function AiChannelsPage() {
           <>
             <header className={styles.detailHeader}>
               <div className={styles.detailIdentity}>
-                <ProviderMark provider={activeDraft.provider} size={46} />
+                <div className={styles.detailIconAnchor}>
+                  <button
+                    type="button"
+                    className={styles.detailIconButton}
+                    aria-label="更换供应商图标"
+                    aria-expanded={iconPickerOpen}
+                    onClick={() => setIconPickerOpen((open) => !open)}
+                  >
+                    <ProviderMark provider={activeDraft.provider} icon={activeDraft.icon} size={46} />
+                  </button>
+                  <ProviderIconPicker
+                    open={iconPickerOpen}
+                    provider={activeDraft.provider}
+                    value={activeDraft.icon}
+                    onChange={(icon) => setDraft((current) => ({ ...current, icon }))}
+                    onClose={() => setIconPickerOpen(false)}
+                  />
+                </div>
                 <div style={{ minWidth: 0 }}>
                   <h2 className={styles.detailName}>{activeDraft.display_name || "新建渠道"}</h2>
                   <div className={styles.detailMeta}>{providerLabel(activeDraft.provider)}{selected ? ` · ${selected.id} · ${selected.models.length} 个模型 · 更新于 ${formatDate(selected.updated_at)}` : " · 尚未创建"}</div>
@@ -337,10 +360,6 @@ export default function AiChannelsPage() {
               <div className={styles.detailActions}>
                 {selected && <span className={styles.destructiveAction}><Tooltip text="删除渠道"><IconButton variant="default" icon={Trash2} aria-label="删除渠道" disabled={busy} onClick={deleteSelected} style={{ color: "var(--fgColor-danger)" }} /></Tooltip></span>}
                 {(creating || canSave) && <Button variant="primary" leadingVisual={Save} disabled={!canSave || busy} onClick={() => void saveAll()}>{creating ? "创建" : "保存"}</Button>}
-                {selected && <span className={styles.statusControl}>
-                  <span className={styles.switchLabel}>{selected.enabled ? "已启用" : "已停用"}</span>
-                  <ToggleSwitch aria-label="启用渠道" checked={selected.enabled} disabled={busy} onChange={(event) => toggleEnabled(event.currentTarget.checked)} />
-                </span>}
               </div>
             </header>
             <div className={styles.detailBody}>

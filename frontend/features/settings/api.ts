@@ -16,7 +16,7 @@ export function createChannel(payload: ChannelDraft) {
   return fetchJson<{ channel: ProviderChannel }>("/settings/ai/channels", { method: "POST", body: JSON.stringify(payload) });
 }
 
-export function updateChannel(channelId: string, payload: Omit<ChannelDraft, "id">) {
+export function updateChannel(channelId: string, payload: Partial<Omit<ChannelDraft, "id">>) {
   return fetchJson<{ channel: ProviderChannel; policy_cleared: boolean }>(`/settings/ai/channels/${encodeURIComponent(channelId)}`, { method: "PATCH", body: JSON.stringify(payload) });
 }
 

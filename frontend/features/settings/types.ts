@@ -13,6 +13,7 @@ export type ProviderChannel = {
   version: number;
   display_name: string;
   provider: string;
+  icon: string | null;
   base_url: string | null;
   enabled: boolean;
   has_secret: boolean;
@@ -37,6 +38,7 @@ export type ChannelDraft = {
   id: string;
   display_name: string;
   provider: string;
+  icon: string | null;
   base_url: string | null;
   enabled: boolean;
 };

@@ -116,6 +116,7 @@ export function ProblemStudyPanel({ taskId, problem, mergedInto, onStatusMessage
     );
   }
   if (mergedInto) return null;
+  if (section === "duplicates" && candidates.length === 0) return null;
 
   return (
     <Box sx={{ display: "flex", flexDirection: "column", gap: 3 }}>
@@ -172,7 +173,7 @@ export function ProblemStudyPanel({ taskId, problem, mergedInto, onStatusMessage
         </Box>
       )}
 
-      {section === "variations" && <Box className="oops-card" sx={{ p: 3 }}>
+      {section === "variations" && <Box>
         <Text sx={{ fontWeight: 600, mb: 3 }}>举一反三</Text>
         <Box sx={{ display: "grid", gridTemplateColumns: ["1fr", "1fr 1fr"], gap: 2 }}>
           <Select value={direction} onValueChange={setDirection} aria-label="变式方向" block>

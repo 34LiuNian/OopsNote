@@ -23,7 +23,6 @@ import { useTaskStream } from "@/hooks/useTaskStream";
 import { useTaskProgress } from "@/hooks/useTaskProgress";
 import { TaskProgressBar } from "./task/TaskProgressBar";
 import { ErrorBanner } from "./ui/ErrorBanner";
-import { TaskLiveStream } from "./task/TaskLiveStream";
 import { TaskMathRenderer } from "./task/TaskMathRenderer";
 import { TaskStatusNotifications } from "./task/TaskStatusNotifications";
 import { CheckIcon, ChevronDownIcon, ChevronUpIcon } from "./ui/icons";
@@ -61,6 +60,7 @@ export function TaskLiveView({ taskId }: { taskId: string }) {
   const { effectiveDimensions: tagStyles } = useTagDimensions();
   const [editingKey, setEditingKey] = useState<string>("");
   const [isScreenshotOpen, setIsScreenshotOpen] = useState(false);
+  const [isVariationOpen, setIsVariationOpen] = useState(false);
   const [showTaskDetails, setShowTaskDetails] = useState(false);
 
   const {
@@ -150,7 +150,12 @@ export function TaskLiveView({ taskId }: { taskId: string }) {
       {/* Math renderer */}
       <TaskMathRenderer data={viewData} />
 
-      <TaskStatusNotifications taskId={taskId} statusMessage={statusMessage} status={viewData?.task?.status} />
+      <TaskStatusNotifications
+        taskId={taskId}
+        statusMessage={statusMessage}
+        status={viewData?.task?.status}
+        progressLines={streamProgress}
+      />
 
       {/* Task header card */}
       <Box
@@ -262,11 +267,21 @@ export function TaskLiveView({ taskId }: { taskId: string }) {
         </Modal>
       )}
 
-      <ErrorBanner message={error} />
-
-      {(viewData?.task?.status === "pending" || viewData?.task?.status === "processing") && (
-        <TaskLiveStream streamProgress={streamProgress} />
+      {viewData?.task.problem && !viewData.task.merged_into && (
+        <Modal opened={isVariationOpen} onClose={() => setIsVariationOpen(false)} title="举一反三" centered size="lg">
+          <ProblemStudyPanel
+            taskId={taskId}
+            problem={viewData.task.problem}
+            mergedInto={viewData.task.merged_into}
+            onStatusMessage={setStatusMessage}
+            onError={setError}
+            onRefresh={loadOnce}
+            section="variations"
+          />
+        </Modal>
       )}
+
+      <ErrorBanner message={error} />
 
       {!error && !viewData && (
         <Box className="oops-empty-state" sx={{ py: 6 }}>
@@ -304,18 +319,7 @@ export function TaskLiveView({ taskId }: { taskId: string }) {
           onStatusMessage={setStatusMessage}
           onError={setError}
           onOpenSourceImage={() => setIsScreenshotOpen(true)}
-        />
-      )}
-
-      {viewData?.task.problem && (
-        <ProblemStudyPanel
-          taskId={taskId}
-          problem={viewData.task.problem}
-          mergedInto={viewData.task.merged_into}
-          onStatusMessage={setStatusMessage}
-          onError={setError}
-          onRefresh={loadOnce}
-          section="variations"
+          onOpenVariations={() => setIsVariationOpen(true)}
         />
       )}
 

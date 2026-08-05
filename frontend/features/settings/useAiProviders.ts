@@ -27,7 +27,7 @@ export function useAiChannelMutations() {
   const refresh = () => queryClient.invalidateQueries({ queryKey: queryKeys.settings.aiProfiles() });
   return {
     create: useMutation({ mutationFn: createChannel, onSuccess: refresh }),
-    update: useMutation({ mutationFn: ({ channelId, payload }: { channelId: string; payload: Omit<ChannelDraft, "id"> }) => updateChannel(channelId, payload), onSuccess: refresh }),
+    update: useMutation({ mutationFn: ({ channelId, payload }: { channelId: string; payload: Partial<Omit<ChannelDraft, "id">> }) => updateChannel(channelId, payload), onSuccess: refresh }),
     credential: useMutation({ mutationFn: ({ channelId, secret }: { channelId: string; secret: string }) => updateChannelCredential(channelId, secret), onSuccess: refresh }),
     sync: useMutation({ mutationFn: syncChannelModels, onSuccess: refresh }),
     model: useMutation({ mutationFn: ({ channelId, modelId, payload }: { channelId: string; modelId: string; payload: Parameters<typeof updateChannelModel>[2] }) => updateChannelModel(channelId, modelId, payload), onSuccess: refresh }),

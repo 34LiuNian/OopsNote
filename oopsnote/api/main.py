@@ -208,6 +208,7 @@ def _batch_session_view(record: BatchSessionRecord) -> dict[str, Any]:
         "filename": record.filename,
         "mime_type": record.mime_type,
         "asset_path": record.asset_path,
+        "source_available": _batch_source_available(record),
         "page_count": record.page_count,
         "subject": record.subject,
         "notes": record.notes,
@@ -217,10 +218,38 @@ def _batch_session_view(record: BatchSessionRecord) -> dict[str, Any]:
         "column_layout": record.column_layout.model_dump(),
         "excluded_page_indices": record.excluded_page_indices,
         "segments": [segment.model_dump() for segment in record.segments],
+        "submitted_selections": _batch_submitted_selection_views(record.file_hash),
         "revision": record.revision,
         "created_at": record.created_at.isoformat(),
         "updated_at": record.updated_at.isoformat(),
     }
+
+
+def _batch_source_available(record: BatchSessionRecord) -> bool:
+    return ASSET_STORE.is_available(record.asset_path, record.file_hash)
+
+
+def _batch_submitted_selection_views(file_hash: str) -> list[dict[str, Any]]:
+    """Return immutable task provenance for rendering after session edits/deletion."""
+    views: list[dict[str, Any]] = []
+    for task in TASK_STORE.list_all():
+        snapshot = task.metadata.get("selection_snapshot")
+        if not isinstance(snapshot, dict) or snapshot.get("source_file_hash") != file_hash:
+            continue
+        parts = snapshot.get("parts")
+        if not isinstance(parts, list) or not parts:
+            continue
+        views.append({
+            "id": str(snapshot.get("segment_id") or f"task:{task.id}"),
+            "task_id": task.id,
+            "question_no": snapshot.get("question_no"),
+            "status": task.status.value,
+            "parts": parts,
+            "crop_rect": snapshot.get("crop_rect"),
+            "column_layout": snapshot.get("column_layout"),
+        })
+    views.sort(key=lambda item: (item.get("question_no") or 0, item["task_id"]))
+    return views
 
 
 def _sync_batch_source_references(file_hash: str, filename: str) -> None:

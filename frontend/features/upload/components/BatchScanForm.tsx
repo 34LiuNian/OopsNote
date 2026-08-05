@@ -37,9 +37,10 @@ import { RenameDialog } from "@/components/ui/RenameDialog";
 import { notify } from "@/lib/notify";
 import { confirmAction } from "@/lib/confirm";
 import { ApiError, apiErrorFromResponse, fetchApi } from "@/lib/api";
-import { selectionsToSessionSegments, sessionSegmentsToSelections } from "../adapters/batchSessionSelectionAdapter";
+import { selectionsToSessionSegments, sessionSegmentsToSelections, submittedSelectionsToSelections } from "../adapters/batchSessionSelectionAdapter";
 import {
   deleteBatchSession,
+  deleteBatchSource,
   getBatchUploadLimits,
   getBatchSession,
   listBatchSessions,
@@ -108,6 +109,7 @@ export function BatchScanForm() {
   const [visiblePageIndex, setVisiblePageIndex] = useState(0);
   const [pageInput, setPageInput] = useState("1");
   const [selections, setSelections] = useState<SelectionModel[]>([]);
+  const [historicalSelections, setHistoricalSelections] = useState<SelectionModel[]>([]);
   const [activeSelectionId, setActiveSelectionId] = useState<string>();
   const [zoom, setZoom] = useState(1);
   const [inverted, setInverted] = useState(resolvedTheme === "dark");
@@ -207,6 +209,7 @@ export function BatchScanForm() {
     setImageUrls({});
     setCurrentSession(null);
     setSelections([]);
+    setHistoricalSelections([]);
     setActiveSelectionId(undefined);
     setCrop(FULL_CROP);
     setColumnLayout({ ...DEFAULT_COLUMN_LAYOUT });
@@ -327,6 +330,7 @@ export function BatchScanForm() {
     const nextActivePages = nextPages.filter((page) => !nextExcludedPageIndices.includes(page.pageIndex));
     const nextMetrics = buildPageMetrics(nextActivePages, nextCrop, nextColumnLayout);
     const nextSelections = sortAndNumber(sessionSegmentsToSelections(session?.segments ?? [], nextMetrics));
+    const nextHistoricalSelections = submittedSelectionsToSelections(session?.submitted_selections ?? [], nextMetrics);
     const restoredSnapshot = buildSessionContentSnapshot(
       nextPages.length,
       nextCrop,
@@ -345,6 +349,7 @@ export function BatchScanForm() {
     setCropConfirmed(session?.crop_confirmed ?? false);
     setCropView(session?.crop_confirmed ? "preview" : "edit");
     setSelections(nextSelections);
+    setHistoricalSelections(nextHistoricalSelections);
     setCurrentSession(session);
     setSaveState(session ? "saved" : "idle");
     const pageIndex = nearestAvailablePageIndex(nextPages, nextExcludedPageIndices, session?.active_page ?? 0);
@@ -365,7 +370,7 @@ export function BatchScanForm() {
       const fileHash = await hashFile(file);
       const existing = await getBatchSession(fileHash);
       await openWorkspace(file, existing);
-      if (!existing) {
+      if (!existing || existing.source_available === false) {
         const pageCount = pdfRef.current?.document.numPages ?? 1;
         const session = await uploadBatchSource(fileHash, file, pageCount);
         sessionRevisionRef.current = session.revision;
@@ -386,7 +391,12 @@ export function BatchScanForm() {
     setIsImporting(true);
     try {
       const response = await fetchApi(session.asset_path);
-      if (!response.ok) throw await apiErrorFromResponse(response);
+      if (!response.ok) {
+        if (response.status === 404) {
+          throw new Error("原始批量文件不可用，请重新导入相同内容的文件以恢复批量扫描");
+        }
+        throw await apiErrorFromResponse(response);
+      }
       const file = new File([await response.blob()], session.filename, { type: session.mime_type });
       await openWorkspace(file, session);
       if (requestedPage) {
@@ -421,10 +431,13 @@ export function BatchScanForm() {
 
   const applyServerSession = useCallback((session: BatchSession, replaceLocal: boolean) => {
     const projected = projectBatchSession(session, pages);
+    const activePagesForHistory = pages.filter((page) => !(session.excluded_page_indices ?? []).includes(page.pageIndex));
+    const historyMetrics = buildPageMetrics(activePagesForHistory, session.crop_rect, projected.columnLayout);
     persistedContentSnapshotRef.current = projected.snapshot;
     sessionRevisionRef.current = session.revision;
     setCurrentSession(session);
     setSavedSessions((current) => upsertBatchSession(current, session));
+    setHistoricalSelections(submittedSelectionsToSelections(session.submitted_selections ?? [], historyMetrics));
     if (replaceLocal) {
       currentContentSnapshotRef.current = projected.snapshot;
       selectionsRef.current = projected.selections;
@@ -790,6 +803,16 @@ export function BatchScanForm() {
             isImporting={isImporting}
             onRename={openRenameSession}
             onResume={(session) => void resumeSession(session)}
+            onDeleteSource={(session) => confirmAction({
+              title: "移除源文件",
+              message: "批量扫描选框和已生成题目会保留。重新导入内容相同的文件即可恢复画布。",
+              confirmLabel: "移除源文件",
+              destructive: true,
+              onConfirm: async () => {
+                await deleteBatchSource(session.file_hash);
+                await refreshSavedSessions();
+              },
+            })}
             onDelete={(session) => confirmAction({
               title: "删除批量扫描记录",
               message: "已生成的任务和题目会保留。此操作无法撤销。",
@@ -909,6 +932,7 @@ export function BatchScanForm() {
                     imageUrls={imageUrls}
                     loadPage={loadPage}
                     selections={cropConfirmed ? selections : []}
+                    historicalSelections={cropConfirmed ? historicalSelections : []}
                     activeSelectionId={activeSelectionId}
                     inverted={inverted}
                     zoom={zoom}

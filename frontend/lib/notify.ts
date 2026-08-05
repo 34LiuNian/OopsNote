@@ -15,6 +15,7 @@ type NotificationPosition = "top-left" | "top-right" | "top-center" | "bottom-le
 type NotifyOptions = {
   title: string;
   description?: string;
+  message?: ReactNode;
   id?: string;
   position?: NotificationPosition;
   autoClose?: number | false;
@@ -34,8 +35,16 @@ function messageContent(description: string | undefined, button: NotifyOptions["
   );
 }
 
-function show(color: string, { description, button, ...options }: NotifyOptions) {
-  return notifications.show({ ...options, color, message: messageContent(description, button) });
+function resolvedMessage(description: string | undefined, button: NotifyOptions["button"], message: ReactNode) {
+  return message ?? messageContent(description, button);
+}
+
+function show(color: string, { description, button, message, ...options }: NotifyOptions) {
+  return notifications.show({
+    ...options,
+    color,
+    message: resolvedMessage(description, button, message),
+  });
 }
 
 export const notify = {
@@ -43,10 +52,20 @@ export const notify = {
   error: (options: NotifyOptions) => show("red", options),
   warning: (options: NotifyOptions) => show("yellow", options),
   info: (options: NotifyOptions) => show("blue", options),
-  update: ({ color = "blue", description, button, ...options }: NotifyOptions & { color?: string }) => notifications.update({
+  update: ({ color = "blue", description, button, message, ...options }: NotifyOptions & { color?: string }) => notifications.update({
     ...options,
     color,
-    message: messageContent(description, button),
+    message: resolvedMessage(description, button, message),
   }),
+  upsert: ({ color = "blue", ...options }: NotifyOptions & { color?: string }) => {
+    const id = show(color, options);
+    notifications.update({
+      ...options,
+      id,
+      color,
+      message: resolvedMessage(options.description, options.button, options.message),
+    });
+    return id;
+  },
   dismiss: (id: string) => notifications.hide(id),
 };

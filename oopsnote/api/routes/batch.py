@@ -110,6 +110,33 @@ async def upload_batch_source(file_hash: str, request: Request) -> dict[str, Any
                 page_count=page_count,
             )
         )
+    else:
+        # A deleted source must be recoverable without discarding the mutable
+        # session or its task links. The stream is hash-verified and written
+        # atomically before the session reference is refreshed.
+        if not api.ASSET_STORE.is_available(record.asset_path, record.file_hash):
+            try:
+                asset_path = await api.ASSET_STORE.save_stream(
+                    request.stream(),
+                    filename,
+                    stable_name=f"batch-{file_hash}",
+                    expected_sha256=file_hash,
+                    max_bytes=BATCH_SOURCE_MAX_BYTES,
+                )
+            except AssetUploadTooLargeError as error:
+                raise HTTPException(status_code=413, detail=str(error)) from error
+            except ValueError as error:
+                raise HTTPException(status_code=400, detail=str(error)) from error
+            record = api.BATCH_SESSION_STORE.update(
+                file_hash,
+                BatchSessionUpdateRequest(
+                    asset_path=asset_path,
+                    filename=filename,
+                    mime_type=mime_type,
+                    page_count=page_count,
+                ),
+                expected_revision=record.revision,
+            )
     return {"session": api._batch_session_view(record)}
 
 
@@ -212,6 +239,31 @@ def delete_batch_session(file_hash: str) -> dict[str, Any]:
         "preserved_task_ids": [
             segment.task_id for segment in record.segments if segment.task_id
         ],
+    }
+
+
+@router.delete("/batch-sessions/{file_hash}/source")
+def delete_batch_source(file_hash: str) -> dict[str, Any]:
+    """Remove only the source document and retain the editable session/history."""
+    api = _api()
+    with api.BATCH_SESSION_STORE.session_lock(file_hash):
+        try:
+            record = api.BATCH_SESSION_STORE.get(file_hash)
+        except KeyError:
+            raise HTTPException(status_code=404, detail="Batch session not found")
+        if any(segment.status in {"pending", "processing"} for segment in record.segments):
+            raise HTTPException(status_code=409, detail="Cannot remove the source while batch processing is active")
+        try:
+            api.ASSET_STORE.delete(record.asset_path)
+        except FileNotFoundError:
+            pass
+        except ValueError as error:
+            raise HTTPException(status_code=422, detail=str(error)) from error
+    return {
+        "deleted": True,
+        "file_hash": record.file_hash,
+        "source_available": False,
+        "preserved_task_ids": [segment.task_id for segment in record.segments if segment.task_id],
     }
 
 

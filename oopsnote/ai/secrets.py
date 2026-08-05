@@ -199,15 +199,22 @@ class EncryptedFileSecretStore(SecretStore):
         ) + "\n"
         descriptor, temp_name = tempfile.mkstemp(prefix=f".{self.path.name}.", dir=self.path.parent)
         temp = Path(temp_name)
+        descriptor_open = True
         try:
-            os.fchmod(descriptor, 0o600)
+            if hasattr(os, "fchmod"):
+                os.fchmod(descriptor, 0o600)
+            else:
+                os.chmod(temp, 0o600)
             with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+                descriptor_open = False
                 handle.write(payload)
                 handle.flush()
                 os.fsync(handle.fileno())
             temp.replace(self.path)
             self.path.chmod(0o600)
         finally:
+            if descriptor_open:
+                os.close(descriptor)
             if temp.exists():
                 temp.unlink()
 

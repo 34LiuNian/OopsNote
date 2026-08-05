@@ -7,6 +7,7 @@ import hashlib
 from datetime import datetime, timezone
 from collections.abc import Collection
 from typing import Any, Iterable
+from urllib.parse import urlsplit, urlunsplit
 
 from pydantic import BaseModel, ConfigDict, Field, HttpUrl, field_validator
 
@@ -47,6 +48,8 @@ class ProviderChannel(BaseModel):
     version: int = Field(ge=1)
     display_name: str = Field(min_length=1, max_length=128)
     provider: str = Field(min_length=1, max_length=64)
+    # Presentation metadata only; connection behavior remains owned by provider.
+    icon: str | None = Field(default=None, min_length=1, max_length=64)
     base_url: HttpUrl | None = None
     credential_ref: str | None = Field(default=None, min_length=1, max_length=128)
     enabled: bool = True
@@ -62,6 +65,11 @@ class ProviderChannel(BaseModel):
         if normalized not in SUPPORTED_PROVIDERS:
             raise ValueError(f"unsupported provider: {value}")
         return normalized
+
+    @field_validator("icon")
+    @classmethod
+    def normalize_icon(cls, value: str | None) -> str | None:
+        return value.strip().lower().replace("_", "-") if value else None
 
     def model(self, model_id: str) -> ChannelModel:
         for item in self.models:
@@ -187,6 +195,19 @@ class ProviderClientFactory:
         host = (str(profile.base_url).split("/", 3)[2]).lower()
         return host == "dashscope.aliyuncs.com" or host.endswith(".maas.aliyuncs.com")
 
+    @staticmethod
+    def _openai_api_base(base_url: Any) -> str | None:
+        """Normalize an OpenAI-compatible origin to the provider API root."""
+
+        if base_url is None:
+            return None
+        parsed = urlsplit(str(base_url).rstrip("/"))
+        if not parsed.scheme or not parsed.netloc:
+            return str(base_url)
+        if not parsed.path:
+            parsed = parsed._replace(path="/v1")
+        return urlunsplit(parsed)
+
     @classmethod
     def _uses_managed_non_thinking_mode(cls, profile: ProviderProfile) -> bool:
         """Whether this provider needs non-thinking mode for a strict tool loop."""
@@ -237,7 +258,7 @@ class ProviderClientFactory:
                 raise RuntimeError("LangChain OpenAI integration is not installed") from error
             kwargs: dict[str, Any] = {
                 "model": profile.model,
-                "base_url": str(profile.base_url) if profile.base_url else None,
+                "base_url": self._openai_api_base(profile.base_url),
                 "api_key": api_key,
                 "max_retries": 0,
             }
@@ -323,10 +344,10 @@ class ProviderClientFactory:
     def _catalog_url(channel: ProviderChannel) -> str:
         base_url = str(channel.base_url or "").rstrip("/")
         if channel.provider == "deepseek":
-            return f"{base_url or 'https://api.deepseek.com/v1'}/models"
+            base_url = ProviderClientFactory._openai_api_base(base_url) or "https://api.deepseek.com/v1"
+            return f"{base_url}/models"
         if channel.provider in {"openai", "openai-compatible"}:
-            if not base_url:
-                base_url = "https://api.openai.com/v1"
+            base_url = ProviderClientFactory._openai_api_base(base_url) or "https://api.openai.com/v1"
             return f"{base_url}/models"
         if channel.provider == "anthropic":
             return f"{base_url or 'https://api.anthropic.com'}/v1/models"

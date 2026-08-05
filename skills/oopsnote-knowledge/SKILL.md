@@ -1,43 +1,11 @@
 ---
 name: oopsnote-knowledge
-description: "学科应试知识库 — 被其他 oopsnote skill 引用的知识体系。"
-version: 1.0.0
-license: MIT
-metadata:
-  hermes:
-    tags: [oopsnote, knowledge, reference, curriculum]
+description: "维护供未来分阶段装配的 OopsNote 学科方法资料；当前不属于 LangChain 运行时 skill pack。"
 ---
 
-# OopsNote — 学科应试知识库
+# 可选学科方法
 
-## 用途
-被 `oopsnote-solve-problem`、`oopsnote-tag-problem` 等 skill 引用，提供学科背景知识。
-
-## 内容规划（持续补充）
-
-### 数学
-- 高中课标知识点树（必修+选修）
-- 常见题型分类
-- 高考高频考点
-- 典型易错点
-- 常用二级结论
-- 解题模板
-
-### 物理
-- 课标知识点树（力/热/电/光/原子）
-- 常见模型分类
-- 单位制/有效数字规范
-- 实验题专项
-
-### 化学
-- 课标知识点树（无机/有机/原理/结构/实验）
-- 常见推断题"题眼"
-- 方程式书写规范
-- 有机合成路线模板
-
-### 通用
-- 各科分值分布
-- 答题规范
-
-## 状态
-当前为骨架。具体知识内容在 Phase 5 整理填充。
+- 保持本 skill 不在 `ACTIVE_AI_SKILLS` 中；不得把其中资料注入普通 OCR、解题或打标运行。
+- active 解题 skill 已拥有通用输出格式和函数题基线，不在此重复。
+- 未来若有函数专项阶段，只有题目超出基线时才加载 [math-functions.md](references/math-functions.md)。新增方法前先核对适用条件和 OopsMark 表达方式。
+- 此目录只保存精炼的方法索引；不复制教材、完整例题、图片或答案库。

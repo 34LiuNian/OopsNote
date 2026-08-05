@@ -1,8 +1,0 @@
-{
-  "command": [
-    "C:\\nvm4w\\nodejs\\node.exe",
-    "C:\\nvm4w\\nodejs\\node_modules\\@earendil-works\\pi-coding-agent\\dist\\cli.js"
-  ],
-  "provider": "deepseek",
-  "model": "deepseek-v4-flash"
-}

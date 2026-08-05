@@ -329,7 +329,7 @@ def test_variation_request_carries_parent_error_and_custom_constraints(tmp_path,
     monkeypatch.setattr(main, "TASK_STORE", task_store)
     monkeypatch.setattr(main, "RUN_STORE", RunStore(storage / "runs"))
     monkeypatch.setattr(main, "_runner_for", lambda _backend: runner)
-    monkeypatch.setattr(main, "_configured_backend", lambda _backend: "pi")
+    monkeypatch.setattr(main, "_configured_backend", lambda: "pi")
 
     parent = task_store.create(TaskCreateRequest(subject="math"))
     parent = task_store.set_problem(parent.id, Problem(
@@ -727,10 +727,28 @@ def test_batch_session_persists_parts_crop_and_deletes_without_tasks(tmp_path, m
         content=source,
         headers={"x-oopsnote-filename": "continuous.pdf", "content-type": "application/pdf"},
     ).status_code == 200
+    initial_session = client.get(f"/batch-sessions/{digest}").json()["session"]
+    assert initial_session["source_available"] is True
+    removed_source = client.delete(f"/batch-sessions/{digest}/source")
+    assert removed_source.status_code == 200
+    assert removed_source.json()["source_available"] is False
+    missing_session = client.get(f"/batch-sessions/{digest}").json()["session"]
+    assert missing_session["source_available"] is False
+    restored = client.put(
+        f"/batch-sessions/{digest}/source",
+        content=source,
+        headers={
+            "x-oopsnote-filename": "questions.pdf",
+            "x-oopsnote-page-count": "1",
+            "content-type": "application/pdf",
+        },
+    )
+    assert restored.status_code == 200
+    assert restored.json()["session"]["source_available"] is True
     updated = client.patch(
         f"/batch-sessions/{digest}",
         json={
-            "expected_revision": 0,
+            "expected_revision": 1,
             "page_count": 3,
             "crop_rect": {"x": 0.1, "y": 0.08, "width": 0.8, "height": 0.84},
             "crop_confirmed": True,
@@ -922,6 +940,9 @@ def test_batch_process_renders_all_pending_segments_and_enqueues_once(tmp_path, 
     tasks = task_store.list_all()
     assert len(tasks) == 2
     assert {task.metadata["batch_question_no"] for task in tasks} == {1, 2}
+    assert all(task.metadata["selection_snapshot"]["schema_version"] == 1 for task in tasks)
+    assert all(task.metadata["selection_snapshot"]["parts"] for task in tasks)
+    assert {item["task_id"] for item in payload["session"]["submitted_selections"]} == {task.id for task in tasks}
     assert all((storage / task.asset_path.lstrip("/")).is_file() for task in tasks)
     job = main.BATCH_PROCESS_JOB_STORE.get(digest)
     assert {state.status for state in job.segments} == {"processing"}
@@ -1106,7 +1127,7 @@ def test_process_endpoint_creates_observable_run(tmp_path, monkeypatch):
         time.sleep(0.01)
     assert runs[0]["status"] == "completed"
     assert client.get(f"/tasks/{task['id']}").json()["task"]["status"] == "completed"
-    assert runs[0]["backend"] == "langchain"
+    assert runs[0]["backend"] == runner.backend_name
     assert runs[0]["retry_count"] == 0
 
 
