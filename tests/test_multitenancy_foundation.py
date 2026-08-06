@@ -23,6 +23,7 @@ from oopsnote.control import (
 from oopsnote.core import (
     Principal,
     RunPurpose,
+    RunStatus,
     TaskCreateRequest,
     TaskStatus,
     UserRole,
@@ -384,3 +385,57 @@ def test_workspace_runner_pool_is_scoped_and_reuses_only_within_workspace(tmp_pa
         assert second.task_store.base_dir == second_context.root / "tasks"
     finally:
         pool.shutdown()
+
+
+def test_workspace_run_store_enforces_concurrency_and_releases_failed_usage(tmp_path):
+    registry = _registry(tmp_path)
+    context = registry.get_or_create(Principal("auth-run-quota", UserRole.USER))
+    stores = WorkspaceStoreFactory().for_context(context)
+    first = stores.run_store.create("task-1", backend="hermes")
+
+    with pytest.raises(QuotaError, match="Concurrent"):
+        stores.run_store.create("task-2", backend="hermes")
+
+    stores.run_store.finish(first.id, RunStatus.FAILED, error_code="provider_unavailable")
+    second = stores.run_store.create("task-2", backend="hermes")
+    assert second.quota_reservation_id != first.quota_reservation_id
+
+
+def test_workspace_retry_reuses_one_reservation_and_consumes_it_once(tmp_path):
+    registry = _registry(tmp_path)
+    context = registry.get_or_create(Principal("auth-run-retry", UserRole.USER))
+    stores = WorkspaceStoreFactory().for_context(context)
+    first = stores.run_store.create("task-1", backend="hermes")
+    stores.run_store.finish(first.id, RunStatus.FAILED, error_code="provider_unavailable")
+    retry = stores.run_store.create("task-1", backend="hermes", retry_of=first)
+
+    assert retry.quota_reservation_id == first.quota_reservation_id
+    stores.run_store.finish(retry.id, RunStatus.COMPLETED)
+    with registry.database.connection() as connection:
+        reservation = connection.execute(
+            "SELECT state, units FROM usage_reservations WHERE id = ?",
+            (first.quota_reservation_id,),
+        ).fetchone()
+        control_runs = connection.execute(
+            "SELECT id, retry_of FROM runs WHERE quota_reservation_id = ? ORDER BY queued_at",
+            (first.quota_reservation_id,),
+        ).fetchall()
+    assert tuple(reservation) == ("consumed", 1)
+    assert len(control_runs) == 2
+    assert control_runs[1]["retry_of"] == first.id
+
+
+def test_consumed_daily_limit_blocks_the_next_workspace_run(tmp_path):
+    registry = _registry(tmp_path)
+    context = registry.get_or_create(Principal("auth-run-daily", UserRole.USER))
+    with registry.database.connection() as connection:
+        connection.execute(
+            "UPDATE quota_policies SET daily_success_limit = 1 WHERE workspace_id = ?",
+            (str(context.workspace_id),),
+        )
+    stores = WorkspaceStoreFactory().for_context(context)
+    first = stores.run_store.create("task-1", backend="hermes")
+    stores.run_store.finish(first.id, RunStatus.COMPLETED)
+
+    with pytest.raises(QuotaError, match="Daily"):
+        stores.run_store.create("task-2", backend="hermes")

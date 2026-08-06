@@ -189,8 +189,9 @@ def _enqueue(task_id: str) -> dict[str, Any]:
     except RuntimeError as error:
         code = getattr(error, "code", "run_admission_failed")
         conflict = code in {"task_busy", "admission_conflict"}
+        quota_rejection = code in {"concurrency_exceeded", "daily_limit_exceeded"}
         raise api_error(
-            409 if conflict else 503,
+            429 if quota_rejection else 409 if conflict else 503,
             code=code,
             message=(
                 "题目已有正在运行的任务"
@@ -199,7 +200,11 @@ def _enqueue(task_id: str) -> dict[str, Any]:
                 if code == "admission_conflict"
                 else "题目处理任务未能排队"
             ),
-            retryable=code == "admission_conflict" or not conflict,
+            retryable=(
+                code == "admission_conflict"
+                or code == "concurrency_exceeded"
+                or (not conflict and not quota_rejection)
+            ),
             task_id=task_id,
             scope="task",
         ) from error

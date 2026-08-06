@@ -56,6 +56,12 @@ class WorkspaceStoreFactory:
 
             root = context.root
             settings = root / "settings"
+            from oopsnote.control import ControlDatabase, QuotaAwareRunStore, QuotaService
+
+            control_database = ControlDatabase(
+                context.root.parent.parent / "control" / "app.sqlite"
+            )
+            quota = QuotaService(control_database)
             stores = WorkspaceStores(
                 task_store=TaskStore(root / "tasks"),
                 tag_store=TagStore(
@@ -68,8 +74,11 @@ class WorkspaceStoreFactory:
                 batch_process_job_store=BatchProcessJobStore(root / "batch_jobs"),
                 paper_draft_store=PaperDraftStore(root / "papers"),
                 problem_merge_store=ProblemMergeStore(settings / "problem_merges.json"),
-                run_store=RunStore(root / "runs"),
+                run_store=QuotaAwareRunStore(
+                    root / "runs",
+                    workspace_id=context.workspace_id,
+                    quota=quota,
+                ),
             )
             self._stores[key] = stores
             return stores
-

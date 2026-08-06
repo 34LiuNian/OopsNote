@@ -211,9 +211,79 @@ class QuotaService:
             connection.commit()
             return status
 
+    def admit_retry(
+        self,
+        workspace_id: WorkspaceId,
+        *,
+        previous_run_id: str,
+        task_id: str,
+        purpose: RunPurpose,
+        run_id: str,
+        payload: dict[str, Any] | None = None,
+        now: datetime | None = None,
+    ) -> RunAdmission:
+        """Reopen a released reservation for a transient retry exactly once."""
+        workspace = WorkspaceId.parse(workspace_id)
+        timestamp = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
+        self.database.migrate()
+        with self.database.connection() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            try:
+                previous = connection.execute(
+                    """
+                    SELECT r.workspace_id, r.task_id, r.purpose,
+                           u.id AS reservation_id, u.state, u.units,
+                           u.usage_day_utc
+                    FROM runs AS r
+                    JOIN usage_reservations AS u ON u.id = r.quota_reservation_id
+                    WHERE r.id = ?
+                    """,
+                    (previous_run_id,),
+                ).fetchone()
+                if previous is None or previous["workspace_id"] != str(workspace):
+                    raise QuotaError("retry_not_found", "Retry source run is not in this workspace")
+                if previous["state"] != "released":
+                    raise QuotaError("retry_not_eligible", "Only released reservations can be retried")
+                connection.execute(
+                    """
+                    UPDATE usage_reservations
+                    SET state = 'reserved', finalized_at = NULL, reason = NULL
+                    WHERE id = ? AND state = 'released'
+                    """,
+                    (previous["reservation_id"],),
+                )
+                connection.execute(
+                    """
+                    INSERT INTO runs(
+                        id, workspace_id, task_id, purpose, status,
+                        retry_of, quota_reservation_id, queued_at, payload_json
+                    ) VALUES (?, ?, ?, ?, 'queued', ?, ?, ?, ?)
+                    """,
+                    (
+                        run_id,
+                        str(workspace),
+                        task_id,
+                        purpose.value,
+                        previous_run_id,
+                        previous["reservation_id"],
+                        timestamp.isoformat(),
+                        _json_payload(payload),
+                    ),
+                )
+                connection.commit()
+            except (sqlite3.Error, QuotaError):
+                connection.rollback()
+                raise
+        return RunAdmission(
+            workspace,
+            run_id,
+            str(previous["reservation_id"]),
+            True,
+            "reserved",
+        )
+
 
 def _json_payload(payload: dict[str, Any] | None) -> str:
     import json
 
     return json.dumps(payload or {}, ensure_ascii=False, separators=(",", ":"))
-

@@ -275,6 +275,9 @@ class WorkspaceRunnerPool:
                 "pi": lambda: _new_pi_runner(stores, key[0]),
             }
             runner = factories[backend]()
+            reconcile = getattr(stores.run_store, "reconcile_control_runs", None)
+            if callable(reconcile):
+                reconcile()
             runner.recover_orphaned_running()
             runner.recover_stale()
             runner.start_dispatcher()

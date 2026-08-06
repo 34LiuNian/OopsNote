@@ -422,6 +422,8 @@ class TaskRun(BaseModel):
 
     id: str = Field(default_factory=lambda: uuid4().hex)
     task_id: str
+    workspace_id: Optional[str] = None
+    quota_reservation_id: Optional[str] = None
     purpose: RunPurpose = RunPurpose.PROBLEM
     priority: int = Field(default=0, ge=0, le=100)
     diagram_item_id: Optional[str] = None
