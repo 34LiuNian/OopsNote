@@ -9,6 +9,7 @@ from __future__ import annotations
 import os
 import logging
 import sys
+import threading
 from contextlib import asynccontextmanager
 from functools import lru_cache
 from pathlib import Path
@@ -58,10 +59,13 @@ from oopsnote.core import (
     TaskRecord,
     TaskStatus,
     TaskStore,
+    WorkspaceId,
     WorkspaceStoreFactory,
+    WorkspaceStores,
 )
 from oopsnote.control import ControlDatabase, WorkspaceRegistry
 from oopsnote.mcp.http_runtime import SharedMcpHttpRuntime
+from oopsnote.mcp.context import current_capability
 from oopsnote.mcp.ocr import (
     clear_ocr_run_model_resolver,
     clear_ocr_vault,
@@ -160,49 +164,66 @@ def get_secret_store() -> SecretStore:
     return secret_store_from_environment()
 
 
-def _new_hermes_runner() -> HermesRunner:
+def _new_hermes_runner(stores: WorkspaceStores | None = None) -> HermesRunner:
     return HermesRunner(
         project_root=PROJECT_ROOT,
-        task_store=TASK_STORE,
-        run_store=RUN_STORE,
+        task_store=stores.task_store if stores else TASK_STORE,
+        run_store=stores.run_store if stores else RUN_STORE,
         **_runner_settings(),
     )
 
 
-def _new_pi_runner() -> PiRpcRunner:
-    return PiRpcRunner(
+def _new_pi_runner(
+    stores: WorkspaceStores | None = None,
+    workspace_id: WorkspaceId | None = None,
+) -> PiRpcRunner:
+    runner = PiRpcRunner(
         backend=PiRpcBackend(
             PROJECT_ROOT,
             runtime=os.getenv("OOPSNOTE_RPC_RUNTIME", "pi-rust"),
         ),
         project_root=PROJECT_ROOT,
-        task_store=TASK_STORE,
-        run_store=RUN_STORE,
+        task_store=stores.task_store if stores else TASK_STORE,
+        run_store=stores.run_store if stores else RUN_STORE,
         max_concurrent_tasks=int(APP_SETTINGS_STORE.get().get("pi_concurrency", os.getenv(
             "OOPSNOTE_RPC_MAX_WORKERS", os.getenv("OOPSNOTE_PI_MAX_CONCURRENT_TASKS", "3")
         ))),
         **_runner_settings(),
     )
+    if stores is not None and workspace_id is not None:
+        MCP_HTTP_RUNTIME.start()
+        runner.set_child_environment_provider(
+            lambda: MCP_HTTP_RUNTIME.environment_for(workspace_id, stores)
+        )
+    return runner
 
 
 def _langchain_provider_factory() -> ProviderClientFactory:
     return ProviderClientFactory(get_secret_store())
 
 
-def _langchain_tool_client() -> McpHttpToolClient:
+def _langchain_tool_client(
+    stores: WorkspaceStores | None = None,
+    workspace_id: WorkspaceId | None = None,
+) -> McpHttpToolClient:
     environment = MCP_HTTP_RUNTIME.start()
+    if stores is not None and workspace_id is not None:
+        environment = MCP_HTTP_RUNTIME.environment_for(workspace_id, stores)
     return McpHttpToolClient(environment["OOPSNOTE_MCP_URL"], environment["OOPSNOTE_MCP_TOKEN"])
 
 
-def _new_langchain_runner() -> LangChainRunner:
+def _new_langchain_runner(
+    stores: WorkspaceStores | None = None,
+    workspace_id: WorkspaceId | None = None,
+) -> LangChainRunner:
     return LangChainRunner(
         project_root=PROJECT_ROOT,
-        task_store=TASK_STORE,
-        run_store=RUN_STORE,
+        task_store=stores.task_store if stores else TASK_STORE,
+        run_store=stores.run_store if stores else RUN_STORE,
         settings_store=APP_SETTINGS_STORE,
         provider_factory=_langchain_provider_factory,
-        tool_client_factory=_langchain_tool_client,
-        asset_store=ASSET_STORE,
+        tool_client_factory=lambda: _langchain_tool_client(stores, workspace_id),
+        asset_store=stores.asset_store if stores else ASSET_STORE,
         max_concurrent_tasks=int(APP_SETTINGS_STORE.get().get("ai_max_concurrency", 4)),
         **_runner_settings(),
     )
@@ -210,7 +231,9 @@ def _new_langchain_runner() -> LangChainRunner:
 
 def _langchain_vision_model(run_id: str) -> Any | None:
     """Resolve Vision from the immutable run strategy at the shared MCP boundary."""
-    run = RUN_STORE.get(run_id)
+    capability = current_capability()
+    run_store = capability.stores.run_store if capability is not None else RUN_STORE
+    run = run_store.get(run_id)
     snapshot = run.provider_profile_snapshot
     if not isinstance(snapshot, dict) or not isinstance(snapshot.get("vision"), dict):
         return None
@@ -231,6 +254,45 @@ _RUNNERS = _build_enabled_runners(_ENABLED_AI_BACKENDS)
 HERMES_RUNNER = _RUNNERS.get("hermes")
 PI_RUNNER = _RUNNERS.get("pi")
 LANGCHAIN_RUNNER = _RUNNERS.get("langchain")
+
+
+class WorkspaceRunnerPool:
+    """Own one durable dispatcher/runtime set per workspace and backend."""
+
+    def __init__(self) -> None:
+        self._lock = threading.RLock()
+        self._runners: dict[tuple[WorkspaceId, str], Any] = {}
+
+    def get(self, workspace_id: WorkspaceId, stores: WorkspaceStores, backend: str):
+        key = (WorkspaceId.parse(workspace_id), backend)
+        with self._lock:
+            existing = self._runners.get(key)
+            if existing is not None:
+                return existing
+            factories = {
+                "hermes": lambda: _new_hermes_runner(stores),
+                "langchain": lambda: _new_langchain_runner(stores, key[0]),
+                "pi": lambda: _new_pi_runner(stores, key[0]),
+            }
+            runner = factories[backend]()
+            runner.recover_orphaned_running()
+            runner.recover_stale()
+            runner.start_dispatcher()
+            runner.recover_queued()
+            self._runners[key] = runner
+            return runner
+
+    def shutdown(self) -> None:
+        with self._lock:
+            runners = list(self._runners.values())
+            self._runners.clear()
+        for runner in runners:
+            runner.shutdown_dispatcher()
+            if isinstance(runner, PiRpcRunner):
+                runner.shutdown()
+
+
+WORKSPACE_RUNNER_POOL = WorkspaceRunnerPool()
 
 _DEFAULT_TAG_DIMENSIONS = {
     "knowledge": {"label": "知识体系", "label_variant": "default"},
@@ -697,6 +759,11 @@ def _problem_summary(task: TaskRecord, problem: Problem) -> dict[str, Any]:
 def _runner_for(backend: str):
     if backend not in _SUPPORTED_AI_BACKENDS:
         raise HTTPException(status_code=422, detail="backend must be pi, langchain, or hermes")
+    context = current_request_context()
+    if context is not None:
+        if backend not in _ENABLED_AI_BACKENDS:
+            raise HTTPException(status_code=422, detail=f"backend {backend} is not enabled")
+        return WORKSPACE_RUNNER_POOL.get(context.workspace.workspace_id, context.stores, backend)
     try:
         return _RUNNERS[backend]
     except KeyError:
@@ -715,11 +782,12 @@ def _run_managed(task_id: str, run_id: str, backend: str) -> None:
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     ai_settings.retire_legacy_provider_configuration()
-    runners = list(_RUNNERS.values())
+    auth_config = auth_config_from_env()
+    runners = [] if auth_config.better_auth else list(_RUNNERS.values())
     for runner in runners:
         runner.recover_orphaned_running()
         runner.recover_stale()
-    if PI_RUNNER is not None:
+    if PI_RUNNER is not None and not auth_config.better_auth:
         PI_RUNNER.set_child_environment(MCP_HTTP_RUNTIME.start())
     for runner in runners:
         runner.start_dispatcher()
@@ -730,8 +798,9 @@ async def lifespan(_: FastAPI):
     finally:
         for runner in runners:
             runner.shutdown_dispatcher()
-        if PI_RUNNER is not None:
+        if PI_RUNNER is not None and not auth_config.better_auth:
             PI_RUNNER.shutdown()
+        WORKSPACE_RUNNER_POOL.shutdown()
         MCP_HTTP_RUNTIME.shutdown()
         clear_ocr_vault()
         clear_ocr_run_model_resolver()

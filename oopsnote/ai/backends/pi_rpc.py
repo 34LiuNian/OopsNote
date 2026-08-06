@@ -10,7 +10,7 @@ import threading
 import time
 from contextlib import contextmanager, nullcontext
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 
 from oopsnote.ai.managed import ManagedAiRunner
 from oopsnote.ai.process_metrics import process_working_set_bytes
@@ -183,6 +183,7 @@ class PiRpcRunner(ManagedAiRunner):
         self._worker_map_lock = threading.Lock()
         self._workers_by_process: dict[int, RpcWorkerState] = {}
         self._child_environment: dict[str, str] = {}
+        self._child_environment_provider: Callable[[], dict[str, str]] | None = None
 
     def _run_metadata(self, task_id: str) -> dict[str, Any]:
         del task_id
@@ -202,11 +203,20 @@ class PiRpcRunner(ManagedAiRunner):
         self._child_environment = dict(values)
         self.backend.runtime.configure_child_environment(self._child_environment)
 
+    def set_child_environment_provider(
+        self,
+        provider: Callable[[], dict[str, str]],
+    ) -> None:
+        """Refresh expiring private runtime credentials before every run."""
+        self._child_environment_provider = provider
+
     def run(self, task_id: str, run_id: str) -> None:
         with self._execution_slots:
             worker = self._idle_workers.get()
             self._worker_local.worker = worker
             try:
+                if self._child_environment_provider is not None:
+                    self.set_child_environment(self._child_environment_provider())
                 run = self.run_store.get(run_id)
                 task = self.task_store.get(task_id)
                 if run.status not in {RunStatus.QUEUED, RunStatus.RUNNING}:

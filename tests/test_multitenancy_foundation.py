@@ -4,11 +4,15 @@ from __future__ import annotations
 
 import sqlite3
 import threading
+import asyncio
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
 from oopsnote.ai.work_items import ManagedWorkItem
+from oopsnote.ai.langchain_tools import McpHttpToolClient
 from oopsnote.api.context import RequestContext, activate_request_context, reset_request_context
+from oopsnote.mcp.context import McpCapability, McpStores, activate_capability, reset_capability
 from oopsnote.control import (
     ControlDatabase,
     ControlDatabaseError,
@@ -19,6 +23,8 @@ from oopsnote.control import (
 from oopsnote.core import (
     Principal,
     RunPurpose,
+    TaskCreateRequest,
+    TaskStatus,
     UserRole,
     WorkspaceContext,
     WorkspaceId,
@@ -257,3 +263,124 @@ def test_quota_admission_is_atomic_idempotent_and_settles_terminal_runs(tmp_path
             "SELECT state FROM usage_reservations ORDER BY id"
         ).fetchall()
     assert {row[0] for row in states} == {"released", "consumed"}
+
+
+def test_mcp_capability_cannot_resolve_another_workspace_task(tmp_path):
+    registry = _registry(tmp_path)
+    factory = WorkspaceStoreFactory()
+    first_context = registry.get_or_create(Principal("auth-mcp-a", UserRole.USER))
+    second_context = registry.get_or_create(Principal("auth-mcp-b", UserRole.USER))
+    first = factory.for_context(first_context)
+    second = factory.for_context(second_context)
+    first_task = first.task_store.create(TaskCreateRequest(subject="math"))
+    from oopsnote.mcp import server
+
+    capability = McpCapability(
+        workspace_id=second_context.workspace_id,
+        stores=McpStores(
+            task_store=second.task_store,
+            tag_store=second.tag_store,
+            asset_store=second.asset_store,
+            run_store=second.run_store,
+        ),
+        expires_at=datetime.now(timezone.utc) + timedelta(minutes=5),
+    )
+    token = activate_capability(capability)
+    try:
+        assert server._stores().task_store.base_dir == second_context.root / "tasks"
+        with pytest.raises(KeyError):
+            server._stores().task_store.get(first_task.id)
+    finally:
+        reset_capability(token)
+
+
+def test_mcp_runtime_issues_distinct_workspace_tokens(tmp_path):
+    from oopsnote.mcp.http_runtime import SharedMcpHttpRuntime
+
+    registry = _registry(tmp_path)
+    factory = WorkspaceStoreFactory()
+    first_context = registry.get_or_create(Principal("auth-token-a", UserRole.USER))
+    second_context = registry.get_or_create(Principal("auth-token-b", UserRole.USER))
+    runtime = SharedMcpHttpRuntime()
+    runtime.start()
+    try:
+        first = runtime.environment_for(
+            first_context.workspace_id,
+            factory.for_context(first_context),
+        )
+        second = runtime.environment_for(
+            second_context.workspace_id,
+            factory.for_context(second_context),
+        )
+        assert first["OOPSNOTE_MCP_TOKEN"] != second["OOPSNOTE_MCP_TOKEN"]
+        assert runtime.capability_for_token(
+            first["OOPSNOTE_MCP_TOKEN"]
+        ).workspace_id == first_context.workspace_id
+        assert runtime.capability_for_token(
+            second["OOPSNOTE_MCP_TOKEN"]
+        ).workspace_id == second_context.workspace_id
+    finally:
+        runtime.shutdown()
+
+
+def test_mcp_http_token_enforces_workspace_store_selection(tmp_path):
+    from oopsnote.mcp.http_runtime import SharedMcpHttpRuntime
+
+    registry = _registry(tmp_path)
+    factory = WorkspaceStoreFactory()
+    first_context = registry.get_or_create(Principal("auth-http-mcp-a", UserRole.USER))
+    second_context = registry.get_or_create(Principal("auth-http-mcp-b", UserRole.USER))
+    first = factory.for_context(first_context)
+    second = factory.for_context(second_context)
+    task = first.task_store.create(TaskCreateRequest(subject="math"))
+    run = first.run_store.create(task.id, backend="langchain")
+    first.task_store.update(
+        task.id,
+        status=TaskStatus.PROCESSING,
+        active_run_id=run.id,
+    )
+    runtime = SharedMcpHttpRuntime()
+    runtime.start()
+    try:
+        first_env = runtime.environment_for(first_context.workspace_id, first)
+        second_env = runtime.environment_for(second_context.workspace_id, second)
+        first_client = McpHttpToolClient(
+            first_env["OOPSNOTE_MCP_URL"],
+            first_env["OOPSNOTE_MCP_TOKEN"],
+        )
+        second_client = McpHttpToolClient(
+            second_env["OOPSNOTE_MCP_URL"],
+            second_env["OOPSNOTE_MCP_TOKEN"],
+        )
+        result = asyncio.run(
+            first_client.call("get_task", {"task_id": task.id, "run_id": run.id})
+        )
+        assert result["isError"] is False
+        with pytest.raises(RuntimeError):
+            asyncio.run(
+                second_client.call("get_task", {"task_id": task.id, "run_id": run.id})
+            )
+    finally:
+        runtime.shutdown()
+
+
+def test_workspace_runner_pool_is_scoped_and_reuses_only_within_workspace(tmp_path):
+    from oopsnote.api import main
+
+    registry = _registry(tmp_path)
+    factory = WorkspaceStoreFactory()
+    first_context = registry.get_or_create(Principal("auth-runner-a", UserRole.USER))
+    second_context = registry.get_or_create(Principal("auth-runner-b", UserRole.USER))
+    first_stores = factory.for_context(first_context)
+    second_stores = factory.for_context(second_context)
+    pool = main.WorkspaceRunnerPool()
+    try:
+        first = pool.get(first_context.workspace_id, first_stores, "hermes")
+        repeated = pool.get(first_context.workspace_id, first_stores, "hermes")
+        second = pool.get(second_context.workspace_id, second_stores, "hermes")
+        assert repeated is first
+        assert second is not first
+        assert first.task_store.base_dir == first_context.root / "tasks"
+        assert second.task_store.base_dir == second_context.root / "tasks"
+    finally:
+        pool.shutdown()

@@ -71,7 +71,7 @@ def managed_list_tags(
             ],
         }
         metadata.pop("_managed_tag_selection", None)
-        server.TASK_STORE.transition(
+        server._stores().task_store.transition(
             task_id,
             expected_statuses={server.TaskStatus.PROCESSING},
             expected_active_run_id=run_id,
@@ -86,7 +86,7 @@ def managed_list_tags(
             "branch_ids": result["branch_ids"],
         }
         metadata.pop("_managed_knowledge_branches", None)
-        server.TASK_STORE.transition(
+        server._stores().task_store.transition(
             task_id,
             expected_statuses={server.TaskStatus.PROCESSING},
             expected_active_run_id=run_id,
@@ -100,7 +100,7 @@ def managed_list_tags(
             "scope": scope,
             "values": list(result["items"]),
         }
-        server.TASK_STORE.transition(
+        server._stores().task_store.transition(
             task_id,
             expected_statuses={server.TaskStatus.PROCESSING},
             expected_active_run_id=run_id,
@@ -111,7 +111,7 @@ def managed_list_tags(
 
 def _existing_error_equivalent(value: str, subject: str) -> Optional[str]:
     normalized = value.strip().casefold()
-    for item in server.TAG_STORE.search(
+    for item in server._stores().tag_store.search(
         dimension=TagDimension.ERROR,
         subject=subject,
         scope="core",
@@ -162,7 +162,7 @@ def managed_create_tag(
         **candidates,
         "values": list(dict.fromkeys([*candidates.get("values", []), created.value])),
     }
-    server.TASK_STORE.transition(
+    server._stores().task_store.transition(
         task_id,
         expected_statuses={server.TaskStatus.PROCESSING},
         expected_active_run_id=run_id,

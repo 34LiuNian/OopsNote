@@ -21,6 +21,8 @@ from oopsnote.api.auth import (
     authenticate_internal_request,
 )
 from oopsnote.core import UserRole
+from oopsnote.control import ControlDatabase, WorkspaceRegistry
+from oopsnote.core import WorkspaceStoreFactory
 
 
 SECRET = b"test-only-bff-secret-that-is-at-least-32-bytes"
@@ -134,6 +136,54 @@ def test_fastapi_better_auth_mode_requires_and_accepts_the_signed_bff_identity()
     assert missing.status_code == 401
     assert missing.json()["detail"] == "Missing internal identity"
     assert accepted.status_code == 200
+
+
+def test_better_auth_requests_use_the_authenticated_user_workspace(monkeypatch, tmp_path):
+    registry = WorkspaceRegistry(
+        ControlDatabase(tmp_path / "control" / "app.sqlite"),
+        tmp_path / "storage",
+    )
+    monkeypatch.setattr(main, "WORKSPACE_REGISTRY", registry)
+    monkeypatch.setattr(main, "WORKSPACE_STORE_FACTORY", WorkspaceStoreFactory())
+    now = int(time.time())
+    environment = {
+        "OOPSNOTE_AUTH_MODE": "better-auth",
+        "OOPSNOTE_BFF_HMAC_SECRET": SECRET.decode("ascii"),
+    }
+    with patch.dict("os.environ", environment, clear=False):
+        client = TestClient(main.app)
+        _payload, encoded_a, signature_a = _signed_identity(
+            user_id="auth-workspace-a",
+            issued_at=now,
+            method="POST",
+            path="/tasks",
+        )
+        created = client.post(
+            "/tasks",
+            headers={
+                "x-oopsnote-identity": encoded_a,
+                "x-oopsnote-signature": signature_a,
+            },
+            json={"subject": "math"},
+        )
+        assert created.status_code == 200
+
+        _payload, encoded_b, signature_b = _signed_identity(
+            user_id="auth-workspace-b",
+            issued_at=now,
+            method="GET",
+            path="/tasks",
+        )
+        isolated = client.get(
+            "/tasks",
+            headers={
+                "x-oopsnote-identity": encoded_b,
+                "x-oopsnote-signature": signature_b,
+            },
+        )
+
+    assert isolated.status_code == 200
+    assert isolated.json() == {"items": []}
 
 
 def test_fastapi_health_does_not_require_the_bff_secret():
