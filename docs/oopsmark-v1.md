@@ -103,23 +103,23 @@ C1=CC=CC=C1
 ```
 ````
 
-- 网页：TikZJax 预览，失败时允许请求后端 SVG。
-- 组卷：将围栏内源码放入受控 LaTeX 模板。
+- 网页：使用受控 LaTeX 渲染器生成并缓存的 SVG；编辑预览也请求同一渲染器。
+- 组卷：引用同一次编译派生的 PDF，不在试卷编译阶段再次解释 TikZ 源码。
 - 块内不得包含 `\documentclass`、`\usepackage` 或 shell escape 命令。
 
 ### 2.5.1 题目旁图
 
-题干可以带一个任务绑定的结构化旁图，来源二选一：`tikz` 或 `image`。这些 `diagram_*` 字段属于
-题目的展示元数据，不写入 OopsMark 正文。旁图不是第二份题干正文；`problem_text` 仍是唯一的 OopsMark
-文本源。TikZ 源码是可编辑源，SVG 只是可重新生成的预览资产；附图只保存本地 `/assets/` 引用，
-不保存 base64 或外部 URL。
+题干可以带任务绑定的结构化旁图。`TaskRecord.diagram_items[]` 是唯一持久化来源，不写入 OopsMark
+正文或 `metadata`；`problem_text` 仍是唯一题干文本源。当前创建流程最多产生一个 item，但稳定 item id、
+顺序和来源区域合同允许后续版面分析一次写入多个 item，而不改变候选版本模型。
 
-- `diagram_kind`: `tikz` / `image` / `null`，同一题不得同时启用 TikZ 和图片附图。
-- `diagram_position`: `right` / `left`，缺省为 `right`。
-- `diagram_scale_percent`: `null` 表示旁图与题干正文及选项组成的作答内容栏等高；手动值范围为 50–200。
-- `image` 表示题目中的附图，不表示整道题的截图。`diagram_image_path` 指向由任务原图裁剪得到的本地派生资产；原图仍是唯一校对依据。
-- `diagram_image_crop` 是相对任务原图的归一化矩形 `{x, y, width, height}`；服务端据此生成稳定、幂等的 PNG 派生资产。
-- `diagram_image_tone`: `auto` / `original`。Web 缺省使用 `auto`，仅在深色界面对黑白附图反相；打印、试卷导出和原始资产始终保留原像素。需要保持颜色语义时使用 `original`。
+- `DiagramItem.source_asset_path` 指向完整原题图；可选 `source_region` 是归一化 `{x, y, width, height}`，由未来版面分析或保留原图决策写入。
+- 每个 item 保留 `candidates[]`。候选的 TikZ 源码和源码哈希不可变，`parent_candidate_id` 表示修订关系；选择旧版只更新 `selected_candidate_id`，不删除后续版本。
+- TikZ 源码是规范源。一次串行 XeLaTeX 编译从同一 XDV 派生 SVG、PDF、PNG并记录渲染配置版本：SVG用于 Web/Obsidian，PDF用于试卷，PNG只用于模型视觉比较。
+- `ready_tikz` 必须选中同时具有 SVG 和 PDF 的候选；`ready_image` 必须指向本地裁剪资产。其他状态不得进入试卷。
+- `position`: `right` / `left`，缺省为 `right`；`scale_percent` 范围为 50–200，缺省为 100。
+- `image_tone`: `auto` / `original`。Web 缺省使用 `auto`；打印、试卷和原始资产保留原像素。
+- 旧的单数 `diagram_*` metadata 只在读取时迁移，此后不得作为第二写入来源。
 - Web 在宽屏按左右栏渲染，窄屏退化为题干在上、旁图在下。
 
 ### 2.6 表格
@@ -142,11 +142,11 @@ C1=CC=CC=C1
 | 数学 | `$...$` / `$$...$$` | KaTeX | amsmath |
 | 化学式/方程式 | `\ce{...}` | KaTeX mhchem | LaTeX mhchem |
 | 分子结构 | SMILES/MolBlock | RDKit.js | RDKit 派生资产 + graphicx |
-| TikZ | `tikz` fenced block | TikZJax/后端 SVG | LaTeX TikZ |
+| TikZ | `tikz` fenced block或题图候选源码 | 缓存 SVG | 同源缓存 PDF + graphicx |
 | 普通表格 | GFM table | HTML table | tabularray |
 | Mermaid | `mermaid` fenced block | Mermaid | 派生资产 + graphicx |
 
-网页图形必须显式声明主题颜色策略：TikZJax、后端 TikZ SVG 与 RDKit SVG 在共享 SVG
+网页图形必须显式声明主题颜色策略：后端 TikZ SVG 与 RDKit SVG 在共享 SVG
 展示边界把纯黑映射为 `currentColor`、纯白映射为当前画布背景，其他颜色保持不变；不得对整张 SVG
 使用 `invert()`，以免破坏曲线、曲面和分子高亮的颜色语义。Mermaid 由自身渲染器根据已解析的
 `light` / `dark` 主题重新生成 SVG。KaTeX 使用继承的文本颜色，不生成第二份主题内容。

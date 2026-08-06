@@ -36,10 +36,12 @@ The old reference is retained while an active queued/running run snapshot uses
 it. Do not use `.pi/auth.json`, `.pi/extensions.json`, environment variables,
 `storage/`, task JSON, or run logs as a LangChain credential source.
 
-Configure the three global model stages through `PUT /settings/ai/policy`:
-`vision` (Vision), `agent` (Tool Calling), and `review` (Tool Calling). A run
-freezes all three channel/model selections. The restricted `ocr_image` MCP
-tool resolves the Vision model from that immutable run snapshot.
+Configure the three ordinary model stages and the independent TikZ diagram
+stage through `PUT /settings/ai/policy`: `vision` (Vision), `agent` (Tool
+Calling), `review` (Tool Calling), and `diagram` (Vision). Ordinary runs freeze
+the first three selections; TikZ runs freeze only the `diagram` selection. The
+restricted `ocr_image` MCP tool resolves the Vision model from its immutable
+ordinary-run snapshot and never inherits the TikZ selection (or vice versa).
 
 ## Execution and evidence
 

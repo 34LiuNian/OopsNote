@@ -19,19 +19,6 @@ const QUESTION_TYPE_ORDER: Record<string, number> = {
 
 type Candidate = ProblemSummary & { difficulty_coefficient?: number | null };
 
-async function compileErrorMessage(response: Response): Promise<string> {
-  const fallback = `试卷编译失败：${response.status}`;
-  const text = await response.text();
-  if (!text) return fallback;
-  try {
-    const payload = JSON.parse(text) as { detail?: string | { message?: string } };
-    if (typeof payload.detail === "string") return payload.detail;
-    return payload.detail?.message || fallback;
-  } catch {
-    return text;
-  }
-}
-
 function storedItems(items: PaperDraftItem[]): Array<Omit<PaperDraftItem, "problem">> {
   return items.map(({ problem: _problem, ...item }) => item);
 }
@@ -227,12 +214,11 @@ export default function PaperEditorPage() {
     setPreviewLoading(true);
     setPreviewError("");
     try {
-      const response = await compilePaperDraft(draftId, {
+      const pdf = await compilePaperDraft(draftId, {
         subtitle: subtitle.trim() || undefined,
         show_answers: showAnswers,
       });
-      if (!response.ok) throw new Error(await compileErrorMessage(response));
-      const nextUrl = URL.createObjectURL(await response.blob());
+      const nextUrl = URL.createObjectURL(pdf);
       setPreviewUrl((current) => {
         if (current) URL.revokeObjectURL(current);
         return nextUrl;

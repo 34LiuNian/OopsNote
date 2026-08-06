@@ -7,6 +7,9 @@ from oopsnote.api import main
 from oopsnote.api.routes.papers import _expanded_knowledge_tags
 from oopsnote.core import (
     ContentFormat,
+    DiagramCandidate,
+    DiagramItem,
+    DiagramStatus,
     PaperDraft,
     PaperDraftCreateRequest,
     PaperDraftItem,
@@ -387,6 +390,49 @@ def test_paper_bundle_copies_managed_diagram_as_content_addressed_asset(tmp_path
     assert bundle.tex.index(r"\begin{minipage}[t]{0.30\linewidth}") < bundle.tex.index("带图题")
 
 
+def test_paper_uses_selected_same_source_pdf_instead_of_recompiling_tikz(tmp_path):
+    pdf = tmp_path / "diagram.pdf"
+    pdf.write_bytes(b"%PDF-1.4\n%%EOF\n")
+    problem = Problem(
+        id="problem-tikz",
+        content_format=ContentFormat.OOPSMARK_V1,
+        problem_text="TikZ 图题",
+        has_diagram=True,
+    )
+    candidate = DiagramCandidate(
+        ordinal=1,
+        tikz_source="\\draw (0,0)--(1,0);",
+        svg_path="/assets/diagram.svg",
+        pdf_path="/assets/diagram.pdf",
+        png_path="/assets/diagram.png",
+        decision="accept",
+    )
+    task = TaskRecord(
+        id="task-tikz",
+        problem=problem,
+        diagram_items=[DiagramItem(
+            status=DiagramStatus.READY_TIKZ,
+            selected_candidate_id=candidate.id,
+            candidates=[candidate],
+        )],
+    )
+    draft = PaperDraft(items=[PaperDraftItem(
+        task_id=task.id,
+        problem_id=problem.id,
+        question_type="解答题",
+    )])
+
+    bundle = build_paper_bundle(
+        build_paper_document(draft, {task.id: task}),
+        asset_path_resolver=lambda logical: pdf if logical == "/assets/diagram.pdf" else tmp_path / "missing",
+    )
+
+    assert len(bundle.files) == 1
+    assert bundle.files[0].content == pdf.read_bytes()
+    assert candidate.tikz_source not in bundle.tex
+    assert r"\includegraphics" in bundle.tex
+
+
 def test_paper_document_surfaces_stale_reference_before_compilation():
     draft = PaperDraft(
         items=[
@@ -556,7 +602,10 @@ def test_formal_draft_compile_reports_stale_item_as_conflict(tmp_path, monkeypat
 
     assert response.status_code == 409
     assert response.json()["detail"] == {
-        "code": "missing-task",
+        "category": "request",
+        "code": "missing_task",
         "message": "Paper item stale-item references missing task missing-task",
-        "item_id": "stale-item",
+        "retryable": False,
+        "scope": "paper_compile",
+        "details": {"item_id": "stale-item"},
     }

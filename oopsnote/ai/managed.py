@@ -10,7 +10,19 @@ from typing import Any, Optional, Protocol
 
 from oopsnote.ai.dispatcher import ManagedTaskDispatcher
 from oopsnote.ai.run_control import ActiveRunControl, ProcessRunControl
-from oopsnote.core import RunStatus, RunStore, StateConflict, TaskRun, TaskStage, TaskStatus, TaskStore
+from oopsnote.core import (
+    DiagramRunMode,
+    DiagramRunStep,
+    DiagramStatus,
+    RunPurpose,
+    RunStatus,
+    RunStore,
+    StateConflict,
+    TaskRun,
+    TaskStage,
+    TaskStatus,
+    TaskStore,
+)
 
 
 class AgentBackend(Protocol):
@@ -19,6 +31,14 @@ class AgentBackend(Protocol):
     name: str
 
     def build_command(self, task_id: str, run_id: str) -> list[str]: ...
+
+
+class LifecycleAdmissionError(RuntimeError):
+    """A stable lifecycle-owned rejection before a run is scheduled."""
+
+    def __init__(self, code: str, message: str) -> None:
+        super().__init__(message)
+        self.code = code
 
 
 class ManagedAiRunner(ABC):
@@ -35,6 +55,8 @@ class ManagedAiRunner(ABC):
         "rate_limit_exceeded",
         "provider_rate_limit",
         "provider_unavailable",
+        "renderer_timeout",
+        "renderer_unavailable",
         "service_unavailable",
         "429",
         "503",
@@ -77,6 +99,10 @@ class ManagedAiRunner(ABC):
         """Return immutable metadata for a fresh retry of the same execution choice."""
         return self._run_metadata(previous.task_id)
 
+    def _diagram_run_metadata(self, task_id: str) -> dict[str, Any]:
+        del task_id
+        raise RuntimeError(f"{self.backend_name} does not support diagram reconstruction")
+
     def enqueue(
         self,
         task_id: str,
@@ -91,9 +117,12 @@ class ManagedAiRunner(ABC):
             task = self.task_store.get(task_id)
             active = self.run_store.active_for_task(task_id)
             if active:
-                raise RuntimeError(f"Task already has active run {active.id}")
+                raise LifecycleAdmissionError("task_busy", f"Task already has active run {active.id}")
             if task.status == TaskStatus.PROCESSING:
-                raise RuntimeError("Task is already processing without a managed run")
+                raise LifecycleAdmissionError(
+                    "task_busy",
+                    "Task is already processing without a managed run",
+                )
             metadata = (
                 self._retry_run_metadata(retry_of)
                 if retry_of is not None
@@ -154,9 +183,146 @@ class ManagedAiRunner(ABC):
         )
         self.run_store.observe_stage(run_id, stage, message)
 
+    def enqueue_diagram(
+        self,
+        task_id: str,
+        item_id: str,
+        *,
+        mode: DiagramRunMode = DiagramRunMode.AUTO,
+        instruction: Optional[str] = None,
+        max_candidates: int = 4,
+    ) -> TaskRun:
+        """Admit an independent diagram run without changing problem-task status."""
+        priority = 10 if mode in {DiagramRunMode.CONTINUE, DiagramRunMode.REBUILD} else 20
+        with self._admission_lock:
+            task = self.task_store.get(task_id)
+            item = next((item for item in task.diagram_items if item.id == item_id), None)
+            if item is None:
+                raise KeyError(f"Diagram item {item_id} not found")
+            active = self.run_store.active_for_task(
+                task_id,
+                purpose=RunPurpose.DIAGRAM,
+                diagram_item_id=item_id,
+            )
+            if active or item.active_run_id:
+                active_id = active.id if active else item.active_run_id
+                raise LifecycleAdmissionError(
+                    "diagram_run_active",
+                    f"Diagram already has active run {active_id}",
+                )
+            metadata = self._diagram_run_metadata(task_id)
+            run = self.run_store.create(
+                task_id,
+                backend=self.backend_name,
+                purpose=RunPurpose.DIAGRAM,
+                priority=priority,
+                diagram_item_id=item_id,
+                diagram_mode=mode,
+                diagram_instruction=(instruction or "").strip() or None,
+                diagram_max_candidates=max_candidates,
+                diagram_step=DiagramRunStep.GENERATE,
+                **metadata,
+            )
+            try:
+                self.task_store.update_diagram_item(
+                    task_id,
+                    item_id,
+                    expected_active_run_id=None,
+                    active_run_id=run.id,
+                    status=DiagramStatus.QUEUED,
+                    needs_review=False,
+                    last_error=None,
+                    last_error_code=None,
+                )
+            except (KeyError, StateConflict) as error:
+                self.run_store.finish(
+                    run.id,
+                    RunStatus.FAILED,
+                    error_code="admission_conflict",
+                    error_message=str(error),
+                )
+                raise LifecycleAdmissionError("admission_conflict", str(error)) from error
+            return self.run_store.observe_stage(
+                run.id,
+                TaskStage.DIAGRAM_GENERATING,
+                f"Waiting for {self.backend_name} diagram worker",
+            )
+
     def submit(self, task_id: str) -> TaskRun:
         """Persist and schedule a run without tying execution to an HTTP request."""
         return self._dispatcher.submit(task_id)
+
+    def submit_diagram(
+        self,
+        task_id: str,
+        item_id: str,
+        *,
+        mode: DiagramRunMode = DiagramRunMode.AUTO,
+        instruction: Optional[str] = None,
+        max_candidates: int = 4,
+    ) -> TaskRun:
+        run = self.enqueue_diagram(
+            task_id,
+            item_id,
+            mode=mode,
+            instruction=instruction,
+            max_candidates=max_candidates,
+        )
+        self._dispatcher.schedule(task_id, run.id)
+        return run
+
+    def is_run_dispatchable(self, run: TaskRun) -> bool:
+        try:
+            task = self.task_store.get(run.task_id)
+        except KeyError:
+            return False
+        if run.purpose == RunPurpose.PROBLEM:
+            return task.status == TaskStatus.PROCESSING and task.active_run_id == run.id
+        item = next(
+            (item for item in task.diagram_items if item.id == run.diagram_item_id),
+            None,
+        )
+        return item is not None and item.active_run_id == run.id
+
+    def handle_dispatcher_error(
+        self,
+        task_id: str,
+        run_id: str,
+        error: Exception,
+    ) -> None:
+        try:
+            run = self.run_store.get(run_id)
+        except KeyError:
+            return
+        if run.purpose == RunPurpose.DIAGRAM and run.diagram_item_id:
+            try:
+                self.task_store.update_diagram_item(
+                    task_id,
+                    run.diagram_item_id,
+                    expected_active_run_id=run_id,
+                    status=DiagramStatus.NEEDS_REVIEW,
+                    active_run_id=None,
+                    needs_review=True,
+                    last_error=str(error),
+                    last_error_code="dispatcher_error",
+                )
+            except (KeyError, StateConflict):
+                pass
+            return
+        try:
+            task = self.task_store.get(task_id)
+            if task.active_run_id == run_id:
+                self.task_store.transition(
+                    task_id,
+                    expected_statuses={TaskStatus.PROCESSING},
+                    expected_active_run_id=run_id,
+                    status=TaskStatus.FAILED,
+                    active_run_id=None,
+                    last_error=str(error),
+                    last_error_code="dispatcher_error",
+                )
+        except (KeyError, RuntimeError):
+            pass
 
     def start_dispatcher(self) -> None:
         self._dispatcher.start()
@@ -186,6 +352,34 @@ class ManagedAiRunner(ABC):
         if control and control.is_active():
             control.cancel()
         self._mark_cancelled(task_id, control.exit_code if control else None)
+
+    def cancel_diagram(self, task_id: str, item_id: str) -> None:
+        active = self.run_store.active_for_task(
+            task_id,
+            purpose=RunPurpose.DIAGRAM,
+            diagram_item_id=item_id,
+        )
+        if active is None:
+            return
+        control_key = f"diagram:{active.id}"
+        with self._lock:
+            control = self._active_controls.get(control_key)
+        if control and control.is_active():
+            control.cancel()
+        try:
+            self.task_store.update_diagram_item(
+                task_id,
+                item_id,
+                expected_active_run_id=active.id,
+                status=DiagramStatus.CANCELLED,
+                active_run_id=None,
+                needs_review=True,
+                last_error=None,
+                last_error_code=None,
+            )
+        except (KeyError, StateConflict):
+            return
+        self.run_store.finish(active.id, RunStatus.CANCELLED)
 
     def _mark_cancelled(self, task_id: str, exit_code: Optional[int] = None) -> None:
         """Apply the shared cancellation terminal transition."""
@@ -234,20 +428,45 @@ class ManagedAiRunner(ABC):
         recovered = 0
         active_task_ids: set[str] = set()
         for run in self.run_store.list_all():
-            if run.status not in {RunStatus.QUEUED, RunStatus.RUNNING}:
+            if (
+                run.backend != self.backend_name
+                or run.status not in {RunStatus.QUEUED, RunStatus.RUNNING}
+            ):
                 continue
-            active_task_ids.add(run.task_id)
+            if run.purpose == RunPurpose.PROBLEM:
+                active_task_ids.add(run.task_id)
             try:
                 task = self.task_store.get(run.task_id)
             except KeyError:
                 task = None
+            control_key = f"diagram:{run.id}" if run.purpose == RunPurpose.DIAGRAM else run.task_id
             with self._lock:
-                locally_managed = (
-                    task is not None
-                    and task.active_run_id == run.id
-                    and run.task_id in self._active_controls
-                )
+                locally_managed = control_key in self._active_controls
             if locally_managed or run.heartbeat_at >= cutoff:
+                continue
+            if run.purpose == RunPurpose.DIAGRAM:
+                message = "Diagram run heartbeat expired"
+                self.run_store.finish(
+                    run.id,
+                    RunStatus.TIMED_OUT,
+                    error_code="stale_heartbeat",
+                    error_message=message,
+                )
+                if run.diagram_item_id:
+                    try:
+                        self.task_store.update_diagram_item(
+                            run.task_id,
+                            run.diagram_item_id,
+                            expected_active_run_id=run.id,
+                            status=DiagramStatus.NEEDS_REVIEW,
+                            active_run_id=None,
+                            needs_review=True,
+                            last_error=message,
+                            last_error_code="stale_heartbeat",
+                        )
+                    except (KeyError, StateConflict):
+                        pass
+                recovered += 1
                 continue
             terminal_status = {
                 TaskStatus.COMPLETED: RunStatus.COMPLETED,
@@ -312,12 +531,37 @@ class ManagedAiRunner(ABC):
         """
         recovered = 0
         for run in self.run_store.list_all():
-            if run.status != RunStatus.RUNNING:
+            if run.backend != self.backend_name or run.status != RunStatus.RUNNING:
                 continue
             try:
                 task = self.task_store.get(run.task_id)
             except KeyError:
                 task = None
+            if run.purpose == RunPurpose.DIAGRAM:
+                message = "Diagram worker was lost during application restart"
+                self.run_store.finish(
+                    run.id,
+                    RunStatus.FAILED,
+                    error_code="worker_lost",
+                    error_message=message,
+                )
+                self.run_store.update(run.id, retryable=True)
+                if task is not None and run.diagram_item_id:
+                    try:
+                        self.task_store.update_diagram_item(
+                            task.id,
+                            run.diagram_item_id,
+                            expected_active_run_id=run.id,
+                            status=DiagramStatus.NEEDS_REVIEW,
+                            active_run_id=None,
+                            needs_review=True,
+                            last_error=message,
+                            last_error_code="worker_lost",
+                        )
+                    except (KeyError, StateConflict):
+                        pass
+                recovered += 1
+                continue
             terminal_status = {
                 TaskStatus.COMPLETED: RunStatus.COMPLETED,
                 TaskStatus.FAILED: RunStatus.FAILED,
@@ -420,6 +664,59 @@ class ManagedAiRunner(ABC):
             self.run(task_id, retry.id)
         else:
             self._dispatcher.schedule(task_id, retry.id)
+        return retry
+
+    def retry_diagram_if_eligible(self, task_id: str, run_id: str) -> Optional[TaskRun]:
+        """Retry only a classified transient diagram failure as a fresh managed run."""
+        completed = self.run_store.get(run_id)
+        if (
+            completed.purpose != RunPurpose.DIAGRAM
+            or not completed.retryable
+            or completed.retry_count >= 2
+            or not completed.diagram_item_id
+            or not completed.diagram_mode
+            or not completed.diagram_max_candidates
+        ):
+            return None
+        with self._admission_lock:
+            task = self.task_store.get(task_id)
+            item = next(
+                (item for item in task.diagram_items if item.id == completed.diagram_item_id),
+                None,
+            )
+            if item is None or item.active_run_id:
+                return None
+            retry = self.run_store.create(
+                task_id,
+                backend=completed.backend,
+                purpose=RunPurpose.DIAGRAM,
+                priority=completed.priority,
+                diagram_item_id=completed.diagram_item_id,
+                diagram_mode=completed.diagram_mode,
+                diagram_instruction=completed.diagram_instruction,
+                diagram_max_candidates=completed.diagram_max_candidates,
+                diagram_step=completed.diagram_step,
+                provider=completed.provider,
+                model=completed.model,
+                prompt_version=completed.prompt_version,
+                provider_profile_snapshot=completed.provider_profile_snapshot,
+                retry_of=completed,
+            )
+            retry = self.run_store.update(
+                retry.id,
+                diagram_candidate_id=completed.diagram_candidate_id,
+            )
+            self.task_store.update_diagram_item(
+                task_id,
+                completed.diagram_item_id,
+                expected_active_run_id=None,
+                active_run_id=retry.id,
+                status=DiagramStatus.QUEUED,
+                needs_review=False,
+                last_error=None,
+                last_error_code=None,
+            )
+        self._dispatcher.schedule(task_id, retry.id)
         return retry
 
     @staticmethod

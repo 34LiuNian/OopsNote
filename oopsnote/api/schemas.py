@@ -47,6 +47,12 @@ class BatchProcessRequest(BaseModel):
     expected_revision: int = Field(ge=0)
 
 
+class BatchDeleteRequest(BaseModel):
+    source: bool = False
+    selection_records: bool = False
+    tasks: bool = False
+
+
 class PaperCompileItem(BaseModel):
     task_id: str
     problem_id: str
@@ -66,6 +72,7 @@ class PaperDraftCompileRequest(BaseModel):
 
 __all__ = [
     "BatchProcessRequest",
+    "BatchDeleteRequest",
     "BatchSessionPatchRequest",
     "PaperCompileItem",
     "PaperCompileRequest",

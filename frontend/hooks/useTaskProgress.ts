@@ -1,13 +1,28 @@
 import { useMemo } from "react";
 
-export type ProgressStepKey = "queued" | "ocr" | "diagram" | "solving" | "tagging";
+export type ProgressStepKey =
+  | "queued"
+  | "ocr"
+  | "solving"
+  | "tagging"
+  | "diagram_generating"
+  | "diagram_rendering"
+  | "diagram_reviewing";
 
-export const PROGRESS_STEPS: Array<{ key: ProgressStepKey; title: string }> = [
+export type ProgressStep = { key: ProgressStepKey; title: string };
+
+export const PROGRESS_STEPS: ProgressStep[] = [
   { key: "queued", title: "入队" },
   { key: "ocr", title: "OCR 识别" },
-  { key: "diagram", title: "图形重建" },
   { key: "solving", title: "题解" },
   { key: "tagging", title: "打标" },
+];
+
+export const DIAGRAM_PROGRESS_STEPS: ProgressStep[] = [
+  { key: "queued", title: "入队" },
+  { key: "diagram_generating", title: "生成" },
+  { key: "diagram_rendering", title: "渲染" },
+  { key: "diagram_reviewing", title: "视觉复核" },
 ];
 
 export function inferStepFromText(text: string): ProgressStepKey | null {
@@ -40,7 +55,17 @@ export function inferStepFromText(text: string): ProgressStepKey | null {
     return "ocr";
   }
 
-  // Diagram reconstruction stage
+  // Diagram reconstruction stages belong to the independent diagram track.
+  if (lower === "generate" || lower === "generating" || lower === "diagram_generating") {
+    return "diagram_generating";
+  }
+  if (lower === "render" || lower === "rendering" || lower === "diagram_rendering") {
+    return "diagram_rendering";
+  }
+  if (lower === "review" || lower === "reviewing" || lower === "diagram_reviewing") {
+    return "diagram_reviewing";
+  }
+
   if (
     lower === "diagramming" ||
     lower === "diagram" ||
@@ -48,7 +73,7 @@ export function inferStepFromText(text: string): ProgressStepKey | null {
     raw.includes("图形重建") ||
     raw.includes("重建图形")
   ) {
-    return "diagram";
+    return "diagram_generating";
   }
 
   // Solving stage
@@ -88,6 +113,7 @@ export interface UseTaskProgressOptions {
   stageMessage?: string | null;
   statusMessage?: string | null;
   streamProgress?: string[];
+  steps?: ProgressStep[];
 }
 
 export interface UseTaskProgressResult {
@@ -106,6 +132,7 @@ export function useTaskProgress({
   stageMessage,
   statusMessage,
   streamProgress = [],
+  steps = PROGRESS_STEPS,
 }: UseTaskProgressOptions): UseTaskProgressResult {
   return useMemo(() => {
     const taskStatus = status ?? "pending";
@@ -128,13 +155,13 @@ export function useTaskProgress({
 
     let highestIndex = 0;
     for (const step of observed) {
-      const idx = PROGRESS_STEPS.findIndex((s) => s.key === step);
+      const idx = steps.findIndex((s) => s.key === step);
       if (idx > highestIndex) highestIndex = idx;
     }
 
     let activeIndex = highestIndex;
     if (isCompleted || isCancelled) {
-      highestIndex = PROGRESS_STEPS.length - 1;
+      highestIndex = steps.length - 1;
       activeIndex = -1;
     } else if (!isRunning) {
       activeIndex = -1;
@@ -158,5 +185,5 @@ export function useTaskProgress({
       activeIndex,
       latestLine,
     };
-  }, [status, stage, stageMessage, statusMessage, streamProgress]);
+  }, [stage, stageMessage, status, statusMessage, steps, streamProgress]);
 }

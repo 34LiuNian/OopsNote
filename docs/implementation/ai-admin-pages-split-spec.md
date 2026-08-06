@@ -68,7 +68,7 @@ Standalone full-width block:
   or "未保存过" when null).
 - Source of truth: `useAiChannels(!loading && isAdmin)`; policy draft
   initialised from `data?.policy`; options from `flattenModels(items)`.
-- Three `FormControl` blocks (Vision / OCR, Agent, Review):
+- Four `FormControl` blocks (Vision / OCR, Agent, Review, and independent TikZ 题图重建):
   - Select value encoded `channel_id::model_id`, options only from
     `model.enabled`; vision stage filters `model.capability.vision`,
     agent/review filter `model.capability.tool_calling`; disabled option
@@ -76,8 +76,8 @@ Standalone full-width block:
   - Caption per stage: "必须启用 Vision" / "必须启用 Tool Calling".
 - Empty states:
   - No channels: "请先连接渠道并同步模型。" (link to `/settings/channels`).
-  - Policy null/cleared: warning Flash "策略已被清除，请重新选择三个阶段模型。"
-- Save: `Button variant="primary"` `保存阶段策略`, disabled until all three
+  - Policy null/cleared: warning Flash "策略已被清除，请重新选择四个阶段模型。"
+- Save: `Button variant="primary"` `保存阶段策略`, disabled until all four
   stages selected; on success `notify.success` with
   `策略版本 {result.policy.version} 将用于后续新 run。`
 - Keep `ErrorBanner` for failures.

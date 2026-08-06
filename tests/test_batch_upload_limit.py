@@ -34,7 +34,13 @@ def test_batch_source_limit_is_advertised_and_enforced_before_persistence(
     )
 
     assert response.status_code == 413
-    assert response.json()["detail"] == "Batch source exceeds the 3 byte limit"
+    assert response.json()["detail"] == {
+        "category": "request",
+        "code": "batch_source_too_large",
+        "message": "Batch source exceeds the 3 byte limit",
+        "retryable": False,
+        "scope": "batch",
+    }
     assert client.get(f"/batch-sessions/{digest}").status_code == 404
 
     accepted_source = b"abc"

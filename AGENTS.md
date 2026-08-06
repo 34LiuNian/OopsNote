@@ -50,11 +50,11 @@ vaults/              user-owned source and Obsidian data; never delete
 - A retry is always a fresh run with the original profile snapshot. Never switch backend inside a run; retry only classified transient failures.
 - Raw RPC logs and task data remain local under `storage/`.
 
-## Production release default
+## Production build and release policy
 
-- After any implementation change affecting the application, default to rebuilding and publishing the production Docker services before handoff.
-- Use the production Compose file and rebuild only the affected services; do not recreate Pocket ID, databases, or unrelated infrastructure.
-- Verify container health, the public health endpoint, and the changed route or workflow after recreation. Report any skipped release explicitly; only skip when the user requests no production publish.
+- Do not run a production frontend build, Docker build, Compose recreation, or production publish unless the user explicitly requests it for the current task.
+- When explicitly requested, use the production Compose file and rebuild only the affected services; do not recreate Pocket ID, databases, or unrelated infrastructure.
+- After an explicitly requested recreation, verify container health, the public health endpoint, and the changed route or workflow.
 
 ## Durable fix requirements
 

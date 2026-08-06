@@ -47,7 +47,7 @@ def problem_filename(problem: Problem, idx: Optional[int] = None) -> str:
 
 # ── .md 内容生成 ────────────────────────────────────
 
-def render_problem(problem: Problem) -> str:
+def render_problem(problem: Problem, diagram_paths: tuple[str, ...] = ()) -> str:
     """将单道 Problem 渲染为 Obsidian .md 内容。"""
     lines: list[str] = []
 
@@ -72,6 +72,11 @@ def render_problem(problem: Problem) -> str:
     if problem.options:
         for index, opt in enumerate(problem.options):
             lines.append(f"- {option_label(index)}. {opt}")
+        lines.append("")
+
+    for index, path in enumerate(diagram_paths, start=1):
+        label = "题图" if len(diagram_paths) == 1 else f"题图 {index}"
+        lines.append(f"![{label}]({path})")
         lines.append("")
 
     # 答案

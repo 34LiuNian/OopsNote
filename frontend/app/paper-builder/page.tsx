@@ -17,6 +17,7 @@ import { TagSelectorRow } from "../../components/TagSelectorRow";
 import { useTagDimensions } from "../../features/tags";
 import { SUBJECT_OPTIONS } from "../../config/subjects";
 import { PageHeader } from "@/components/layout/PageHeader";
+import { ApiError } from "@/lib/api";
 
 const BUILDER_SUBJECT_OPTIONS = [
   ...SUBJECT_OPTIONS,
@@ -114,45 +115,27 @@ export default function PaperBuilderPage() {
     // 清空上一次生成的 PDF URL，避免在加载时显示旧试卷
     setPaperPdfUrl(null);
     try {
-      const response = await compilePaper({
+      const pdf = await compilePaper({
         items: selectedItems.map((item) => ({
           task_id: item.task_id,
           problem_id: item.problem_id,
         })),
         title: paperTitle.trim() || "试卷",
       });
-
-      if (!response.ok) {
-        const contentType = response.headers.get("Content-Type") || "";
-        let message = `生成失败：${response.status}`;
-        let log = "";
-
-        if (contentType.includes("application/json")) {
-          const data = (await response.json()) as { detail?: { message?: string; log?: string } | string };
-          if (typeof data.detail === "string") {
-            message = data.detail;
-          } else if (data.detail) {
-            message = data.detail.message || message;
-            log = data.detail.log || "";
-          }
-        } else {
-          const text = await response.text();
-          if (text) message = text;
-        }
-
-        setPaperError({ message, log });
-        return;
-      }
-
-      const blob = await response.blob();
-      const nextUrl = URL.createObjectURL(blob);
+      const nextUrl = URL.createObjectURL(pdf);
       setPaperPdfUrl((prev) => {
         if (prev) URL.revokeObjectURL(prev);
         return nextUrl;
       });
       setPaperError(null);
     } catch (err) {
-      setPaperError({ message: err instanceof Error ? err.message : "生成失败，请稍后重试。" });
+      const log = err instanceof ApiError && typeof err.payload?.details?.log === "string"
+        ? err.payload.details.log
+        : undefined;
+      setPaperError({
+        message: err instanceof Error ? err.message : "生成失败，请稍后重试。",
+        log,
+      });
     } finally {
       setPaperLoading(false);
     }

@@ -3,7 +3,7 @@
 import { Fragment } from "react";
 import { Box, Text, Spinner, Octicon } from "@/components/ui/primitives";
 import { CheckIcon, XIcon, SkipIcon } from "@/components/ui/icons";
-import { PROGRESS_STEPS, UseTaskProgressResult } from "@/hooks/useTaskProgress";
+import { PROGRESS_STEPS, ProgressStep, UseTaskProgressResult } from "@/hooks/useTaskProgress";
 
 interface TaskProgressBarProps {
   progressState: UseTaskProgressResult;
@@ -11,6 +11,7 @@ interface TaskProgressBarProps {
   error?: string;
   statusMessage?: string;
   embedded?: boolean;
+  steps?: ProgressStep[];
 }
 
 // 状态颜色规范（使用 Primer 语义化 token，适配亮暗模式）
@@ -89,7 +90,7 @@ function NodeDot({ status }: { status: keyof typeof STATUS_COLORS }) {
   );
 }
 
-export function TaskProgressBar({ progressState, latestLine, error, statusMessage, embedded = false }: TaskProgressBarProps) {
+export function TaskProgressBar({ progressState, latestLine, error, statusMessage, embedded = false, steps = PROGRESS_STEPS }: TaskProgressBarProps) {
   const isCancelled = progressState.isCancelled;
 
   return (
@@ -97,9 +98,9 @@ export function TaskProgressBar({ progressState, latestLine, error, statusMessag
       {/* ── Desktop horizontal layout ── */}
       <Box sx={{ display: ["none", "block"] }}>
         <Box sx={{ display: "flex", alignItems: "center", mb: 2 }}>
-          {PROGRESS_STEPS.map((step, idx) => {
+          {steps.map((step, idx) => {
             const nodeStatus = getNodeStatus(idx, progressState, isCancelled);
-            const lineToNext = idx < PROGRESS_STEPS.length - 1;
+            const lineToNext = idx < steps.length - 1;
             const isLineDone = progressState.highestIndex > idx && !isCancelled;
             const isCurrentErrorLine = progressState.isFailed && progressState.highestIndex === idx + 1;
             const isLastDoneLine = progressState.highestIndex === idx + 1 && !isCancelled;
@@ -142,7 +143,7 @@ export function TaskProgressBar({ progressState, latestLine, error, statusMessag
 
         {/* Desktop text labels */}
         <Box sx={{ position: "relative", height: "40px" }}>
-          {PROGRESS_STEPS.map((step, idx) => {
+          {steps.map((step, idx) => {
             const nodeStatus = getNodeStatus(idx, progressState, isCancelled);
             const isDisabled = (progressState.isFailed || isCancelled) && progressState.highestIndex < idx;
             const isDone = progressState.highestIndex >= idx;
@@ -160,7 +161,7 @@ export function TaskProgressBar({ progressState, latestLine, error, statusMessag
                     : isDisabled
                       ? "已阻断"
                       : "等待中";
-            const style = getNodeStyle(idx, PROGRESS_STEPS.length);
+            const style = getNodeStyle(idx, steps.length);
             return (
               <Box
                 key={step.key}
@@ -186,7 +187,7 @@ export function TaskProgressBar({ progressState, latestLine, error, statusMessag
 
       {/* ── Mobile vertical layout ── */}
       <Box sx={{ display: ["flex", "none"], flexDirection: "column", gap: 0 }}>
-        {PROGRESS_STEPS.map((step, idx) => {
+        {steps.map((step, idx) => {
           const nodeStatus = getNodeStatus(idx, progressState, isCancelled);
           const isDisabled = (progressState.isFailed || isCancelled) && progressState.highestIndex < idx;
           const isDone = progressState.highestIndex >= idx;
@@ -204,7 +205,7 @@ export function TaskProgressBar({ progressState, latestLine, error, statusMessag
                   : isDisabled
                     ? "已阻断"
                     : "等待中";
-          const isLast = idx === PROGRESS_STEPS.length - 1;
+          const isLast = idx === steps.length - 1;
           const isLineDone = progressState.highestIndex > idx && !isCancelled;
           const isCurrentErrorLine = progressState.isFailed && progressState.highestIndex === idx + 1;
 

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
+import { Cable } from "lucide-react";
 import styles from "./aiSettings.module.css";
 
 type ProviderMarkMeta = { label: string; icon?: string; fallback: string };
@@ -9,7 +10,7 @@ const PROVIDER_META: Record<string, ProviderMarkMeta> = {
   openai: { label: "OpenAI", icon: "/provider-icons/openai-color.svg", fallback: "O" },
   anthropic: { label: "Anthropic", icon: "/provider-icons/anthropic-color.svg", fallback: "A" },
   google: { label: "Google Gemini", icon: "/provider-icons/google-color.svg", fallback: "G" },
-  "openai-compatible": { label: "OpenAI Compatible", fallback: "C" },
+  "openai-compatible": { label: "OpenAI Compatible", fallback: "" },
 };
 
 type ProviderIcon = { id: string; label: string };
@@ -44,7 +45,9 @@ export function ProviderMark({ provider, icon, size = 36 }: { provider: string; 
       style={{ width: size, height: size }}
       aria-hidden="true"
     >
-      {meta.icon ? <Image src={meta.icon} alt="" width={Math.round(size * 0.68)} height={Math.round(size * 0.68)} /> : meta.fallback}
+      {meta.icon
+        ? <Image src={meta.icon} alt="" width={Math.round(size * 0.68)} height={Math.round(size * 0.68)} />
+        : meta.fallback || <Cable size={Math.round(size * 0.48)} strokeWidth={1.8} />}
     </span>
   );
 }

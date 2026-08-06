@@ -24,9 +24,14 @@ from .models import (
     PaperDraft,
     PaperDraftCreateRequest,
     PaperDraftUpdateRequest,
+    DiagramCandidate,
+    DiagramItem,
+    DiagramRunMode,
+    DiagramRunStep,
     Problem,
     RunArtifact,
     RunStatus,
+    RunPurpose,
     RunValidationError,
     StageRun,
     StageStatus,
@@ -212,6 +217,106 @@ class TaskStore:
     def set_problem(self, task_id: str, problem: Optional[Problem]) -> TaskRecord:
         return self.update(task_id, problem=problem)
 
+    def add_diagram_item(self, task_id: str, item: DiagramItem) -> TaskRecord:
+        """Append one diagram slot without replacing any retained version history."""
+        with self._lock:
+            record = self.get(task_id)
+            if any(existing.id == item.id for existing in record.diagram_items):
+                raise StateConflict(f"Diagram item {item.id} already exists")
+            return self.update(task_id, diagram_items=[*record.diagram_items, item])
+
+    def update_diagram_item(
+        self,
+        task_id: str,
+        item_id: str,
+        *,
+        expected_active_run_id: object = _UNSET,
+        **fields,
+    ) -> TaskRecord:
+        """Atomically compare and update one item inside the canonical item list."""
+        with self._lock:
+            record = self.get(task_id)
+            items = list(record.diagram_items)
+            index = next((i for i, item in enumerate(items) if item.id == item_id), None)
+            if index is None:
+                raise KeyError(f"Diagram item {item_id} not found")
+            current = items[index]
+            if (
+                expected_active_run_id is not _UNSET
+                and current.active_run_id != expected_active_run_id
+            ):
+                raise StateConflict(
+                    f"Run {expected_active_run_id!s} is not active for diagram {item_id}"
+                )
+            items[index] = _validated_update(
+                current,
+                {"updated_at": datetime.now(timezone.utc), **fields},
+            )
+            return self.update(task_id, diagram_items=items)
+
+    def append_diagram_candidate(
+        self,
+        task_id: str,
+        item_id: str,
+        candidate: DiagramCandidate,
+        *,
+        expected_active_run_id: str,
+    ) -> TaskRecord:
+        """Retain a candidate exactly once; candidates are never overwritten."""
+        with self._lock:
+            record = self.get(task_id)
+            item = next((item for item in record.diagram_items if item.id == item_id), None)
+            if item is None:
+                raise KeyError(f"Diagram item {item_id} not found")
+            if item.active_run_id != expected_active_run_id:
+                raise StateConflict(f"Run {expected_active_run_id} is no longer active")
+            if any(existing.id == candidate.id for existing in item.candidates):
+                return record
+            if any(existing.ordinal == candidate.ordinal for existing in item.candidates):
+                raise StateConflict(
+                    f"Diagram item {item_id} already has candidate {candidate.ordinal}"
+                )
+            return self.update_diagram_item(
+                task_id,
+                item_id,
+                expected_active_run_id=expected_active_run_id,
+                candidates=[*item.candidates, candidate],
+            )
+
+    def update_diagram_candidate(
+        self,
+        task_id: str,
+        item_id: str,
+        candidate_id: str,
+        *,
+        expected_active_run_id: str,
+        **fields,
+    ) -> TaskRecord:
+        """Advance retained candidate evidence without changing its source identity."""
+        with self._lock:
+            record = self.get(task_id)
+            item = next((item for item in record.diagram_items if item.id == item_id), None)
+            if item is None:
+                raise KeyError(f"Diagram item {item_id} not found")
+            if item.active_run_id != expected_active_run_id:
+                raise StateConflict(f"Run {expected_active_run_id} is no longer active")
+            candidates = list(item.candidates)
+            index = next(
+                (index for index, candidate in enumerate(candidates) if candidate.id == candidate_id),
+                None,
+            )
+            if index is None:
+                raise KeyError(f"Diagram candidate {candidate_id} not found")
+            if "tikz_source" in fields or "source_sha256" in fields or "id" in fields:
+                raise ValueError("Diagram candidate source identity is immutable")
+            candidates[index] = _validated_update(candidates[index], fields)
+            return self.update_diagram_item(
+                task_id,
+                item_id,
+                expected_active_run_id=expected_active_run_id,
+                candidates=candidates,
+            )
+
     def mark_status(
         self,
         task_id: str,
@@ -271,12 +376,29 @@ class RunStore:
         model: Optional[str] = None,
         provider_profile_snapshot: Optional[dict[str, Any]] = None,
         retry_of: Optional[TaskRun] = None,
+        purpose: RunPurpose = RunPurpose.PROBLEM,
+        priority: int = 0,
+        diagram_item_id: Optional[str] = None,
+        diagram_mode: Optional[DiagramRunMode] = None,
+        diagram_instruction: Optional[str] = None,
+        diagram_max_candidates: Optional[int] = None,
+        diagram_step: Optional[DiagramRunStep] = None,
     ) -> TaskRun:
         with self._lock:
-            previous_runs = self.list_for_task(task_id)
+            previous_runs = [
+                run for run in self.list_for_task(task_id)
+                if run.purpose == purpose and run.diagram_item_id == diagram_item_id
+            ]
             attempt = 1 + max((run.attempt for run in previous_runs), default=0)
             run = TaskRun(
                 task_id=task_id,
+                purpose=purpose,
+                priority=priority,
+                diagram_item_id=diagram_item_id,
+                diagram_mode=diagram_mode,
+                diagram_instruction=diagram_instruction,
+                diagram_max_candidates=diagram_max_candidates,
+                diagram_step=diagram_step,
                 attempt=attempt,
                 prompt_version=prompt_version,
                 backend=backend,
@@ -418,21 +540,39 @@ class RunStore:
             self._write(updated)
             return updated
 
-    def active_for_task(self, task_id: str) -> Optional[TaskRun]:
+    def active_for_task(
+        self,
+        task_id: str,
+        *,
+        purpose: RunPurpose = RunPurpose.PROBLEM,
+        diagram_item_id: Optional[str] = None,
+    ) -> Optional[TaskRun]:
         active = [
             run for run in self.list_for_task(task_id)
             if run.status in {RunStatus.QUEUED, RunStatus.RUNNING}
+            and run.purpose == purpose
+            and (diagram_item_id is None or run.diagram_item_id == diagram_item_id)
         ]
         return max(active, key=lambda run: run.heartbeat_at, default=None)
 
-    def latest_for_task(self, task_id: str) -> Optional[TaskRun]:
-        runs = self.list_for_task(task_id)
+    def latest_for_task(
+        self,
+        task_id: str,
+        *,
+        purpose: RunPurpose = RunPurpose.PROBLEM,
+        diagram_item_id: Optional[str] = None,
+    ) -> Optional[TaskRun]:
+        runs = [
+            run for run in self.list_for_task(task_id)
+            if run.purpose == purpose
+            and (diagram_item_id is None or run.diagram_item_id == diagram_item_id)
+        ]
         return max(runs, key=lambda run: run.heartbeat_at, default=None)
 
     def start(
         self,
         run_id: str,
-        pid: int,
+        pid: Optional[int],
         log_path: str,
         *,
         worker_id: Optional[str] = None,
@@ -444,8 +584,20 @@ class RunStore:
             pid=pid,
             log_path=log_path,
             worker_id=worker_id,
-            started_at=now,
+            started_at=self.get(run_id).started_at or now,
             heartbeat_at=now,
+        )
+
+    def yield_run(self, run_id: str) -> TaskRun:
+        """Return a cooperative work quantum to the durable priority queue."""
+        run = self.get(run_id)
+        if run.status != RunStatus.RUNNING:
+            raise StateConflict(f"Run {run_id} is not running")
+        return self.update(
+            run_id,
+            status=RunStatus.QUEUED,
+            worker_id=None,
+            heartbeat_at=datetime.now(timezone.utc),
         )
 
     def heartbeat(self, run_id: str) -> TaskRun:

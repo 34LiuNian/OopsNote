@@ -1,6 +1,6 @@
 "use client";
 
-import { Eye, FileText, FileX, Pencil, Trash2 } from "lucide-react";
+import { Eye, FileText, Pencil, Trash2 } from "lucide-react";
 
 import { Box, Button, IconButton, Text } from "@/components/ui/primitives";
 import type { BatchSession } from "../api";
@@ -12,10 +12,9 @@ type Props = {
   onRename: (session: BatchSession) => void;
   onResume: (session: BatchSession) => void;
   onDelete: (session: BatchSession) => void;
-  onDeleteSource: (session: BatchSession) => void;
 };
 
-export function BatchSessionHistory({ sessions, isImporting, onRename, onResume, onDelete, onDeleteSource }: Props) {
+export function BatchSessionHistory({ sessions, isImporting, onRename, onResume, onDelete }: Props) {
   if (!sessions.length) return null;
   return (
     <Box className="batch-scan-history">
@@ -28,9 +27,10 @@ export function BatchSessionHistory({ sessions, isImporting, onRename, onResume,
           <Box key={session.file_hash} className="batch-scan-history__item">
             <Box className="batch-scan-history__mark"><FileText size={17} /></Box>
             <Box className="batch-scan-history__body">
-              <Text>{session.filename}</Text>
-              <IconButton icon={FileX} size="small" variant="invisible" aria-label="移除源文件" title="仅移除源文件" onClick={() => onDeleteSource(session)} />
-              {!session.source_available && <Text className="batch-scan-history__missing">源文件缺失，重新导入相同文件可恢复</Text>}
+              <Text className="batch-scan-history__filename">
+                {session.filename}
+                {!session.source_available && <span className="batch-scan-history__missing"> · 源文件缺失，重新导入相同文件可恢复</span>}
+              </Text>
               <Box className="batch-scan-history__meta">
                 <span><strong>{session.page_count}</strong> 页</span>
                 <span><strong>{session.column_layout?.column_count ?? 1}</strong> 栏</span>

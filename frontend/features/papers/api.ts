@@ -1,4 +1,4 @@
-import { fetchApi, fetchJson } from "../../lib/api";
+import { apiErrorFromResponse, fetchApi, fetchJson } from "../../lib/api";
 import type {
   DifficultyBand,
   PaperDraft,
@@ -66,10 +66,12 @@ export async function listPaperCandidates(params: {
 export async function compilePaperDraft(
   draftId: string,
   payload: { subtitle?: string; show_answers?: boolean },
-): Promise<Response> {
-  return fetchApi(`/papers/${encodeURIComponent(draftId)}/compile`, {
+): Promise<Blob> {
+  const response = await fetchApi(`/papers/${encodeURIComponent(draftId)}/compile`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
+  if (!response.ok) throw await apiErrorFromResponse(response);
+  return response.blob();
 }

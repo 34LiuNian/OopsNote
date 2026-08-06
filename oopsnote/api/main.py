@@ -7,12 +7,15 @@ stores, managed runners, DTO presentation helpers, and application assembly.
 from __future__ import annotations
 
 import os
+import logging
 from contextlib import asynccontextmanager
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, Optional
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.encoders import jsonable_encoder
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -22,6 +25,7 @@ from oopsnote.ai.langchain_tools import McpHttpToolClient
 from oopsnote.ai.providers import ProviderClientFactory, ProviderProfile
 from oopsnote.ai.secrets import SecretStore, secret_store_from_environment
 from oopsnote.api.auth import AuthenticationError, auth_config_from_env, authenticate_request
+from oopsnote.api.errors import category_for_error_code, error_detail, scope_for_path
 from oopsnote.api.routes import ai_settings, batch, catalog, latex, papers, study, tasks
 from oopsnote.api.schemas import TagInput, TagRenameInput, UploadRequest
 from oopsnote.catalog import KNOWLEDGE_TAGS_PATH, KNOWLEDGE_TREES_PATH
@@ -52,6 +56,7 @@ from oopsnote.mcp.ocr import (
 )
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
+logger = logging.getLogger(__name__)
 STORAGE_DIR = Path(os.getenv("OOPSNOTE_STORAGE_DIR", str(PROJECT_ROOT / "storage")))
 _CORS_ORIGINS = [
     origin.strip()
@@ -149,7 +154,8 @@ def _new_langchain_runner() -> LangChainRunner:
         settings_store=APP_SETTINGS_STORE,
         provider_factory=_langchain_provider_factory,
         tool_client_factory=_langchain_tool_client,
-        max_concurrent_tasks=int(APP_SETTINGS_STORE.get().get("ai_max_concurrency", 1)),
+        asset_store=ASSET_STORE,
+        max_concurrent_tasks=int(APP_SETTINGS_STORE.get().get("ai_max_concurrency", 4)),
         **_runner_settings(),
     )
 
@@ -405,6 +411,35 @@ def _asset_view(record: TaskRecord) -> Optional[dict[str, Any]]:
 def _problem_view(task: TaskRecord, problem: Problem) -> dict[str, Any]:
     metadata = task.metadata
     difficulty_reason = difficulty_review_reason(task)
+    diagram = task.diagram_items[0] if task.diagram_items else None
+    selected = (
+        next(
+            (candidate for candidate in diagram.candidates if candidate.id == diagram.selected_candidate_id),
+            None,
+        )
+        if diagram else None
+    )
+    diagram_kind = (
+        "tikz" if diagram and diagram.status.value == "ready_tikz" else
+        "image" if diagram and diagram.status.value == "ready_image" else
+        None
+    )
+    diagram_svg = None
+    if selected and selected.svg_path:
+        try:
+            diagram_svg = ASSET_STORE.resolve(selected.svg_path).read_text(encoding="utf-8")
+        except (FileNotFoundError, OSError, UnicodeError, ValueError):
+            diagram_svg = None
+    diagram_items = [
+        {
+            **item.model_dump(mode="json"),
+            "error_category": (
+                category_for_error_code(item.last_error_code, needs_review=item.needs_review).value
+                if item.last_error_code or item.needs_review else None
+            ),
+        }
+        for item in task.diagram_items
+    ]
     return {
         "problem_id": problem.id,
         "question_no": task.effective_question_no(),
@@ -423,18 +458,24 @@ def _problem_view(task: TaskRecord, problem: Problem) -> dict[str, Any]:
         "difficulty_needs_review": difficulty_reason is not None,
         "difficulty_review_reason": difficulty_reason,
         "has_diagram": problem.has_diagram,
-        "diagram_detected": bool(metadata.get("diagram_detected", problem.has_diagram)),
-        "diagram_kind": metadata.get("diagram_kind"),
-        "diagram_tikz_source": metadata.get("diagram_tikz_source"),
-        "diagram_svg": metadata.get("diagram_svg"),
-        "diagram_image_path": metadata.get("diagram_image_path"),
-        "diagram_image_crop": metadata.get("diagram_image_crop"),
-        "diagram_image_tone": metadata.get("diagram_image_tone", "auto"),
-        "diagram_position": metadata.get("diagram_position", "right"),
-        "diagram_scale_percent": metadata.get("diagram_scale_percent"),
-        "diagram_render_status": metadata.get("diagram_render_status"),
-        "diagram_error": metadata.get("diagram_error"),
-        "diagram_needs_review": metadata.get("diagram_needs_review"),
+        "diagram_detected": bool(diagram or problem.has_diagram),
+        "diagram_kind": diagram_kind,
+        "diagram_tikz_source": selected.tikz_source if selected and diagram_kind == "tikz" else None,
+        "diagram_svg": diagram_svg if diagram_kind == "tikz" else None,
+        "diagram_svg_path": selected.svg_path if selected and diagram_kind == "tikz" else None,
+        "diagram_image_path": diagram.fallback_image_path if diagram else None,
+        "diagram_image_crop": diagram.source_region.model_dump() if diagram and diagram.source_region else None,
+        "diagram_image_tone": diagram.image_tone if diagram else "auto",
+        "diagram_position": diagram.position if diagram else "right",
+        "diagram_scale_percent": diagram.scale_percent if diagram else 100,
+        "diagram_render_status": diagram.status.value if diagram else None,
+        "diagram_error": diagram.last_error if diagram else None,
+        "diagram_error_category": (
+            category_for_error_code(diagram.last_error_code, needs_review=diagram.needs_review).value
+            if diagram and (diagram.last_error_code or diagram.needs_review) else None
+        ),
+        "diagram_needs_review": diagram.needs_review if diagram else False,
+        "diagram_items": diagram_items,
         "knowledge_tags": problem.knowledge_points,
         "error_tags": problem.error_hypothesis,
         "user_tags": metadata.get("user_tags", []),
@@ -446,6 +487,12 @@ def _run_view(run: Any) -> dict[str, Any]:
     return {
         "id": run.id,
         "attempt": run.attempt,
+        "purpose": run.purpose.value,
+        "priority": run.priority,
+        "diagram_item_id": run.diagram_item_id,
+        "diagram_mode": run.diagram_mode.value if run.diagram_mode else None,
+        "diagram_max_candidates": run.diagram_max_candidates,
+        "diagram_step": run.diagram_step.value if run.diagram_step else None,
         "status": run.status.value,
         "pid": run.pid,
         "exit_code": run.exit_code,
@@ -471,6 +518,9 @@ def _run_view(run: Any) -> dict[str, Any]:
         "heartbeat_at": run.heartbeat_at.isoformat(),
         "ended_at": run.ended_at.isoformat() if run.ended_at else None,
         "error_code": run.error_code,
+        "error_category": (
+            category_for_error_code(run.error_code).value if run.error_code else None
+        ),
         "error_message": run.error_message,
         "stages": [stage.model_dump(mode="json") for stage in run.stage_runs],
         "evidence": {
@@ -490,6 +540,10 @@ def _run_view(run: Any) -> dict[str, Any]:
 def _task_view(record: TaskRecord) -> dict[str, Any]:
     problem = record.problem
     run = RUN_STORE.latest_for_task(record.id)
+    diagram_runs = [
+        candidate for candidate in RUN_STORE.list_for_task(record.id)
+        if candidate.purpose.value == "diagram"
+    ]
     merged_into = None
     if problem:
         canonical_problem_id = PROBLEM_MERGE_STORE.canonical_for(problem.id)
@@ -506,11 +560,20 @@ def _task_view(record: TaskRecord) -> dict[str, Any]:
         "stage": record.stage.value if record.stage else None,
         "stage_message": record.stage_message or record.last_error,
         "active_run_id": record.active_run_id,
+        "error_category": (
+            category_for_error_code(record.last_error_code).value
+            if record.last_error_code else None
+        ),
+        "diagram_needs_review": any(item.needs_review for item in record.diagram_items),
         "revision_count": record.revision_count,
         "last_revised_at": (
             record.last_revised_at.isoformat() if record.last_revised_at else None
         ),
         "run": _run_view(run) if run else None,
+        "diagram_runs": [
+            _run_view(candidate)
+            for candidate in sorted(diagram_runs, key=lambda item: item.queued_at, reverse=True)
+        ],
         "created_at": record.created_at.isoformat(),
         "updated_at": record.updated_at.isoformat(),
         "asset": _asset_view(record),
@@ -538,6 +601,11 @@ def _task_summary(record: TaskRecord) -> dict[str, Any]:
         "stage": record.stage.value if record.stage else None,
         "stage_message": record.stage_message or record.last_error,
         "active_run_id": record.active_run_id,
+        "error_category": (
+            category_for_error_code(record.last_error_code).value
+            if record.last_error_code else None
+        ),
+        "diagram_needs_review": any(item.needs_review for item in record.diagram_items),
         "created_at": record.created_at.isoformat(),
         "updated_at": record.updated_at.isoformat(),
         "subject": record.subject,
@@ -548,44 +616,12 @@ def _task_summary(record: TaskRecord) -> dict[str, Any]:
 
 def _problem_summary(task: TaskRecord, problem: Problem) -> dict[str, Any]:
     metadata = task.metadata
-    difficulty_reason = difficulty_review_reason(task)
+    view = _problem_view(task, problem)
     return {
+        **view,
         "task_id": task.id,
-        "problem_id": problem.id,
-        "question_no": task.effective_question_no(),
-        "chapter": task.effective_chapter(),
-        "question_type": problem.question_type.value,
-        "content_format": problem.content_format.value,
-        "problem_text": problem.problem_text,
-        "options": [
-            {"key": option_label(index), "text": option}
-            for index, option in enumerate(problem.options)
-        ],
-        "difficulty": problem.difficulty,
-        "difficulty_coefficient_override": task.difficulty_coefficient_override,
-        "section_question_count": task.section_question_count,
-        "difficulty_needs_review": difficulty_reason is not None,
-        "difficulty_review_reason": difficulty_reason,
-        "has_diagram": problem.has_diagram,
-        "diagram_detected": bool(metadata.get("diagram_detected", problem.has_diagram)),
-        "diagram_kind": metadata.get("diagram_kind"),
-        "diagram_tikz_source": metadata.get("diagram_tikz_source"),
-        "diagram_svg": metadata.get("diagram_svg"),
-        "diagram_image_path": metadata.get("diagram_image_path"),
-        "diagram_image_crop": metadata.get("diagram_image_crop"),
-        "diagram_image_tone": metadata.get("diagram_image_tone", "auto"),
-        "diagram_position": metadata.get("diagram_position", "right"),
-        "diagram_scale_percent": metadata.get("diagram_scale_percent"),
-        "diagram_render_status": metadata.get("diagram_render_status"),
-        "diagram_error": metadata.get("diagram_error"),
-        "diagram_needs_review": metadata.get("diagram_needs_review"),
         "subject": problem.subject or task.subject,
-        "source": _problem_source(task, problem),
         "knowledge_points": problem.knowledge_points,
-        "knowledge_tags": problem.knowledge_points,
-        "error_tags": problem.error_hypothesis,
-        "user_tags": metadata.get("user_tags", []),
-        "trace": metadata.get("trace"),
         "created_at": problem.created_at.isoformat(),
     }
 
@@ -635,6 +671,45 @@ async def lifespan(_: FastAPI):
 
 
 app = FastAPI(title="OopsNote", version="0.3.0", lifespan=lifespan)
+
+
+@app.exception_handler(RequestValidationError)
+async def request_validation_error(request: Request, error: RequestValidationError) -> JSONResponse:
+    task_id = request.path_params.get("task_id")
+    return JSONResponse(
+        status_code=422,
+        content={
+            "detail": error_detail(
+                code="request_invalid",
+                message="请求参数无效",
+                scope=scope_for_path(request.url.path),
+                task_id=task_id if isinstance(task_id, str) else None,
+                details={"issues": jsonable_encoder(error.errors())},
+            )
+        },
+    )
+
+
+@app.exception_handler(Exception)
+async def internal_server_error(request: Request, error: Exception) -> JSONResponse:
+    logger.error(
+        "Unhandled API error for %s %s",
+        request.method,
+        request.url.path,
+        exc_info=(type(error), error, error.__traceback__),
+    )
+    task_id = request.path_params.get("task_id")
+    return JSONResponse(
+        status_code=500,
+        content={
+            "detail": error_detail(
+                code="internal_error",
+                message="服务内部错误",
+                scope=scope_for_path(request.url.path),
+                task_id=task_id if isinstance(task_id, str) else None,
+            )
+        },
+    )
 
 
 @app.middleware("http")

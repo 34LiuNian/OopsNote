@@ -35,10 +35,7 @@ async function requestAsset(kind: LatexAssetKind, content: string, inline?: bool
     headers: {
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({
-      content,
-      inline: Boolean(inline),
-    }),
+    body: JSON.stringify({ source: content }),
   });
 
   if (!response.ok) {

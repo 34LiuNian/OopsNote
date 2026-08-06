@@ -6,6 +6,7 @@ JSON uuid (problem_id) 与 Obsidian 文件名 (日期-序号.md) 一一对应。
 
 from __future__ import annotations
 
+import hashlib
 from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Literal, Optional
@@ -39,6 +40,9 @@ class TaskStage(str, Enum):
     TAGGING = "tagging"
     FINALIZING = "finalizing"
     SYNCING = "syncing"
+    DIAGRAM_GENERATING = "diagram_generating"
+    DIAGRAM_RENDERING = "diagram_rendering"
+    DIAGRAM_REVIEWING = "diagram_reviewing"
 
 
 class RunStatus(str, Enum):
@@ -76,6 +80,117 @@ class ContentFormat(str, Enum):
 
     LEGACY_MARKDOWN_LATEX = "legacy-markdown-latex"
     OOPSMARK_V1 = "oopsmark-v1"
+
+
+class RunPurpose(str, Enum):
+    PROBLEM = "problem"
+    DIAGRAM = "diagram"
+
+
+class DiagramStatus(str, Enum):
+    DETECTED = "detected"
+    QUEUED = "queued"
+    GENERATING = "generating"
+    RENDERING = "rendering"
+    REVIEWING = "reviewing"
+    READY_TIKZ = "ready_tikz"
+    READY_IMAGE = "ready_image"
+    NEEDS_REVIEW = "needs_review"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+
+
+class DiagramRunMode(str, Enum):
+    AUTO = "auto"
+    CONTINUE = "continue"
+    REBUILD = "rebuild"
+    HUMAN = "human"
+
+
+class DiagramRunStep(str, Enum):
+    GENERATE = "generate"
+    RENDER = "render"
+    REVIEW = "review"
+
+
+class DiagramSourceRegion(BaseModel):
+    """Normalized source region reserved for a future layout-analysis owner."""
+
+    x: float = Field(ge=0, le=1)
+    y: float = Field(ge=0, le=1)
+    width: float = Field(gt=0, le=1)
+    height: float = Field(gt=0, le=1)
+
+    @model_validator(mode="after")
+    def validate_bounds(self) -> "DiagramSourceRegion":
+        if self.x + self.width > 1 or self.y + self.height > 1:
+            raise ValueError("Diagram source region exceeds source bounds")
+        return self
+
+
+class DiagramCandidate(BaseModel):
+    """One immutable TikZ proposal and the assets rendered from that source."""
+
+    id: str = Field(default_factory=lambda: uuid4().hex)
+    ordinal: int = Field(ge=1)
+    parent_candidate_id: Optional[str] = None
+    source_kind: Literal["ai", "human", "legacy"] = "ai"
+    tikz_source: str = Field(min_length=1)
+    source_sha256: str = ""
+    svg_path: Optional[str] = None
+    pdf_path: Optional[str] = None
+    png_path: Optional[str] = None
+    renderer_profile_version: Optional[str] = None
+    decision: Optional[Literal["accept", "revise", "keep_image"]] = None
+    hard_errors: list[str] = Field(default_factory=list)
+    soft_differences: list[str] = Field(default_factory=list)
+    review_reason: Optional[str] = None
+    provider: Optional[str] = None
+    model: Optional[str] = None
+    run_id: Optional[str] = None
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+    @model_validator(mode="after")
+    def populate_source_hash(self) -> "DiagramCandidate":
+        digest = hashlib.sha256(self.tikz_source.encode("utf-8")).hexdigest()
+        if self.source_sha256 and self.source_sha256 != digest:
+            raise ValueError("Diagram candidate source_sha256 does not match tikz_source")
+        self.source_sha256 = digest
+        return self
+
+
+class DiagramItem(BaseModel):
+    """One printed diagram slot; a task currently creates one, the contract supports many."""
+
+    id: str = Field(default_factory=lambda: uuid4().hex)
+    ordinal: int = Field(default=0, ge=0)
+    source_asset_path: Optional[str] = None
+    source_region: Optional[DiagramSourceRegion] = None
+    fallback_image_path: Optional[str] = None
+    image_tone: Literal["auto", "original"] = "auto"
+    position: Literal["left", "right"] = "right"
+    scale_percent: int = Field(default=100, ge=50, le=200)
+    status: DiagramStatus = DiagramStatus.DETECTED
+    selected_candidate_id: Optional[str] = None
+    candidates: list[DiagramCandidate] = Field(default_factory=list)
+    active_run_id: Optional[str] = None
+    needs_review: bool = False
+    last_error: Optional[str] = None
+    last_error_code: Optional[str] = None
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+    @model_validator(mode="after")
+    def validate_candidates(self) -> "DiagramItem":
+        ids = [candidate.id for candidate in self.candidates]
+        if len(ids) != len(set(ids)):
+            raise ValueError("Diagram candidate ids must be unique")
+        ordinals = [candidate.ordinal for candidate in self.candidates]
+        if len(ordinals) != len(set(ordinals)):
+            raise ValueError("Diagram candidate ordinals must be unique")
+        if self.selected_candidate_id and self.selected_candidate_id not in ids:
+            raise ValueError("selected_candidate_id must reference a retained candidate")
+        return self
 
 
 # ── 题目 ──────────────────────────────────────────────
@@ -161,6 +276,7 @@ class TaskRecord(BaseModel):
     problem: Optional[Problem] = None
     asset_path: Optional[str] = None
     metadata: dict[str, Any] = Field(default_factory=dict)
+    diagram_items: list[DiagramItem] = Field(default_factory=list)
     ocr_context: Optional[OcrPrintedContext] = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
@@ -177,6 +293,65 @@ class TaskRecord(BaseModel):
     stage: Optional[TaskStage] = None
     stage_message: Optional[str] = None
     active_run_id: Optional[str] = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def migrate_legacy_diagram_metadata(cls, value: Any) -> Any:
+        """Move the former singular metadata fields into the canonical item list."""
+        if not isinstance(value, dict) or value.get("diagram_items"):
+            return value
+        metadata = value.get("metadata")
+        if not isinstance(metadata, dict) or not metadata.get("diagram_detected"):
+            return value
+        legacy_keys = {
+            "diagram_detected", "diagram_kind", "diagram_tikz_source", "diagram_svg",
+            "diagram_image_path", "diagram_image_crop", "diagram_image_tone",
+            "diagram_position", "diagram_scale_percent", "diagram_render_status",
+            "diagram_error", "diagram_needs_review",
+        }
+        clean_metadata = {key: item for key, item in metadata.items() if key not in legacy_keys}
+        kind = metadata.get("diagram_kind")
+        source = str(metadata.get("diagram_tikz_source") or "").strip()
+        candidates: list[dict[str, Any]] = []
+        selected_candidate_id = None
+        if kind == "tikz" and source:
+            digest = hashlib.sha256(source.encode("utf-8")).hexdigest()
+            selected_candidate_id = f"legacy-{digest[:20]}"
+            candidates.append({
+                "id": selected_candidate_id,
+                "ordinal": 1,
+                "source_kind": "legacy",
+                "tikz_source": source,
+                "decision": "revise",
+                "review_reason": "Legacy TikZ requires same-source SVG/PDF/PNG rendering",
+            })
+        crop = metadata.get("diagram_image_crop")
+        item_digest = hashlib.sha256(
+            f"{value.get('id', '')}\0{value.get('asset_path', '')}\0legacy-diagram-0".encode("utf-8")
+        ).hexdigest()[:20]
+        item = {
+            "id": f"legacy-item-{item_digest}",
+            "ordinal": 0,
+            "source_asset_path": value.get("asset_path"),
+            "source_region": crop if isinstance(crop, dict) else None,
+            "fallback_image_path": metadata.get("diagram_image_path"),
+            "image_tone": metadata.get("diagram_image_tone") or "auto",
+            "position": metadata.get("diagram_position") or "right",
+            "scale_percent": metadata.get("diagram_scale_percent") or 100,
+            "status": (
+                "needs_review" if selected_candidate_id else
+                "ready_image" if kind == "image" and metadata.get("diagram_image_path") else
+                "needs_review" if metadata.get("diagram_needs_review") else
+                "detected"
+            ),
+            "selected_candidate_id": selected_candidate_id,
+            "candidates": candidates,
+            "needs_review": bool(metadata.get("diagram_needs_review") or selected_candidate_id),
+            "last_error": metadata.get("diagram_error") or (
+                "Legacy TikZ requires same-source rendering" if selected_candidate_id else None
+            ),
+        }
+        return {**value, "metadata": clean_metadata, "diagram_items": [item]}
 
     def effective_question_no(self) -> Optional[str]:
         raw = self.metadata.get("question_no")
@@ -247,6 +422,14 @@ class TaskRun(BaseModel):
 
     id: str = Field(default_factory=lambda: uuid4().hex)
     task_id: str
+    purpose: RunPurpose = RunPurpose.PROBLEM
+    priority: int = Field(default=0, ge=0, le=100)
+    diagram_item_id: Optional[str] = None
+    diagram_mode: Optional[DiagramRunMode] = None
+    diagram_instruction: Optional[str] = Field(default=None, max_length=2000)
+    diagram_max_candidates: Optional[int] = Field(default=None, ge=1, le=8)
+    diagram_step: Optional[DiagramRunStep] = None
+    diagram_candidate_id: Optional[str] = None
     attempt: int = 1
     status: RunStatus = RunStatus.QUEUED
     stage_runs: list[StageRun] = Field(default_factory=list)
@@ -291,6 +474,11 @@ class TaskRun(BaseModel):
         """Keep verification state impossible until solver output is durable."""
         if self.verification_started_at is not None and self.solution_candidate is None:
             raise ValueError("verification_started_at requires a solution_candidate")
+        if self.purpose == RunPurpose.DIAGRAM:
+            if not self.diagram_item_id or not self.diagram_mode or not self.diagram_max_candidates:
+                raise ValueError("Diagram runs require item, mode, and candidate limit")
+            if self.solution_candidate is not None or self.verification_started_at is not None:
+                raise ValueError("Diagram runs cannot contain a problem solution candidate")
         return self
 
 

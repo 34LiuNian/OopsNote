@@ -1,4 +1,4 @@
-import { apiErrorFromResponse, fetchApi, fetchJson, fetchRawUpload } from "../../lib/api";
+import { apiErrorFromResponse, fetchApi, fetchJson, fetchRawUpload, hasApiErrorCode } from "../../lib/api";
 import type { TaskResponse } from "../../types/api";
 
 export type CreateUploadTaskPayload = {
@@ -148,9 +148,18 @@ export async function listBatchSessions(): Promise<BatchSession[]> {
 
 export async function getBatchSession(fileHash: string): Promise<BatchSession | null> {
   const response = await fetchApi(`/batch-sessions/${encodeURIComponent(fileHash)}`);
-  if (response.status === 404) return null;
-  if (!response.ok) throw await apiErrorFromResponse(response);
+  if (!response.ok) {
+    const error = await apiErrorFromResponse(response);
+    if (hasApiErrorCode(error, "batch_session_not_found")) return null;
+    throw error;
+  }
   return (await response.json() as { session: BatchSession }).session;
+}
+
+export async function getBatchSource(fileHash: string): Promise<Blob> {
+  const response = await fetchApi(`/batch-sessions/${encodeURIComponent(fileHash)}/source`);
+  if (!response.ok) throw await apiErrorFromResponse(response);
+  return response.blob();
 }
 
 export async function uploadBatchSource(fileHash: string, file: File, pageCount: number): Promise<BatchSession> {
@@ -201,6 +210,22 @@ export async function retryBatchSegment(
 
 export async function deleteBatchSession(fileHash: string): Promise<void> {
   await fetchJson(`/batch-sessions/${encodeURIComponent(fileHash)}`, { method: "DELETE" });
+}
+
+export type BatchDeleteSelection = {
+  source: boolean;
+  selection_records: boolean;
+  tasks: boolean;
+};
+
+export async function deleteBatchParts(
+  fileHash: string,
+  selection: BatchDeleteSelection,
+): Promise<void> {
+  await fetchJson(`/batch-sessions/${encodeURIComponent(fileHash)}`, {
+    method: "DELETE",
+    body: JSON.stringify(selection),
+  });
 }
 
 export async function deleteBatchSource(fileHash: string): Promise<void> {

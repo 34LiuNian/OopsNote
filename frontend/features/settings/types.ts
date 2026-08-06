@@ -30,6 +30,7 @@ export type LangChainPolicy = {
   vision: StageSelection;
   agent: StageSelection;
   review: StageSelection;
+  diagram: StageSelection;
   updated_at: string | null;
 };
 

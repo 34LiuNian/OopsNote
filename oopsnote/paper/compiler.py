@@ -207,19 +207,8 @@ def _options_latex(item: PaperDocumentItem, bundle: _BundleBuilder) -> str:
 
 def _diagram_latex(diagram: PaperDiagram, bundle: _BundleBuilder) -> str:
     width = f"{diagram.scale_percent / 100:g}\\linewidth"
-    if diagram.kind == "image":
-        path = bundle.managed_asset(diagram.source)
-        return rf"\includegraphics[width={width},keepaspectratio]{{{path}}}"
-    source = diagram.source.strip()
-    if "\\begin{tikzpicture}" not in source:
-        source = "\\begin{tikzpicture}\n" + source + "\n\\end{tikzpicture}"
-    return "\n".join(
-        [
-            rf"\resizebox{{{width}}}{{!}}{{%",
-            source,
-            "}",
-        ]
-    )
+    path = bundle.managed_asset(diagram.source)
+    return rf"\includegraphics[width={width},keepaspectratio]{{{path}}}"
 
 
 def _question_body_latex(item: PaperDocumentItem, bundle: _BundleBuilder) -> str:

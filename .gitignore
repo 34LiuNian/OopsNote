@@ -86,3 +86,9 @@ venv/
 
 
 /.agents/
+
+.VSCodeCounter/
+
+# Local Codex and renderer configuration
+/.codex/
+/deploy/latex-renderer/.env.local

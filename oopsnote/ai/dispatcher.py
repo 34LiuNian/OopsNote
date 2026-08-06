@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import queue
 import threading
+from itertools import count
 from typing import TYPE_CHECKING, Optional
 
-from oopsnote.core import RunStatus, TaskRun, TaskStatus
+from oopsnote.core import RunStatus, TaskRun
 
 if TYPE_CHECKING:
     from oopsnote.ai.managed import ManagedAiRunner
@@ -22,7 +23,10 @@ class ManagedTaskDispatcher:
     def __init__(self, runner: "ManagedAiRunner", workers: int) -> None:
         self.runner = runner
         self.workers = max(1, workers)
-        self._queue: queue.Queue[Optional[tuple[str, str]]] = queue.Queue()
+        self._queue: queue.PriorityQueue[tuple[int, int, Optional[str], Optional[str]]] = (
+            queue.PriorityQueue()
+        )
+        self._sequence = count()
         self._threads: list[threading.Thread] = []
         self._started = False
         self._stopping = threading.Event()
@@ -50,11 +54,12 @@ class ManagedTaskDispatcher:
 
     def schedule(self, task_id: str, run_id: str) -> None:
         self.start()
+        run = self.runner.run_store.get(run_id)
         with self._lock:
             if run_id in self._scheduled:
                 return
             self._scheduled.add(run_id)
-        self._queue.put((task_id, run_id))
+        self._queue.put((run.priority, next(self._sequence), task_id, run_id))
 
     def recover_queued(self) -> int:
         recovered = 0
@@ -64,11 +69,7 @@ class ManagedTaskDispatcher:
                 or run.backend != self.runner.backend_name
             ):
                 continue
-            try:
-                task = self.runner.task_store.get(run.task_id)
-            except KeyError:
-                continue
-            if task.status != TaskStatus.PROCESSING or task.active_run_id != run.id:
+            if not self.runner.is_run_dispatchable(run):
                 continue
             self.schedule(run.task_id, run.id)
             recovered += 1
@@ -88,15 +89,15 @@ class ManagedTaskDispatcher:
                 return
             self._stopping.set()
         for _ in self._threads:
-            self._queue.put(None)
+            self._queue.put((101, next(self._sequence), None, None))
 
     def _run(self) -> None:
         while True:
             item = self._queue.get()
+            _priority, _sequence, task_id, run_id = item
             try:
-                if item is None:
+                if task_id is None or run_id is None:
                     return
-                task_id, run_id = item
                 try:
                     self.runner.run(task_id, run_id)
                 except Exception as error:
@@ -112,24 +113,17 @@ class ManagedTaskDispatcher:
                         )
                     except KeyError:
                         pass
-                    try:
-                        task = self.runner.task_store.get(task_id)
-                        if task.active_run_id == run_id:
-                            self.runner.task_store.transition(
-                                task_id,
-                                expected_statuses={TaskStatus.PROCESSING},
-                                expected_active_run_id=run_id,
-                                status=TaskStatus.FAILED,
-                                active_run_id=None,
-                                last_error=str(error),
-                                last_error_code="dispatcher_error",
-                            )
-                    except (KeyError, RuntimeError):
-                        pass
+                    self.runner.handle_dispatcher_error(task_id, run_id, error)
             finally:
-                if item is not None:
+                if run_id is not None:
                     with self._lock:
-                        self._scheduled.discard(item[1])
+                        self._scheduled.discard(run_id)
+                    try:
+                        yielded = self.runner.run_store.get(run_id)
+                    except KeyError:
+                        yielded = None
+                    if yielded is not None and yielded.status == RunStatus.QUEUED:
+                        self.schedule(task_id, run_id)
                 self._queue.task_done()
 
 

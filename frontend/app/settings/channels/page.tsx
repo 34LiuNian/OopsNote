@@ -1,8 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useDeferredValue, useMemo, useState } from "react";
 import { PasswordInput } from "@mantine/core";
-import { Copy, Save, ShieldAlert, Trash2 } from "lucide-react";
+import { CircleCheck, CircleX, Copy, PlugZap, Save, ShieldAlert, Trash2 } from "lucide-react";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { Box, Button, FormControl, Heading, IconButton, Select, Spinner, Text, TextInput, Tooltip } from "@/components/ui/primitives";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
@@ -12,7 +12,7 @@ import { confirmAction } from "@/lib/confirm";
 import { formatApiError } from "@/lib/errorFormatter";
 import { getChannelCredential } from "@/features/settings/api";
 import { useAiChannels, useAiChannelMutations } from "@/features/settings/useAiProviders";
-import type { ChannelDraft, ChannelModel, ProviderChannel } from "@/features/settings/types";
+import type { ChannelDraft, ChannelModel, ProviderChannel, ProviderValidation } from "@/features/settings/types";
 import { ChannelRail, ModelCatalog, type ModelCatalogFilter, ProviderIconPicker, ProviderMark, providerLabel } from "@/components/settings/ai";
 import styles from "@/components/settings/ai/aiSettings.module.css";
 
@@ -80,10 +80,19 @@ export default function AiChannelsPage() {
   const [modelFilter, setModelFilter] = useState<ModelCatalogFilter>("all");
   const [modelQuery, setModelQuery] = useState("");
   const [busyModelId, setBusyModelId] = useState<string | null>(null);
+  const [checkModelId, setCheckModelId] = useState("");
+  const [checkResult, setCheckResult] = useState<ProviderValidation | null>(null);
   const [errorMessage, setErrorMessage] = useState("");
   const selected = items.find((item) => item.id === selectedId) ?? (!creating ? items[0] ?? null : null);
+  const deferredSelected = useDeferredValue(selected);
+  const connectivityModels = selected?.models.filter((model) => model.enabled) ?? [];
+  const effectiveCheckModelId = connectivityModels.some((model) => model.id === checkModelId)
+    ? checkModelId
+    : connectivityModels[0]?.id ?? "";
   const activeDraft = selected && draft.id === selected.id ? draft : selected ? draftFrom(selected) : draft;
-  const busy = Object.values(mutations).some((mutation) => mutation.isPending);
+  const busy = Object.entries(mutations)
+    .filter(([key]) => key !== "reorder" && key !== "check")
+    .some(([, mutation]) => mutation.isPending);
   const infoDirty = creating || Boolean(selected && (
     activeDraft.display_name !== selected.display_name
     || activeDraft.provider !== selected.provider
@@ -122,6 +131,28 @@ export default function AiChannelsPage() {
     setErrorMessage("");
     setModelFilter("all");
     setModelQuery("");
+    setCheckModelId(channel.models.find((model) => model.enabled)?.id ?? "");
+    setCheckResult(null);
+  }
+
+  async function checkConnectivity() {
+    if (!selected || !effectiveCheckModelId) return;
+    setErrorMessage("");
+    setCheckResult(null);
+    try {
+      const result = await mutations.check.mutateAsync({ channelId: selected.id, modelId: effectiveCheckModelId });
+      setCheckResult(result.validation);
+    } catch (error) {
+      setErrorMessage(formatApiError(error, "连通性检查失败"));
+    }
+  }
+
+  async function reorderChannelList(channelIds: string[]) {
+    try {
+      await mutations.reorder.mutateAsync(channelIds);
+    } catch (error) {
+      setErrorMessage(formatApiError(error, "渠道排序保存失败"));
+    }
   }
 
   function beginCreate() {
@@ -137,7 +168,6 @@ export default function AiChannelsPage() {
     setErrorMessage("");
     setCredentialError("");
     let channel = selected;
-    let policyCleared = false;
     let syncedCount: number | null = null;
     const wasCreating = creating;
 
@@ -152,7 +182,6 @@ export default function AiChannelsPage() {
         const { id: _id, ...payload } = activeDraft;
         const result = await mutations.update.mutateAsync({ channelId: selected.id, payload });
         channel = result.channel;
-        policyCleared ||= result.policy_cleared;
         setDraft(draftFrom(result.channel));
       }
     } catch (error) {
@@ -167,13 +196,11 @@ export default function AiChannelsPage() {
         const result = await mutations.credential.mutateAsync({ channelId: channel.id, secret: secretDraft.trim() });
         channel = result.channel;
         syncedCount = result.discovery.count;
-        policyCleared ||= result.policy_cleared;
         resetCredentialDraft();
       } else if (channel.has_secret) {
         const result = await mutations.sync.mutateAsync(channel.id);
         channel = result.channel;
         syncedCount = result.discovery.count;
-        policyCleared ||= result.policy_cleared;
       }
     } catch (error) {
       setCredentialError(formatApiError(error, secretDirty ? "凭据验证失败" : "模型同步失败"));
@@ -187,7 +214,6 @@ export default function AiChannelsPage() {
       title: wasCreating ? "渠道已创建" : "渠道已保存",
       description: syncedCount == null ? "渠道信息已更新。" : `凭据验证通过，已同步 ${syncedCount} 个模型。`,
     });
-    if (policyCleared) notify.warning({ title: "LangChain 策略已清除", description: "渠道或模型变化使现有阶段选择失效，请重新配置策略。" });
   }
 
   async function revealSecret() {
@@ -231,7 +257,6 @@ export default function AiChannelsPage() {
     try {
       const result = await mutations.sync.mutateAsync(selected.id);
       notify.success({ title: "模型目录已同步", description: `${result.validation.message}，共 ${result.discovery.count} 个模型。` });
-      if (result.policy_cleared) notify.warning({ title: "LangChain 策略已清除", description: "模型目录变化使现有阶段选择失效，请重新配置策略。" });
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "模型同步失败");
     }
@@ -242,8 +267,7 @@ export default function AiChannelsPage() {
     setBusyModelId(model.id);
     setErrorMessage("");
     try {
-      const result = await mutations.model.mutateAsync({ channelId: selected.id, modelId: model.id, payload: patch });
-      if (result.policy_cleared) notify.warning({ title: "LangChain 策略已清除", description: "模型能力变化使现有阶段选择失效，请重新配置策略。" });
+      await mutations.model.mutateAsync({ channelId: selected.id, modelId: model.id, payload: patch });
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "模型配置失败");
     } finally {
@@ -254,10 +278,9 @@ export default function AiChannelsPage() {
   async function setEnabled(channel: ProviderChannel, enabled: boolean) {
     setErrorMessage("");
     try {
-      const result = await mutations.update.mutateAsync({ channelId: channel.id, payload: { enabled } });
+      await mutations.update.mutateAsync({ channelId: channel.id, payload: { enabled } });
       if (selected?.id === channel.id) setDraft((current) => ({ ...current, enabled }));
       notify.success({ title: enabled ? "渠道已启用" : "渠道已停用" });
-      if (result.policy_cleared) notify.warning({ title: "LangChain 策略已清除", description: "停用渠道后，请重新配置策略。" });
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "渠道状态更新失败");
     }
@@ -315,10 +338,12 @@ export default function AiChannelsPage() {
       <ChannelRail
         channels={items}
         busy={busy}
+        reorderBusy={mutations.reorder.isPending}
         query={channelQuery}
         selectedId={selected?.id ?? selectedId}
         onCreate={beginCreate}
         onQueryChange={setChannelQuery}
+        onReorder={(channelIds) => void reorderChannelList(channelIds)}
         onSelect={choose}
         onToggle={toggleEnabled}
       />
@@ -406,11 +431,27 @@ export default function AiChannelsPage() {
                     {credentialError && <div className={styles.formError} role="alert">{credentialError}</div>}
                   </div>
                 </div>
+                {selected && <div className={styles.formRow}>
+                  <div><div className={styles.overviewLabel}>连通性检查</div><div className={styles.overviewHint}>向所选已启用模型发送一次最小请求</div></div>
+                  <div className={styles.formControl}>
+                    <div className={styles.connectivityControl}>
+                      <Select block aria-label="连通性检查模型" value={effectiveCheckModelId} onValueChange={(value) => { setCheckModelId(value); setCheckResult(null); }}>
+                        {connectivityModels.map((model) => <Select.Option key={model.id} value={model.id}>{model.id}</Select.Option>)}
+                      </Select>
+                      <Button variant="default" leadingVisual={PlugZap} disabled={!selected.has_secret || !connectivityModels.length || mutations.check.isPending} onClick={() => void checkConnectivity()}>
+                        {mutations.check.isPending ? "检查中..." : "检查"}
+                      </Button>
+                    </div>
+                    {checkResult && <div className={`${styles.connectivityResult} ${checkResult.success ? styles.connectivitySuccess : styles.connectivityFailure}`} role="status">
+                      {checkResult.success ? <CircleCheck size={14} aria-hidden /> : <CircleX size={14} aria-hidden />} {checkResult.success ? "连接成功" : `连接失败${checkResult.error_code ? `（${checkResult.error_code}）` : ""}`}{checkResult.latency_ms != null ? ` · ${checkResult.latency_ms} ms` : ""}
+                    </div>}
+                  </div>
+                </div>}
               </section>
-              {selected && <ModelCatalog
+              {selected && deferredSelected && <ModelCatalog
                 busy={busy}
                 busyModelId={busyModelId}
-                channel={selected}
+                channel={deferredSelected}
                 filter={modelFilter}
                 query={modelQuery}
                 onFilterChange={setModelFilter}

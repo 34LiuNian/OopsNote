@@ -18,6 +18,7 @@ from oopsnote.ai.providers import (
     ProviderConnectionError,
     ProviderValidationResult,
     StageModelSelection,
+    profile_for_channel_model,
 )
 from oopsnote.ai.secrets import SecretStoreCorruptionError
 from oopsnote.api.auth import AuthenticationError, require_admin_request
@@ -66,12 +67,23 @@ class PolicyUpdate(BaseModel):
     vision: StageModelSelection
     agent: StageModelSelection
     review: StageModelSelection
+    diagram: StageModelSelection
 
 
 class RuntimeUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     max_concurrency: int = Field(ge=1, le=16)
+
+
+class ChannelOrderUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    channel_ids: list[str] = Field(min_length=0)
+
+
+class ChannelCheckRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    model_id: str = Field(min_length=1, max_length=256)
 
 
 def _api():
@@ -129,7 +141,7 @@ def _public(channel: ProviderChannel) -> dict[str, Any]:
     except SecretStoreCorruptionError as error:
         raise HTTPException(status_code=503, detail="provider secret store is unavailable") from error
     value["policy_stages"] = [
-        stage for stage in ("vision", "agent", "review")
+        stage for stage in ("vision", "agent", "review", "diagram")
         if policy is not None and getattr(policy, stage).channel_id == channel.id
     ]
     return value
@@ -187,7 +199,8 @@ def _retire_legacy() -> None:
 
 
 def retire_legacy_provider_configuration() -> None:
-    """One-time startup migration for installations that still have Profile settings."""
+    """Run bounded startup migrations for legacy settings."""
+    _api().APP_SETTINGS_STORE.migrate_legacy_diagram_policy()
     _retire_legacy()
 
 
@@ -215,12 +228,21 @@ def create_channel(payload: ChannelCreate, request: Request) -> dict[str, Any]:
     return {"channel": _public(channel)}
 
 
+@router.patch("/channels/order")
+def reorder_channels(payload: ChannelOrderUpdate, request: Request) -> dict[str, Any]:
+    _require_admin(request)
+    try:
+        _api().APP_SETTINGS_STORE.reorder_provider_channels(payload.channel_ids)
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    return {"items": [_public(channel) for channel in _api().APP_SETTINGS_STORE.provider_channels()]}
+
+
 @router.patch("/channels/{channel_id}")
 def update_channel(channel_id: str, payload: ChannelPatch, request: Request) -> dict[str, Any]:
     _require_admin(request)
     api = _api()
     previous = _channel(channel_id)
-    had_policy = api.APP_SETTINGS_STORE.langchain_model_policy() is not None
     updates = payload.model_dump(exclude_unset=True)
     candidate = ProviderChannel.model_validate({
         **previous.model_dump(mode="json"),
@@ -229,7 +251,7 @@ def update_channel(channel_id: str, payload: ChannelPatch, request: Request) -> 
         "updated_at": datetime.now(timezone.utc),
     })
     api.APP_SETTINGS_STORE.upsert_provider_channel(candidate)
-    return {"channel": _public(candidate), "policy_cleared": had_policy and api.APP_SETTINGS_STORE.langchain_model_policy() is None}
+    return {"channel": _public(candidate)}
 
 
 @router.post("/channels/{channel_id}/credential")
@@ -238,7 +260,6 @@ def update_credential(channel_id: str, payload: CredentialUpdate, request: Reque
     api = _api()
     vault = _vault()
     previous = _channel(channel_id)
-    had_policy = api.APP_SETTINGS_STORE.langchain_model_policy() is not None
     reference = vault.put(payload.secret)
     candidate = previous.model_copy(update={
         "version": previous.version + 1,
@@ -267,7 +288,6 @@ def update_credential(channel_id: str, payload: CredentialUpdate, request: Reque
         "channel": _public(candidate),
         "discovery": {"count": len(models), "capabilities_unknown": True},
         "validation": validation.model_dump(mode="json"),
-        "policy_cleared": had_policy and api.APP_SETTINGS_STORE.langchain_model_policy() is None,
     }
 
 
@@ -295,7 +315,6 @@ def sync_models(channel_id: str, request: Request) -> dict[str, Any]:
     _require_admin(request)
     api = _api()
     channel = _channel(channel_id)
-    had_policy = api.APP_SETTINGS_STORE.langchain_model_policy() is not None
     if not channel.credential_ref or not _vault().has(channel.credential_ref):
         raise HTTPException(status_code=409, detail="channel has no credential")
     started = monotonic()
@@ -308,8 +327,21 @@ def sync_models(channel_id: str, request: Request) -> dict[str, Any]:
         "channel": _public(candidate),
         "discovery": {"count": len(merged), "capabilities_unknown": True},
         "validation": validation.model_dump(mode="json"),
-        "policy_cleared": had_policy and api.APP_SETTINGS_STORE.langchain_model_policy() is None,
     }
+
+
+@router.post("/channels/{channel_id}/check")
+def check_channel(channel_id: str, payload: ChannelCheckRequest, request: Request) -> dict[str, Any]:
+    _require_admin(request)
+    channel = _channel(channel_id)
+    vault = _vault()
+    if not channel.credential_ref or not vault.has(channel.credential_ref):
+        raise HTTPException(status_code=409, detail="channel has no credential")
+    try:
+        profile = profile_for_channel_model(channel, payload.model_id)
+    except KeyError as error:
+        raise HTTPException(status_code=404, detail="channel model not found") from error
+    return {"validation": ProviderClientFactory(vault).check(profile).model_dump(mode="json")}
 
 
 @router.patch("/channels/{channel_id}/models/{model_id}")
@@ -317,7 +349,6 @@ def update_model(channel_id: str, model_id: str, payload: ModelPatch, request: R
     _require_admin(request)
     api = _api()
     channel = _channel(channel_id)
-    had_policy = api.APP_SETTINGS_STORE.langchain_model_policy() is not None
     try:
         selected = channel.model(model_id)
     except KeyError as error:
@@ -327,7 +358,7 @@ def update_model(channel_id: str, model_id: str, payload: ModelPatch, request: R
     models = tuple(model if item.id == model_id else item for item in channel.models)
     candidate = channel.model_copy(update={"version": channel.version + 1, "models": models, "updated_at": datetime.now(timezone.utc)})
     api.APP_SETTINGS_STORE.upsert_provider_channel(candidate)
-    return {"channel": _public(candidate), "policy_cleared": had_policy and api.APP_SETTINGS_STORE.langchain_model_policy() is None}
+    return {"channel": _public(candidate)}
 
 
 @router.delete("/channels/{channel_id}")
@@ -348,7 +379,7 @@ def delete_channel(channel_id: str, request: Request) -> dict[str, bool]:
 def _validate_policy(payload: PolicyUpdate) -> LangChainModelPolicy:
     api = _api()
     channels = {channel.id: channel for channel in api.APP_SETTINGS_STORE.provider_channels()}
-    for stage, selection in (("vision", payload.vision), ("agent", payload.agent), ("review", payload.review)):
+    for stage, selection in (("vision", payload.vision), ("agent", payload.agent), ("review", payload.review), ("diagram", payload.diagram)):
         channel = channels.get(selection.channel_id)
         if channel is None or not channel.enabled or not channel.credential_ref or not _vault().has(channel.credential_ref):
             raise HTTPException(status_code=409, detail=f"{stage} channel is unavailable")
@@ -358,8 +389,8 @@ def _validate_policy(payload: PolicyUpdate) -> LangChainModelPolicy:
             raise HTTPException(status_code=409, detail=f"{stage} model is unavailable") from error
         if not model.enabled:
             raise HTTPException(status_code=409, detail=f"{stage} model is disabled")
-        if stage == "vision" and not model.capability.vision:
-            raise HTTPException(status_code=409, detail="vision stage requires an enabled Vision model")
+        if stage in {"vision", "diagram"} and not model.capability.vision:
+            raise HTTPException(status_code=409, detail=f"{stage} stage requires an enabled Vision model")
         if stage in {"agent", "review"} and not model.capability.tool_calling:
             raise HTTPException(status_code=409, detail=f"{stage} stage requires Tool Calling")
     previous = api.APP_SETTINGS_STORE.langchain_model_policy()
@@ -368,6 +399,7 @@ def _validate_policy(payload: PolicyUpdate) -> LangChainModelPolicy:
         vision=payload.vision,
         agent=payload.agent,
         review=payload.review,
+        diagram=payload.diagram,
         updated_at=datetime.now(timezone.utc),
     )
 
@@ -390,7 +422,7 @@ def update_policy(payload: PolicyUpdate, request: Request) -> dict[str, Any]:
 @router.get("/runtime")
 def get_runtime(request: Request) -> dict[str, int]:
     _require_admin(request)
-    value = _api().APP_SETTINGS_STORE.get().get("ai_max_concurrency", 1)
+    value = _api().APP_SETTINGS_STORE.get().get("ai_max_concurrency", 4)
     return {"max_concurrency": max(1, min(16, int(value)))}
 
 

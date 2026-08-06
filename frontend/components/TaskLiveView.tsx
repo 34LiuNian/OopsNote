@@ -14,13 +14,13 @@ import {
 import { fetchJson } from "@/lib/api";
 import { useAuthenticatedAssetUrl } from "@/hooks/useAuthenticatedAssetUrl";
 import { confirmAction } from "@/lib/confirm";
-import type { TaskResponse, TaskRunSummary } from "@/types/api";
+import type { DiagramItem, TaskResponse, TaskRunSummary } from "@/types/api";
 import { TaskActions } from "./task/TaskActions";
 import { TaskProblemDetail } from "./task/TaskProblemList";
 import { deleteTask } from "@/features/tasks";
 import { useTagDimensions } from "@/features/tags";
 import { useTaskStream } from "@/hooks/useTaskStream";
-import { useTaskProgress } from "@/hooks/useTaskProgress";
+import { DIAGRAM_PROGRESS_STEPS, PROGRESS_STEPS, useTaskProgress } from "@/hooks/useTaskProgress";
 import { TaskProgressBar } from "./task/TaskProgressBar";
 import { ErrorBanner } from "./ui/ErrorBanner";
 import { TaskMathRenderer } from "./task/TaskMathRenderer";
@@ -50,6 +50,26 @@ function runDuration(run?: TaskRunSummary | null): string | null {
   const endedAt = new Date(run.ended_at).getTime();
   if (!Number.isFinite(startedAt) || !Number.isFinite(endedAt) || endedAt < startedAt) return null;
   return formatDurationMs(endedAt - startedAt);
+}
+
+function diagramRunStatus(run: TaskRunSummary | null, item: DiagramItem | null): string {
+  if (item?.status === "needs_review" || item?.status === "failed") return "failed";
+  if (item?.status === "cancelled" || run?.status === "cancelled") return "cancelled";
+  if (run?.status === "failed" || run?.status === "timed_out") return "failed";
+  if (run?.status === "queued") return "pending";
+  if (run?.status === "running") return "processing";
+  if (run?.status === "completed" || item?.status === "ready_tikz" || item?.status === "ready_image") return "completed";
+  return "pending";
+}
+
+function diagramStage(item: DiagramItem | null, run: TaskRunSummary | null): string {
+  if (run?.status === "queued") return "queued";
+  if (run?.diagram_step) return run.diagram_step;
+  if (item?.status === "generating") return "generate";
+  if (item?.status === "rendering") return "render";
+  if (item?.status === "reviewing") return "review";
+  if (item?.status === "ready_tikz" || item?.status === "ready_image" || item?.status === "needs_review") return "review";
+  return "queued";
 }
 
 export function TaskLiveView({ taskId }: { taskId: string }) {
@@ -142,6 +162,19 @@ export function TaskLiveView({ taskId }: { taskId: string }) {
     statusMessage,
     streamProgress,
   });
+  const diagramItem = viewData?.task.problem?.diagram_items?.[0] ?? null;
+  const diagramRun = diagramItem?.active_run_id
+    ? viewData?.task.diagram_runs?.find((run) => run.id === diagramItem.active_run_id) ?? null
+    : viewData?.task.diagram_runs?.[0] ?? null;
+  const diagramStageMessage = diagramRun?.stages.at(-1)?.message ?? diagramItem?.last_error ?? null;
+  const diagramProgressState = useTaskProgress({
+    status: diagramRunStatus(diagramRun, diagramItem),
+    stage: diagramStage(diagramItem, diagramRun),
+    stageMessage: diagramStageMessage,
+    steps: DIAGRAM_PROGRESS_STEPS,
+  });
+  const diagramProgressVisible = Boolean(viewData?.task.problem?.has_diagram || diagramItem || diagramRun);
+  const diagramNeedsReview = Boolean(diagramItem?.needs_review || diagramItem?.status === "needs_review");
   const isCompleted = viewData?.task?.status === "completed";
   const duration = runDuration(viewData?.task?.run);
 
@@ -208,7 +241,7 @@ export function TaskLiveView({ taskId }: { taskId: string }) {
                   leadingVisual={CheckIcon}
                   trailingVisual={showTaskDetails ? ChevronUpIcon : ChevronDownIcon}
                 >
-                  5/5 阶段完成{duration ? ` · ${duration}` : ""}
+                  {PROGRESS_STEPS.length}/{PROGRESS_STEPS.length} 阶段完成{duration ? ` · ${duration}` : ""}
                 </Button>
               )}
             </Box>
@@ -248,6 +281,24 @@ export function TaskLiveView({ taskId }: { taskId: string }) {
               latestLine={progressState.latestLine}
               error={error}
               statusMessage={statusMessage}
+              embedded
+            />
+          </Box>
+        )}
+        {diagramProgressVisible && (
+          <Box sx={{ mt: 3, pt: 3, borderTopWidth: 1, borderTopStyle: "solid", borderTopColor: "border.default" }}>
+            <Box sx={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 2, mb: 2 }}>
+              <Text sx={{ fontWeight: 600 }}>TikZ 题图重建</Text>
+              <Text sx={{ color: diagramNeedsReview ? "fg.danger" : diagramProgressState.isCompleted ? "fg.success" : "fg.muted", fontSize: 0 }}>
+                {diagramNeedsReview ? "待人工复核" : diagramProgressState.isCompleted ? "已完成" : diagramProgressState.latestLine}
+              </Text>
+            </Box>
+            <TaskProgressBar
+              progressState={diagramProgressState}
+              latestLine={diagramProgressState.latestLine}
+              error={diagramItem?.last_error || diagramRun?.error_message || undefined}
+              statusMessage={diagramStageMessage || undefined}
+              steps={DIAGRAM_PROGRESS_STEPS}
               embedded
             />
           </Box>

@@ -48,8 +48,19 @@ export function useTaskStream({ taskId, onStatusMessage }: UseTaskStreamParams):
     enabled: !!taskId,
     // 轮询配置
     refetchInterval: (query) => {
-      const currentStatus = query.state.data?.task.status;
-      return currentStatus === "pending" || currentStatus === "processing" ? POLLING_INTERVAL : false;
+      const task = query.state.data?.task;
+      const currentStatus = task?.status;
+      const problemStillRunning = currentStatus === "pending" || currentStatus === "processing";
+      const diagramItems = task?.problem?.diagram_items ?? [];
+      const diagramStillRunning = diagramItems.some((item) => (
+        Boolean(item.active_run_id)
+        || ["detected", "queued", "generating", "rendering", "reviewing"].includes(item.status)
+      ));
+      const diagramRunStillRunning = (task?.diagram_runs ?? []).some((run) => run.status === "queued" || run.status === "running");
+      const diagramAdmissionPending = Boolean(task?.problem?.has_diagram && !diagramItems.length);
+      return problemStillRunning || diagramStillRunning || diagramRunStillRunning || diagramAdmissionPending
+        ? POLLING_INTERVAL
+        : false;
     },
     // 不缓存，总是获取最新
     staleTime: 0,

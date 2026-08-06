@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Optional
 from uuid import uuid4
 
-from oopsnote.core import Problem, StateConflict, TagStore, TaskStatus, TaskStore
+from oopsnote.core import AssetStore, DiagramStatus, Problem, StateConflict, TagStore, TaskStatus, TaskStore
 
 from .indexer import render_indexes
 from .writer import problem_filename, render_problem, subject_dir
@@ -45,6 +45,7 @@ class ObsidianSyncer:
         tag_store: Optional[TagStore] = None,
     ) -> None:
         self.task_store = task_store
+        self.asset_store = AssetStore(task_store.base_dir / "assets")
         self.tag_store = tag_store
         self.vault_root = vault_root or Path(__file__).resolve().parents[2] / "vaults"
 
@@ -124,6 +125,44 @@ class ObsidianSyncer:
         previous_indexes = set(manifest.get("index_files", []))
         previous_problem_hashes = dict(manifest.get("problem_hashes", {}))
         previous_index_hashes = dict(manifest.get("index_hashes", {}))
+        previous_assets = set(manifest.get("asset_files", []))
+        previous_asset_hashes = dict(manifest.get("asset_hashes", {}))
+        problem_ids = {problem.id for problem in problems}
+        tasks_by_problem = {
+            task.problem.id: task
+            for task in self.task_store.list_all()
+            if task.problem and task.problem.id in problem_ids
+        }
+        asset_plan: dict[str, bytes] = {}
+        diagram_paths: dict[str, tuple[str, ...]] = {}
+        for problem in problems:
+            task = tasks_by_problem.get(problem.id)
+            if task is None:
+                continue
+            embeds: list[str] = []
+            for item in sorted(task.diagram_items, key=lambda value: value.ordinal):
+                asset_path = None
+                if item.status == DiagramStatus.READY_TIKZ and item.selected_candidate_id:
+                    selected = next(
+                        (candidate for candidate in item.candidates if candidate.id == item.selected_candidate_id),
+                        None,
+                    )
+                    asset_path = selected.svg_path if selected else None
+                elif item.status == DiagramStatus.READY_IMAGE:
+                    asset_path = item.fallback_image_path
+                if not asset_path:
+                    continue
+                try:
+                    source = self.asset_store.resolve(asset_path)
+                    content = source.read_bytes()
+                except (FileNotFoundError, OSError, ValueError):
+                    continue
+                digest = hashlib.sha256(content).hexdigest()[:20]
+                name = f"{digest}{source.suffix.lower()}"
+                asset_plan[name] = content
+                embeds.append(f"../assets/{name}")
+            if embeds:
+                diagram_paths[problem.id] = tuple(embeds)
 
         written_problem_names: set[str] = set()
         current_problem_hashes = {
@@ -134,7 +173,7 @@ class ObsidianSyncer:
         if write_all:
             for problem in problems:
                 filename = problem_filename(problem)
-                content = render_problem(problem)
+                content = render_problem(problem, diagram_paths.get(problem.id, ()))
                 result = self._write_managed(
                     subject_root / "problems" / filename,
                     content,
@@ -150,7 +189,7 @@ class ObsidianSyncer:
         elif changed:
             for problem in changed:
                 filename = problem_filename(problem)
-                content = render_problem(problem)
+                content = render_problem(problem, diagram_paths.get(problem.id, ()))
                 result = self._write_managed(
                     subject_root / "problems" / filename,
                     content,
@@ -169,6 +208,21 @@ class ObsidianSyncer:
             managed_problems = current_problem_names
         else:
             managed_problems = (previous_problems & current_problem_names) | written_problem_names
+
+        current_assets = set(asset_plan)
+        current_asset_hashes: dict[str, str] = {}
+        for name, content in asset_plan.items():
+            result = self._write_managed_bytes(
+                subject_root / "assets" / name,
+                content,
+                previous_asset_hashes.get(name),
+            )
+            if result == "conflict":
+                report.conflicts.append(f"assets/{name}")
+            else:
+                current_asset_hashes[name] = hashlib.sha256(content).hexdigest()
+                if result == "written":
+                    report.files_written += 1
 
         index_plan = [
             (path, content)
@@ -203,6 +257,13 @@ class ObsidianSyncer:
         )
         report.files_removed += removed
         report.conflicts.extend(f"indexes/{name}" for name in conflicts)
+        removed, conflicts = self._remove_managed_assets(
+            subject_root / "assets",
+            previous_assets - current_assets,
+            previous_asset_hashes,
+        )
+        report.files_removed += removed
+        report.conflicts.extend(f"assets/{name}" for name in conflicts)
         self._write_manifest(
             subject_root,
             {
@@ -220,6 +281,8 @@ class ObsidianSyncer:
                     for name, digest in current_index_hashes.items()
                     if name in current_indexes
                 },
+                "asset_files": sorted(current_assets),
+                "asset_hashes": current_asset_hashes,
                 "conflicts": sorted(set(report.conflicts)),
             },
         )
@@ -253,6 +316,22 @@ class ObsidianSyncer:
             and self._content_hash(existing) == expected_hash
         ):
             self._atomic_write(path, content)
+            return "written"
+        return "conflict"
+
+    def _write_managed_bytes(self, path: Path, content: bytes, expected_hash: Optional[str]) -> str:
+        digest = hashlib.sha256(content).hexdigest()
+        if not path.exists():
+            self._atomic_write_bytes(path, content)
+            return "written"
+        try:
+            existing_hash = hashlib.sha256(path.read_bytes()).hexdigest()
+        except OSError:
+            return "conflict"
+        if existing_hash == digest:
+            return "unchanged"
+        if expected_hash and existing_hash == expected_hash:
+            self._atomic_write_bytes(path, content)
             return "written"
         return "conflict"
 
@@ -302,6 +381,29 @@ class ObsidianSyncer:
         return removed, conflicts
 
     @staticmethod
+    def _remove_managed_assets(
+        directory: Path,
+        names: set[str],
+        expected_hashes: dict[str, str],
+    ) -> tuple[int, list[str]]:
+        removed = 0
+        conflicts: list[str] = []
+        for name in names:
+            path = directory / name
+            try:
+                if not path.is_file():
+                    continue
+                digest = hashlib.sha256(path.read_bytes()).hexdigest()
+                if expected_hashes.get(name) == digest:
+                    path.unlink()
+                    removed += 1
+                else:
+                    conflicts.append(name)
+            except OSError:
+                conflicts.append(name)
+        return removed, conflicts
+
+    @staticmethod
     def _content_hash(content: str) -> str:
         return hashlib.sha256(content.encode("utf-8")).hexdigest()
 
@@ -311,6 +413,17 @@ class ObsidianSyncer:
         temporary = path.with_name(f"{path.name}.{uuid4().hex}.tmp")
         try:
             temporary.write_text(content, encoding="utf-8")
+            temporary.replace(path)
+        finally:
+            if temporary.exists():
+                temporary.unlink()
+
+    @staticmethod
+    def _atomic_write_bytes(path: Path, content: bytes) -> None:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        temporary = path.with_name(f"{path.name}.{uuid4().hex}.tmp")
+        try:
+            temporary.write_bytes(content)
             temporary.replace(path)
         finally:
             if temporary.exists():

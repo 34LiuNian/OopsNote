@@ -112,7 +112,7 @@ def langchain_runner_fixture(tmp_path, model, tool_client=None, *, timeout_secon
     settings.upsert_provider_channel(channel)
     selection = StageModelSelection(channel_id=channel.id, model_id="model")
     settings.set_langchain_model_policy(LangChainModelPolicy(
-        version=1, vision=selection, agent=selection, review=selection,
+        version=1, vision=selection, agent=selection, review=selection, diagram=selection,
     ))
     factory = FakeProviderFactory(model, vault)
     runner = LangChainRunner(
@@ -166,7 +166,7 @@ def test_provider_profile_public_view_never_exposes_credential_reference():
         ("openai", True),
         ("openai-compatible", True),
         ("anthropic", False),
-        ("google", False),
+        ("google", True),
     ],
 )
 def test_vision_ocr_model_uses_native_json_mode_only_when_supported(monkeypatch, provider, expects_json_mode):
@@ -189,7 +189,11 @@ def test_vision_ocr_model_uses_native_json_mode_only_when_supported(monkeypatch,
 
     if expects_json_mode:
         assert result == "json-mode-model"
-        assert calls == [{"response_format": {"type": "json_object"}, "temperature": 0}]
+        assert calls == [(
+            {"response_mime_type": "application/json", "temperature": 0}
+            if provider == "google"
+            else {"response_format": {"type": "json_object"}, "temperature": 0}
+        )]
     else:
         assert isinstance(result, FakeModel)
         assert calls == []
@@ -240,6 +244,58 @@ def test_task_provider_options_endpoint_is_removed():
     assert TestClient(main.app).get("/ai/provider-options").status_code == 404
 
 
+def test_channel_connectivity_check_returns_redacted_provider_evidence(monkeypatch, tmp_path):
+    from oopsnote.api import main
+
+    settings = AppSettingsStore(tmp_path / "settings.json")
+    vault = MemorySecretStore()
+    configured = ProviderChannel(
+        id="primary", version=1, display_name="Primary", provider="deepseek",
+        credential_ref=vault.put("secret"),
+        models=(ChannelModel(id="model", source="DeepSeek", enabled=True),),
+    )
+    settings.upsert_provider_channel(configured)
+    monkeypatch.setattr(main, "APP_SETTINGS_STORE", settings)
+    monkeypatch.setattr(main, "get_secret_store", lambda: vault)
+    validation = ProviderValidationResult(
+        success=True, provider="deepseek", model="model", latency_ms=12,
+        message="Connection validated",
+    )
+
+    with patch("oopsnote.api.routes.ai_settings.ProviderClientFactory.check", return_value=validation) as check:
+        response = TestClient(main.app).post(
+            "/settings/ai/channels/primary/check",
+            json={"model_id": "model"},
+        )
+
+    assert response.status_code == 200
+    assert response.json()["validation"]["success"] is True
+    assert response.json()["validation"]["latency_ms"] == 12
+    assert "credential_ref" not in response.text
+    assert "secret" not in response.text
+    assert check.call_args.args[0].channel_id == "primary"
+
+
+def test_channel_reorder_route_requires_one_complete_order(monkeypatch, tmp_path):
+    from oopsnote.api import main
+
+    settings = AppSettingsStore(tmp_path / "settings.json")
+    vault = MemorySecretStore()
+    settings.upsert_provider_channel(ProviderChannel(id="first", version=1, display_name="First", provider="deepseek"))
+    settings.upsert_provider_channel(ProviderChannel(id="second", version=1, display_name="Second", provider="deepseek"))
+    monkeypatch.setattr(main, "APP_SETTINGS_STORE", settings)
+    monkeypatch.setattr(main, "get_secret_store", lambda: vault)
+    client = TestClient(main.app)
+
+    response = client.patch("/settings/ai/channels/order", json={"channel_ids": ["second", "first"]})
+    invalid = client.patch("/settings/ai/channels/order", json={"channel_ids": ["second"]})
+
+    assert response.status_code == 200
+    assert [item["id"] for item in response.json()["items"]] == ["second", "first"]
+    assert invalid.status_code == 422
+    assert [item.id for item in settings.provider_channels()] == ["second", "first"]
+
+
 def test_model_policy_selects_the_vision_stage(monkeypatch, tmp_path):
     from oopsnote.api import main
 
@@ -258,10 +314,18 @@ def test_model_policy_selects_the_vision_stage(monkeypatch, tmp_path):
     monkeypatch.setattr(main, "APP_SETTINGS_STORE", settings)
     monkeypatch.setattr(main, "get_secret_store", lambda: vault)
 
+    incomplete = TestClient(main.app).put("/settings/ai/policy", json={
+        "vision": {"channel_id": "ocr", "model_id": "vision-model"},
+        "agent": {"channel_id": "ocr", "model_id": "agent-model"},
+        "review": {"channel_id": "ocr", "model_id": "agent-model"},
+    })
+    assert incomplete.status_code == 422
+
     response = TestClient(main.app).put("/settings/ai/policy", json={
         "vision": {"channel_id": "ocr", "model_id": "vision-model"},
         "agent": {"channel_id": "ocr", "model_id": "agent-model"},
         "review": {"channel_id": "ocr", "model_id": "agent-model"},
+        "diagram": {"channel_id": "ocr", "model_id": "vision-model"},
     })
 
     assert response.status_code == 200
@@ -273,8 +337,9 @@ def test_model_policy_selects_the_vision_stage(monkeypatch, tmp_path):
     )
 
     assert disabled.status_code == 200
-    assert disabled.json()["policy_cleared"] is True
-    assert settings.langchain_model_policy() is None
+    assert "policy_cleared" not in disabled.json()
+    assert settings.langchain_model_policy() is not None
+    assert settings.langchain_model_policy().agent == StageModelSelection(channel_id="ocr", model_id="agent-model")
 
 
 def test_provider_rotation_commits_a_validated_new_nonsecret_version(monkeypatch, tmp_path):
@@ -391,7 +456,7 @@ def test_rotating_a_channel_does_not_change_the_global_policy(monkeypatch, tmp_p
     settings.upsert_provider_channel(active)
     settings.upsert_provider_channel(inactive)
     selection = StageModelSelection(channel_id="active", model_id="active-model")
-    settings.set_langchain_model_policy(LangChainModelPolicy(version=1, vision=selection, agent=selection, review=selection))
+    settings.set_langchain_model_policy(LangChainModelPolicy(version=1, vision=selection, agent=selection, review=selection, diagram=selection))
     monkeypatch.setattr(main, "APP_SETTINGS_STORE", settings)
     monkeypatch.setattr(main, "RUN_STORE", RunStore(tmp_path / "storage" / "runs"))
     monkeypatch.setattr(main, "get_secret_store", lambda: vault)
@@ -751,7 +816,7 @@ def test_global_stage_policy_is_frozen_at_run_admission(tmp_path):
     )
     runner.settings_store.upsert_provider_channel(selected)
     selection = StageModelSelection(channel_id="selected", model_id="selected-model")
-    runner.settings_store.set_langchain_model_policy(LangChainModelPolicy(version=2, vision=selection, agent=selection, review=selection))
+    runner.settings_store.set_langchain_model_policy(LangChainModelPolicy(version=2, vision=selection, agent=selection, review=selection, diagram=selection))
     task = task_store.create(TaskCreateRequest(subject="math"))
 
     run = runner.enqueue(task.id)
@@ -807,7 +872,7 @@ def test_fresh_retry_keeps_failed_run_profile_snapshot(tmp_path):
     )
     settings.upsert_provider_channel(old)
     selection = StageModelSelection(channel_id="p", model_id="old")
-    settings.set_langchain_model_policy(LangChainModelPolicy(version=1, vision=selection, agent=selection, review=selection))
+    settings.set_langchain_model_policy(LangChainModelPolicy(version=1, vision=selection, agent=selection, review=selection, diagram=selection))
     runner = LangChainRunner(
         project_root=Path(__file__).resolve().parents[1],
         task_store=task_store,
@@ -861,6 +926,32 @@ def test_provider_factory_leaves_run_timeout_to_managed_lifecycle(monkeypatch):
     assert captured["base_url"] == "https://provider.example/v1"
     assert captured["max_retries"] == 0
     assert "timeout" not in captured
+
+
+def test_google_provider_uses_the_selected_channel_base_url(monkeypatch):
+    captured = {}
+
+    class ChatModel:
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+
+    monkeypatch.setitem(
+        sys.modules,
+        "langchain_google_genai",
+        SimpleNamespace(ChatGoogleGenerativeAI=ChatModel),
+    )
+    vault = MemorySecretStore()
+    profile = ProviderProfile(
+        id="google", version=1, provider="google", model="gemini-3.6-flash",
+        base_url="https://gateway.example/v1beta", credential_ref=vault.put("secret"),
+    )
+
+    ProviderClientFactory(vault).create_chat_model(profile)
+
+    assert captured["base_url"] == "https://gateway.example/v1beta"
+    assert captured["api_key"] == "secret"
+    assert captured["vertexai"] is False
+    assert captured["retries"] == 0
 
 
 def test_provider_factory_configures_dashscope_non_thinking_tool_loop(monkeypatch):

@@ -22,10 +22,18 @@ from oopsnote.core import (
 
 
 class BatchProcessError(RuntimeError):
-    def __init__(self, status_code: int, detail: str) -> None:
-        super().__init__(detail)
+    def __init__(
+        self,
+        status_code: int,
+        code: str,
+        message: str,
+        *,
+        retryable: bool = False,
+    ) -> None:
+        super().__init__(message)
         self.status_code = status_code
-        self.detail = detail
+        self.code = code
+        self.retryable = retryable
 
 
 @dataclass(frozen=True)
@@ -167,11 +175,19 @@ def process_batch_session(
         try:
             record = context.session_store.get(file_hash)
         except KeyError as error:
-            raise BatchProcessError(404, "Batch session not found") from error
+            raise BatchProcessError(404, "batch_session_not_found", "Batch session not found") from error
         if record.revision != expected_revision:
             raise BatchProcessError(
                 409,
+                "batch_revision_conflict",
                 f"Batch session revision is {record.revision}, expected {expected_revision}",
+                retryable=True,
+            )
+        if not context.asset_store.is_available(record.asset_path, record.file_hash):
+            raise BatchProcessError(
+                409,
+                "batch_source_unavailable",
+                "原始批量文件不可用，请重新导入相同内容的文件以恢复批量扫描",
             )
         retrying_segment = None
         if retry_segment_id is not None:
@@ -180,7 +196,7 @@ def process_batch_session(
                 None,
             )
             if retrying_segment is None:
-                raise BatchProcessError(404, "Batch segment not found")
+                raise BatchProcessError(404, "batch_segment_not_found", "Batch segment not found")
 
             if retrying_segment.task_id:
                 try:
@@ -234,7 +250,11 @@ def process_batch_session(
                 "session": context.session_view(context.task_state_view(record)),
             }
         if not record.crop_confirmed:
-            raise BatchProcessError(409, "Batch crop must be confirmed before processing")
+            raise BatchProcessError(
+                409,
+                "batch_crop_unconfirmed",
+                "Batch crop must be confirmed before processing",
+            )
         number_counts: dict[int, int] = {}
         for segment in pending:
             if segment.question_no is not None:
@@ -402,7 +422,11 @@ def process_batch_session(
                     })
         except (FileNotFoundError, OSError, RuntimeError, ValueError) as error:
             context.job_store.save(job.model_copy(update={"status": "failed"}))
-            raise BatchProcessError(422, f"Batch rendering or processing failed: {error}") from error
+            raise BatchProcessError(
+                500,
+                "batch_processing_failed",
+                f"Batch rendering or processing failed: {error}",
+            ) from error
 
         final_status = "partial" if failed_count else "submitted"
         job = context.job_store.save(job.model_copy(update={"status": final_status}))

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 
-from oopsnote.core import Problem, TagStore, TaskCreateRequest, TaskStatus, TaskStore
+from oopsnote.core import AssetStore, DiagramCandidate, DiagramItem, DiagramStatus, Problem, TagStore, TaskCreateRequest, TaskStatus, TaskStore
 from oopsnote.obsidian.syncer import MANAGED_MARKER, ObsidianSyncQueue, ObsidianSyncer
 from oopsnote.obsidian.writer import problem_filename, subject_dir
 
@@ -73,6 +73,38 @@ def test_sync_updates_unchanged_managed_problem_from_core(tmp_path):
 
     assert report.files_written == 1
     assert "core update" in path.read_text(encoding="utf-8")
+
+
+def test_sync_embeds_the_selected_cached_svg_and_tracks_it_as_managed(tmp_path):
+    store = TaskStore(tmp_path / "storage")
+    assets = AssetStore(tmp_path / "storage" / "assets")
+    syncer = ObsidianSyncer(store, tmp_path / "vaults")
+    problem = _problem(store, "diagram problem")
+    task = next(item for item in store.list_all() if item.problem and item.problem.id == problem.id)
+    svg_path = assets.save_bytes(b"<svg xmlns='http://www.w3.org/2000/svg'/>", "diagram.svg", "diagram")
+    candidate = DiagramCandidate(
+        ordinal=1,
+        tikz_source="\\draw (0,0)--(1,0);",
+        svg_path=svg_path,
+        pdf_path=assets.save_bytes(b"%PDF-1.4\n%%EOF\n", "diagram.pdf", "diagram"),
+        png_path=assets.save_bytes(b"png", "diagram.png", "diagram"),
+        decision="accept",
+    )
+    store.update(task.id, diagram_items=[DiagramItem(
+        source_asset_path=task.asset_path,
+        status=DiagramStatus.READY_TIKZ,
+        selected_candidate_id=candidate.id,
+        candidates=[candidate],
+    )])
+
+    syncer.sync_for_subject("math")
+
+    subject_root = tmp_path / "vaults" / subject_dir("math")
+    note = (subject_root / "problems" / problem_filename(problem)).read_text(encoding="utf-8")
+    manifest = json.loads((subject_root / ".oopsnote-managed.json").read_text(encoding="utf-8"))
+    assert "![题图](../assets/" in note
+    assert len(manifest["asset_files"]) == 1
+    assert (subject_root / "assets" / manifest["asset_files"][0]).read_bytes().startswith(b"<svg")
 
 
 def test_v1_manifest_never_authorizes_overwriting_an_unverified_local_edit(tmp_path):

@@ -1,7 +1,7 @@
 FROM texlive/texlive:latest
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends python3-fastapi python3-uvicorn fonts-noto-cjk \
+    && apt-get install -y --no-install-recommends python3-fastapi python3-uvicorn fonts-noto-cjk librsvg2-bin \
     && fc-cache -f \
     && rm -rf /var/lib/apt/lists/*
 

@@ -1,8 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
-import { BadgeCheck, Bot, Save, ScanText, ShieldAlert } from "lucide-react";
+import { BadgeCheck, Bot, Image, Save, ScanText, ShieldAlert } from "lucide-react";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { Box, Button, Heading, Spinner, Text } from "@/components/ui/primitives";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
@@ -18,6 +18,7 @@ const STAGES: PolicyStageDefinition[] = [
   { id: "vision", label: "Vision / OCR", hint: "图像理解与 OCR 阶段", capabilityLabel: "Vision", icon: ScanText },
   { id: "agent", label: "Agent", hint: "受限 MCP 推理阶段", capabilityLabel: "Tool Calling", icon: Bot },
   { id: "review", label: "Review", hint: "结果审校与质量检查", capabilityLabel: "Tool Calling", icon: BadgeCheck },
+  { id: "diagram", label: "TikZ 题图重建", hint: "独立模型：TikZ 生成与视觉比较", capabilityLabel: "Vision", icon: Image },
 ];
 
 const EMPTY_SELECTION: StageSelection = { channel_id: "", model_id: "" };
@@ -26,8 +27,13 @@ const EMPTY_POLICY: LangChainPolicy = {
   vision: EMPTY_SELECTION,
   agent: EMPTY_SELECTION,
   review: EMPTY_SELECTION,
+  diagram: EMPTY_SELECTION,
   updated_at: null,
 };
+
+const subscribeToHydration = () => () => undefined;
+const getHydratedSnapshot = () => true;
+const getServerHydrationSnapshot = () => false;
 
 function formatUpdatedAt(updatedAt: string | null) {
   if (!updatedAt) return "未保存";
@@ -45,8 +51,13 @@ function sameSelections(left: LangChainPolicy, right: LangChainPolicy): boolean 
 export default function LangChainPolicyPage() {
   const router = useRouter();
   const { user, loading } = useAuth();
+  const isHydrated = useSyncExternalStore(
+    subscribeToHydration,
+    getHydratedSnapshot,
+    getServerHydrationSnapshot,
+  );
   const isAdmin = isAdminUser(user);
-  const channels = useAiChannels(!loading && isAdmin);
+  const channels = useAiChannels(isHydrated && !loading && isAdmin);
   const mutations = useAiChannelMutations();
   const items = useMemo(() => channels.data?.items ?? [], [channels.data]);
   const serverPolicy = channels.data?.policy ?? EMPTY_POLICY;
@@ -54,7 +65,9 @@ export default function LangChainPolicyPage() {
   const [pickerStage, setPickerStage] = useState<PolicyStageDefinition | null>(null);
   const [errorMessage, setErrorMessage] = useState("");
 
-  if (loading) return <Box sx={{ p: 4 }}><Spinner size="medium" /></Box>;
+  // Auth and React Query can be initialized from browser-only session/cache
+  // state. Keep the SSR tree and the first client tree identical.
+  if (!isHydrated || loading) return <Box sx={{ p: 4 }}><Spinner size="medium" /></Box>;
   if (!isAdmin) return <Box sx={{ p: 4, display: "flex", gap: 2, alignItems: "center" }}><ShieldAlert size={22} /><Box><Heading order={2}>无权访问</Heading><Text sx={{ color: "fg.muted" }}>LangChain 策略仅管理员可用。</Text></Box></Box>;
 
   const activePolicy = policyDraft ?? serverPolicy;
@@ -84,6 +97,7 @@ export default function LangChainPolicyPage() {
         vision: activePolicy.vision,
         agent: activePolicy.agent,
         review: activePolicy.review,
+        diagram: activePolicy.diagram,
       });
       setPolicyDraft(result.policy);
       notify.success({ title: "LangChain 策略已保存", description: `策略版本 ${result.policy.version} 将用于后续新 run。` });
@@ -112,7 +126,7 @@ export default function LangChainPolicyPage() {
         {!channels.isLoading && !channels.isError && !items.length && (
           <div className={styles.emptyState}>
             <strong>还没有可编排的 AI 渠道</strong>
-            <p>先连接渠道、保存访问凭据并同步模型，再为三个阶段选择模型。</p>
+            <p>先连接渠道、保存访问凭据并同步模型，再为四个阶段选择模型。</p>
             <Button variant="primary" onClick={() => router.push("/settings/channels")}>前往 AI 渠道</Button>
           </div>
         )}
@@ -125,16 +139,20 @@ export default function LangChainPolicyPage() {
               </div>
             )}
             <section className={styles.policyFlow} aria-label="LangChain 阶段编排">
-              {STAGES.map((stage, index) => (
-                <PolicyStageCard
-                  key={stage.id}
-                  channels={items}
-                  definition={stage}
-                  isLast={index === STAGES.length - 1}
-                  selection={activePolicy[stage.id]}
-                  onClick={() => setPickerStage(stage)}
-                />
-              ))}
+              <div className={styles.stageNodeVision}>
+                <PolicyStageCard channels={items} definition={STAGES[0]} selection={activePolicy.vision} onClick={() => setPickerStage(STAGES[0])} />
+              </div>
+              <div className={styles.parallelStages}>
+                <div className={styles.stageNodeAgent}>
+                  <PolicyStageCard channels={items} definition={STAGES[1]} selection={activePolicy.agent} onClick={() => setPickerStage(STAGES[1])} />
+                </div>
+                <div className={styles.stageNodeDiagram}>
+                  <PolicyStageCard channels={items} definition={STAGES[3]} selection={activePolicy.diagram} onClick={() => setPickerStage(STAGES[3])} />
+                </div>
+              </div>
+              <div className={styles.stageNodeReview}>
+                <PolicyStageCard channels={items} definition={STAGES[2]} selection={activePolicy.review} onClick={() => setPickerStage(STAGES[2])} />
+              </div>
             </section>
           </>
         )}

@@ -62,6 +62,9 @@ services:
       - /tmp:size=256m,noexec,nosuid
     mem_limit: 768m
     cpus: 1.0
+    # Loopback-only access for a backend running natively on Windows.
+    ports:
+      - "127.0.0.1:18080:8080"
     pids_limit: 64
     cap_drop:
       - ALL

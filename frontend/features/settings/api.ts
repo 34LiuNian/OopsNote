@@ -5,7 +5,6 @@ type ChannelDiscoveryResponse = {
   channel: ProviderChannel;
   discovery: DiscoveryResult;
   validation: ProviderValidation;
-  policy_cleared: boolean;
 };
 
 export function getChannels() {
@@ -17,7 +16,7 @@ export function createChannel(payload: ChannelDraft) {
 }
 
 export function updateChannel(channelId: string, payload: Partial<Omit<ChannelDraft, "id">>) {
-  return fetchJson<{ channel: ProviderChannel; policy_cleared: boolean }>(`/settings/ai/channels/${encodeURIComponent(channelId)}`, { method: "PATCH", body: JSON.stringify(payload) });
+  return fetchJson<{ channel: ProviderChannel }>(`/settings/ai/channels/${encodeURIComponent(channelId)}`, { method: "PATCH", body: JSON.stringify(payload) });
 }
 
 export function updateChannelCredential(channelId: string, secret: string) {
@@ -34,8 +33,16 @@ export function syncChannelModels(channelId: string) {
   return fetchJson<ChannelDiscoveryResponse>(`/settings/ai/channels/${encodeURIComponent(channelId)}/models/sync`, { method: "POST" });
 }
 
+export function checkChannel(channelId: string, modelId: string) {
+  return fetchJson<{ validation: ProviderValidation }>(`/settings/ai/channels/${encodeURIComponent(channelId)}/check`, { method: "POST", body: JSON.stringify({ model_id: modelId }) });
+}
+
+export function reorderChannels(channelIds: string[]) {
+  return fetchJson<{ items: ProviderChannel[] }>("/settings/ai/channels/order", { method: "PATCH", body: JSON.stringify({ channel_ids: channelIds }) });
+}
+
 export function updateChannelModel(channelId: string, modelId: string, payload: { enabled?: boolean; capability?: { tool_calling: boolean; vision: boolean } }) {
-  return fetchJson<{ channel: ProviderChannel; policy_cleared: boolean }>(`/settings/ai/channels/${encodeURIComponent(channelId)}/models/${encodeURIComponent(modelId)}`, { method: "PATCH", body: JSON.stringify(payload) });
+  return fetchJson<{ channel: ProviderChannel }>(`/settings/ai/channels/${encodeURIComponent(channelId)}/models/${encodeURIComponent(modelId)}`, { method: "PATCH", body: JSON.stringify(payload) });
 }
 
 export function updatePolicy(payload: Omit<LangChainPolicy, "version" | "updated_at">) {

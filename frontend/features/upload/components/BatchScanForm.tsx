@@ -36,17 +36,18 @@ import { Box, Button, IconButton, Spinner, Text } from "@/components/ui/primitiv
 import { RenameDialog } from "@/components/ui/RenameDialog";
 import { notify } from "@/lib/notify";
 import { confirmAction } from "@/lib/confirm";
-import { ApiError, apiErrorFromResponse, fetchApi } from "@/lib/api";
+import { hasApiErrorCode } from "@/lib/api";
 import { selectionsToSessionSegments, sessionSegmentsToSelections, submittedSelectionsToSelections } from "../adapters/batchSessionSelectionAdapter";
 import {
-  deleteBatchSession,
-  deleteBatchSource,
+  deleteBatchParts,
+  getBatchSource,
   getBatchUploadLimits,
   getBatchSession,
   listBatchSessions,
   processBatchSession,
   retryBatchSegment,
   type BatchSession,
+  type BatchDeleteSelection,
   updateBatchSession,
   uploadBatchSource,
 } from "../api";
@@ -66,6 +67,7 @@ import {
   type SaveState,
 } from "./batchScanSupport";
 import { BatchSessionHistory } from "./BatchSessionHistory";
+import { BatchDeleteDialog } from "./BatchDeleteDialog";
 import { BatchSelectionRail } from "./BatchSelectionRail";
 
 class StaleWorkspaceError extends Error {
@@ -121,6 +123,8 @@ export function BatchScanForm() {
   const [renameTarget, setRenameTarget] = useState<BatchSession | null>(null);
   const [renameValue, setRenameValue] = useState("");
   const [isRenaming, setIsRenaming] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<BatchSession | null>(null);
+  const [isDeletingBatch, setIsDeletingBatch] = useState(false);
 
   selectionsRef.current = selections;
   const excludedPageSet = useMemo(() => new Set(excludedPageIndices), [excludedPageIndices]);
@@ -228,6 +232,25 @@ export function BatchScanForm() {
     saveQueueRef.current = Promise.resolve();
     submissionRef.current = false;
   }, []);
+
+  const deleteBatch = useCallback(async (selection: BatchDeleteSelection) => {
+    if (!deleteTarget) return;
+    const session = deleteTarget;
+    setIsDeletingBatch(true);
+    try {
+      await deleteBatchParts(session.file_hash, selection);
+      if (currentSession?.file_hash === session.file_hash && selection.selection_records) {
+        clearWorkspace();
+      }
+      setDeleteTarget(null);
+      await refreshSavedSessions();
+      notify.success({ title: "已删除所选批量内容" });
+    } catch (reason) {
+      notify.error({ title: reason instanceof Error ? reason.message : "删除批量内容失败" });
+    } finally {
+      setIsDeletingBatch(false);
+    }
+  }, [clearWorkspace, currentSession?.file_hash, deleteTarget, refreshSavedSessions]);
 
   useEffect(() => () => clearWorkspace(), [clearWorkspace]);
 
@@ -390,14 +413,8 @@ export function BatchScanForm() {
   const resumeSession = useCallback(async (session: BatchSession, requestedPage?: number) => {
     setIsImporting(true);
     try {
-      const response = await fetchApi(session.asset_path);
-      if (!response.ok) {
-        if (response.status === 404) {
-          throw new Error("原始批量文件不可用，请重新导入相同内容的文件以恢复批量扫描");
-        }
-        throw await apiErrorFromResponse(response);
-      }
-      const file = new File([await response.blob()], session.filename, { type: session.mime_type });
+      const source = await getBatchSource(session.file_hash);
+      const file = new File([source], session.filename, { type: session.mime_type });
       await openWorkspace(file, session);
       if (requestedPage) {
         const sourcePages = Array.from({ length: session.page_count }, (_, pageIndex) => ({ pageIndex }));
@@ -490,7 +507,7 @@ export function BatchScanForm() {
       setSaveState(currentContentSnapshotRef.current === savedSnapshot ? "saved" : "idle");
       return session;
       } catch (reason) {
-        if (reason instanceof ApiError && reason.status === 409) {
+        if (hasApiErrorCode(reason, "batch_revision_conflict")) {
           const latest = await getBatchSession(sessionHash);
           if (latest) {
             applyServerSession(latest, true);
@@ -777,6 +794,18 @@ export function BatchScanForm() {
         onConfirm={renameSession}
         loading={isRenaming}
       />
+      <BatchDeleteDialog
+        opened={deleteTarget !== null}
+        filename={deleteTarget?.filename ?? ""}
+        sourceAvailable={deleteTarget?.source_available ?? false}
+        taskCount={deleteTarget ? new Set([
+          ...deleteTarget.segments.flatMap((segment) => segment.task_id ? [segment.task_id] : []),
+          ...deleteTarget.submitted_selections.map((item) => item.task_id),
+        ]).size : 0}
+        loading={isDeletingBatch}
+        onCancel={() => setDeleteTarget(null)}
+        onConfirm={deleteBatch}
+      />
       <input
         ref={inputRef}
         className="batch-scan-toolbar__input"
@@ -803,26 +832,7 @@ export function BatchScanForm() {
             isImporting={isImporting}
             onRename={openRenameSession}
             onResume={(session) => void resumeSession(session)}
-            onDeleteSource={(session) => confirmAction({
-              title: "移除源文件",
-              message: "批量扫描选框和已生成题目会保留。重新导入内容相同的文件即可恢复画布。",
-              confirmLabel: "移除源文件",
-              destructive: true,
-              onConfirm: async () => {
-                await deleteBatchSource(session.file_hash);
-                await refreshSavedSessions();
-              },
-            })}
-            onDelete={(session) => confirmAction({
-              title: "删除批量扫描记录",
-              message: "已生成的任务和题目会保留。此操作无法撤销。",
-              confirmLabel: "删除",
-              destructive: true,
-              onConfirm: async () => {
-                await deleteBatchSession(session.file_hash);
-                await refreshSavedSessions();
-              },
-            })}
+            onDelete={setDeleteTarget}
           />
         </>
       ) : (

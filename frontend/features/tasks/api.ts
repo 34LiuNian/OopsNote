@@ -1,4 +1,4 @@
-import { fetchJson } from "../../lib/api";
+import { apiErrorFromResponse, fetchApi, fetchJson } from "../../lib/api";
 import type {
   ContentFormat,
   DiagramImageTone,
@@ -8,7 +8,6 @@ import type {
   TaskStatus,
   TasksResponse,
 } from "../../types/api";
-import { fetchApi } from "../../lib/api";
 
 export type ListTasksParams = {
   active_only?: boolean;
@@ -97,6 +96,41 @@ export async function rerenderProblemDiagram(taskId: string): Promise<TaskRespon
   });
 }
 
+export type DiagramRunPayload = { max_candidates?: number; instruction?: string | null };
+
+export async function reconstructProblemDiagram(taskId: string, payload: DiagramRunPayload): Promise<TaskResponse> {
+  return fetchJson<TaskResponse>(`/tasks/${encodeURIComponent(taskId)}/diagrams/reconstruct`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function continueProblemDiagram(taskId: string, itemId: string, payload: DiagramRunPayload): Promise<TaskResponse> {
+  return fetchJson<TaskResponse>(`/tasks/${encodeURIComponent(taskId)}/diagrams/${encodeURIComponent(itemId)}/continue`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function rebuildProblemDiagram(taskId: string, itemId: string, payload: DiagramRunPayload): Promise<TaskResponse> {
+  return fetchJson<TaskResponse>(`/tasks/${encodeURIComponent(taskId)}/diagrams/${encodeURIComponent(itemId)}/rebuild`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function cancelProblemDiagram(taskId: string, itemId: string): Promise<TaskResponse> {
+  return fetchJson<TaskResponse>(`/tasks/${encodeURIComponent(taskId)}/diagrams/${encodeURIComponent(itemId)}/cancel`, {
+    method: "POST",
+  });
+}
+
+export async function selectProblemDiagramCandidate(taskId: string, itemId: string, candidateId: string): Promise<TaskResponse> {
+  return fetchJson<TaskResponse>(`/tasks/${encodeURIComponent(taskId)}/diagrams/${encodeURIComponent(itemId)}/candidates/${encodeURIComponent(candidateId)}/select`, {
+    method: "POST",
+  });
+}
+
 export async function deleteTask(taskId: string): Promise<void> {
   await fetchJson(`/tasks/${encodeURIComponent(taskId)}`, { method: "DELETE" });
 }
@@ -135,10 +169,12 @@ export type PaperCompilePayload = {
   show_answers?: boolean;
 };
 
-export async function compilePaper(payload: PaperCompilePayload): Promise<Response> {
-  return fetchApi("/papers/compile", {
+export async function compilePaper(payload: PaperCompilePayload): Promise<Blob> {
+  const response = await fetchApi("/papers/compile", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
+  if (!response.ok) throw await apiErrorFromResponse(response);
+  return response.blob();
 }

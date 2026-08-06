@@ -1,14 +1,16 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import Image from "next/image";
 import { Box, Button, FormControl, IconButton, Spinner, Text, TextInput, Textarea } from "@/components/ui/primitives";
 import { PlusIcon, TrashIcon } from "@/components/ui/icons";
+import { Check, CircleStop, RefreshCw, Sparkles, WandSparkles } from "lucide-react";
 import { optionLabel } from "@/lib/content/options";
 import { notify } from "@/lib/notify";
 import { confirmAction } from "@/lib/confirm";
 import { useAuthenticatedAssetUrl } from "@/hooks/useAuthenticatedAssetUrl";
-import type { DiagramImageTone, NormalizedRect, TagDimensionStyle } from "../types/api";
-import { overrideProblem } from "../features/tasks";
+import type { DiagramCandidate, DiagramImageTone, DiagramItem, NormalizedRect, TagDimensionStyle } from "../types/api";
+import { cancelProblemDiagram, continueProblemDiagram, overrideProblem, rebuildProblemDiagram, reconstructProblemDiagram, selectProblemDiagramCandidate } from "../features/tasks";
 import { TagPicker } from "./TagPicker";
 import { SvgMarkup } from "./renderers/SvgMarkup";
 import { renderTikz } from "./renderers/TikzRenderer";
@@ -43,6 +45,7 @@ type ProblemEditPanelProps = {
     diagram_render_status?: string | null;
     diagram_error?: string | null;
     diagram_needs_review?: boolean;
+    diagram_items?: DiagramItem[];
     options?: Array<{ key: string; text: string } | null>;
     knowledge_tags?: string[];
     error_tags?: string[];
@@ -52,6 +55,12 @@ type ProblemEditPanelProps = {
   onClose: () => void;
   onSaved: () => Promise<void> | void;
 };
+
+function CandidatePreview({ candidate }: { candidate: DiagramCandidate }) {
+  const imageUrl = useAuthenticatedAssetUrl(candidate.svg_path || null);
+  if (!imageUrl) return <Text sx={{ color: "fg.muted", fontSize: 0 }}>此版本尚未生成预览。</Text>;
+  return <Image src={imageUrl} alt={`题图版本 ${candidate.ordinal}`} width={800} height={320} unoptimized style={{ display: "block", width: "100%", height: "auto", maxHeight: 320, objectFit: "contain" }} />;
+}
 
 export function ProblemEditPanel({ taskId, taskAssetPath, problem, tagStyles, onClose, onSaved }: ProblemEditPanelProps) {
   const optionIdRef = useRef(0);
@@ -101,7 +110,66 @@ export function ProblemEditPanel({ taskId, taskAssetPath, problem, tagStyles, on
   const [diagramRenderStatus, setDiagramRenderStatus] = useState<string | null>(() => problem.diagram_render_status || null);
   const [diagramCompileError, setDiagramCompileError] = useState<string>(() => (problem.diagram_error || "").replace(/\\n/g, "\n"));
   const [isCompilingDiagram, setIsCompilingDiagram] = useState(false);
+  const diagramItem = problem.diagram_items?.[0] ?? null;
+  const [candidateViewId, setCandidateViewId] = useState(() => diagramItem?.selected_candidate_id || diagramItem?.candidates.at(-1)?.id || null);
+  const [diagramInstruction, setDiagramInstruction] = useState("");
+  const [diagramMaxCandidates, setDiagramMaxCandidates] = useState("4");
+  const [isRunningDiagramAction, setIsRunningDiagramAction] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+
+  const effectiveCandidateViewId = diagramItem?.candidates.some((candidate) => candidate.id === candidateViewId)
+    ? candidateViewId
+    : diagramItem?.selected_candidate_id || diagramItem?.candidates.at(-1)?.id || null;
+  const viewedCandidate = diagramItem?.candidates.find((candidate) => candidate.id === effectiveCandidateViewId) ?? null;
+
+  const runDiagramAction = useCallback(async (mode: "initial" | "continue" | "rebuild") => {
+    const maxCandidates = Number(diagramMaxCandidates);
+    if (!Number.isInteger(maxCandidates) || maxCandidates < 1 || maxCandidates > 8) {
+      notify.error({ title: "自动候选数须为 1 到 8" });
+      return;
+    }
+    setIsRunningDiagramAction(true);
+    try {
+      const payload = { max_candidates: maxCandidates, instruction: diagramInstruction.trim() || null };
+      if (mode === "initial" || !diagramItem) await reconstructProblemDiagram(taskId, payload);
+      else if (mode === "continue") await continueProblemDiagram(taskId, diagramItem.id, payload);
+      else await rebuildProblemDiagram(taskId, diagramItem.id, payload);
+      notify.success({ title: "题图任务已进入队列" });
+      await onSaved();
+    } catch (error) {
+      notify.error({ title: "题图任务提交失败", description: error instanceof Error ? error.message : "请稍后重试" });
+    } finally {
+      setIsRunningDiagramAction(false);
+    }
+  }, [diagramInstruction, diagramItem, diagramMaxCandidates, onSaved, taskId]);
+
+  const selectCandidate = useCallback(async (candidate: DiagramCandidate) => {
+    if (!diagramItem) return;
+    setIsRunningDiagramAction(true);
+    try {
+      await selectProblemDiagramCandidate(taskId, diagramItem.id, candidate.id);
+      setCandidateViewId(candidate.id);
+      notify.success({ title: `已选择版本 ${candidate.ordinal}` });
+      await onSaved();
+    } catch (error) {
+      notify.error({ title: "版本切换失败", description: error instanceof Error ? error.message : "请稍后重试" });
+    } finally {
+      setIsRunningDiagramAction(false);
+    }
+  }, [diagramItem, onSaved, taskId]);
+
+  const cancelDiagram = useCallback(async () => {
+    if (!diagramItem) return;
+    setIsRunningDiagramAction(true);
+    try {
+      await cancelProblemDiagram(taskId, diagramItem.id);
+      await onSaved();
+    } catch (error) {
+      notify.error({ title: "取消题图任务失败", description: error instanceof Error ? error.message : "请稍后重试" });
+    } finally {
+      setIsRunningDiagramAction(false);
+    }
+  }, [diagramItem, onSaved, taskId]);
 
   const addOption = useCallback(() => {
     setOptions((prev) => [...prev, { id: nextOptionId(), text: "" }]);
@@ -334,6 +402,12 @@ export function ProblemEditPanel({ taskId, taskAssetPath, problem, tagStyles, on
     return () => window.removeEventListener("keydown", saveWithKeyboard);
   }, [isDirty, isSaving, save]);
 
+  useEffect(() => {
+    if (!diagramItem?.active_run_id) return;
+    const timer = window.setInterval(() => { void onSaved(); }, 2000);
+    return () => window.clearInterval(timer);
+  }, [diagramItem?.active_run_id, onSaved]);
+
   const diagramImagePath = problem.diagram_image_path || taskAssetPath || null;
   const diagramCropSourcePath = taskAssetPath || diagramImagePath;
   const diagramImageUrl = useAuthenticatedAssetUrl(diagramCropSourcePath);
@@ -477,6 +551,109 @@ export function ProblemEditPanel({ taskId, taskAssetPath, problem, tagStyles, on
 
         <FormControl sx={{ pt: 3, borderTopWidth: 1, borderTopStyle: "solid", borderTopColor: "border.muted" }}>
           <FormControl.Label>附图</FormControl.Label>
+          <Box sx={{ mt: 2, display: "grid", gridTemplateColumns: ["1fr", "minmax(0, 1fr) 96px"], gap: 2 }}>
+            <TextInput
+              block
+              aria-label="题图优化指示"
+              placeholder="本轮附加指示（可选）"
+              value={diagramInstruction}
+              onChange={(event) => setDiagramInstruction(event.currentTarget.value)}
+            />
+            <TextInput
+              block
+              type="number"
+              min={1}
+              max={8}
+              aria-label="自动候选上限"
+              value={diagramMaxCandidates}
+              onChange={(event) => setDiagramMaxCandidates(event.currentTarget.value)}
+            />
+          </Box>
+          <Box sx={{ mt: 2, display: "flex", gap: 2, flexWrap: "wrap", alignItems: "center" }}>
+            {!diagramItem ? (
+              <Button
+                size="small"
+                leadingVisual={WandSparkles}
+                disabled={isRunningDiagramAction || !taskAssetPath}
+                onClick={() => void runDiagramAction("initial")}
+              >AI 重建</Button>
+            ) : (
+              <>
+                <Button
+                  size="small"
+                  leadingVisual={Sparkles}
+                  disabled={isRunningDiagramAction || Boolean(diagramItem.active_run_id)}
+                  onClick={() => void runDiagramAction("continue")}
+                >继续优化</Button>
+                <Button
+                  size="small"
+                  variant="default"
+                  leadingVisual={RefreshCw}
+                  disabled={isRunningDiagramAction || Boolean(diagramItem.active_run_id)}
+                  onClick={() => void runDiagramAction("rebuild")}
+                >重新重建</Button>
+                <Text sx={{ color: diagramItem.needs_review ? "danger.fg" : "fg.muted", fontSize: 0 }}>
+                  {diagramItem.status}{diagramItem.active_run_id ? " · 处理中" : ""}
+                </Text>
+                {diagramItem.active_run_id ? (
+                  <Button size="small" variant="danger" leadingVisual={CircleStop} disabled={isRunningDiagramAction} onClick={() => void cancelDiagram()}>
+                    取消任务
+                  </Button>
+                ) : null}
+              </>
+            )}
+          </Box>
+
+          {diagramItem?.candidates.length ? (
+            <Box sx={{ mt: 3, display: "grid", gridTemplateColumns: ["1fr", "180px minmax(0, 1fr)"], gap: 3 }}>
+              <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
+                {diagramItem.candidates.map((candidate) => (
+                  <Button
+                    key={candidate.id}
+                    size="small"
+                    variant={candidate.id === effectiveCandidateViewId ? "primary" : "default"}
+                    leadingVisual={candidate.id === diagramItem.selected_candidate_id ? Check : undefined}
+                    onClick={() => {
+                      setCandidateViewId(candidate.id);
+                    }}
+                  >版本 {candidate.ordinal} · {candidate.source_kind === "ai" ? "AI" : "人工"}</Button>
+                ))}
+              </Box>
+              {viewedCandidate ? (
+                <Box sx={{ minWidth: 0, display: "flex", flexDirection: "column", gap: 2 }}>
+                  <Box sx={{ p: 2, border: "1px solid", borderColor: "border.default", borderRadius: 1, bg: "canvas.subtle" }}>
+                    <CandidatePreview candidate={viewedCandidate} />
+                  </Box>
+                  <Text sx={{ color: "fg.muted", fontSize: 0 }}>
+                    {viewedCandidate.model || "人工版本"} · {viewedCandidate.decision || "待判断"}
+                    {viewedCandidate.parent_candidate_id ? " · 基于上一版本" : ""}
+                  </Text>
+                  <Textarea
+                    readOnly
+                    block
+                    rows={5}
+                    aria-label={`题图版本 ${viewedCandidate.ordinal} 源码`}
+                    value={viewedCandidate.tikz_source}
+                    sx={{ fontFamily: "mono", fontSize: 0, resize: "vertical" }}
+                  />
+                  {viewedCandidate.hard_errors.length ? (
+                    <Text sx={{ color: "danger.fg", fontSize: 0 }}>硬错误：{viewedCandidate.hard_errors.join("；")}</Text>
+                  ) : null}
+                  {viewedCandidate.soft_differences.length ? (
+                    <Text sx={{ color: "fg.muted", fontSize: 0 }}>已接受软差异：{viewedCandidate.soft_differences.join("；")}</Text>
+                  ) : null}
+                  {viewedCandidate.id !== diagramItem.selected_candidate_id && viewedCandidate.svg_path && viewedCandidate.pdf_path ? (
+                    <Button
+                      size="small"
+                      leadingVisual={Check}
+                      disabled={isRunningDiagramAction || Boolean(diagramItem.active_run_id)}
+                      onClick={() => void selectCandidate(viewedCandidate)}
+                    >采用此版本</Button>
+                  ) : null}
+                </Box>
+              ) : null}
+            </Box>
+          ) : null}
           <Box sx={{ mt: 2, display: "flex", gap: 2, flexWrap: "wrap" }}>
             <Button size="small" variant={diagramKind === "none" ? "primary" : "default"} onClick={() => setDiagramKind("none")}>
               无附图

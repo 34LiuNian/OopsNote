@@ -17,6 +17,7 @@ from oopsnote.api import main
 from oopsnote.api import auth
 from oopsnote.api.auth import AuthConfig, AuthenticatedUser, AuthenticationError
 from oopsnote.ai import HermesRunner
+from oopsnote.ai.diagram_renderer import TikzRenderBundle, TikzRenderClient
 from oopsnote.core import AssetStore, BatchProcessJobStore, BatchSegment, BatchSegmentPart, BatchSessionRecord, BatchSessionStore, Problem, ProblemMergeStore, RunArtifact, RunStatus, RunStore, TagStore, TaskCreateRequest, TaskRecord, TaskRun, TaskStore, TaskStage, TaskStatus
 
 
@@ -389,6 +390,15 @@ def test_web_contract_uses_wrapped_collections_and_persisted_upload(tmp_path, mo
         ),
     )
     monkeypatch.setattr(main, "ASSET_STORE", AssetStore(base_dir=storage / "assets"))
+    def render_bundle(renderer: TikzRenderClient, source: str) -> TikzRenderBundle:
+        del source
+        return TikzRenderBundle(
+            svg_path=renderer.asset_store.save_bytes(b"<svg xmlns='http://www.w3.org/2000/svg'/>", "diagram.svg", "api-test"),
+            pdf_path=renderer.asset_store.save_bytes(b"%PDF-1.4\n%%EOF\n", "diagram.pdf", "api-test"),
+            png_path=renderer.asset_store.save_bytes(base64.b64decode(png_base64()), "diagram.png", "api-test"),
+            renderer_profile_version="test-v1",
+        )
+    monkeypatch.setattr(TikzRenderClient, "render", render_bundle)
     monkeypatch.setattr(
         main,
         "BATCH_SESSION_STORE",
@@ -469,10 +479,10 @@ def test_web_contract_uses_wrapped_collections_and_persisted_upload(tmp_path, mo
     assert edited_problem["chapter"] == "函数"
     assert edited_problem["user_tags"] == ["重点"]
     assert edited_problem["diagram_tikz_source"] == "\\draw (0,0) -- (1,1);"
-    assert edited_problem["diagram_render_status"] == "ready"
+    assert edited_problem["diagram_render_status"] == "ready_tikz"
     assert edited_problem["diagram_image_path"] is None
     assert edited_problem["diagram_position"] == "right"
-    assert edited_problem["diagram_scale_percent"] is None
+    assert edited_problem["diagram_scale_percent"] == 100
 
     overridden_difficulty = client.patch(
         f"/tasks/{task['id']}/problem/override",
@@ -734,6 +744,12 @@ def test_batch_session_persists_parts_crop_and_deletes_without_tasks(tmp_path, m
     assert removed_source.json()["source_available"] is False
     missing_session = client.get(f"/batch-sessions/{digest}").json()["session"]
     assert missing_session["source_available"] is False
+    unavailable_process = client.post(
+        f"/batch-sessions/{digest}/process",
+        json={"expected_revision": missing_session["revision"]},
+    )
+    assert unavailable_process.status_code == 409
+    assert unavailable_process.json()["detail"]["code"] == "batch_source_unavailable"
     restored = client.put(
         f"/batch-sessions/{digest}/source",
         content=source,
@@ -862,6 +878,62 @@ def test_batch_session_persists_parts_crop_and_deletes_without_tasks(tmp_path, m
     assert client.get(f"/batch-sessions/{digest}").status_code == 404
     retained = client.get(f"/tasks/{task['id']}").json()["task"]
     assert retained["trace"]["batch_session_available"] is False
+
+
+def test_batch_delete_selected_parts_preserves_unselected_parts(tmp_path, monkeypatch):
+    storage = tmp_path / "storage"
+    task_store = TaskStore(storage)
+    monkeypatch.setattr(main, "ASSET_STORE", AssetStore(storage / "assets"))
+    monkeypatch.setattr(main, "TASK_STORE", task_store)
+    monkeypatch.setattr(main, "RUN_STORE", RunStore(storage / "runs"))
+    monkeypatch.setattr(main, "TAG_STORE", TagStore(storage / "settings" / "tags.json"))
+    monkeypatch.setattr(
+        main,
+        "BATCH_SESSION_STORE",
+        BatchSessionStore(storage / "settings" / "batch_sessions.json"),
+    )
+    client = TestClient(main.app)
+    source = b"selected-batch-delete"
+    digest = hashlib.sha256(source).hexdigest()
+    assert client.put(
+        f"/batch-sessions/{digest}/source",
+        content=source,
+        headers={"x-oopsnote-filename": "delete.pdf", "content-type": "application/pdf"},
+    ).status_code == 200
+    assert client.patch(
+        f"/batch-sessions/{digest}",
+        json={
+            "expected_revision": 0,
+            "segments": [{
+                "id": "pending-selection",
+                "parts": [{"page_index": 0, "x": 0, "y": 0, "width": 1, "height": 1}],
+                "status": "pending",
+            }],
+        },
+    ).status_code == 200
+    task = task_store.create(TaskCreateRequest(
+        subject="math",
+        metadata={"selection_snapshot": {"source_file_hash": digest}},
+    ))
+
+    deleted_task = client.request(
+        "DELETE",
+        f"/batch-sessions/{digest}",
+        json={"source": False, "selection_records": False, "tasks": True},
+    )
+    assert deleted_task.status_code == 200
+    assert deleted_task.json()["tasks_deleted"] == 1
+    assert client.get(f"/tasks/{task.id}").status_code == 404
+    assert client.get(f"/batch-sessions/{digest}").status_code == 200
+
+    deleted_remaining = client.request(
+        "DELETE",
+        f"/batch-sessions/{digest}",
+        json={"source": True, "selection_records": True, "tasks": False},
+    )
+    assert deleted_remaining.status_code == 200
+    assert deleted_remaining.json()["source_deleted"] is True
+    assert client.get(f"/batch-sessions/{digest}").status_code == 404
 
 
 def test_batch_process_renders_all_pending_segments_and_enqueues_once(tmp_path, monkeypatch):
@@ -1039,7 +1111,11 @@ def test_batch_session_rejects_invalid_segment_pages_before_persistence(tmp_path
     )
 
     assert invalid_patch.status_code == 422
-    assert "unavailable page" in invalid_patch.json()["detail"]
+    detail = invalid_patch.json()["detail"]
+    assert detail["category"] == "request"
+    assert detail["code"] == "request_invalid"
+    assert detail["scope"] == "batch"
+    assert "unavailable page" in detail["message"]
     persisted = client.get(f"/batch-sessions/{digest}").json()["session"]
     assert persisted["revision"] == 0
     assert persisted["segments"] == []

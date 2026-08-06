@@ -33,6 +33,46 @@ def channel(vault: MemorySecretStore) -> ProviderChannel:
     )
 
 
+def test_legacy_policy_migration_persists_an_independent_diagram_selection(tmp_path: Path):
+    vault = MemorySecretStore()
+    settings = AppSettingsStore(tmp_path / "settings.json")
+    configured = channel(vault)
+    settings.upsert_provider_channel(configured)
+    selection = {"channel_id": configured.id, "model_id": "text"}
+    settings.update({"langchain_model_policy": {
+        "version": 1,
+        "vision": selection,
+        "agent": selection,
+        "review": selection,
+    }})
+
+    assert settings.langchain_model_policy() is None
+    assert settings.migrate_legacy_diagram_policy() is True
+    policy = settings.langchain_model_policy()
+
+    assert policy is not None
+    assert policy.diagram.channel_id == configured.id
+    assert policy.diagram.model_id == "text"
+    assert settings.get()["langchain_model_policy"]["version"] == 2
+    assert settings.migrate_legacy_diagram_policy() is False
+
+
+def test_incomplete_policy_never_infers_diagram_from_vision(tmp_path: Path):
+    vault = MemorySecretStore()
+    settings = AppSettingsStore(tmp_path / "settings.json")
+    configured = channel(vault)
+    settings.upsert_provider_channel(configured)
+    selection = {"channel_id": configured.id, "model_id": "text"}
+    settings.update({"langchain_model_policy": {
+        "version": 1,
+        "vision": selection,
+        "agent": selection,
+        "review": selection,
+    }})
+
+    assert settings.langchain_model_policy() is None
+
+
 def test_discovery_groups_by_provider_source_and_defaults_tool_calling_capability():
     vault = MemorySecretStore()
     configured = channel(vault)
@@ -67,7 +107,7 @@ def test_policy_and_channel_are_persisted_as_one_authoritative_settings_shape(tm
     configured = channel(vault)
     store.upsert_provider_channel(configured)
     selection = StageModelSelection(channel_id=configured.id, model_id="text")
-    policy = LangChainModelPolicy(version=1, vision=selection, agent=selection, review=selection)
+    policy = LangChainModelPolicy(version=1, vision=selection, agent=selection, review=selection, diagram=selection)
     store.set_langchain_model_policy(policy)
     assert store.provider_channels() == [configured]
     assert store.langchain_model_policy() == policy
@@ -87,14 +127,41 @@ def test_channel_icon_is_normalized_and_persisted_as_presentation_metadata(tmp_p
     assert stored.public_view(vault)["icon"] == "openai"
 
 
-def test_channel_mutation_atomically_clears_a_policy_that_is_no_longer_runnable(tmp_path: Path):
+def test_channel_order_is_atomic_and_survives_channel_updates(tmp_path: Path):
+    vault = MemorySecretStore()
+    store = AppSettingsStore(tmp_path / "settings.json")
+    first = channel(vault).model_copy(update={"id": "first", "display_name": "First"})
+    second = channel(vault).model_copy(update={"id": "second", "display_name": "Second"})
+    store.upsert_provider_channel(first)
+    store.upsert_provider_channel(second)
+
+    store.reorder_provider_channels(["second", "first"])
+    store.upsert_provider_channel(second.model_copy(update={"version": 2, "display_name": "Second updated"}))
+
+    assert [item.id for item in store.provider_channels()] == ["second", "first"]
+    assert store.provider_channels()[0].display_name == "Second updated"
+
+
+def test_channel_order_rejects_partial_or_duplicate_ids(tmp_path: Path):
+    vault = MemorySecretStore()
+    store = AppSettingsStore(tmp_path / "settings.json")
+    store.upsert_provider_channel(channel(vault).model_copy(update={"id": "first"}))
+    store.upsert_provider_channel(channel(vault).model_copy(update={"id": "second"}))
+
+    with pytest.raises(ValueError, match="every channel exactly once"):
+        store.reorder_provider_channels(["first", "first"])
+
+    assert [item.id for item in store.provider_channels()] == ["first", "second"]
+
+
+def test_channel_mutation_preserves_policy_intent_when_one_selection_becomes_unavailable(tmp_path: Path):
     vault = MemorySecretStore()
     store = AppSettingsStore(tmp_path / "settings.json")
     configured = channel(vault)
     store.upsert_provider_channel(configured)
     selection = StageModelSelection(channel_id=configured.id, model_id="text")
     store.set_langchain_model_policy(LangChainModelPolicy(
-        version=1, vision=selection, agent=selection, review=selection,
+        version=1, vision=selection, agent=selection, review=selection, diagram=selection,
     ))
 
     store.upsert_provider_channel(configured.model_copy(update={
@@ -102,7 +169,8 @@ def test_channel_mutation_atomically_clears_a_policy_that_is_no_longer_runnable(
         "models": (configured.models[0].model_copy(update={"enabled": False}),),
     }))
 
-    assert store.langchain_model_policy() is None
+    assert store.langchain_model_policy() is not None
+    assert store.langchain_model_policy().agent == selection
 
 
 def test_store_rejects_persisting_a_policy_with_missing_capability(tmp_path: Path):
@@ -116,7 +184,7 @@ def test_store_rejects_persisting_a_policy_with_missing_capability(tmp_path: Pat
 
     with pytest.raises(ValueError, match="unavailable channel or model"):
         store.set_langchain_model_policy(LangChainModelPolicy(
-            version=1, vision=selection, agent=selection, review=selection,
+            version=1, vision=selection, agent=selection, review=selection, diagram=selection,
         ))
 
 
@@ -193,6 +261,7 @@ def test_langchain_admission_freezes_all_three_stage_models_and_rejects_closed_c
         vision=StageModelSelection(channel_id=configured.id, model_id="vision"),
         agent=StageModelSelection(channel_id=configured.id, model_id="agent"),
         review=StageModelSelection(channel_id=configured.id, model_id="review"),
+        diagram=StageModelSelection(channel_id=configured.id, model_id="vision"),
     ))
     tasks = TaskStore(tmp_path / "tasks")
     runs = RunStore(tmp_path / "runs")
@@ -209,13 +278,14 @@ def test_langchain_admission_freezes_all_three_stage_models_and_rejects_closed_c
     )
     task = tasks.create(TaskCreateRequest(subject="math"))
     metadata = runner._run_metadata(task.id)
-    assert set(metadata["provider_profile_snapshot"]) == {"policy_version", "vision", "agent", "review"}
+    assert set(metadata["provider_profile_snapshot"]) == {"policy_version", "vision", "agent", "review", "diagram"}
+    assert metadata["provider_profile_snapshot"]["diagram"]["model"] == "vision"
     assert metadata["provider_profile_snapshot"]["vision"]["model"] == "vision"
     closed = configured.model_copy(update={
         "version": 2,
         "models": tuple(item.model_copy(update={"capability": ProviderCapabilities()}) for item in configured.models),
     })
     settings.upsert_provider_channel(closed)
-    assert settings.langchain_model_policy() is None
-    with pytest.raises(RuntimeError, match="no global LangChain model policy"):
+    assert settings.langchain_model_policy() is not None
+    with pytest.raises(RuntimeError, match="selected LangChain Vision model is not enabled"):
         runner._run_metadata(task.id)

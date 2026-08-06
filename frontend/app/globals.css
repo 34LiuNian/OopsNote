@@ -1022,10 +1022,10 @@ html[data-oopsnote-color-scheme="dark"] .figure-cropper__viewport { background: 
 .batch-scan-history__item { display: grid; min-height: 64px; grid-template-columns: 34px minmax(0, 1fr) auto auto auto; align-items: center; gap: 10px; padding: 9px 10px; border: 1px solid var(--borderColor-default); border-radius: 8px; background: var(--bgColor-default); transition: border-color var(--oops-transition-fast), background-color var(--oops-transition-fast); }
 .batch-scan-history__item:hover { border-color: color-mix(in srgb, var(--borderColor-default) 62%, var(--fgColor-muted)); background: var(--bgColor-muted); }
 .batch-scan-history__mark { display: grid; width: 32px; height: 32px; place-items: center; border-radius: 6px; color: var(--fgColor-muted); background: var(--bgColor-muted); }
-.batch-scan-history__body { display: grid; min-width: 0; grid-template-columns: minmax(0, 1fr) auto; align-items: center; column-gap: 4px; }
+.batch-scan-history__body { min-width: 0; }
 .batch-scan-history__body > p { overflow: hidden; margin: 0; color: var(--fgColor-default); font-size: 13px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
-.batch-scan-history__missing { grid-column: 1 / -1; color: var(--fgColor-danger) !important; font-size: 11px !important; font-weight: 500 !important; }
-.batch-scan-history__meta { grid-column: 1 / -1; display: grid; grid-template-columns: 3.5em 3.5em 3.5em 4.5em 5.5em 5.5em 4em; column-gap: 10px; margin-top: 4px; color: var(--fgColor-muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+.batch-scan-history__missing { color: var(--fgColor-danger) !important; font-size: 11px !important; font-weight: 500 !important; }
+.batch-scan-history__meta { display: grid; grid-template-columns: 3.5em 3.5em 3.5em 4.5em 5.5em 5.5em 4em; column-gap: 10px; margin-top: 4px; color: var(--fgColor-muted); font-size: 11px; font-variant-numeric: tabular-nums; }
 .batch-scan-history__meta span { white-space: nowrap; }
 .batch-scan-history__meta strong { color: var(--fgColor-default); font-weight: 600; font-variant-numeric: tabular-nums; }
 .batch-scan-history__meta span.is-completed { color: var(--fgColor-success); }
@@ -1039,6 +1039,8 @@ html[data-oopsnote-color-scheme="dark"] .figure-cropper__viewport { background: 
 .batch-scan-history__item button { flex: 0 0 auto; }
 .batch-scan-history__delete:hover,
 .batch-scan-history__delete:focus-visible { color: var(--fgColor-danger); }
+.batch-delete-dialog__filename { display: block; overflow: hidden; margin-bottom: 16px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.batch-delete-dialog__description { margin-top: -10px; color: var(--fgColor-muted); }
 .batch-workflow-toolbar { position: relative; z-index: 20; display: flex; min-height: 52px; align-items: center; gap: 6px; padding: 7px 12px; border-bottom: 1px solid var(--borderColor-default); background: var(--bgColor-default); }
 .batch-workflow-toolbar__spacer { min-width: 8px; flex: 1; }
 .batch-save-state { display: inline-flex; min-width: 112px; align-items: center; gap: 6px; color: var(--fgColor-muted); font-size: 12px; white-space: nowrap; }

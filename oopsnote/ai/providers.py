@@ -100,6 +100,7 @@ class LangChainModelPolicy(BaseModel):
     vision: StageModelSelection
     agent: StageModelSelection
     review: StageModelSelection
+    diagram: StageModelSelection
     updated_at: datetime | None = None
 
 
@@ -285,11 +286,16 @@ class ProviderClientFactory:
                 from langchain_google_genai import ChatGoogleGenerativeAI
             except ImportError as error:
                 raise RuntimeError("LangChain Google integration is not installed") from error
+            kwargs: dict[str, Any] = {
+                "model": profile.model,
+                "api_key": api_key,
+                "vertexai": False,
+                "retries": 0,
+            }
+            if profile.base_url is not None:
+                kwargs["base_url"] = str(profile.base_url).rstrip("/")
             return ChatGoogleGenerativeAI(
-                model=profile.model,
-                api_key=api_key,
-                vertexai=False,
-                retries=0,
+                **kwargs,
             )
         raise ValueError(f"unsupported provider: {profile.provider}")
 
@@ -323,7 +329,7 @@ class ProviderClientFactory:
             **kwargs,
         )
 
-    def create_vision_ocr_model(self, profile: ProviderProfile) -> Any:
+    def create_vision_json_model(self, profile: ProviderProfile) -> Any:
         """Build a Vision model with the provider's native JSON-output mode.
 
         OCR is a structured extraction boundary. OpenAI-compatible providers
@@ -338,7 +344,16 @@ class ProviderClientFactory:
                 response_format={"type": "json_object"},
                 temperature=0,
             )
+        if profile.provider == "google":
+            return model.bind(
+                response_mime_type="application/json",
+                temperature=0,
+            )
         return model
+
+    def create_vision_ocr_model(self, profile: ProviderProfile) -> Any:
+        """Compatibility name for the shared structured Vision adapter."""
+        return self.create_vision_json_model(profile)
 
     @staticmethod
     def _catalog_url(channel: ProviderChannel) -> str:

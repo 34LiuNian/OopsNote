@@ -1,13 +1,60 @@
 export type TaskStatus = "pending" | "processing" | "completed" | "failed" | "cancelled";
-export type TaskStage = "queued" | "starting" | "ocr" | "solving" | "verifying" | "tagging" | "finalizing" | "syncing";
+export type TaskStage = "queued" | "starting" | "ocr" | "solving" | "verifying" | "tagging" | "finalizing" | "syncing" | "diagram_generating" | "diagram_rendering" | "diagram_reviewing";
 export type RunStatus = "queued" | "running" | "completed" | "failed" | "cancelled" | "timed_out";
 export type ContentFormat = "legacy-markdown-latex" | "oopsmark-v1";
 export type NormalizedRect = { x: number; y: number; width: number; height: number };
 export type DiagramImageTone = "auto" | "original";
+export type ApiErrorCategory = "request" | "model_request" | "tikz_compile" | "human_review" | "internal";
+
+export interface DiagramCandidate {
+  id: string;
+  ordinal: number;
+  parent_candidate_id?: string | null;
+  source_kind: "ai" | "human" | "legacy";
+  tikz_source: string;
+  source_sha256: string;
+  svg_path?: string | null;
+  pdf_path?: string | null;
+  png_path?: string | null;
+  renderer_profile_version?: string | null;
+  decision?: "accept" | "revise" | "keep_image" | null;
+  hard_errors: string[];
+  soft_differences: string[];
+  review_reason?: string | null;
+  provider?: string | null;
+  model?: string | null;
+  run_id?: string | null;
+  created_at: string;
+}
+
+export interface DiagramItem {
+  id: string;
+  ordinal: number;
+  source_asset_path?: string | null;
+  source_region?: NormalizedRect | null;
+  fallback_image_path?: string | null;
+  image_tone: DiagramImageTone;
+  position: "left" | "right";
+  scale_percent: number;
+  status: "detected" | "queued" | "generating" | "rendering" | "reviewing" | "ready_tikz" | "ready_image" | "needs_review" | "failed" | "cancelled";
+  selected_candidate_id?: string | null;
+  candidates: DiagramCandidate[];
+  active_run_id?: string | null;
+  needs_review: boolean;
+  last_error?: string | null;
+  last_error_code?: string | null;
+  error_category?: ApiErrorCategory | null;
+}
 
 export interface TaskRunSummary {
   id: string;
   attempt: number;
+  purpose?: "problem" | "diagram";
+  priority?: number;
+  diagram_item_id?: string | null;
+  diagram_mode?: "auto" | "continue" | "rebuild" | "human" | null;
+  diagram_max_candidates?: number | null;
+  diagram_step?: "generate" | "render" | "review" | null;
   status: RunStatus;
   pid?: number | null;
   exit_code?: number | null;
@@ -19,6 +66,7 @@ export interface TaskRunSummary {
   heartbeat_at: string;
   ended_at?: string | null;
   error_code?: string | null;
+  error_category?: ApiErrorCategory | null;
   error_message?: string | null;
   stages: Array<{
     stage: TaskStage;
@@ -51,9 +99,12 @@ export interface TaskResponse {
     stage?: TaskStage | null;
     stage_message?: string | null;
     active_run_id?: string | null;
+    error_category?: ApiErrorCategory | null;
+    diagram_needs_review?: boolean;
     revision_count?: number | null;
     last_revised_at?: string | null;
     run?: TaskRunSummary | null;
+    diagram_runs?: TaskRunSummary[];
     created_at: string;
     updated_at: string;
     asset?: {
@@ -91,7 +142,9 @@ export interface TaskResponse {
       diagram_scale_percent?: number | null;
       diagram_render_status?: string | null;
       diagram_error?: string | null;
+      diagram_error_category?: ApiErrorCategory | null;
       diagram_needs_review?: boolean;
+      diagram_items?: DiagramItem[];
       diagram_confidence?: number | null;
       knowledge_tags?: string[];
       error_tags?: string[];
@@ -127,6 +180,8 @@ export interface TaskSummary {
   stage?: TaskStage | null;
   stage_message?: string | null;
   active_run_id?: string | null;
+  error_category?: ApiErrorCategory | null;
+  diagram_needs_review?: boolean;
   created_at: string;
   updated_at: string;
   subject: string;
@@ -174,6 +229,7 @@ export interface ProblemSummary {
   diagram_scale_percent?: number | null;
   diagram_render_status?: string | null;
   diagram_error?: string | null;
+  diagram_error_category?: ApiErrorCategory | null;
   diagram_needs_review?: boolean;
   knowledge_points: string[];
   knowledge_tags?: string[];

@@ -13,6 +13,7 @@ test("first stage edit preserves the other server selections", () => {
     vision: { channel_id: "vision-channel", model_id: "vision-model" },
     agent: { channel_id: "agent-channel", model_id: "agent-model" },
     review: { channel_id: "review-channel", model_id: "review-model" },
+    diagram: { channel_id: "diagram-channel", model_id: "diagram-model" },
   };
 
   const updated = updatePolicyStage(
@@ -23,6 +24,7 @@ test("first stage edit preserves the other server selections", () => {
 
   assert.deepEqual(updated.agent, serverPolicy.agent);
   assert.deepEqual(updated.review, serverPolicy.review);
+  assert.deepEqual(updated.diagram, serverPolicy.diagram);
   assert.deepEqual(updated.vision, { channel_id: "replacement", model_id: "replacement-model" });
   assert.notEqual(updated, serverPolicy);
 });

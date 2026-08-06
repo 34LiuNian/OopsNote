@@ -5,8 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal, Mapping
 
-from oopsnote.content import validate_oopsmark
-from oopsnote.core import ContentFormat, PaperDraft, Problem, TaskRecord
+from oopsnote.core import ContentFormat, DiagramStatus, PaperDraft, Problem, TaskRecord
 
 
 PaperAnswerSpace = Literal["compact", "standard", "large"]
@@ -66,74 +65,56 @@ def _paper_diagram(task: TaskRecord, *, item_id: str) -> PaperDiagram | None:
     problem = task.problem
     if problem is None:
         return None
-    metadata = task.metadata
-    detected = bool(metadata.get("diagram_detected", problem.has_diagram))
-    if not detected:
+    if not problem.has_diagram and not task.diagram_items:
         return None
-    if metadata.get("diagram_needs_review"):
+    if len(task.diagram_items) > 1:
+        raise PaperDocumentError(
+            "multiple-diagrams-not-supported",
+            f"Problem {problem.id} has multiple diagrams; this paper layout supports one",
+            item_id=item_id,
+        )
+    if not task.diagram_items:
+        raise PaperDocumentError(
+            "missing-diagram-item",
+            f"Problem {problem.id} has no reconstructed diagram item",
+            item_id=item_id,
+        )
+    item = task.diagram_items[0]
+    if item.needs_review or item.status == DiagramStatus.NEEDS_REVIEW:
         raise PaperDocumentError(
             "diagram-needs-review",
             f"Problem {problem.id} has a diagram that still needs review",
             item_id=item_id,
         )
 
-    kind = metadata.get("diagram_kind")
-    if kind not in {"tikz", "image"}:
+    if item.status not in {DiagramStatus.READY_TIKZ, DiagramStatus.READY_IMAGE}:
         raise PaperDocumentError(
-            "missing-diagram-kind",
-            f"Problem {problem.id} has no exportable structured diagram",
+            "diagram-not-ready",
+            f"Problem {problem.id} diagram is {item.status.value}",
             item_id=item_id,
         )
-    position = metadata.get("diagram_position", "right")
-    if position not in {"left", "right"}:
-        raise PaperDocumentError(
-            "invalid-diagram-position",
-            f"Problem {problem.id} has invalid diagram position {position!r}",
-            item_id=item_id,
+    if item.status == DiagramStatus.READY_TIKZ:
+        candidate = next(
+            (candidate for candidate in item.candidates if candidate.id == item.selected_candidate_id),
+            None,
         )
-    raw_scale = metadata.get("diagram_scale_percent")
-    scale = 100 if raw_scale is None else int(raw_scale)
-    if scale < 50 or scale > 200:
-        raise PaperDocumentError(
-            "invalid-diagram-scale",
-            f"Problem {problem.id} has diagram scale outside 50..200",
-            item_id=item_id,
-        )
-
-    if kind == "tikz":
-        source = str(metadata.get("diagram_tikz_source") or "").strip()
-        if not source:
-            raise PaperDocumentError(
-                "missing-diagram-source",
-                f"Problem {problem.id} has no persisted TikZ source",
-                item_id=item_id,
-            )
-        issues = [
-            issue
-            for issue in validate_oopsmark(f"```tikz\n{source}\n```")
-            if issue.severity == "error"
-        ]
-        if issues:
-            first = issues[0]
-            raise PaperDocumentError(
-                "invalid-diagram-source",
-                f"Problem {problem.id} diagram is unsafe or invalid: {first.message}",
-                item_id=item_id,
-            )
+        source = str(candidate.pdf_path if candidate else "").strip()
+        kind: PaperDiagramKind = "tikz"
     else:
-        source = str(metadata.get("diagram_image_path") or "").strip()
-        if not source:
-            raise PaperDocumentError(
-                "missing-diagram-source",
-                f"Problem {problem.id} has no persisted diagram image",
-                item_id=item_id,
-            )
+        source = str(item.fallback_image_path or "").strip()
+        kind = "image"
+    if not source:
+        raise PaperDocumentError(
+            "missing-diagram-source",
+            f"Problem {problem.id} has no paper-ready diagram asset",
+            item_id=item_id,
+        )
 
     return PaperDiagram(
         kind=kind,
         source=source,
-        position=position,
-        scale_percent=scale,
+        position=item.position,
+        scale_percent=item.scale_percent,
     )
 
 

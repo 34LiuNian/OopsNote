@@ -5,10 +5,11 @@ from __future__ import annotations
 import os
 
 import httpx
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
+from oopsnote.api.errors import ApiErrorCategory, api_error
 from oopsnote.content import validate_oopsmark
 
 router = APIRouter(prefix="/latex")
@@ -28,15 +29,22 @@ def render_tikz(payload: TikzRenderRequest) -> Response:
     issues = validate_oopsmark(f"```tikz\n{source}\n```")
     if issues:
         first = issues[0]
-        raise HTTPException(
-            status_code=422,
-            detail={"code": first.code, "message": first.message, "line": first.line},
+        raise api_error(
+            422,
+            code=first.code,
+            message=first.message,
+            category=ApiErrorCategory.TIKZ_COMPILE,
+            scope="tikz_render",
+            details={"line": first.line} if first.line is not None else None,
         )
     renderer_url = _renderer_url()
     if not renderer_url:
-        raise HTTPException(
-            status_code=503,
-            detail={"code": "renderer-unavailable", "message": "LaTeX renderer is not configured"},
+        raise api_error(
+            503,
+            code="renderer_unavailable",
+            message="LaTeX renderer is not configured",
+            category=ApiErrorCategory.TIKZ_COMPILE,
+            scope="tikz_render",
         )
     try:
         result = httpx.post(
@@ -45,18 +53,31 @@ def render_tikz(payload: TikzRenderRequest) -> Response:
             timeout=35,
         )
     except httpx.TimeoutException as error:
-        raise HTTPException(
-            status_code=504,
-            detail={"code": "renderer-timeout", "message": "TikZ rendering timed out"},
+        raise api_error(
+            504,
+            code="renderer_timeout",
+            message="TikZ rendering timed out",
+            category=ApiErrorCategory.TIKZ_COMPILE,
+            retryable=True,
+            scope="tikz_render",
         ) from error
     except httpx.HTTPError as error:
-        raise HTTPException(
-            status_code=503,
-            detail={"code": "renderer-unavailable", "message": str(error)},
+        raise api_error(
+            503,
+            code="renderer_unavailable",
+            message=str(error),
+            category=ApiErrorCategory.TIKZ_COMPILE,
+            retryable=True,
+            scope="tikz_render",
         ) from error
     if result.status_code != 200:
-        raise HTTPException(
-            status_code=422 if result.status_code < 500 else 503,
-            detail={"code": "renderer-failed", "message": result.text[-12_000:]},
+        retryable = result.status_code >= 500
+        raise api_error(
+            503 if retryable else 422,
+            code="renderer_failed",
+            message=result.text[-12_000:],
+            category=ApiErrorCategory.TIKZ_COMPILE,
+            retryable=retryable,
+            scope="tikz_render",
         )
     return Response(content=result.content, media_type="image/svg+xml")

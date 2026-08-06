@@ -2,6 +2,7 @@
 export const API_BASE = "/api";
 
 import { accessTokenOrRedirect } from "./auth";
+import type { ApiErrorCategory } from "../types/api";
 
 function directBackendBase(): string | null {
   const configured = process.env.NEXT_PUBLIC_BACKEND_URL;
@@ -14,37 +15,94 @@ export type ApiRequestInit = RequestInit & {
   skipAuth?: boolean;
 };
 
+export type ApiErrorPayload = {
+  category: ApiErrorCategory;
+  code: string;
+  message: string;
+  retryable: boolean;
+  scope: string;
+  task_id?: string;
+  run_id?: string;
+  diagram_item_id?: string;
+  details?: Record<string, unknown>;
+};
+
 export class ApiError extends Error {
-  constructor(message: string, readonly status: number) {
+  constructor(
+    message: string,
+    readonly status: number,
+    readonly payload?: ApiErrorPayload,
+  ) {
     super(message);
     this.name = "ApiError";
   }
 }
 
-function parseErrorMessage(rawText: string, status: number): string {
+export function apiErrorCode(error: unknown): string | null {
+  return error instanceof ApiError ? error.payload?.code ?? null : null;
+}
+
+export function hasApiErrorCode(error: unknown, ...codes: string[]): boolean {
+  const code = apiErrorCode(error);
+  return code !== null && codes.includes(code);
+}
+
+async function requestBackend(input: RequestInfo | URL, init: RequestInit): Promise<Response> {
+  try {
+    return await fetch(input, init);
+  } catch (cause) {
+    if (cause instanceof DOMException && cause.name === "AbortError") throw cause;
+    throw new ApiError("无法连接后端服务", 0, {
+      category: "request",
+      code: "backend_unreachable",
+      message: "无法连接后端服务",
+      retryable: true,
+      scope: "transport",
+    });
+  }
+}
+
+function isApiErrorPayload(value: unknown): value is ApiErrorPayload {
+  if (!value || typeof value !== "object") return false;
+  const payload = value as Partial<ApiErrorPayload>;
+  return (
+    typeof payload.category === "string" &&
+    typeof payload.code === "string" &&
+    typeof payload.message === "string" &&
+    typeof payload.retryable === "boolean" &&
+    typeof payload.scope === "string"
+  );
+}
+
+function parseErrorResponse(
+  rawText: string,
+  status: number,
+): { message: string; payload?: ApiErrorPayload } {
   if (rawText) {
     try {
-      const parsed = JSON.parse(rawText) as { detail?: string | { message?: string } };
-      if (typeof parsed?.detail === "string") return parsed.detail;
+      const parsed = JSON.parse(rawText) as { detail?: unknown };
+      if (isApiErrorPayload(parsed?.detail)) {
+        return { message: parsed.detail.message, payload: parsed.detail };
+      }
+      if (typeof parsed?.detail === "string") return { message: parsed.detail };
       if (parsed?.detail && typeof parsed.detail === "object") {
-        return parsed.detail.message || rawText;
+        const message = (parsed.detail as { message?: unknown }).message;
+        return { message: typeof message === "string" ? message : rawText };
       }
     } catch {
       if (/^\s*<(!doctype\s+html|html)\b/i.test(rawText)) {
-        return `服务返回了无效响应（${status}）`;
+        return { message: `服务返回了无效响应（${status}）` };
       }
     }
   }
-  if (status === 413) return "上传内容超过服务允许的大小，请压缩或拆分文件后重试";
-  if (!rawText) return `请求失败：${status}`;
-  return rawText;
+  if (status === 413) return { message: "上传内容超过服务允许的大小，请压缩或拆分文件后重试" };
+  if (!rawText) return { message: `请求失败：${status}` };
+  return { message: rawText };
 }
 
 export async function apiErrorFromResponse(response: Response): Promise<ApiError> {
-  return new ApiError(
-    parseErrorMessage(await response.text(), response.status),
-    response.status,
-  );
+  const parsed = parseErrorResponse(await response.text(), response.status);
+  return new ApiError(parsed.message, response.status, parsed.payload);
 }
 
 export async function fetchApi(path: string, init?: ApiRequestInit): Promise<Response> {
@@ -53,7 +111,7 @@ export async function fetchApi(path: string, init?: ApiRequestInit): Promise<Res
     const token = await accessTokenOrRedirect();
     if (token) headers.set("Authorization", `Bearer ${token}`);
   }
-  return fetch(`${API_BASE}${path}`, {
+  return requestBackend(`${API_BASE}${path}`, {
     ...init,
     headers,
   });
@@ -68,7 +126,7 @@ export async function fetchRawUpload(path: string, init?: ApiRequestInit): Promi
     if (token) headers.set("Authorization", `Bearer ${token}`);
   }
   const base = directBackendBase() ?? API_BASE;
-  return fetch(`${base}${path}`, {
+  return requestBackend(`${base}${path}`, {
     ...init,
     headers,
   });

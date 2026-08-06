@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { Drawer } from "@mantine/core";
-import { Check, ChevronRight, Eye, Search } from "lucide-react";
+import { Check, Eye, Search } from "lucide-react";
 import { TextInput } from "@/components/ui/primitives";
 import {
   findPolicyModel,
@@ -22,13 +22,11 @@ export type PolicyStageDefinition = {
 export function PolicyStageCard({
   channels,
   definition,
-  isLast,
   onClick,
   selection,
 }: {
   channels: ProviderChannel[];
   definition: PolicyStageDefinition;
-  isLast: boolean;
   onClick: () => void;
   selection: StageSelection;
 }) {
@@ -56,7 +54,7 @@ export function PolicyStageCard({
         </span>
 
         <span className={styles.stageSelection}>
-          {selected ? <ProviderMark provider={selected.channel.provider} icon={selected.channel.icon} size={42} /> : <ProviderMark provider="openai-compatible" size={42} />}
+          {selected ? <ProviderMark provider={selected.channel.provider} icon={selected.channel.icon} size={42} /> : <span className={styles.stageSelectionPlaceholder} aria-hidden="true"><Icon size={20} /></span>}
           <span style={{ minWidth: 0 }}>
             <span className={styles.stageChannel}>{selected ? selected.channel.display_name : "等待配置"}</span>
             <span className={styles.stageModel}>{selected ? selected.model.id : "选择阶段模型"}</span>
@@ -70,7 +68,6 @@ export function PolicyStageCard({
           <span>{selected ? "更换模型" : "选择模型"}</span>
         </span>
       </button>
-      {!isLast && <ChevronRight className={styles.stageConnector} size={18} aria-hidden="true" />}
     </div>
   );
 }

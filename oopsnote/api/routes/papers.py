@@ -7,6 +7,7 @@ from urllib.parse import quote
 
 from fastapi import APIRouter, HTTPException, Query, Response
 
+from oopsnote.api.errors import ApiErrorCategory, api_error
 from oopsnote.api.schemas import PaperCompileRequest, PaperDraftCompileRequest
 from oopsnote.core import (
     PaperDraft,
@@ -80,17 +81,31 @@ def _compile_error_response(error: PaperCompileError) -> HTTPException:
         status = 504
     else:
         status = 422
-    return HTTPException(
-        status_code=status,
-        detail={"code": error.code.value, "message": str(error), "log": error.log},
+    request_failure = error.code in {
+        PaperCompileFailure.INVALID_CONTENT,
+        PaperCompileFailure.MISSING_ASSET,
+        PaperCompileFailure.UNSUPPORTED_ASSET,
+    }
+    return api_error(
+        status,
+        code=error.code.value.replace("-", "_"),
+        message=str(error),
+        category=(ApiErrorCategory.REQUEST if request_failure else ApiErrorCategory.INTERNAL),
+        retryable=error.code == PaperCompileFailure.ENGINE_TIMEOUT,
+        scope="paper_compile",
+        details={"log": error.log} if error.log else None,
     )
 
 
 def _document_error_response(error: PaperDocumentError) -> HTTPException:
     status = 409 if error.code in {"missing-task", "missing-problem"} else 422
-    return HTTPException(
-        status_code=status,
-        detail={"code": error.code, "message": str(error), "item_id": error.item_id},
+    return api_error(
+        status,
+        code=error.code.replace("-", "_"),
+        message=str(error),
+        category=ApiErrorCategory.REQUEST,
+        scope="paper_compile",
+        details={"item_id": error.item_id} if error.item_id else None,
     )
 
 

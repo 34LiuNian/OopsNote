@@ -3,14 +3,20 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import hashlib
 import json
 import logging
+import mimetypes
 import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
 
+from PIL import Image
+from pydantic import BaseModel, Field, model_validator
+
+from oopsnote.ai.diagram_renderer import TikzRenderClient, TikzRenderError
 from oopsnote.ai.langchain_tools import ContractBoundToolDispatcher, RestrictedMcpToolClient, langchain_tool_schemas
 from oopsnote.ai.managed import ManagedAiRunner
 from oopsnote.ai.providers import (
@@ -22,10 +28,50 @@ from oopsnote.ai.providers import (
 )
 from oopsnote.ai.run_control import AsyncioTaskRunControl
 from oopsnote.ai.skills import load_skill_pack, skill_pack_version
-from oopsnote.core import AppSettingsStore, RunStatus, StateConflict, TaskStage, TaskStatus
+from oopsnote.core import (
+    AppSettingsStore,
+    AssetStore,
+    DiagramCandidate,
+    DiagramItem,
+    DiagramRunMode,
+    DiagramRunStep,
+    DiagramSourceRegion,
+    DiagramStatus,
+    RunPurpose,
+    RunStatus,
+    RunValidationError,
+    StateConflict,
+    TaskStage,
+    TaskStatus,
+)
 
 
 logger = logging.getLogger(__name__)
+
+
+class DiagramModelContractError(ValueError):
+    code = "model_output_invalid"
+
+
+class DiagramModelResult(BaseModel):
+    decision: str
+    tikz_source: str | None = None
+    source_region: DiagramSourceRegion | None = None
+    hard_errors: list[str] = Field(default_factory=list)
+    soft_differences: list[str] = Field(default_factory=list)
+    reason: str | None = None
+
+    @model_validator(mode="after")
+    def validate_decision(self) -> "DiagramModelResult":
+        if self.decision not in {"accept", "revise", "keep_image"}:
+            raise ValueError("decision must be accept, revise, or keep_image")
+        if self.decision == "revise" and not (self.tikz_source or "").strip():
+            raise ValueError("revise requires tikz_source")
+        if self.decision == "accept" and self.hard_errors:
+            raise ValueError("accept cannot retain hard errors")
+        if self.decision == "keep_image" and self.source_region is None:
+            raise ValueError("keep_image requires source_region")
+        return self
 
 
 class LangChainRunner(ManagedAiRunner):
@@ -58,6 +104,8 @@ class LangChainRunner(ManagedAiRunner):
         settings_store: AppSettingsStore,
         provider_factory: Callable[[], ProviderClientFactory],
         tool_client_factory: Callable[[], RestrictedMcpToolClient],
+        asset_store: AssetStore | None = None,
+        tikz_renderer: TikzRenderClient | None = None,
         max_concurrent_tasks: int = 1,
         **kwargs: Any,
     ) -> None:
@@ -66,6 +114,8 @@ class LangChainRunner(ManagedAiRunner):
         self.settings_store = settings_store
         self.provider_factory = provider_factory
         self.tool_client_factory = tool_client_factory
+        self.asset_store = asset_store or AssetStore(self.task_store.base_dir / "assets")
+        self.tikz_renderer = tikz_renderer or TikzRenderClient(self.asset_store)
         self._skill_pack = load_skill_pack(self.project_root)
         # Message-role semantics are part of the executable prompt contract.
         # Version them with the skill source so evaluation cohorts cannot mix
@@ -96,7 +146,7 @@ class LangChainRunner(ManagedAiRunner):
             raise RuntimeError("selected LangChain model is unavailable") from error
         if not profile.enabled:
             raise RuntimeError("selected LangChain model is disabled")
-        if stage == "vision" and not profile.capability.vision:
+        if stage in {"vision", "diagram"} and not profile.capability.vision:
             raise RuntimeError("selected LangChain Vision model is not enabled")
         if stage in {"agent", "review"} and not profile.capability.tool_calling:
             raise RuntimeError(f"selected LangChain {stage} model has no Tool Calling capability")
@@ -112,20 +162,34 @@ class LangChainRunner(ManagedAiRunner):
         vision = self._profile_for_selection(policy.vision, "vision")
         agent = self._profile_for_selection(policy.agent, "agent")
         review = self._profile_for_selection(policy.review, "review")
+        diagram = self._profile_for_selection(policy.diagram, "diagram")
         snapshot: dict[str, Any] = {
             "policy_version": policy.version,
             "vision": vision.model_dump(mode="json"),
             "agent": agent.model_dump(mode="json"),
             "review": review.model_dump(mode="json"),
+            "diagram": diagram.model_dump(mode="json"),
         }
-        profile = agent
         return {
-            "provider": profile.provider,
-            "model": profile.model,
+            "provider": agent.provider,
+            "model": agent.model,
             "prompt_version": self.prompt_version,
             "provider_profile_snapshot": snapshot,
         }
 
+    def _diagram_run_metadata(self, task_id: str) -> dict[str, Any]:
+        del task_id
+        policy = self._selected_policy()
+        profile = self._profile_for_selection(policy.diagram, "diagram")
+        return {
+            "provider": profile.provider,
+            "model": profile.model,
+            "prompt_version": "diagram-reconstruction-v1",
+            "provider_profile_snapshot": {
+                "policy_version": policy.version,
+                "diagram": profile.model_dump(mode="json"),
+            },
+        }
     def _retry_run_metadata(self, previous: Any) -> dict[str, Any]:
         profile = self._profile_for_run(previous, "agent")
         return {
@@ -274,26 +338,43 @@ class LangChainRunner(ManagedAiRunner):
         raise RuntimeError("verifier cannot derive a legal next pipeline transition")
 
     def run(self, task_id: str, run_id: str) -> None:
+        managed_run = self.run_store.get(run_id)
+        is_diagram = managed_run.purpose == RunPurpose.DIAGRAM
         loop = asyncio.new_event_loop()
         task: asyncio.Task[Any] | None = None
         control: AsyncioTaskRunControl | None = None
+        control_key = f"diagram:{run_id}" if is_diagram else task_id
         try:
             asyncio.set_event_loop(loop)
-            task = loop.create_task(self._run_async(task_id, run_id))
+            coroutine = (
+                self._run_diagram_quantum_async(task_id, run_id)
+                if is_diagram
+                else self._run_async(task_id, run_id)
+            )
+            task = loop.create_task(coroutine)
             control = AsyncioTaskRunControl(task, loop)
-            self._register_control(task_id, control)
+            self._register_control(control_key, control)
             loop.run_until_complete(task)
         except asyncio.CancelledError:
             # cancel() owns the terminal transition; do not overwrite a finalization.
             return
         except Exception as error:
-            self._fail_start(task_id, run_id, str(error), self._error_code(error))
+            if is_diagram:
+                self._fail_diagram(task_id, run_id, str(error), self._error_code(error))
+            else:
+                self._fail_start(task_id, run_id, str(error), self._error_code(error))
         finally:
             if control is not None:
-                self._clear_control(task_id, control)
+                self._clear_control(control_key, control)
             asyncio.set_event_loop(None)
             loop.close()
-        self.retry_if_eligible(task_id, run_id)
+        if is_diagram:
+            self.retry_diagram_if_eligible(task_id, run_id)
+        else:
+            self.retry_if_eligible(task_id, run_id)
+            completed = self.run_store.get(run_id)
+            if completed.status == RunStatus.COMPLETED:
+                self._ensure_auto_diagram(task_id)
         try:
             factory = self.provider_factory()
             collect_unreferenced_channel_secrets(
@@ -306,13 +387,459 @@ class LangChainRunner(ManagedAiRunner):
             # separate from run evidence and cannot rewrite its terminal state.
             logger.exception("LangChain credential reference collection failed")
 
+    def _ensure_auto_diagram(self, task_id: str) -> None:
+        """Create the current single slot once; the persisted contract remains multi-slot."""
+        with self._admission_lock:
+            task = self.task_store.get(task_id)
+            if (
+                task.problem is None
+                or not task.problem.has_diagram
+                or not task.asset_path
+                or task.diagram_items
+            ):
+                return
+            item = DiagramItem(source_asset_path=task.asset_path)
+            self.task_store.add_diagram_item(task_id, item)
+        try:
+            self.submit_diagram(task_id, item.id)
+        except Exception as error:
+            self.task_store.update_diagram_item(
+                task_id,
+                item.id,
+                status=DiagramStatus.NEEDS_REVIEW,
+                needs_review=True,
+                last_error=str(error),
+                last_error_code="diagram_admission_failed",
+            )
+
+    def _fail_diagram(self, task_id: str, run_id: str, message: str, error_code: str) -> None:
+        run = self.run_store.get(run_id)
+        if run.diagram_item_id:
+            try:
+                self.task_store.update_diagram_item(
+                    task_id,
+                    run.diagram_item_id,
+                    expected_active_run_id=run_id,
+                    status=DiagramStatus.NEEDS_REVIEW,
+                    active_run_id=None,
+                    needs_review=True,
+                    last_error=message,
+                    last_error_code=error_code,
+                )
+            except (KeyError, StateConflict):
+                pass
+        self.run_store.finish(
+            run_id,
+            RunStatus.FAILED,
+            error_code=error_code,
+            error_message=message,
+        )
+        self.run_store.update(
+            run_id,
+            retryable=self.is_retryable_error(error_code, message),
+        )
+
+    async def _run_diagram_quantum_async(self, task_id: str, run_id: str) -> None:
+        run = self.run_store.get(run_id)
+        if not run.diagram_item_id or not run.diagram_step:
+            raise RuntimeError("Diagram run is missing its persisted checkpoint")
+        task = self.task_store.get(task_id)
+        item = next(
+            (item for item in task.diagram_items if item.id == run.diagram_item_id),
+            None,
+        )
+        if item is None or item.active_run_id != run_id:
+            raise StateConflict("Diagram run no longer owns its item")
+        self.run_store.start(run_id, None, f"runs/{run_id}.events.jsonl")
+        if run.diagram_step == DiagramRunStep.GENERATE:
+            self.task_store.update_diagram_item(
+                task_id,
+                item.id,
+                expected_active_run_id=run_id,
+                status=DiagramStatus.GENERATING,
+            )
+            await self._generate_diagram_candidate(task_id, run, item)
+        elif run.diagram_step == DiagramRunStep.RENDER:
+            self._render_diagram_candidate(task_id, run, item)
+        elif run.diagram_step == DiagramRunStep.REVIEW:
+            await self._review_diagram_candidate(task_id, run, item)
+        else:
+            raise RuntimeError(f"Unsupported diagram checkpoint {run.diagram_step}")
+
+    @staticmethod
+    def _diagram_rules(*, final_review: bool) -> str:
+        decisions = "accept or keep_image" if final_review else "accept, revise, or keep_image"
+        return (
+            "Reconstruct only the printed problem diagram as safe body-only TikZ. Never include "
+            "handwriting, grading marks, question prose, documentclass, usepackage, or document wrappers. "
+            f"Return one JSON object. decision must be {decisions}. "
+            "Hard errors are: wrong/missing/extra labels; label-object mismatch; wrong topology or "
+            "connectivity; wrong arrows, directions, magnetic dot/cross symbols; wrong incidence, order, "
+            "intersection, tangency, parallel/perpendicular, or inside/outside relations; wrong axes, ticks, "
+            "thresholds, extrema, intersections, or semantic line styles; wrong apparatus state, liquid level, "
+            "gas path, reagent, or connection; wrong 3D occlusion; unreadable overlap or clipping; contamination "
+            "by handwriting/question text; missing structures; unsafe or non-body-only source. "
+            "Accept all soft differences: small size/aspect/font/line-width/spacing changes, curve control-point "
+            "changes that preserve relations, and non-semantic shading simplification. Choose keep_image for "
+            "photos, essential complex shading, or diagrams unsuitable for reliable TikZ, and then provide a "
+            "normalized source_region {x,y,width,height}. hard_errors and soft_differences must always be "
+            "JSON arrays of strings. source_region must be null for accept/revise. For keep_image only, its "
+            "four values must be normalized fractions from 0 to 1, never pixels, with x+width<=1 and "
+            "y+height<=1. JSON keys: decision, tikz_source, source_region, hard_errors, soft_differences, reason."
+        )
+
+    def _image_content(self, asset_path: str) -> dict[str, Any]:
+        path = self.asset_store.resolve(asset_path)
+        mime = mimetypes.guess_type(path.name)[0] or "image/png"
+        encoded = base64.b64encode(path.read_bytes()).decode("ascii")
+        return {"type": "image_url", "image_url": {"url": f"data:{mime};base64,{encoded}"}}
+
+    @staticmethod
+    def _parse_diagram_result(
+        response: Any,
+        *,
+        source_dimensions: tuple[int, int] | None = None,
+    ) -> DiagramModelResult:
+        content = getattr(response, "content", response)
+        if isinstance(content, list):
+            content = "".join(
+                str(item.get("text", "")) if isinstance(item, dict) else str(item)
+                for item in content
+            )
+        raw = str(content).strip()
+        if raw.startswith("```"):
+            raw = raw.split("\n", 1)[1] if "\n" in raw else raw[3:]
+            raw = raw.rsplit("```", 1)[0].strip()
+        payload = json.loads(raw)
+        if not isinstance(payload, dict):
+            raise ValueError("diagram model output must be one JSON object")
+        for field in ("hard_errors", "soft_differences"):
+            value = payload.get(field)
+            if isinstance(value, str):
+                payload[field] = [value] if value.strip() else []
+        decision = str(payload.get("decision", "")).strip()
+        if decision != "keep_image":
+            # Regions have no meaning for a TikZ candidate and must not make an
+            # otherwise valid candidate fail because a provider filled every key.
+            payload["source_region"] = None
+        else:
+            region = payload.get("source_region")
+            if isinstance(region, dict) and any(
+                isinstance(region.get(field), (int, float)) and region[field] > 1
+                for field in ("x", "y", "width", "height")
+            ):
+                if not source_dimensions:
+                    raise ValueError("pixel source_region requires source image dimensions")
+                source_width, source_height = source_dimensions
+                payload["source_region"] = {
+                    "x": float(region.get("x", 0)) / source_width,
+                    "y": float(region.get("y", 0)) / source_height,
+                    "width": float(region.get("width", 0)) / source_width,
+                    "height": float(region.get("height", 0)) / source_height,
+                }
+        return DiagramModelResult.model_validate(payload)
+
+    def _source_image_dimensions(self, asset_path: str) -> tuple[int, int]:
+        path = self.asset_store.resolve(asset_path)
+        with Image.open(path) as image:
+            return image.size
+
+    async def _invoke_diagram_model(
+        self,
+        run: Any,
+        item: DiagramItem,
+        *,
+        candidate: DiagramCandidate | None,
+        final_review: bool,
+    ) -> DiagramModelResult:
+        try:
+            from langchain_core.messages import HumanMessage, SystemMessage
+        except ImportError as error:
+            raise RuntimeError("LangChain core is not installed") from error
+        profile = self._profile_for_run(run, "diagram")
+        model = self.provider_factory().create_vision_json_model(profile)
+        content: list[dict[str, Any]] = [{
+            "type": "text",
+            "text": (
+                "Original full question image follows. Locate the printed diagram yourself. "
+                + (f"User instruction: {run.diagram_instruction}\n" if run.diagram_instruction else "")
+                + (
+                    "Compare it with the rendered candidate and decide whether a hard semantic error remains. "
+                    f"Current body-only TikZ:\n{candidate.tikz_source}"
+                    if candidate else
+                    "Create the first candidate, or keep the original diagram region if TikZ is unsuitable. "
+                    "For an initial candidate use decision=revise."
+                )
+            ),
+        }]
+        if not item.source_asset_path:
+            raise RuntimeError("Diagram item has no source asset")
+        content.append(self._image_content(item.source_asset_path))
+        if candidate and candidate.png_path:
+            content.append(self._image_content(candidate.png_path))
+        response = await model.ainvoke([
+            SystemMessage(content=self._diagram_rules(final_review=final_review)),
+            HumanMessage(content=content),
+        ])
+        self._record_model_usage(run.id, response)
+        try:
+            return self._parse_diagram_result(
+                response,
+                source_dimensions=self._source_image_dimensions(item.source_asset_path),
+            )
+        except ValueError as error:
+            raw = getattr(response, "content", response)
+            self.run_store.record_validation_error(
+                run.id,
+                RunValidationError(
+                    stage=(
+                        TaskStage.DIAGRAM_REVIEWING
+                        if candidate else TaskStage.DIAGRAM_GENERATING
+                    ),
+                    raw_output=str(raw),
+                    message=str(error),
+                ),
+            )
+            raise DiagramModelContractError(str(error)) from error
+
+    def _record_model_usage(self, run_id: str, response: Any) -> None:
+        usage = getattr(response, "usage_metadata", None) or {}
+        current = self.run_store.get(run_id)
+        updates: dict[str, Any] = {}
+        for field in ("input_tokens", "output_tokens"):
+            delta = usage.get(field)
+            if isinstance(delta, int):
+                updates[field] = int(getattr(current, field) or 0) + delta
+        details = usage.get("input_token_details") or {}
+        cache = details.get("cache_read") if isinstance(details, dict) else None
+        if isinstance(cache, int):
+            updates["cache_tokens"] = int(current.cache_tokens or 0) + cache
+        if updates:
+            self.run_store.update(run_id, **updates)
+
+    def _finish_diagram_image(
+        self,
+        task_id: str,
+        run: Any,
+        item: DiagramItem,
+        result: DiagramModelResult,
+    ) -> None:
+        assert result.source_region is not None
+        if not item.source_asset_path:
+            raise RuntimeError("Diagram item has no source asset")
+        image_path, normalized = self.asset_store.save_image_crop(
+            item.source_asset_path,
+            result.source_region.model_dump(),
+        )
+        self.task_store.update_diagram_item(
+            task_id,
+            item.id,
+            expected_active_run_id=run.id,
+            source_region=normalized,
+            fallback_image_path=image_path,
+            status=DiagramStatus.READY_IMAGE,
+            active_run_id=None,
+            needs_review=False,
+            last_error=None,
+            last_error_code=None,
+        )
+        self.run_store.finish(run.id, RunStatus.COMPLETED)
+
+    async def _generate_diagram_candidate(self, task_id: str, run: Any, item: DiagramItem) -> None:
+        parent: DiagramCandidate | None = None
+        if run.diagram_candidate_id:
+            parent = next(
+                (candidate for candidate in item.candidates if candidate.id == run.diagram_candidate_id),
+                None,
+            )
+        elif run.diagram_mode == DiagramRunMode.CONTINUE and item.selected_candidate_id:
+            parent = next(
+                (candidate for candidate in item.candidates if candidate.id == item.selected_candidate_id),
+                None,
+            )
+        result = await self._invoke_diagram_model(
+            run,
+            item,
+            candidate=parent,
+            final_review=False,
+        )
+        if result.decision == "keep_image":
+            self._finish_diagram_image(task_id, run, item, result)
+            return
+        if result.decision != "revise":
+            raise ValueError("A generation step must return revise or keep_image")
+        source = (result.tikz_source or "").strip()
+        if "\\begin{document}" in source or "\\documentclass" in source or "\\usepackage" in source:
+            raise ValueError("Generated TikZ must be body-only")
+        candidate = DiagramCandidate(
+            ordinal=max((candidate.ordinal for candidate in item.candidates), default=0) + 1,
+            parent_candidate_id=(
+                parent.id
+                if parent and (run.diagram_candidate_id or run.diagram_mode == DiagramRunMode.CONTINUE)
+                else None
+            ),
+            tikz_source=source,
+            decision="revise",
+            hard_errors=result.hard_errors,
+            soft_differences=result.soft_differences,
+            review_reason=result.reason,
+            provider=run.provider,
+            model=run.model,
+            run_id=run.id,
+        )
+        self.task_store.append_diagram_candidate(
+            task_id,
+            item.id,
+            candidate,
+            expected_active_run_id=run.id,
+        )
+        self.task_store.update_diagram_item(
+            task_id,
+            item.id,
+            expected_active_run_id=run.id,
+            status=DiagramStatus.RENDERING,
+        )
+        self.run_store.update(
+            run.id,
+            diagram_step=DiagramRunStep.RENDER,
+            diagram_candidate_id=candidate.id,
+        )
+        self.run_store.observe_stage(run.id, TaskStage.DIAGRAM_RENDERING, "Rendering TikZ candidate")
+        self.run_store.yield_run(run.id)
+
+    def _render_diagram_candidate(self, task_id: str, run: Any, item: DiagramItem) -> None:
+        candidate = next(
+            (candidate for candidate in item.candidates if candidate.id == run.diagram_candidate_id),
+            None,
+        )
+        if candidate is None:
+            raise RuntimeError("Diagram render checkpoint has no candidate")
+        bundle = self.tikz_renderer.render(candidate.tikz_source)
+        self.task_store.update_diagram_candidate(
+            task_id,
+            item.id,
+            candidate.id,
+            expected_active_run_id=run.id,
+            svg_path=bundle.svg_path,
+            pdf_path=bundle.pdf_path,
+            png_path=bundle.png_path,
+            renderer_profile_version=bundle.renderer_profile_version,
+        )
+        self.task_store.update_diagram_item(
+            task_id,
+            item.id,
+            expected_active_run_id=run.id,
+            status=DiagramStatus.REVIEWING,
+        )
+        self.run_store.update(run.id, diagram_step=DiagramRunStep.REVIEW)
+        self.run_store.observe_stage(run.id, TaskStage.DIAGRAM_REVIEWING, "Comparing rendered candidate")
+        self.run_store.yield_run(run.id)
+
+    async def _review_diagram_candidate(self, task_id: str, run: Any, item: DiagramItem) -> None:
+        candidate = next(
+            (candidate for candidate in item.candidates if candidate.id == run.diagram_candidate_id),
+            None,
+        )
+        if candidate is None or not candidate.png_path:
+            raise RuntimeError("Diagram review checkpoint has no rendered candidate")
+        run_candidates = [candidate for candidate in item.candidates if candidate.run_id == run.id]
+        at_limit = len(run_candidates) >= int(run.diagram_max_candidates or 4)
+        result = await self._invoke_diagram_model(
+            run,
+            item,
+            candidate=candidate,
+            final_review=at_limit,
+        )
+        self.task_store.update_diagram_candidate(
+            task_id,
+            item.id,
+            candidate.id,
+            expected_active_run_id=run.id,
+            decision=result.decision,
+            hard_errors=result.hard_errors,
+            soft_differences=result.soft_differences,
+            review_reason=result.reason,
+        )
+        if result.decision == "accept":
+            self.task_store.update_diagram_item(
+                task_id,
+                item.id,
+                expected_active_run_id=run.id,
+                selected_candidate_id=candidate.id,
+                status=DiagramStatus.READY_TIKZ,
+                active_run_id=None,
+                needs_review=False,
+                last_error=None,
+                last_error_code=None,
+            )
+            self.run_store.finish(run.id, RunStatus.COMPLETED)
+            return
+        if result.decision == "keep_image":
+            self._finish_diagram_image(task_id, run, item, result)
+            return
+        if at_limit:
+            self.task_store.update_diagram_item(
+                task_id,
+                item.id,
+                expected_active_run_id=run.id,
+                status=DiagramStatus.NEEDS_REVIEW,
+                active_run_id=None,
+                needs_review=True,
+                last_error=result.reason or "Candidate limit reached with hard errors",
+                last_error_code="diagram_candidate_limit",
+            )
+            self.run_store.finish(run.id, RunStatus.COMPLETED)
+            return
+        source = (result.tikz_source or "").strip()
+        if not source:
+            raise ValueError("revise requires a replacement TikZ source")
+        if "\\begin{document}" in source or "\\documentclass" in source or "\\usepackage" in source:
+            raise ValueError("Generated TikZ must be body-only")
+        revision = DiagramCandidate(
+            ordinal=max((value.ordinal for value in item.candidates), default=0) + 1,
+            parent_candidate_id=candidate.id,
+            tikz_source=source,
+            decision="revise",
+            hard_errors=result.hard_errors,
+            soft_differences=result.soft_differences,
+            review_reason=result.reason,
+            provider=run.provider,
+            model=run.model,
+            run_id=run.id,
+        )
+        self.task_store.append_diagram_candidate(
+            task_id,
+            item.id,
+            revision,
+            expected_active_run_id=run.id,
+        )
+        self.task_store.update_diagram_item(
+            task_id,
+            item.id,
+            expected_active_run_id=run.id,
+            status=DiagramStatus.RENDERING,
+        )
+        self.run_store.update(
+            run.id,
+            diagram_step=DiagramRunStep.RENDER,
+            diagram_candidate_id=revision.id,
+        )
+        self.run_store.observe_stage(run.id, TaskStage.DIAGRAM_RENDERING, "Rendering revised TikZ candidate")
+        self.run_store.yield_run(run.id)
+
     @staticmethod
     def _error_code(error: Exception) -> str:
+        explicit_code = getattr(error, "code", None)
+        if isinstance(explicit_code, str) and explicit_code:
+            return explicit_code
         status = getattr(error, "status_code", None)
         if status is None:
             status = getattr(getattr(error, "response", None), "status_code", None)
+        message = str(error).lower()
         if status in {401, 403}:
             return "provider_authorization"
+        if (status == 404 and "model" in message) or ("not_found" in message and "model" in message):
+            return "provider_model_unavailable"
         if status == 429:
             return "rate_limit"
         if status in {500, 502, 503, 504}:

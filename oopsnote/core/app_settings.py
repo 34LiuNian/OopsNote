@@ -50,8 +50,11 @@ class AppSettingsStore:
                 raise ValueError("provider channel version cannot move backwards")
             if existing.id == channel.id and existing.version == channel.version and existing != channel:
                 raise ValueError("provider channel changes require a new version")
-        channels = [item for item in channels if item.id != channel.id]
-        channels.append(channel)
+        existing_index = next((index for index, item in enumerate(channels) if item.id == channel.id), None)
+        if existing_index is None:
+            channels.append(channel)
+        else:
+            channels[existing_index] = channel
         current["provider_channels"] = [item.model_dump(mode="json") for item in channels]
 
     @staticmethod
@@ -77,6 +80,7 @@ class AppSettingsStore:
             ("vision", policy.vision),
             ("agent", policy.agent),
             ("review", policy.review),
+            ("diagram", policy.diagram),
         ):
             channel = channels.get(selection.channel_id)
             if channel is None or not channel.enabled or not channel.credential_ref:
@@ -87,9 +91,9 @@ class AppSettingsStore:
                 return False
             if not model.enabled:
                 return False
-            if stage == "vision" and not model.capability.vision:
+            if stage in {"vision", "diagram"} and not model.capability.vision:
                 return False
-            if stage != "vision" and not model.capability.tool_calling:
+            if stage in {"agent", "review"} and not model.capability.tool_calling:
                 return False
         return True
 
@@ -106,8 +110,6 @@ class AppSettingsStore:
         with self._lock:
             current = self.get()
             self._upsert_channel(current, channel)
-            if "langchain_model_policy" in current and not self._policy_is_runnable(current):
-                current.pop("langchain_model_policy", None)
             self._write(current)
             return channel
 
@@ -119,19 +121,65 @@ class AppSettingsStore:
             if len(remaining) == len(channels):
                 raise KeyError(channel_id)
             current["provider_channels"] = remaining
-            policy = current.get("langchain_model_policy")
-            if isinstance(policy, dict) and any(
-                isinstance(policy.get(stage), dict) and policy[stage].get("channel_id") == channel_id
-                for stage in ("vision", "agent", "review")
-            ):
-                current.pop("langchain_model_policy", None)
             self._write(current)
 
     def langchain_model_policy(self) -> Any | None:
         from oopsnote.ai.providers import LangChainModelPolicy
-
         value = self.get().get("langchain_model_policy")
-        return LangChainModelPolicy.model_validate(value) if isinstance(value, dict) else None
+        if not isinstance(value, dict):
+            return None
+        try:
+            return LangChainModelPolicy.model_validate(value)
+        except ValueError:
+            # An incomplete legacy policy is not runnable. Startup migration
+            # gets one bounded chance to persist its independent diagram slot;
+            # runtime reads never infer one from Vision.
+            return None
+
+    def migrate_legacy_diagram_policy(self) -> bool:
+        """Persist the old Vision selection into the new independent slot once."""
+        from datetime import datetime, timezone
+
+        from oopsnote.ai.providers import LangChainModelPolicy, StageModelSelection
+
+        with self._lock:
+            current = self.get()
+            raw = current.get("langchain_model_policy")
+            if not isinstance(raw, dict) or "diagram" in raw:
+                return False
+            try:
+                diagram = StageModelSelection.model_validate(raw["vision"])
+                policy = LangChainModelPolicy.model_validate({**raw, "diagram": diagram.model_dump(mode="json")})
+            except ValueError:
+                return False
+            migrated = policy.model_copy(
+                update={
+                    "version": policy.version + 1,
+                    "updated_at": datetime.now(timezone.utc),
+                }
+            )
+            current["langchain_model_policy"] = migrated.model_dump(mode="json")
+            if not self._policy_is_runnable(current):
+                return False
+            self._write(current)
+            return True
+
+    def reorder_provider_channels(self, channel_ids: list[str]) -> None:
+        """Persist one complete, validated channel order atomically."""
+        from oopsnote.ai.providers import ProviderChannel
+
+        with self._lock:
+            current = self.get()
+            raw_channels = current.get("provider_channels", [])
+            if not isinstance(raw_channels, list):
+                raise StorageCorruptionError(self.path, ValueError("provider_channels must be a list"))
+            channels = [ProviderChannel.model_validate(item) for item in raw_channels]
+            existing_ids = [channel.id for channel in channels]
+            if len(channel_ids) != len(existing_ids) or set(channel_ids) != set(existing_ids):
+                raise ValueError("provider channel order must contain every channel exactly once")
+            by_id = {channel.id: channel for channel in channels}
+            current["provider_channels"] = [by_id[channel_id].model_dump(mode="json") for channel_id in channel_ids]
+            self._write(current)
 
     def set_langchain_model_policy(self, policy: Any) -> Any:
         with self._lock:
