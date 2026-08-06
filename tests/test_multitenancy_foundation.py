@@ -9,7 +9,13 @@ import pytest
 
 from oopsnote.ai.work_items import ManagedWorkItem
 from oopsnote.api.context import RequestContext, activate_request_context, reset_request_context
-from oopsnote.control import ControlDatabase, ControlDatabaseError, WorkspaceRegistry
+from oopsnote.control import (
+    ControlDatabase,
+    ControlDatabaseError,
+    QuotaError,
+    QuotaService,
+    WorkspaceRegistry,
+)
 from oopsnote.core import (
     Principal,
     RunPurpose,
@@ -204,3 +210,50 @@ def test_request_context_exposes_only_the_registered_workspace_stores(tmp_path):
         assert second_api.TASK_STORE.base_dir != first_context.root / "tasks"
     finally:
         reset_request_context(second_token)
+
+
+def test_quota_admission_is_atomic_idempotent_and_settles_terminal_runs(tmp_path):
+    registry = _registry(tmp_path)
+    principal = Principal("auth-quota", UserRole.USER)
+    workspace = registry.get_or_create(principal).workspace_id
+    service = QuotaService(registry.database)
+    admitted = service.admit_run(
+        workspace,
+        task_id="task-1",
+        purpose=RunPurpose.PROBLEM,
+        idempotency_key="task-1:problem",
+        run_id="run-1",
+    )
+    repeated = service.admit_run(
+        workspace,
+        task_id="task-1",
+        purpose=RunPurpose.PROBLEM,
+        idempotency_key="task-1:problem",
+        run_id="run-different",
+    )
+
+    assert admitted.created is True
+    assert repeated.created is False
+    assert repeated.run_id == admitted.run_id
+    with pytest.raises(QuotaError, match="Concurrent"):
+        service.admit_run(
+            workspace,
+            task_id="task-2",
+            purpose=RunPurpose.PROBLEM,
+            idempotency_key="task-2:problem",
+        )
+
+    assert service.settle_run(workspace, admitted.run_id, status="failed") == "failed"
+    next_run = service.admit_run(
+        workspace,
+        task_id="task-2",
+        purpose=RunPurpose.PROBLEM,
+        idempotency_key="task-2:problem",
+    )
+    assert next_run.created is True
+    assert service.settle_run(workspace, next_run.run_id, status="completed") == "completed"
+    with registry.database.connection() as connection:
+        states = connection.execute(
+            "SELECT state FROM usage_reservations ORDER BY id"
+        ).fetchall()
+    assert {row[0] for row in states} == {"released", "consumed"}
