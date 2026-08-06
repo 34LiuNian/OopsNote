@@ -5,3 +5,5 @@ coverage
 playwright-report
 test-results
 npm-debug.log*
+.env*
+!.env.example
