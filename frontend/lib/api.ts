@@ -1,8 +1,9 @@
-// Use /api proxy to avoid CORS issues
-export const API_BASE = "/api";
-
 import { accessTokenOrRedirect } from "./auth";
+import { isBetterAuthMode } from "./auth-mode";
 import type { ApiErrorCategory } from "../types/api";
+
+// Better Auth requests must pass through the session-validating BFF.
+export const API_BASE = isBetterAuthMode() ? "/api/backend" : "/api";
 
 function directBackendBase(): string | null {
   const configured = process.env.NEXT_PUBLIC_BACKEND_URL;
@@ -125,7 +126,7 @@ export async function fetchRawUpload(path: string, init?: ApiRequestInit): Promi
     const token = await accessTokenOrRedirect();
     if (token) headers.set("Authorization", `Bearer ${token}`);
   }
-  const base = directBackendBase() ?? API_BASE;
+  const base = isBetterAuthMode() ? API_BASE : directBackendBase() ?? API_BASE;
   return requestBackend(`${base}${path}`, {
     ...init,
     headers,

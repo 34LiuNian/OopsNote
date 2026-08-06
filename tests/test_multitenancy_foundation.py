@@ -130,6 +130,29 @@ def test_registry_concurrently_creates_only_one_mapping(tmp_path):
         ).fetchone()[0] == 1
 
 
+def test_registry_provisions_and_reports_member_quota_without_exposing_content(tmp_path):
+    registry = _registry(tmp_path)
+
+    workspace = registry.provision(
+        "auth-member",
+        daily_success_limit=7,
+        max_concurrent_runs=2,
+    )
+    summary = registry.quota_summary("auth-member")
+
+    assert summary == {
+        "workspace_id": str(workspace.workspace_id),
+        "daily_success_limit": 7,
+        "max_concurrent_runs": 2,
+        "active_runs": 0,
+        "used_units": 0,
+        "usage_day_utc": datetime.now(timezone.utc).date().isoformat(),
+    }
+    assert registry.quota_summary("auth-missing") is None
+    updated = registry.update_quota("auth-member", daily_success_limit=9)
+    assert updated == {"daily_success_limit": 9, "max_concurrent_runs": 2}
+
+
 def test_workspace_and_work_item_types_reject_ambiguous_identity(tmp_path):
     context = WorkspaceRegistry(
         ControlDatabase(tmp_path / "storage" / "control" / "app.sqlite"),

@@ -20,7 +20,7 @@ from oopsnote.api.auth import (
     InternalIdentityConfig,
     authenticate_internal_request,
 )
-from oopsnote.core import UserRole
+from oopsnote.core import Principal, UserRole
 from oopsnote.control import ControlDatabase, WorkspaceRegistry
 from oopsnote.core import WorkspaceStoreFactory
 
@@ -184,6 +184,58 @@ def test_better_auth_requests_use_the_authenticated_user_workspace(monkeypatch, 
 
     assert isolated.status_code == 200
     assert isolated.json() == {"items": []}
+
+
+def test_better_auth_admin_can_manage_quota_without_entering_member_workspace(monkeypatch, tmp_path):
+    registry = WorkspaceRegistry(
+        ControlDatabase(tmp_path / "control" / "app.sqlite"),
+        tmp_path / "storage",
+    )
+    monkeypatch.setattr(main, "WORKSPACE_REGISTRY", registry)
+    monkeypatch.setattr(main, "WORKSPACE_STORE_FACTORY", WorkspaceStoreFactory())
+    now = int(time.time())
+    environment = {
+        "OOPSNOTE_AUTH_MODE": "better-auth",
+        "OOPSNOTE_BFF_HMAC_SECRET": SECRET.decode("ascii"),
+    }
+    with patch.dict("os.environ", environment, clear=False):
+        client = TestClient(main.app)
+        _payload, encoded, signature = _signed_identity(
+            user_id="auth-admin",
+            role="admin",
+            issued_at=now,
+            method="POST",
+            path="/admin/members/provision",
+        )
+        provisioned = client.post(
+            "/admin/members/provision",
+            headers={"x-oopsnote-identity": encoded, "x-oopsnote-signature": signature},
+            json={"auth_user_id": "auth-member", "daily_success_limit": 6},
+        )
+
+        _payload, encoded, signature = _signed_identity(
+            user_id="auth-admin",
+            role="admin",
+            issued_at=now,
+            method="PATCH",
+            path="/admin/members/auth-member/quota",
+        )
+        updated = client.patch(
+            "/admin/members/auth-member/quota",
+            headers={"x-oopsnote-identity": encoded, "x-oopsnote-signature": signature},
+            json={"daily_success_limit": 8, "max_concurrent_runs": 2},
+        )
+
+    assert provisioned.status_code == 200
+    assert provisioned.json()["quota"]["daily_success_limit"] == 6
+    assert updated.status_code == 200
+    assert updated.json()["quota"] == {
+        "daily_success_limit": 8,
+        "max_concurrent_runs": 2,
+    }
+    assert registry.require(Principal("auth-member", UserRole.USER)).root != registry.require(
+        Principal("auth-admin", UserRole.ADMIN)
+    ).root
 
 
 def test_fastapi_health_does_not_require_the_bff_secret():

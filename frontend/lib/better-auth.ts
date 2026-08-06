@@ -32,6 +32,27 @@ authDb.pragma("foreign_keys = ON");
 authDb.pragma("busy_timeout = 5000");
 ensureBetterAuthSchema(authDb);
 
+export type BetterAuthIdentityStats = {
+  totalUsers: number;
+  adminUsers: number;
+};
+
+/** Server-only bootstrap/guard queries; Better Auth remains the identity source of truth. */
+export function betterAuthIdentityStats(): BetterAuthIdentityStats {
+  const row = authDb
+    .prepare(
+      `select
+         count(*) as totalUsers,
+         sum(case when role = 'admin' or role like '%admin%' then 1 else 0 end) as adminUsers
+       from "user"`,
+    )
+    .get() as { totalUsers: number; adminUsers: number | null };
+  return {
+    totalUsers: Number(row.totalUsers || 0),
+    adminUsers: Number(row.adminUsers || 0),
+  };
+}
+
 const baseURL = (
   process.env.BETTER_AUTH_URL ||
   process.env.NEXT_PUBLIC_BETTER_AUTH_URL ||

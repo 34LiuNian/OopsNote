@@ -2263,6 +2263,23 @@ html[data-oopsnote-color-scheme="dark"] .oops-login-right {
 .oops-auth-status button:hover { background: var(--bgColor-muted); }
 .oops-auth-status button:focus-visible { outline: 2px solid var(--fgColor-info); outline-offset: 2px; }
 
+.oops-login-page { display: grid; min-height: 100dvh; place-items: center; padding: 24px; color: var(--fgColor-default); background: var(--bgColor-muted); }
+.oops-login-panel { width: min(100%, 420px); padding: 32px; border: 1px solid var(--borderColor-default); border-radius: 10px; background: var(--bgColor-default); box-shadow: 0 18px 50px rgb(0 0 0 / 10%); }
+.oops-login-heading { margin-bottom: 24px; }
+.oops-login-heading__brand { display: flex; align-items: center; gap: 8px; margin-bottom: 28px; font-size: 20px; font-weight: 700; }
+.oops-login-heading__brand span { width: 22px; height: 22px; background: currentColor; -webkit-mask: url('/favicon.svg') center / contain no-repeat; mask: url('/favicon.svg') center / contain no-repeat; }
+.oops-login-heading h1 { margin: 0; font-size: 26px; line-height: 1.25; }
+.oops-login-heading p { margin: 8px 0 0; color: var(--fgColor-muted); font-size: 13px; line-height: 1.5; }
+.oops-login-panel form { display: grid; gap: 16px; }
+.oops-login-panel label { display: grid; gap: 6px; color: var(--fgColor-default); font-size: 13px; font-weight: 600; }
+.oops-login-input { display: flex; min-height: 40px; align-items: center; gap: 8px; padding: 0 11px; border: 1px solid var(--borderColor-default); border-radius: 6px; color: var(--fgColor-muted); background: var(--bgColor-default); }
+.oops-login-input:focus-within { border-color: var(--fgColor-accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--fgColor-accent) 18%, transparent); }
+.oops-login-input input { min-width: 0; flex: 1; border: 0; outline: 0; color: inherit; background: transparent; font-size: 14px; font-weight: 400; }
+.oops-login-panel button { display: inline-flex; min-height: 40px; align-items: center; justify-content: center; gap: 8px; border: 0; border-radius: 6px; color: #fff; background: var(--fgColor-accent); font-size: 14px; font-weight: 650; cursor: pointer; }
+.oops-login-panel button:disabled { cursor: wait; opacity: .65; }
+.oops-login-error { margin: 0; color: var(--fgColor-danger); font-size: 13px; line-height: 1.45; }
+.oops-login-spinner { animation: oops-auth-status-spin .9s linear infinite; }
+
 @keyframes oops-auth-status-spin {
   to { transform: rotate(360deg); }
 }

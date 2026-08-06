@@ -33,7 +33,7 @@ from oopsnote.api.auth import (
     internal_identity_config_from_env,
 )
 from oopsnote.api.errors import category_for_error_code, error_detail, scope_for_path
-from oopsnote.api.routes import ai_settings, batch, catalog, latex, papers, study, tasks
+from oopsnote.api.routes import admin, ai_settings, batch, catalog, latex, papers, study, tasks
 from oopsnote.api.context import (
     RequestContext,
     activate_request_context,
@@ -939,6 +939,7 @@ def health() -> dict[str, Any]:
 
 
 app.include_router(tasks.router)
+app.include_router(admin.router)
 app.include_router(batch.router)
 app.include_router(ai_settings.router)
 app.include_router(catalog.router)
