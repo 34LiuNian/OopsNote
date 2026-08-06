@@ -95,7 +95,7 @@ def _api():
     # its local stores/runners without rebuilding the FastAPI application.
     from oopsnote.api import main
 
-    return main
+    return main.request_api()
 
 
 @router.get("/tasks")

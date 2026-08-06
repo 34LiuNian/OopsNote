@@ -22,6 +22,8 @@
     "@rdkit/rdkit": "^2025.3.4-1.0.0",
     "@serwist/next": "^9.5.12",
     "@tanstack/react-query": "^5.90.21",
+    "better-auth": "1.6.26",
+    "better-sqlite3": "13.0.3",
     "buffer": "^6.0.3",
     "esbuild": "^0.28.1",
     "isomorphic-tikzjax": "^0.1.1",
@@ -48,6 +50,7 @@
   },
   "devDependencies": {
     "@playwright/test": "^1.61.1",
+    "@types/better-sqlite3": "7.6.13",
     "@types/node": "24.10.1",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",

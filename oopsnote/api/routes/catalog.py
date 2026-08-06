@@ -17,7 +17,7 @@ router = APIRouter()
 def _api():
     from oopsnote.api import main
 
-    return main
+    return main.request_api()
 
 
 def _tag_reference_count(dimension: TagDimension, value: str) -> int:

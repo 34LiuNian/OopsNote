@@ -15,7 +15,7 @@ router = APIRouter()
 def _api():
     from oopsnote.api import main
 
-    return main
+    return main.request_api()
 
 
 def _task_with_problem(task_id: str):

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import os
 import logging
+import sys
 from contextlib import asynccontextmanager
 from functools import lru_cache
 from pathlib import Path
@@ -16,17 +17,28 @@ from typing import Any, Optional
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
 
 from oopsnote.ai import HermesRunner, LangChainRunner, PiRpcBackend, PiRpcRunner
 from oopsnote.ai.langchain_tools import McpHttpToolClient
 from oopsnote.ai.providers import ProviderClientFactory, ProviderProfile
 from oopsnote.ai.secrets import SecretStore, secret_store_from_environment
-from oopsnote.api.auth import AuthenticationError, auth_config_from_env, authenticate_request
+from oopsnote.api.auth import (
+    AuthenticationError,
+    auth_config_from_env,
+    authenticate_internal_request,
+    authenticate_request,
+    internal_identity_config_from_env,
+)
 from oopsnote.api.errors import category_for_error_code, error_detail, scope_for_path
 from oopsnote.api.routes import ai_settings, batch, catalog, latex, papers, study, tasks
+from oopsnote.api.context import (
+    RequestContext,
+    activate_request_context,
+    current_request_context,
+    reset_request_context,
+)
 from oopsnote.api.schemas import TagInput, TagRenameInput, UploadRequest
 from oopsnote.catalog import KNOWLEDGE_TAGS_PATH, KNOWLEDGE_TREES_PATH
 from oopsnote.content import option_label
@@ -46,7 +58,9 @@ from oopsnote.core import (
     TaskRecord,
     TaskStatus,
     TaskStore,
+    WorkspaceStoreFactory,
 )
+from oopsnote.control import ControlDatabase, WorkspaceRegistry
 from oopsnote.mcp.http_runtime import SharedMcpHttpRuntime
 from oopsnote.mcp.ocr import (
     clear_ocr_run_model_resolver,
@@ -81,6 +95,40 @@ APP_SETTINGS_STORE = AppSettingsStore(STORAGE_DIR / "settings" / "app_settings.j
 RUN_STORE = RunStore(STORAGE_DIR / "runs")
 PAPER_DRAFT_STORE = PaperDraftStore(STORAGE_DIR / "papers")
 PROBLEM_MERGE_STORE = ProblemMergeStore(STORAGE_DIR / "settings" / "problem_merges.json")
+CONTROL_DATABASE = ControlDatabase(STORAGE_DIR / "control" / "app.sqlite")
+WORKSPACE_REGISTRY = WorkspaceRegistry(CONTROL_DATABASE, STORAGE_DIR)
+WORKSPACE_STORE_FACTORY = WorkspaceStoreFactory()
+
+
+def _active_stores():
+    context = current_request_context()
+    if context is None:
+        return None
+    return context.stores
+
+
+def request_api():
+    """Return a route facade whose user-owned stores follow the request context."""
+    context = current_request_context()
+    module = sys.modules[__name__]
+    if context is None:
+        return module
+    stores = context.stores
+
+    class ScopedApi:
+        TASK_STORE = stores.task_store
+        TAG_STORE = stores.tag_store
+        ASSET_STORE = stores.asset_store
+        BATCH_SESSION_STORE = stores.batch_session_store
+        BATCH_PROCESS_JOB_STORE = stores.batch_process_job_store
+        PAPER_DRAFT_STORE = stores.paper_draft_store
+        PROBLEM_MERGE_STORE = stores.problem_merge_store
+        RUN_STORE = stores.run_store
+
+        def __getattr__(self, name: str):
+            return getattr(module, name)
+
+    return ScopedApi()
 MCP_HTTP_RUNTIME = SharedMcpHttpRuntime()
 _SUPPORTED_AI_BACKENDS = frozenset({"hermes", "langchain", "pi"})
 _DEFAULT_AI_BACKEND = os.getenv("OOPSNOTE_AI_BACKEND", "langchain").strip().lower()
@@ -232,13 +280,17 @@ def _batch_session_view(record: BatchSessionRecord) -> dict[str, Any]:
 
 
 def _batch_source_available(record: BatchSessionRecord) -> bool:
-    return ASSET_STORE.is_available(record.asset_path, record.file_hash)
+    stores = _active_stores()
+    asset_store = stores.asset_store if stores else ASSET_STORE
+    return asset_store.is_available(record.asset_path, record.file_hash)
 
 
 def _batch_submitted_selection_views(file_hash: str) -> list[dict[str, Any]]:
     """Return immutable task provenance for rendering after session edits/deletion."""
     views: list[dict[str, Any]] = []
-    for task in TASK_STORE.list_all():
+    stores = _active_stores()
+    task_store = stores.task_store if stores else TASK_STORE
+    for task in task_store.list_all():
         snapshot = task.metadata.get("selection_snapshot")
         if not isinstance(snapshot, dict) or snapshot.get("source_file_hash") != file_hash:
             continue
@@ -260,7 +312,9 @@ def _batch_submitted_selection_views(file_hash: str) -> list[dict[str, Any]]:
 
 def _sync_batch_source_references(file_hash: str, filename: str) -> None:
     """Keep persisted task/problem source labels aligned with a renamed batch file."""
-    for task in TASK_STORE.list_all():
+    stores = _active_stores()
+    task_store = stores.task_store if stores else TASK_STORE
+    for task in task_store.list_all():
         metadata = task.metadata
         trace = metadata.get("trace")
         if not isinstance(trace, dict) or trace.get("kind") != "batch_segment":
@@ -285,7 +339,7 @@ def _sync_batch_source_references(file_hash: str, filename: str) -> None:
                 }
             )
         if next_metadata != metadata or next_problem != task.problem:
-            TASK_STORE.update(task.id, metadata=next_metadata, problem=next_problem)
+            task_store.update(task.id, metadata=next_metadata, problem=next_problem)
 
 
 def _trace_view(trace: Any) -> Any:
@@ -295,7 +349,9 @@ def _trace_view(trace: Any) -> Any:
     available = False
     if file_hash:
         try:
-            BATCH_SESSION_STORE.get(file_hash)
+            stores = _active_stores()
+            batch_session_store = stores.batch_session_store if stores else BATCH_SESSION_STORE
+            batch_session_store.get(file_hash)
         except KeyError:
             pass
         else:
@@ -303,7 +359,7 @@ def _trace_view(trace: Any) -> Any:
     current = {**trace, "batch_session_available": available}
     if file_hash and available:
         try:
-            current["source_file_name"] = BATCH_SESSION_STORE.get(file_hash).filename
+            current["source_file_name"] = batch_session_store.get(file_hash).filename
         except KeyError:
             pass
     return current
@@ -317,7 +373,9 @@ def _problem_source(task: TaskRecord, problem: Problem) -> Optional[str]:
         trace_filename = trace.get("source_file_name")
         if file_hash:
             try:
-                session = BATCH_SESSION_STORE.get(file_hash)
+                stores = _active_stores()
+                batch_session_store = stores.batch_session_store if stores else BATCH_SESSION_STORE
+                session = batch_session_store.get(file_hash)
             except KeyError:
                 pass
             else:
@@ -335,12 +393,14 @@ def _sync_batch_session_tasks(record: BatchSessionRecord) -> BatchSessionRecord:
 def _sync_batch_session_tasks_locked(record: BatchSessionRecord) -> BatchSessionRecord:
     changed = False
     segments = []
+    stores = _active_stores()
+    task_store = stores.task_store if stores else TASK_STORE
     for segment in record.segments:
         if not segment.task_id:
             segments.append(segment)
             continue
         try:
-            task = TASK_STORE.get(segment.task_id)
+            task = task_store.get(segment.task_id)
         except KeyError:
             next_segment = segment.model_copy(
                 update={"status": "failed", "error": "关联任务不存在"}
@@ -398,7 +458,9 @@ def _asset_view(record: TaskRecord) -> Optional[dict[str, Any]]:
     if not record.asset_path:
         return None
     filename = Path(record.asset_path).name
-    path = STORAGE_DIR / record.asset_path.lstrip("/")
+    stores = _active_stores()
+    asset_root = stores.asset_store.base_dir if stores else ASSET_STORE.base_dir
+    path = asset_root / Path(record.asset_path).name
     return {
         "asset_id": Path(filename).stem,
         "source": "upload",
@@ -409,6 +471,8 @@ def _asset_view(record: TaskRecord) -> Optional[dict[str, Any]]:
 
 
 def _problem_view(task: TaskRecord, problem: Problem) -> dict[str, Any]:
+    stores = _active_stores()
+    asset_store = stores.asset_store if stores else ASSET_STORE
     metadata = task.metadata
     difficulty_reason = difficulty_review_reason(task)
     diagram = task.diagram_items[0] if task.diagram_items else None
@@ -427,7 +491,7 @@ def _problem_view(task: TaskRecord, problem: Problem) -> dict[str, Any]:
     diagram_svg = None
     if selected and selected.svg_path:
         try:
-            diagram_svg = ASSET_STORE.resolve(selected.svg_path).read_text(encoding="utf-8")
+            diagram_svg = asset_store.resolve(selected.svg_path).read_text(encoding="utf-8")
         except (FileNotFoundError, OSError, UnicodeError, ValueError):
             diagram_svg = None
     diagram_items = [
@@ -538,18 +602,22 @@ def _run_view(run: Any) -> dict[str, Any]:
 
 
 def _task_view(record: TaskRecord) -> dict[str, Any]:
+    stores = _active_stores()
+    task_store = stores.task_store if stores else TASK_STORE
+    run_store = stores.run_store if stores else RUN_STORE
+    merge_store = stores.problem_merge_store if stores else PROBLEM_MERGE_STORE
     problem = record.problem
-    run = RUN_STORE.latest_for_task(record.id)
+    run = run_store.latest_for_task(record.id)
     diagram_runs = [
-        candidate for candidate in RUN_STORE.list_for_task(record.id)
+        candidate for candidate in run_store.list_for_task(record.id)
         if candidate.purpose.value == "diagram"
     ]
     merged_into = None
     if problem:
-        canonical_problem_id = PROBLEM_MERGE_STORE.canonical_for(problem.id)
+        canonical_problem_id = merge_store.canonical_for(problem.id)
         if canonical_problem_id != problem.id:
             target = next(
-                (task for task in TASK_STORE.list_all() if task.problem and task.problem.id == canonical_problem_id),
+                (task for task in task_store.list_all() if task.problem and task.problem.id == canonical_problem_id),
                 None,
             )
             if target:
@@ -713,18 +781,41 @@ async def internal_server_error(request: Request, error: Exception) -> JSONRespo
 
 
 @app.middleware("http")
-async def oidc_authentication(request, call_next):
+async def authentication(request, call_next):
     config = auth_config_from_env()
     if (
-        not config.enabled
-        or request.url.path == "/health"
+        request.url.path == "/health"
+        or config.local
+        or (not config.enabled and not config.better_auth)
     ):
         return await call_next(request)
+    context_token = None
     try:
-        request.state.auth = authenticate_request(request, config)
+        if config.better_auth:
+            principal = authenticate_internal_request(
+                request,
+                internal_identity_config_from_env(),
+            )
+            workspace = WORKSPACE_REGISTRY.get_or_create(principal)
+            request.state.principal = principal
+            request.state.workspace_context = workspace
+            request.state.workspace_stores = WORKSPACE_STORE_FACTORY.for_context(workspace)
+            request_context = RequestContext(
+                principal=principal,
+                workspace=workspace,
+                stores=request.state.workspace_stores,
+            )
+            request.state.oopsnote_context = request_context
+            context_token = activate_request_context(request_context)
+        else:
+            request.state.auth = authenticate_request(request, config)
     except AuthenticationError as error:
         return JSONResponse(status_code=error.status_code, content={"detail": error.detail})
-    return await call_next(request)
+    try:
+        return await call_next(request)
+    finally:
+        if context_token is not None:
+            reset_request_context(context_token)
 
 
 app.add_middleware(
@@ -733,7 +824,19 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-app.mount("/assets", StaticFiles(directory=STORAGE_DIR / "assets"), name="assets")
+
+
+@app.get("/assets/{asset_name}")
+def get_asset(asset_name: str):
+    """Serve one authenticated asset from the active workspace only."""
+    if Path(asset_name).name != asset_name:
+        raise HTTPException(status_code=404, detail="Asset not found")
+    stores = _active_stores()
+    asset_root = (stores.asset_store.base_dir if stores else ASSET_STORE.base_dir).resolve()
+    asset_path = (asset_root / asset_name).resolve()
+    if asset_path.parent != asset_root or not asset_path.is_file():
+        raise HTTPException(status_code=404, detail="Asset not found")
+    return FileResponse(asset_path)
 
 
 @app.get("/health")
@@ -753,7 +856,11 @@ def health() -> dict[str, Any]:
         "status": "ok",
         "version": "0.3.0",
         "auth": {
-            "mode": auth_config.mode if (auth_config.enabled or auth_config.local) else "disabled",
+            "mode": (
+                auth_config.mode
+                if (auth_config.enabled or auth_config.local or auth_config.better_auth)
+                else "disabled"
+            ),
         },
         "ai": ai_status,
     }

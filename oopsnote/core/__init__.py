@@ -62,6 +62,8 @@ from .store import (
 )
 from .tags import TagStore
 from .subjects import SUBJECT_ALIASES, canonical_subject, subjects_match
+from .workspace import Principal, UserRole, WorkspaceContext, WorkspaceId
+from .workspace_stores import WorkspaceStoreFactory, WorkspaceStores
 
 __all__ = [
     "AssetStore",
@@ -121,4 +123,10 @@ __all__ = [
     "ProblemMergeStore",
     "VariationRequest",
     "problem_fingerprint",
+    "Principal",
+    "UserRole",
+    "WorkspaceContext",
+    "WorkspaceId",
+    "WorkspaceStoreFactory",
+    "WorkspaceStores",
 ]

@@ -1,0 +1,206 @@
+"""Invariant tests for the multi-user control-plane foundation."""
+
+from __future__ import annotations
+
+import sqlite3
+import threading
+
+import pytest
+
+from oopsnote.ai.work_items import ManagedWorkItem
+from oopsnote.api.context import RequestContext, activate_request_context, reset_request_context
+from oopsnote.control import ControlDatabase, ControlDatabaseError, WorkspaceRegistry
+from oopsnote.core import (
+    Principal,
+    RunPurpose,
+    UserRole,
+    WorkspaceContext,
+    WorkspaceId,
+    WorkspaceStoreFactory,
+)
+
+
+def _registry(tmp_path) -> WorkspaceRegistry:
+    return WorkspaceRegistry(
+        ControlDatabase(tmp_path / "storage" / "control" / "app.sqlite"),
+        tmp_path / "storage",
+    )
+
+
+def test_control_migrations_are_ordered_idempotent_and_enable_sqlite_guards(tmp_path):
+    database = ControlDatabase(tmp_path / "storage" / "control" / "app.sqlite")
+
+    assert database.migrate() == (1,)
+    assert database.migrate() == (1,)
+
+    with database.connection() as connection:
+        assert connection.execute("PRAGMA journal_mode").fetchone()[0] == "wal"
+        assert connection.execute("PRAGMA foreign_keys").fetchone()[0] == 1
+        tables = {
+            row[0]
+            for row in connection.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'table'"
+            )
+        }
+    assert {
+        "schema_migrations",
+        "workspaces",
+        "quota_policies",
+        "runs",
+        "usage_reservations",
+    } <= tables
+
+
+def test_control_database_rejects_unknown_applied_migration(tmp_path):
+    database = ControlDatabase(tmp_path / "app.sqlite")
+    database.migrate()
+    with database.connection() as connection:
+        connection.execute(
+            "INSERT INTO schema_migrations(version, name, applied_at) VALUES (99, 'future.sql', 'now')"
+        )
+
+    with pytest.raises(ControlDatabaseError, match="unknown migration"):
+        database.migrate()
+
+
+def test_registry_is_stable_for_one_user_and_physically_isolates_two_users(tmp_path):
+    registry = _registry(tmp_path)
+    alice = Principal("auth-alice", UserRole.USER)
+    bob = Principal("auth-bob", UserRole.USER)
+
+    alice_first = registry.get_or_create(alice)
+    alice_again = registry.get_or_create(alice)
+    bob_context = registry.get_or_create(bob)
+
+    assert alice_first == alice_again
+    assert alice_first.workspace_id != bob_context.workspace_id
+    assert alice_first.root.parent == bob_context.root.parent
+    assert alice_first.root != bob_context.root
+    assert alice_first.root.is_dir()
+    assert bob_context.root.is_dir()
+    assert registry.require(alice) == alice_first
+
+    with registry.database.connection() as connection:
+        policies = connection.execute(
+            "SELECT daily_success_limit, max_concurrent_runs FROM quota_policies ORDER BY workspace_id"
+        ).fetchall()
+    assert [(row[0], row[1]) for row in policies] == [(20, 1), (20, 1)]
+
+
+def test_registry_concurrently_creates_only_one_mapping(tmp_path):
+    registry = _registry(tmp_path)
+    principal = Principal("auth-concurrent", UserRole.USER)
+    barrier = threading.Barrier(8)
+    workspace_ids: list[WorkspaceId] = []
+    errors: list[Exception] = []
+
+    def register() -> None:
+        try:
+            barrier.wait(timeout=2)
+            workspace_ids.append(registry.get_or_create(principal).workspace_id)
+        except Exception as error:  # pragma: no cover - asserted below
+            errors.append(error)
+
+    threads = [threading.Thread(target=register) for _ in range(8)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=5)
+
+    assert not errors
+    assert all(not thread.is_alive() for thread in threads)
+    assert len(set(workspace_ids)) == 1
+    with registry.database.connection() as connection:
+        assert connection.execute(
+            "SELECT COUNT(*) FROM workspaces WHERE auth_user_id = ?",
+            (principal.user_id,),
+        ).fetchone()[0] == 1
+
+
+def test_workspace_and_work_item_types_reject_ambiguous_identity(tmp_path):
+    context = WorkspaceRegistry(
+        ControlDatabase(tmp_path / "storage" / "control" / "app.sqlite"),
+        tmp_path / "storage",
+    ).get_or_create(Principal("auth-user", UserRole.USER))
+    workspace_id = context.workspace_id
+    item = ManagedWorkItem(
+        workspace_id=workspace_id,
+        task_id="task-1",
+        run_id="run-1",
+        purpose=RunPurpose.PROBLEM,
+        quota_reservation_id="reservation-1",
+    )
+
+    assert context.root.name == str(workspace_id)
+    assert item.workspace_id == workspace_id
+    with pytest.raises(ValueError, match="canonical UUID"):
+        WorkspaceId.parse("../other-user")
+    with pytest.raises(ValueError, match="workspace context"):
+        WorkspaceContext(workspace_id, tmp_path / "arbitrary")
+    with pytest.raises(ValueError, match="role"):
+        Principal("auth-user", "owner")
+    with pytest.raises(ValueError, match="run_id"):
+        ManagedWorkItem(workspace_id, "task-1", " ", RunPurpose.PROBLEM, "reservation-1")
+
+
+def test_control_schema_enforces_workspace_foreign_keys(tmp_path):
+    database = ControlDatabase(tmp_path / "app.sqlite")
+    database.migrate()
+    with database.connection() as connection, pytest.raises(sqlite3.IntegrityError):
+        connection.execute(
+            """
+            INSERT INTO quota_policies(
+                workspace_id, daily_success_limit, max_concurrent_runs, updated_at
+            ) VALUES ('missing', 20, 1, 'now')
+            """
+        )
+
+
+def test_workspace_store_factory_uses_independent_physical_roots(tmp_path):
+    registry = _registry(tmp_path)
+    factory = WorkspaceStoreFactory()
+    first = factory.for_context(registry.get_or_create(Principal("auth-first", UserRole.USER)))
+    second = factory.for_context(registry.get_or_create(Principal("auth-second", UserRole.USER)))
+
+    assert first is factory.for_context(registry.require(Principal("auth-first", UserRole.USER)))
+    assert first.task_store.base_dir != second.task_store.base_dir
+    assert first.asset_store.base_dir != second.asset_store.base_dir
+    assert first.run_store.base_dir != second.run_store.base_dir
+    assert first.tag_store.user_path != second.tag_store.user_path
+    assert first.paper_draft_store.base_dir != second.paper_draft_store.base_dir
+
+
+def test_request_context_exposes_only_the_registered_workspace_stores(tmp_path):
+    registry = _registry(tmp_path)
+    factory = WorkspaceStoreFactory()
+    first_context = registry.get_or_create(Principal("auth-context-a", UserRole.USER))
+    second_context = registry.get_or_create(Principal("auth-context-b", UserRole.USER))
+    from oopsnote.api import main
+
+    first_token = activate_request_context(
+        RequestContext(
+            Principal("auth-context-a", UserRole.USER),
+            first_context,
+            factory.for_context(first_context),
+        )
+    )
+    try:
+        first_api = main.request_api()
+        assert first_api.TASK_STORE.base_dir == first_context.root / "tasks"
+        assert first_api.ASSET_STORE.base_dir == first_context.root / "assets"
+    finally:
+        reset_request_context(first_token)
+
+    second_token = activate_request_context(
+        RequestContext(
+            Principal("auth-context-b", UserRole.USER),
+            second_context,
+            factory.for_context(second_context),
+        )
+    )
+    try:
+        second_api = main.request_api()
+        assert second_api.TASK_STORE.base_dir == second_context.root / "tasks"
+        assert second_api.TASK_STORE.base_dir != first_context.root / "tasks"
+    finally:
+        reset_request_context(second_token)

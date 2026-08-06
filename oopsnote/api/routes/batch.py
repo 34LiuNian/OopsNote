@@ -37,7 +37,7 @@ BATCH_SOURCE_MAX_BYTES = 500 * 1024 * 1024
 def _api():
     from oopsnote.api import main
 
-    return main
+    return main.request_api()
 
 
 def _validate_batch_source_length(request: Request) -> None:

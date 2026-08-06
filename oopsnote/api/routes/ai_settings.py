@@ -89,7 +89,7 @@ class ChannelCheckRequest(BaseModel):
 def _api():
     from oopsnote.api import main
 
-    return main
+    return main.request_api()
 
 
 def _require_admin(request: Request) -> None:
