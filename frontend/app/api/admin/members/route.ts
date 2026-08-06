@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { auth, betterAuthIdentityStats } from "@/lib/better-auth";
+import { signInternalIdentity } from "@/lib/internal-identity";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -26,9 +27,36 @@ async function requireAdmin(request: Request): Promise<NonNullable<Awaited<Retur
   return session;
 }
 
+async function backendAdminRequest(
+  session: Awaited<ReturnType<typeof requireAdmin>>,
+  path: string,
+  method: "POST" | "PATCH",
+  body: unknown,
+): Promise<unknown> {
+  const backendUrl = (process.env.OOPSNOTE_BACKEND_URL || "http://127.0.0.1:8000").replace(/\/$/, "");
+  const identity = signInternalIdentity({
+    userId: session.user.id,
+    role: "admin",
+    method,
+    path,
+  });
+  const response = await fetch(`${backendUrl}${path}`, {
+    method,
+    headers: {
+      "content-type": "application/json",
+      "x-oopsnote-identity": identity.encoded,
+      "x-oopsnote-signature": identity.signature,
+    },
+    body: JSON.stringify(body),
+    cache: "no-store",
+  });
+  if (!response.ok) throw new Error(`Backend member request failed: ${response.status}`);
+  return response.json();
+}
+
 export async function GET(request: Request) {
   try {
-    await requireAdmin(request);
+    const session = await requireAdmin(request);
     const url = new URL(request.url);
     const limit = Math.min(Math.max(Number(url.searchParams.get("limit") || 50), 1), 100);
     const offset = Math.max(Number(url.searchParams.get("offset") || 0), 0);
@@ -37,7 +65,22 @@ export async function GET(request: Request) {
       headers: request.headers,
       query: { limit, offset, searchValue },
     });
-    return NextResponse.json(result);
+    let summaries: Record<string, unknown> = {};
+    try {
+      const summary = await backendAdminRequest(
+        session,
+        "/admin/members/summary",
+        "POST",
+        { auth_user_ids: result.users.map((user) => user.id) },
+      ) as { members?: Record<string, unknown> };
+      summaries = summary.members || {};
+    } catch (error) {
+      console.warn("Unable to load member quota summaries", error);
+    }
+    return NextResponse.json({
+      ...result,
+      users: result.users.map((user) => ({ ...user, quota: summaries[user.id] || null })),
+    });
   } catch (error) {
     return errorResponse(error);
   }
@@ -45,7 +88,7 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    await requireAdmin(request);
+    const session = await requireAdmin(request);
     const body = await request.json() as {
       email?: unknown;
       name?: unknown;
@@ -63,7 +106,19 @@ export async function POST(request: Request) {
       headers: request.headers,
       body: { email, name, password, role },
     });
-    return NextResponse.json(result, { status: 201 });
+    let workspaceProvisioned = false;
+    try {
+      await backendAdminRequest(
+        session,
+        "/admin/members/provision",
+        "POST",
+        { auth_user_id: result.user.id },
+      );
+      workspaceProvisioned = true;
+    } catch (error) {
+      console.warn("Member was created but workspace provisioning is pending", error);
+    }
+    return NextResponse.json({ ...result, workspaceProvisioned }, { status: 201 });
   } catch (error) {
     return errorResponse(error);
   }

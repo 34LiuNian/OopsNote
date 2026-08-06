@@ -12,10 +12,12 @@ import {
   GitBranchIcon,
 } from "@/components/ui/icons";
 import Link from "next/link";
+import { Users } from "lucide-react";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { isAdminUser } from "@/lib/auth";
 
 const NAV_ITEMS = [
+  { href: "/settings/members", label: "内测成员", icon: Users, section: "admin" },
   { href: "/library", label: "题库", icon: RepoIcon, section: "main" },
   { href: "/batch-segment", label: "批量扫描", icon: ScanIcon, section: "main" },
   { href: "/papers", label: "组卷", icon: ChecklistIcon, section: "main" },
