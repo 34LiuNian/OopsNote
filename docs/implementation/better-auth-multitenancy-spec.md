@@ -1,6 +1,6 @@
 # Better Auth、多用户隔离与内测额度实现规范
 
-状态：实施中（Phase 0 基线已开始）
+状态：实施中（Phase 0-3 基线已落地，Phase 4-5 进行中）
 目标分支：`feat/auth-multitenancy`  
 基线提交：`ffb845c`  
 适用产品：独立部署的 OopsNote 封闭内测版

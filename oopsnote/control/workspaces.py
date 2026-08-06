@@ -178,3 +178,16 @@ class WorkspaceRegistry:
             user_id: self.quota_summary(user_id, usage_day_utc=usage_day_utc)
             for user_id in dict.fromkeys(user_id.strip() for user_id in auth_user_ids if user_id.strip())
         }
+
+    def mark_legacy_imported(self, auth_user_id: str) -> None:
+        self.database.migrate()
+        with self.database.connection() as connection:
+            connection.execute(
+                """
+                UPDATE workspaces
+                SET legacy_imported_at = COALESCE(legacy_imported_at, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+                WHERE auth_user_id = ?
+                """,
+                (auth_user_id.strip(),),
+            )
+            connection.commit()
