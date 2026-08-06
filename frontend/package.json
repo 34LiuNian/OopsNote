@@ -28,6 +28,7 @@
     "esbuild": "^0.28.1",
     "isomorphic-tikzjax": "^0.1.1",
     "katex": "^0.16.22",
+    "kysely": "^0.29.4",
     "lucide-react": "^0.468.0",
     "mermaid": "^10.9.3",
     "next": "^16.1.6",

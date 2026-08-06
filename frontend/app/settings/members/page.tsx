@@ -34,6 +34,7 @@ export default function MembersPage() {
   const [busy, setBusy] = useState<string | null>(null);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [invitationUrl, setInvitationUrl] = useState("");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -59,19 +60,26 @@ export default function MembersPage() {
   async function createMember(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
+    const intent = ((event.nativeEvent as SubmitEvent).submitter as HTMLButtonElement | null)?.value || "create";
     setBusy("create");
     setError("");
     setMessage("");
+    setInvitationUrl("");
     try {
       const response = await fetch("/api/admin/members", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ name: form.get("name"), email: form.get("email"), password: form.get("password"), role: form.get("role") }),
+        body: JSON.stringify({ name: form.get("name"), email: form.get("email"), password: form.get("password"), role: form.get("role"), invitation: intent === "invite" }),
       });
-      const payload = await response.json() as { error?: string; workspaceProvisioned?: boolean };
+      const payload = await response.json() as { error?: string; workspaceProvisioned?: boolean; invitationUrl?: string };
       if (!response.ok) throw new Error(payload.error || "创建成员失败");
       event.currentTarget.reset();
-      setMessage(payload.workspaceProvisioned === false ? "账号已创建，工作区将在首次登录时自动初始化。" : "内测账号已创建。");
+      if (payload.invitationUrl) {
+        setInvitationUrl(`${window.location.origin}${payload.invitationUrl}`);
+        setMessage("邀请已创建，72 小时内有效。");
+      } else {
+        setMessage(payload.workspaceProvisioned === false ? "账号已创建，工作区将在首次登录时自动初始化。" : "内测账号已创建。");
+      }
       await load();
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "创建成员失败");
@@ -125,11 +133,13 @@ export default function MembersPage() {
       <form className={styles.toolbar} onSubmit={createMember}>
         <label className={styles.field}>显示名<input name="name" required /></label>
         <label className={styles.field}>邮箱<input name="email" type="email" required /></label>
-        <label className={styles.field}>初始密码<input name="password" type="password" minLength={12} required /></label>
+        <label className={styles.field}>初始密码（直接创建时）<input name="password" type="password" minLength={12} /></label>
         <label className={styles.field}>角色<select name="role" defaultValue="user"><option value="user">使用者</option><option value="admin">管理员</option></select></label>
-        <button className={`${styles.command} ${styles.primary}`} type="submit" disabled={busy === "create"}>{busy === "create" ? <LoaderCircle size={16} className="oops-login-spinner" /> : <Plus size={16} />}创建账号</button>
+        <button className={styles.command} type="submit" name="intent" value="invite" disabled={busy === "create"}>{busy === "create" ? <LoaderCircle size={16} className="oops-login-spinner" /> : <Plus size={16} />}创建邀请</button>
+        <button className={`${styles.command} ${styles.primary}`} type="submit" name="intent" value="create" disabled={busy === "create"}>直接创建</button>
       </form>
       {(message || error) && <p className={`${styles.message}${error ? ` ${styles.messageError}` : ""}`}>{error || message}</p>}
+      {invitationUrl && <p className={styles.message}><code>{invitationUrl}</code> <button className={styles.command} type="button" onClick={() => void navigator.clipboard.writeText(invitationUrl)}>复制链接</button></p>}
       <div className={styles.tableWrap}>
         <table className={styles.table}>
           <thead><tr><th>成员</th><th>状态</th><th>角色</th><th>今日额度</th><th>并发</th><th>加入时间</th><th>操作</th></tr></thead>

@@ -2,7 +2,9 @@ import Database from "better-sqlite3";
 import { betterAuth } from "better-auth";
 import { admin } from "better-auth/plugins";
 import { nextCookies } from "better-auth/next-js";
+import { SqliteDialect } from "kysely";
 import { ensureBetterAuthSchema } from "./better-auth-schema";
+import { betterAuthInvitationPlugin } from "./better-auth-invitations";
 import fs from "node:fs";
 import path from "node:path";
 
@@ -64,7 +66,11 @@ export const auth = betterAuth({
   baseURL,
   basePath: "/api/auth",
   secret: requiredSecret("BETTER_AUTH_SECRET", "OOPSNOTE_BETTER_AUTH_SECRET_FILE"),
-  database: authDb,
+  database: {
+    dialect: new SqliteDialect({ database: authDb }),
+    type: "sqlite",
+    transaction: true,
+  },
   emailAndPassword: {
     enabled: true,
     disableSignUp: true,
@@ -77,6 +83,7 @@ export const auth = betterAuth({
       adminRoles: ["admin"],
       bannedUserMessage: "此账号已被管理员禁用",
     }),
+    betterAuthInvitationPlugin,
     nextCookies(),
   ],
 });

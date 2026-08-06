@@ -32,6 +32,7 @@ const AuthContext = createContext<AuthContextValue>({
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const isPublicAuthPage = pathname === "/login" || pathname === "/invite";
   const betterAuthEnabled = isBetterAuthMode();
   const betterSession = authClient.useSession();
   const isCallback = pathname === "/auth/callback";
@@ -60,11 +61,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [sessionUser]);
 
   useEffect(() => {
-    if (!betterAuthEnabled || betterSession.isPending || betterAuthUser || pathname === "/login") return;
+    if (!betterAuthEnabled || betterSession.isPending || betterAuthUser || isPublicAuthPage) return;
     if (signinStarted.current) return;
     signinStarted.current = true;
     void beginSignin(pathname + window.location.search);
-  }, [betterAuthEnabled, betterAuthUser, betterSession.isPending, pathname]);
+  }, [betterAuthEnabled, betterAuthUser, betterSession.isPending, isPublicAuthPage, pathname]);
 
   useEffect(() => {
     if (betterAuthEnabled || isLocalAuthMode() || isCallback || authenticated || signinStarted.current) return;
@@ -88,7 +89,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (betterAuthEnabled) {
       return {
         authenticated: Boolean(betterAuthUser),
-        loading: betterSession.isPending || (!betterAuthUser && pathname !== "/login"),
+        loading: betterSession.isPending || (!betterAuthUser && !isPublicAuthPage),
         error: betterSession.error?.message || null,
         user: betterAuthUser,
         signOut: () => {
@@ -109,7 +110,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         void Promise.resolve().then(beginSignout);
       },
     };
-  }, [authenticated, betterAuthEnabled, betterAuthUser, betterSession.error, betterSession.isPending, error, loading, pathname, user]);
+  }, [authenticated, betterAuthEnabled, betterAuthUser, betterSession.error, betterSession.isPending, error, isPublicAuthPage, loading, user]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth, betterAuthIdentityStats } from "@/lib/better-auth";
 import { signInternalIdentity } from "@/lib/internal-identity";
+import { createInvitation } from "@/lib/better-auth-invitations";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -94,11 +95,17 @@ export async function POST(request: Request) {
       name?: unknown;
       password?: unknown;
       role?: unknown;
+      invitation?: unknown;
     };
     const email = typeof body.email === "string" ? body.email.trim() : "";
     const name = typeof body.name === "string" ? body.name.trim() : "";
     const password = typeof body.password === "string" ? body.password : "";
     const role = body.role === "admin" ? "admin" : "user";
+    if (body.invitation === true) {
+      if (!email || !name) return NextResponse.json({ error: "email 和 name 为必填项" }, { status: 400 });
+      const invitation = await createInvitation({ email, name, role, expiresInHours: 72 });
+      return NextResponse.json({ invitationUrl: `/invite?token=${encodeURIComponent(invitation.token)}`, expiresAt: invitation.expiresAt }, { status: 201 });
+    }
     if (!email || !name || password.length < 12) {
       return NextResponse.json({ error: "email、name 和至少 12 位密码为必填项" }, { status: 400 });
     }
