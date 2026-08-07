@@ -244,13 +244,41 @@ class QuotaService:
                     raise QuotaError("retry_not_found", "Retry source run is not in this workspace")
                 if previous["state"] != "released":
                     raise QuotaError("retry_not_eligible", "Only released reservations can be retried")
+                if previous["task_id"] != task_id or previous["purpose"] != purpose.value:
+                    raise QuotaError("retry_not_eligible", "Retry must preserve task and purpose")
+                policy = connection.execute(
+                    """
+                    SELECT daily_success_limit, max_concurrent_runs
+                    FROM quota_policies WHERE workspace_id = ?
+                    """,
+                    (str(workspace),),
+                ).fetchone()
+                if policy is None:
+                    raise QuotaError("workspace_not_registered", "Workspace is not registered")
+                active = connection.execute(
+                    "SELECT COUNT(*) FROM runs WHERE workspace_id = ? AND status IN ('queued', 'running')",
+                    (str(workspace),),
+                ).fetchone()[0]
+                if int(active) >= int(policy["max_concurrent_runs"]):
+                    raise QuotaError("concurrency_exceeded", "Concurrent run limit exceeded")
+                usage_day = timestamp.date().isoformat()
+                used = connection.execute(
+                    """
+                    SELECT COALESCE(SUM(units), 0)
+                    FROM usage_reservations
+                    WHERE workspace_id = ? AND usage_day_utc = ? AND state IN ('reserved', 'consumed')
+                    """,
+                    (str(workspace), usage_day),
+                ).fetchone()[0]
+                if int(used) + int(previous["units"]) > int(policy["daily_success_limit"]):
+                    raise QuotaError("daily_limit_exceeded", "Daily usage limit exceeded")
                 connection.execute(
                     """
                     UPDATE usage_reservations
-                    SET state = 'reserved', finalized_at = NULL, reason = NULL
+                    SET state = 'reserved', usage_day_utc = ?, finalized_at = NULL, reason = NULL
                     WHERE id = ? AND state = 'released'
                     """,
-                    (previous["reservation_id"],),
+                    (usage_day, previous["reservation_id"]),
                 )
                 connection.execute(
                     """

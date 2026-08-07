@@ -16,6 +16,89 @@ create index "account_userId_idx" on "account" ("userId");
 create index "verification_identifier_idx" on "verification" ("identifier");
 `.trim(),
   },
+  {
+    version: 2,
+    name: "0002_oopsnote_invitations_and_audit",
+    sql: `
+create table "oopsnote_invitation" (
+  "id" text not null primary key,
+  "tokenHash" text not null unique,
+  "email" text not null,
+  "name" text not null,
+  "role" text not null check ("role" in ('admin', 'user')),
+  "initialDailySuccessLimit" integer not null default 20 check ("initialDailySuccessLimit" >= 0),
+  "createdByUserId" text not null,
+  "createdAt" text not null,
+  "expiresAt" text not null,
+  "consumedAt" text,
+  "consumedUserId" text,
+  "workspaceProvisionedAt" text,
+  "revokedAt" text,
+  "revokedByUserId" text
+);
+create index "oopsnote_invitation_email_idx" on "oopsnote_invitation" ("email");
+create index "oopsnote_invitation_active_idx" on "oopsnote_invitation" ("consumedAt", "revokedAt", "expiresAt");
+create table "oopsnote_auth_audit" (
+  "id" text not null primary key,
+  "actorUserId" text not null,
+  "action" text not null,
+  "targetUserId" text,
+  "invitationId" text,
+  "metadataJson" text not null default '{}',
+  "createdAt" text not null
+);
+create index "oopsnote_auth_audit_created_idx" on "oopsnote_auth_audit" ("createdAt");
+create index "oopsnote_auth_audit_actor_idx" on "oopsnote_auth_audit" ("actorUserId", "createdAt");
+`.trim(),
+  },
+  {
+    version: 3,
+    name: "0003_auth_invariants",
+    sql: `
+create table "oopsnote_bootstrap_state" (
+  "id" integer not null primary key check ("id" = 1),
+  "completedAt" text
+);
+insert into "oopsnote_bootstrap_state" ("id", "completedAt") values (1, null);
+create trigger "oopsnote_keep_active_admin_on_update"
+before update of "role", "banned" on "user"
+when
+  (old."role" = 'admin' or old."role" like '%admin%')
+  and coalesce(old."banned", 0) = 0
+  and not ((new."role" = 'admin' or new."role" like '%admin%') and coalesce(new."banned", 0) = 0)
+  and not exists (
+    select 1 from "user"
+    where "id" <> old."id"
+      and ("role" = 'admin' or "role" like '%admin%')
+      and coalesce("banned", 0) = 0
+  )
+begin
+  select raise(abort, 'OOPSNOTE_LAST_ACTIVE_ADMIN');
+end;
+create trigger "oopsnote_keep_active_admin_on_delete"
+before delete on "user"
+when
+  (old."role" = 'admin' or old."role" like '%admin%')
+  and coalesce(old."banned", 0) = 0
+  and not exists (
+    select 1 from "user"
+    where "id" <> old."id"
+      and ("role" = 'admin' or "role" like '%admin%')
+      and coalesce("banned", 0) = 0
+  )
+begin
+  select raise(abort, 'OOPSNOTE_LAST_ACTIVE_ADMIN');
+end;
+`.trim(),
+  },
+  {
+    version: 4,
+    name: "0004_bootstrap_claim_lease",
+    sql: `
+alter table "oopsnote_bootstrap_state" add column "claimToken" text;
+alter table "oopsnote_bootstrap_state" add column "claimedAt" text;
+`.trim(),
+  },
 ] as const;
 
 export function ensureBetterAuthSchema(database: Database.Database): void {

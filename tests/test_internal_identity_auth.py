@@ -15,6 +15,7 @@ from fastapi.testclient import TestClient
 from starlette.requests import Request
 
 from oopsnote.api import main
+from oopsnote.api.routes import catalog
 from oopsnote.api.auth import (
     AuthenticationError,
     InternalIdentityConfig,
@@ -186,6 +187,157 @@ def test_better_auth_requests_use_the_authenticated_user_workspace(monkeypatch, 
     assert isolated.json() == {"items": []}
 
 
+def test_foreign_task_and_asset_are_404_even_for_an_administrator(monkeypatch, tmp_path):
+    registry = WorkspaceRegistry(
+        ControlDatabase(tmp_path / "control" / "app.sqlite"),
+        tmp_path / "storage",
+    )
+    factory = WorkspaceStoreFactory()
+    monkeypatch.setattr(main, "WORKSPACE_REGISTRY", registry)
+    monkeypatch.setattr(main, "WORKSPACE_STORE_FACTORY", factory)
+    now = int(time.time())
+    environment = {
+        "OOPSNOTE_AUTH_MODE": "better-auth",
+        "OOPSNOTE_BFF_HMAC_SECRET": SECRET.decode("ascii"),
+    }
+    with patch.dict("os.environ", environment, clear=False):
+        client = TestClient(main.app)
+        _payload, encoded, signature = _signed_identity(
+            user_id="auth-owner",
+            issued_at=now,
+            method="POST",
+            path="/tasks",
+        )
+        created = client.post(
+            "/tasks",
+            headers={"x-oopsnote-identity": encoded, "x-oopsnote-signature": signature},
+            json={"subject": "math"},
+        )
+        task_id = created.json()["task"]["id"]
+        owner = Principal("auth-owner", UserRole.USER)
+        owner_stores = factory.for_context(registry.require(owner))
+        asset_path = owner_stores.asset_store.save_bytes(b"private", "private.bin")
+
+        _payload, encoded, signature = _signed_identity(
+            user_id="auth-other-admin",
+            role="admin",
+            issued_at=now,
+            method="GET",
+            path=f"/tasks/{task_id}",
+        )
+        foreign_task = client.get(
+            f"/tasks/{task_id}",
+            headers={"x-oopsnote-identity": encoded, "x-oopsnote-signature": signature},
+        )
+        _payload, encoded, signature = _signed_identity(
+            user_id="auth-other-admin",
+            role="admin",
+            issued_at=now,
+            method="GET",
+            path=asset_path,
+        )
+        foreign_asset = client.get(
+            asset_path,
+            headers={"x-oopsnote-identity": encoded, "x-oopsnote-signature": signature},
+        )
+        _payload, encoded, signature = _signed_identity(
+            user_id="auth-owner",
+            issued_at=now,
+            method="GET",
+            path=asset_path,
+        )
+        owner_asset = client.get(
+            asset_path,
+            headers={"x-oopsnote-identity": encoded, "x-oopsnote-signature": signature},
+        )
+
+    assert created.status_code == 200
+    assert foreign_task.status_code == 404
+    assert foreign_asset.status_code == 404
+    assert owner_asset.status_code == 200
+    assert owner_asset.content == b"private"
+
+
+def test_obsidian_sync_output_is_bound_to_the_authenticated_workspace(monkeypatch, tmp_path):
+    registry = WorkspaceRegistry(
+        ControlDatabase(tmp_path / "control" / "app.sqlite"),
+        tmp_path / "storage",
+    )
+    monkeypatch.setattr(main, "WORKSPACE_REGISTRY", registry)
+    monkeypatch.setattr(main, "WORKSPACE_STORE_FACTORY", WorkspaceStoreFactory())
+    observed: list[tuple[object, object]] = []
+
+    class RecordingSyncer:
+        def __init__(self, task_store, vault_root=None, tag_store=None):
+            observed.append((task_store.base_dir.resolve(), vault_root.resolve()))
+
+        def sync(self):
+            return "ok"
+
+        def sync_for_subject(self, _subject):
+            return "ok"
+
+    monkeypatch.setattr(catalog, "ObsidianSyncer", RecordingSyncer)
+    now = int(time.time())
+    environment = {
+        "OOPSNOTE_AUTH_MODE": "better-auth",
+        "OOPSNOTE_BFF_HMAC_SECRET": SECRET.decode("ascii"),
+    }
+    with patch.dict("os.environ", environment, clear=False):
+        client = TestClient(main.app)
+        for user_id, role in [("sync-owner", "user"), ("sync-admin", "admin")]:
+            _payload, encoded, signature = _signed_identity(
+                user_id=user_id,
+                role=role,
+                issued_at=now,
+                method="POST",
+                path="/sync",
+            )
+            response = client.post(
+                "/sync",
+                headers={"x-oopsnote-identity": encoded, "x-oopsnote-signature": signature},
+            )
+            assert response.status_code == 200
+
+    assert len(observed) == 2
+    assert observed[0][0] != observed[1][0]
+    assert observed[0][1] != observed[1][1]
+    assert all(vault.name == "obsidian-vault" for _task_root, vault in observed)
+    assert all(vault.parent == task_root.parent for task_root, vault in observed)
+
+
+def test_global_tag_dimension_settings_require_an_administrator(monkeypatch, tmp_path):
+    registry = WorkspaceRegistry(
+        ControlDatabase(tmp_path / "control" / "app.sqlite"),
+        tmp_path / "storage",
+    )
+    monkeypatch.setattr(main, "WORKSPACE_REGISTRY", registry)
+    monkeypatch.setattr(main, "WORKSPACE_STORE_FACTORY", WorkspaceStoreFactory())
+    now = int(time.time())
+    environment = {
+        "OOPSNOTE_AUTH_MODE": "better-auth",
+        "OOPSNOTE_BFF_HMAC_SECRET": SECRET.decode("ascii"),
+    }
+    with patch.dict("os.environ", environment, clear=False):
+        client = TestClient(main.app)
+        responses = []
+        for user_id, role in [("tag-user", "user"), ("tag-admin", "admin")]:
+            _payload, encoded, signature = _signed_identity(
+                user_id=user_id,
+                role=role,
+                issued_at=now,
+                method="PUT",
+                path="/settings/tag-dimensions",
+            )
+            responses.append(client.put(
+                "/settings/tag-dimensions",
+                headers={"x-oopsnote-identity": encoded, "x-oopsnote-signature": signature},
+                json={"dimensions": {}},
+            ))
+
+    assert [response.status_code for response in responses] == [403, 200]
+
+
 def test_better_auth_admin_can_manage_quota_without_entering_member_workspace(monkeypatch, tmp_path):
     registry = WorkspaceRegistry(
         ControlDatabase(tmp_path / "control" / "app.sqlite"),
@@ -236,6 +388,69 @@ def test_better_auth_admin_can_manage_quota_without_entering_member_workspace(mo
     assert registry.require(Principal("auth-member", UserRole.USER)).root != registry.require(
         Principal("auth-admin", UserRole.ADMIN)
     ).root
+
+
+def test_better_auth_self_provision_applies_invitation_quota_only_to_the_signed_user(monkeypatch, tmp_path):
+    registry = WorkspaceRegistry(
+        ControlDatabase(tmp_path / "control" / "app.sqlite"),
+        tmp_path / "storage",
+    )
+    monkeypatch.setattr(main, "WORKSPACE_REGISTRY", registry)
+    monkeypatch.setattr(main, "WORKSPACE_STORE_FACTORY", WorkspaceStoreFactory())
+    now = int(time.time())
+    environment = {
+        "OOPSNOTE_AUTH_MODE": "better-auth",
+        "OOPSNOTE_BFF_HMAC_SECRET": SECRET.decode("ascii"),
+    }
+    with patch.dict("os.environ", environment, clear=False):
+        client = TestClient(main.app)
+        _payload, encoded, signature = _signed_identity(
+            user_id="auth-self-provision",
+            issued_at=now,
+            method="POST",
+            path="/internal/members/provision-self",
+        )
+        response = client.post(
+            "/internal/members/provision-self",
+            headers={"x-oopsnote-identity": encoded, "x-oopsnote-signature": signature},
+            json={"daily_success_limit": 4},
+        )
+
+    assert response.status_code == 200
+    assert response.json()["auth_user_id"] == "auth-self-provision"
+    assert response.json()["quota"]["daily_success_limit"] == 4
+    assert registry.quota_summary("auth-self-provision")["daily_success_limit"] == 4
+    assert registry.quota_summary("auth-other") is None
+
+
+def test_own_quota_endpoint_uses_only_the_signed_user(monkeypatch, tmp_path):
+    registry = WorkspaceRegistry(
+        ControlDatabase(tmp_path / "control" / "app.sqlite"),
+        tmp_path / "storage",
+    )
+    registry.provision("quota-owner", daily_success_limit=9)
+    registry.provision("quota-other", daily_success_limit=99)
+    monkeypatch.setattr(main, "WORKSPACE_REGISTRY", registry)
+    monkeypatch.setattr(main, "WORKSPACE_STORE_FACTORY", WorkspaceStoreFactory())
+    now = int(time.time())
+    _payload, encoded, signature = _signed_identity(
+        user_id="quota-owner",
+        issued_at=now,
+        method="GET",
+        path="/me/quota",
+    )
+    environment = {
+        "OOPSNOTE_AUTH_MODE": "better-auth",
+        "OOPSNOTE_BFF_HMAC_SECRET": SECRET.decode("ascii"),
+    }
+    with patch.dict("os.environ", environment, clear=False):
+        response = TestClient(main.app).get(
+            "/me/quota",
+            headers={"x-oopsnote-identity": encoded, "x-oopsnote-signature": signature},
+        )
+
+    assert response.status_code == 200
+    assert response.json()["quota"]["daily_success_limit"] == 9
 
 
 def test_fastapi_health_does_not_require_the_bff_secret():

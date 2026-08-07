@@ -129,7 +129,7 @@ app.sqlite and workspace files are owned only by FastAPI/Core.
 3. 邀请记录包含 `expires_at`、`consumed_at`、`revoked_at`，默认 72 小时过期。
 4. 用户打开 `/invite/<token>`，设置密码并完成注册。
 5. 同一数据库事务锁定邀请并标记消费；重复、过期或撤销 token 返回稳定错误。
-6. 注册成功后第一次进入 BFF，FastAPI 幂等创建工作区和默认额度政策。
+6. 注册成功后第一次进入 BFF，Next.js 使用消费邀请中保存的初始额度调用私有 self-provision 边界；FastAPI 在自己的事务中幂等创建工作区并应用该额度，成功后 Node 标记 pending provisioning 完成。失败时不放行普通业务请求，后续请求可安全重试。
 
 如果 Better Auth 的公开注册 hook 不能在同一事务中消费邀请，则采用 Node 侧自定义认证插件/endpoint，让“校验邀请 + 创建账号 + 消费邀请”由同一所有者完成；不采用先创建账号再补标记的双写流程。
 
@@ -282,41 +282,9 @@ workspace_id + task_id + run_id + purpose + quota_reservation_id
 
 普通用户账户菜单显示名称、邮箱、今日剩余额度、退出；Passkey 阶段再增加凭据管理页。
 
-## 9. 迁移与发布
+## 9. 本地开发边界
 
-### 9.1 离线迁移工具
-
-新增幂等命令，例如：
-
-```powershell
-.\.venv\Scripts\python.exe scripts\migrate_multitenancy.py --admin-user-id <id> --dry-run
-.\.venv\Scripts\python.exe scripts\migrate_multitenancy.py --admin-user-id <id> --apply
-```
-
-步骤：
-
-1. 检查无 active run，进入维护模式并备份 `oopsnote-data`、Pocket ID 数据和 Compose 配置。
-2. dry-run 清点 task、run、asset、batch、paper 和 tags，校验引用与路径。
-3. 创建首个管理员对应 workspace。
-4. 将现有用户数据复制到临时工作区目录；重写必要的内部相对资产路径。
-5. 把现有 TaskRun 导入 app.sqlite，并归属该 workspace；历史 run 不生成额度消费。
-6. 对临时目录做完整引用校验和数量/哈希核对。
-7. 原子 rename 为正式工作区；写入 migration marker。
-8. 保留原目录为只读回滚快照，至少经过一次稳定发布和人工确认后再单独清理。
-
-迁移不得边读边移动生产文件，也不得在校验失败后留下“部分用户化”的活动目录。
-
-### 9.2 切换顺序
-
-1. 部署包含 Better Auth 但尚未开放给用户的版本，创建首个管理员。
-2. 维护窗口停止写入并运行迁移。
-3. Caddy 只转发到 Next.js；FastAPI 取消宿主机公开/loopback映射。
-4. 验证管理员登录、数据数量、资产读取、AI 完整流程、额度和禁用。
-5. 开放第一批测试用户邀请。
-6. Pocket ID 容器和 OIDC 配置保留一个短回滚窗口，但不再接收正常流量。
-7. 稳定后移除 Pocket ID service、旧 OIDC 前端、PyJWT/JWKS 代码和相关 secrets。
-
-禁止长期保留 OIDC/Better Auth 双运行模式。回滚窗口有明确删除条件：首批内测用户完成登录、上传、处理、重试、登出和禁用验收，且连续 7 天无身份/隔离事故。
+本分支不提供生产数据迁移、远程部署或生产切换命令。Better Auth 多租户能力只面向本地开发和测试数据；正式上线前需要另立发布设计与迁移方案。不要在生产数据目录上直接运行本地开发测试。
 
 ## 10. 分阶段实施清单
 

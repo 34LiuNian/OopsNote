@@ -25,11 +25,25 @@ type Member = {
   quota: MemberQuota;
 };
 
-type MembersResponse = { users: Member[]; total: number };
+type Invitation = {
+  id: string;
+  email: string;
+  name: string;
+  role: string;
+  initialDailySuccessLimit: number;
+  createdAt: string;
+  expiresAt: string;
+  consumedUserId?: string | null;
+  workspaceProvisionedAt?: string | null;
+  status: "pending" | "consumed" | "revoked" | "expired";
+};
+
+type MembersResponse = { users: Member[]; total: number; invitations: Invitation[] };
 
 export default function MembersPage() {
   const { user, loading: authLoading } = useAuth();
   const [members, setMembers] = useState<Member[]>([]);
+  const [invitations, setInvitations] = useState<Invitation[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
   const [message, setMessage] = useState("");
@@ -44,6 +58,7 @@ export default function MembersPage() {
       if (!response.ok) throw new Error("无法加载成员列表");
       const payload = await response.json() as MembersResponse;
       setMembers(payload.users);
+      setInvitations(payload.invitations || []);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "无法加载成员列表");
     } finally {
@@ -69,7 +84,7 @@ export default function MembersPage() {
       const response = await fetch("/api/admin/members", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ name: form.get("name"), email: form.get("email"), password: form.get("password"), role: form.get("role"), invitation: intent === "invite" }),
+        body: JSON.stringify({ name: form.get("name"), email: form.get("email"), password: form.get("password"), role: form.get("role"), daily_success_limit: form.get("daily_success_limit"), invitation: intent === "invite" }),
       });
       const payload = await response.json() as { error?: string; workspaceProvisioned?: boolean; invitationUrl?: string };
       if (!response.ok) throw new Error(payload.error || "创建成员失败");
@@ -125,6 +140,25 @@ export default function MembersPage() {
     }
   }
 
+  async function revokeInvitation(invitation: Invitation) {
+    setBusy(`${invitation.id}:revoke-invitation`);
+    setError("");
+    try {
+      const response = await fetch("/api/admin/members", {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ action: "revoke-invitation", invitationId: invitation.id }),
+      });
+      const payload = await response.json() as { error?: string };
+      if (!response.ok) throw new Error(payload.error || "撤销邀请失败");
+      await load();
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "撤销邀请失败");
+    } finally {
+      setBusy(null);
+    }
+  }
+
   if (!authLoading && !isAdminUser(user)) return <p><ShieldAlert size={18} /> 成员管理仅管理员可用。</p>;
 
   return (
@@ -135,6 +169,7 @@ export default function MembersPage() {
         <label className={styles.field}>邮箱<input name="email" type="email" required /></label>
         <label className={styles.field}>初始密码（直接创建时）<input name="password" type="password" minLength={12} /></label>
         <label className={styles.field}>角色<select name="role" defaultValue="user"><option value="user">使用者</option><option value="admin">管理员</option></select></label>
+        <label className={styles.field}>初始每日额度<input name="daily_success_limit" type="number" min="0" max="1000000" defaultValue="20" required /></label>
         <button className={styles.command} type="submit" name="intent" value="invite" disabled={busy === "create"}>{busy === "create" ? <LoaderCircle size={16} className="oops-login-spinner" /> : <Plus size={16} />}创建邀请</button>
         <button className={`${styles.command} ${styles.primary}`} type="submit" name="intent" value="create" disabled={busy === "create"}>直接创建</button>
       </form>
@@ -164,6 +199,22 @@ export default function MembersPage() {
           </tbody>
         </table>
       </div>
+      {invitations.length > 0 && <div className={styles.tableWrap}>
+        <table className={styles.table}>
+          <thead><tr><th>待处理邀请</th><th>角色</th><th>初始额度</th><th>状态</th><th>有效期</th><th>操作</th></tr></thead>
+          <tbody>{invitations.map((invitation) => {
+            const isBusy = busy === `${invitation.id}:revoke-invitation`;
+            return <tr key={invitation.id}>
+              <td><div className={styles.identity}><strong>{invitation.name}</strong><span>{invitation.email}</span></div></td>
+              <td>{invitation.role === "admin" ? "管理员" : "使用者"}</td>
+              <td>{invitation.initialDailySuccessLimit}</td>
+              <td>{invitation.status === "pending" ? "待兑换" : invitation.status === "consumed" ? "已兑换" : invitation.status === "revoked" ? "已撤销" : "已过期"}</td>
+              <td>{new Date(invitation.expiresAt).toLocaleString("zh-CN")}</td>
+              <td>{invitation.status === "pending" && <button className={styles.iconButton} type="button" title="撤销邀请" disabled={isBusy} onClick={() => void revokeInvitation(invitation)}><Ban size={15} /></button>}</td>
+            </tr>;
+          })}</tbody>
+        </table>
+      </div>}
       {loading && <p className={styles.message}>正在加载成员…</p>}
     </div>
   );

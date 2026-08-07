@@ -370,6 +370,8 @@ html[data-oopsnote-paper-compose="active"] .oops-page-enter {
 .oops-account-menu__identity { display: flex; min-width: 0; flex-direction: column; gap: 3px; padding: 4px 8px; }
 .oops-account-menu__identity strong { overflow: hidden; font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
 .oops-account-menu__identity span { overflow: hidden; color: var(--fgColor-muted); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.oops-account-menu__quota { display: grid; grid-template-columns: 16px 1fr auto; align-items: center; gap: 7px; margin: 7px 8px 3px; padding: 8px; border: 1px solid var(--borderColor-default); border-radius: 6px; color: var(--fgColor-muted); background: var(--bgColor-muted); font-size: 12px; }
+.oops-account-menu__quota strong { color: var(--fgColor-default); font-size: 12px; font-variant-numeric: tabular-nums; }
 
 .oops-app-body {
   display: flex;

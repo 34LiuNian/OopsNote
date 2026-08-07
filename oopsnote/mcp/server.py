@@ -164,6 +164,13 @@ def _stores() -> McpStores:
     )
 
 
+def _obsidian_vault_root() -> Path:
+    capability = current_capability()
+    if capability is not None:
+        return capability.stores.task_store.base_dir.parent / "obsidian-vault"
+    return STORAGE_DIR.parent / "vaults"
+
+
 # ═════════════════════════════════════════════════════
 # 任务
 # ═════════════════════════════════════════════════════
@@ -624,7 +631,7 @@ def finalize_task(
             syncer = ObsidianSyncer(
                 task_store=_stores().task_store,
                 tag_store=_stores().tag_store,
-                vault_root=STORAGE_DIR.parent / "vaults",
+                vault_root=_obsidian_vault_root(),
             )
             OBSIDIAN_SYNC_QUEUE.enqueue(syncer, problem, task_id=task_id)
             sync_queued = True
@@ -780,7 +787,7 @@ def sync_to_obsidian(subject: Optional[str] = None) -> str:
     syncer = ObsidianSyncer(
         task_store=_stores().task_store,
         tag_store=_stores().tag_store,
-        vault_root=STORAGE_DIR.parent / "vaults",
+        vault_root=_obsidian_vault_root(),
     )
     if subject:
         report = syncer.sync_for_subject(subject)

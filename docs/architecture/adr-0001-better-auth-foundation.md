@@ -11,7 +11,7 @@ Date: 2026-08-07
 - Keep application ownership, workspace mapping, runs, and quota accounting in the Python-owned `app.sqlite`.
 - Carry a registry-derived `WorkspaceId` through REST, managed lifecycle, and MCP boundaries. Never derive a workspace from a browser-supplied path or resource owner field.
 - Treat public sign-up as closed. Beta members are created through the admin invitation flow or the explicitly labeled direct-admin flow.
-- Enable Better Auth's Kysely SQLite transaction adapter. The custom invitation endpoint consumes a hashed, single-use native `verification` row and creates the user plus credential account in that same transaction.
+- Enable Better Auth's Kysely SQLite transaction adapter. The custom invitation endpoint atomically claims a hashed OopsNote invitation row and creates the user plus credential account in that same transaction.
 
 ## Version evidence
 
@@ -21,7 +21,7 @@ The pinned packages export the official Next.js handler, admin plugin, client ad
 
 ## Invitation transaction gate
 
-Better Auth database hooks remain policy boundaries; invitation redemption is implemented as a custom Better Auth endpoint/plugin. It stores only a SHA-256 token digest in the native `verification` table, atomically consumes that single-use row, validates the payload, and creates the user and credential account before the transaction commits. Public sign-up remains disabled.
+Better Auth database hooks remain policy boundaries; invitation redemption is implemented as a custom Better Auth endpoint/plugin. The Node-owned `oopsnote_invitation` table stores only a SHA-256 token digest and explicit created, expiry, consumed, and revoked state. The endpoint conditionally claims one active row, validates it, and creates the user and credential account before the transaction commits. Sensitive account and invitation operations append structured records to `oopsnote_auth_audit`. Public sign-up remains disabled.
 
 The contract test against the pinned version proves: first redemption succeeds, replay is rejected, duplicate-email redemption fails without consuming the invitation, deleting the existing account allows the failed invitation to be redeemed, and the replay of that redeemed invitation is rejected.
 

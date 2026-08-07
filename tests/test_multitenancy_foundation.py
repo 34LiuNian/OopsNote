@@ -448,6 +448,98 @@ def test_workspace_retry_reuses_one_reservation_and_consumes_it_once(tmp_path):
     assert control_runs[1]["retry_of"] == first.id
 
 
+def test_retry_rechecks_concurrency_and_preserves_the_original_operation(tmp_path):
+    registry = _registry(tmp_path)
+    context = registry.get_or_create(Principal("auth-retry-guards", UserRole.USER))
+    service = QuotaService(registry.database)
+    first = service.admit_run(
+        context.workspace_id,
+        task_id="task-1",
+        purpose=RunPurpose.PROBLEM,
+        idempotency_key="first",
+        run_id="run-1",
+    )
+    service.settle_run(context.workspace_id, first.run_id, status="failed")
+
+    with pytest.raises(QuotaError, match="preserve task and purpose"):
+        service.admit_retry(
+            context.workspace_id,
+            previous_run_id=first.run_id,
+            task_id="task-2",
+            purpose=RunPurpose.PROBLEM,
+            run_id="run-invalid",
+        )
+
+    active = service.admit_run(
+        context.workspace_id,
+        task_id="task-2",
+        purpose=RunPurpose.PROBLEM,
+        idempotency_key="active",
+        run_id="run-active",
+    )
+    with pytest.raises(QuotaError, match="Concurrent"):
+        service.admit_retry(
+            context.workspace_id,
+            previous_run_id=first.run_id,
+            task_id="task-1",
+            purpose=RunPurpose.PROBLEM,
+            run_id="run-retry",
+        )
+    service.settle_run(context.workspace_id, active.run_id, status="failed")
+
+
+def test_retry_moves_released_usage_to_the_retry_day_and_rechecks_daily_limit(tmp_path):
+    registry = _registry(tmp_path)
+    context = registry.get_or_create(Principal("auth-retry-day", UserRole.USER))
+    service = QuotaService(registry.database)
+    day_one = datetime(2026, 8, 6, 23, 59, tzinfo=timezone.utc)
+    day_two = datetime(2026, 8, 7, 0, 1, tzinfo=timezone.utc)
+    first = service.admit_run(
+        context.workspace_id,
+        task_id="task-1",
+        purpose=RunPurpose.PROBLEM,
+        idempotency_key="first",
+        run_id="run-1",
+        now=day_one,
+    )
+    service.settle_run(context.workspace_id, first.run_id, status="failed", now=day_one)
+    retry = service.admit_retry(
+        context.workspace_id,
+        previous_run_id=first.run_id,
+        task_id="task-1",
+        purpose=RunPurpose.PROBLEM,
+        run_id="run-retry",
+        now=day_two,
+    )
+    with registry.database.connection() as connection:
+        usage_day = connection.execute(
+            "SELECT usage_day_utc FROM usage_reservations WHERE id = ?",
+            (retry.reservation_id,),
+        ).fetchone()[0]
+    assert usage_day == "2026-08-07"
+
+    service.settle_run(context.workspace_id, retry.run_id, status="completed", now=day_two)
+    registry.update_quota("auth-retry-day", daily_success_limit=1)
+    second = service.admit_run(
+        context.workspace_id,
+        task_id="task-2",
+        purpose=RunPurpose.PROBLEM,
+        idempotency_key="second",
+        run_id="run-2",
+        now=day_one,
+    )
+    service.settle_run(context.workspace_id, second.run_id, status="failed", now=day_one)
+    with pytest.raises(QuotaError, match="Daily"):
+        service.admit_retry(
+            context.workspace_id,
+            previous_run_id=second.run_id,
+            task_id="task-2",
+            purpose=RunPurpose.PROBLEM,
+            run_id="run-2-retry",
+            now=day_two,
+        )
+
+
 def test_consumed_daily_limit_blocks_the_next_workspace_run(tmp_path):
     registry = _registry(tmp_path)
     context = registry.get_or_create(Principal("auth-run-daily", UserRole.USER))

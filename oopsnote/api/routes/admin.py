@@ -8,8 +8,10 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field
 
 from oopsnote.api.auth import AuthenticationError, require_admin_request
+from oopsnote.core import Principal
 
 router = APIRouter(prefix="/admin/members", tags=["admin-members"])
+internal_router = APIRouter(prefix="/internal", tags=["internal-members"])
 
 
 class ProvisionRequest(BaseModel):
@@ -31,6 +33,12 @@ class SummaryRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     auth_user_ids: list[str] = Field(min_length=1, max_length=100)
+
+
+class SelfProvisionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    daily_success_limit: int = Field(ge=0, le=1_000_000)
 
 
 def _api():
@@ -87,3 +95,20 @@ def update_member_quota(auth_user_id: str, payload: QuotaPatch, request: Request
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
     return {"auth_user_id": auth_user_id, "quota": quota}
+
+
+@internal_router.post("/members/provision-self")
+def provision_self(payload: SelfProvisionRequest, request: Request) -> dict[str, Any]:
+    principal = getattr(request.state, "principal", None)
+    if not isinstance(principal, Principal):
+        raise HTTPException(status_code=401, detail="Missing authenticated user")
+    api = _api()
+    workspace = api.WORKSPACE_REGISTRY.provision(
+        principal.user_id,
+        daily_success_limit=payload.daily_success_limit,
+    )
+    return {
+        "auth_user_id": principal.user_id,
+        "workspace_id": str(workspace.workspace_id),
+        "quota": api.WORKSPACE_REGISTRY.quota_summary(principal.user_id),
+    }

@@ -1,5 +1,6 @@
 import { auth } from "@/lib/better-auth";
 import { signInternalIdentity } from "@/lib/internal-identity";
+import { markWorkspaceProvisioned, pendingInitialQuota } from "@/lib/better-auth-invitations";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -34,7 +35,39 @@ async function proxy(request: Request, context: RouteContext): Promise<Response>
   }
   const role = session.user.role;
   const pathName = `/${(await context.params).path?.join("/") || ""}`.replace(/\/+/g, "/");
+  if (pathName.startsWith("/internal/")) {
+    return Response.json({ detail: "Not found" }, { status: 404 });
+  }
   const backendUrl = (process.env.OOPSNOTE_BACKEND_URL || "http://127.0.0.1:8000").replace(/\/$/, "");
+  const initialDailySuccessLimit = pendingInitialQuota(session.user.id);
+  if (initialDailySuccessLimit !== null) {
+    const bootstrapPath = "/internal/members/provision-self";
+    const bootstrapIdentity = signInternalIdentity({
+      userId: session.user.id,
+      role,
+      method: "POST",
+      path: bootstrapPath,
+    });
+    try {
+      const bootstrapResponse = await fetch(`${backendUrl}${bootstrapPath}`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-oopsnote-identity": bootstrapIdentity.encoded,
+          "x-oopsnote-signature": bootstrapIdentity.signature,
+        },
+        body: JSON.stringify({ daily_success_limit: initialDailySuccessLimit }),
+        cache: "no-store",
+      });
+      if (!bootstrapResponse.ok) {
+        return Response.json({ detail: "Workspace initialization is unavailable" }, { status: 503 });
+      }
+      markWorkspaceProvisioned(session.user.id);
+    } catch (error) {
+      console.error("OopsNote initial workspace quota provisioning failed", error);
+      return Response.json({ detail: "Workspace initialization is unavailable" }, { status: 503 });
+    }
+  }
   const target = `${backendUrl}${pathName}${new URL(request.url).search}`;
   let identity;
   try {
