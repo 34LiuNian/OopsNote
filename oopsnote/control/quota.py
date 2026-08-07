@@ -88,26 +88,11 @@ class QuotaService:
                     )
 
                 policy = connection.execute(
-                    """
-                    SELECT daily_success_limit, max_concurrent_runs
-                    FROM quota_policies
-                    WHERE workspace_id = ?
-                    """,
+                    "SELECT daily_success_limit FROM quota_policies WHERE workspace_id = ?",
                     (str(workspace),),
                 ).fetchone()
                 if policy is None:
                     raise QuotaError("workspace_not_registered", "Workspace is not registered")
-
-                active = connection.execute(
-                    """
-                    SELECT COUNT(*)
-                    FROM runs
-                    WHERE workspace_id = ? AND status IN ('queued', 'running')
-                    """,
-                    (str(workspace),),
-                ).fetchone()[0]
-                if int(active) >= int(policy["max_concurrent_runs"]):
-                    raise QuotaError("concurrency_exceeded", "Concurrent run limit exceeded")
 
                 used = connection.execute(
                     """
@@ -164,6 +149,78 @@ class QuotaService:
                 connection.rollback()
                 raise
         return RunAdmission(workspace, requested_run_id, reservation_id, True, "reserved")
+
+    def start_run(
+        self,
+        workspace_id: WorkspaceId,
+        run_id: str,
+        *,
+        now: datetime | None = None,
+    ) -> str:
+        """Atomically claim one execution slot for a persisted queued run."""
+        workspace = WorkspaceId.parse(workspace_id)
+        timestamp = (now or datetime.now(timezone.utc)).astimezone(timezone.utc).isoformat()
+        self.database.migrate()
+        with self.database.connection() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            try:
+                run = connection.execute(
+                    "SELECT workspace_id, status FROM runs WHERE id = ?",
+                    (run_id,),
+                ).fetchone()
+                if run is None or run["workspace_id"] != str(workspace):
+                    raise KeyError(run_id)
+                if run["status"] == "running":
+                    connection.commit()
+                    return "running"
+                if run["status"] != "queued":
+                    raise QuotaError("run_not_startable", "Only queued runs can start")
+                policy = connection.execute(
+                    "SELECT max_concurrent_runs FROM quota_policies WHERE workspace_id = ?",
+                    (str(workspace),),
+                ).fetchone()
+                if policy is None:
+                    raise QuotaError("workspace_not_registered", "Workspace is not registered")
+                active = connection.execute(
+                    "SELECT COUNT(*) FROM runs WHERE workspace_id = ? AND status = 'running'",
+                    (str(workspace),),
+                ).fetchone()[0]
+                if int(active) >= int(policy["max_concurrent_runs"]):
+                    raise QuotaError("concurrency_exceeded", "Concurrent run limit exceeded")
+                connection.execute(
+                    "UPDATE runs SET status = 'running', started_at = COALESCE(started_at, ?) WHERE id = ?",
+                    (timestamp, run_id),
+                )
+                connection.commit()
+            except (sqlite3.Error, QuotaError, KeyError):
+                connection.rollback()
+                raise
+        return "running"
+
+    def defer_run(self, workspace_id: WorkspaceId, run_id: str) -> str:
+        """Release an execution slot while preserving the queued reservation."""
+        workspace = WorkspaceId.parse(workspace_id)
+        self.database.migrate()
+        with self.database.connection() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            try:
+                run = connection.execute(
+                    "SELECT workspace_id, status FROM runs WHERE id = ?",
+                    (run_id,),
+                ).fetchone()
+                if run is None or run["workspace_id"] != str(workspace):
+                    raise KeyError(run_id)
+                if run["status"] == "queued":
+                    connection.commit()
+                    return "queued"
+                if run["status"] != "running":
+                    raise QuotaError("run_not_deferable", "Only running runs can be deferred")
+                connection.execute("UPDATE runs SET status = 'queued' WHERE id = ?", (run_id,))
+                connection.commit()
+            except (sqlite3.Error, QuotaError, KeyError):
+                connection.rollback()
+                raise
+        return "queued"
 
     def settle_run(
         self,
@@ -247,20 +304,11 @@ class QuotaService:
                 if previous["task_id"] != task_id or previous["purpose"] != purpose.value:
                     raise QuotaError("retry_not_eligible", "Retry must preserve task and purpose")
                 policy = connection.execute(
-                    """
-                    SELECT daily_success_limit, max_concurrent_runs
-                    FROM quota_policies WHERE workspace_id = ?
-                    """,
+                    "SELECT daily_success_limit FROM quota_policies WHERE workspace_id = ?",
                     (str(workspace),),
                 ).fetchone()
                 if policy is None:
                     raise QuotaError("workspace_not_registered", "Workspace is not registered")
-                active = connection.execute(
-                    "SELECT COUNT(*) FROM runs WHERE workspace_id = ? AND status IN ('queued', 'running')",
-                    (str(workspace),),
-                ).fetchone()[0]
-                if int(active) >= int(policy["max_concurrent_runs"]):
-                    raise QuotaError("concurrency_exceeded", "Concurrent run limit exceeded")
                 usage_day = timestamp.date().isoformat()
                 used = connection.execute(
                     """

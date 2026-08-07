@@ -594,6 +594,15 @@ class RunStore:
             heartbeat_at=now,
         )
 
+    def claim_execution(self, run_id: str) -> bool:
+        """Claim any external execution capacity before invoking a runner."""
+        self.get(run_id)
+        return True
+
+    def defer_execution(self, run_id: str) -> None:
+        """Release external execution capacity while leaving the run queued."""
+        self.get(run_id)
+
     def yield_run(self, run_id: str) -> TaskRun:
         """Return a cooperative work quantum to the durable priority queue."""
         run = self.get(run_id)

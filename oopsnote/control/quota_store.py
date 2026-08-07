@@ -136,6 +136,39 @@ class QuotaAwareRunStore(RunStore):
             )
         return run
 
+    def start(
+        self,
+        run_id: str,
+        pid: Optional[int],
+        log_path: str,
+        *,
+        worker_id: Optional[str] = None,
+    ) -> TaskRun:
+        if not self.claim_execution(run_id):
+            raise QuotaError("concurrency_exceeded", "Concurrent run limit exceeded")
+        try:
+            return super().start(run_id, pid, log_path, worker_id=worker_id)
+        except Exception:
+            self.defer_execution(run_id)
+            raise
+
+    def claim_execution(self, run_id: str) -> bool:
+        try:
+            self.quota.start_run(self.workspace_id, run_id)
+        except QuotaError as error:
+            if error.code == "concurrency_exceeded":
+                return False
+            raise
+        return True
+
+    def defer_execution(self, run_id: str) -> None:
+        self.quota.defer_run(self.workspace_id, run_id)
+
+    def yield_run(self, run_id: str) -> TaskRun:
+        run = super().yield_run(run_id)
+        self.defer_execution(run_id)
+        return run
+
     def reconcile_control_runs(self) -> int:
         """Settle control rows from terminal JSON projections after a restart."""
         reconciled = 0
@@ -154,4 +187,3 @@ class QuotaAwareRunStore(RunStore):
                 )
                 reconciled += 1
         return reconciled
-

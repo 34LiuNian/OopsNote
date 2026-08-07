@@ -9,6 +9,7 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
+from oopsnote.ai.dispatcher import ManagedTaskDispatcher
 from oopsnote.ai.work_items import ManagedWorkItem
 from oopsnote.ai.langchain_tools import McpHttpToolClient
 from oopsnote.api.context import RequestContext, activate_request_context, reset_request_context
@@ -265,23 +266,19 @@ def test_quota_admission_is_atomic_idempotent_and_settles_terminal_runs(tmp_path
     assert admitted.created is True
     assert repeated.created is False
     assert repeated.run_id == admitted.run_id
-    with pytest.raises(QuotaError, match="Concurrent"):
-        service.admit_run(
-            workspace,
-            task_id="task-2",
-            purpose=RunPurpose.PROBLEM,
-            idempotency_key="task-2:problem",
-        )
-
-    assert service.settle_run(workspace, admitted.run_id, status="failed") == "failed"
-    next_run = service.admit_run(
+    queued = service.admit_run(
         workspace,
         task_id="task-2",
         purpose=RunPurpose.PROBLEM,
         idempotency_key="task-2:problem",
     )
-    assert next_run.created is True
-    assert service.settle_run(workspace, next_run.run_id, status="completed") == "completed"
+    service.start_run(workspace, admitted.run_id)
+    with pytest.raises(QuotaError, match="Concurrent"):
+        service.start_run(workspace, queued.run_id)
+
+    assert service.settle_run(workspace, admitted.run_id, status="failed") == "failed"
+    assert service.start_run(workspace, queued.run_id) == "running"
+    assert service.settle_run(workspace, queued.run_id, status="completed") == "completed"
     with registry.database.connection() as connection:
         states = connection.execute(
             "SELECT state FROM usage_reservations ORDER BY id"
@@ -410,18 +407,59 @@ def test_workspace_runner_pool_is_scoped_and_reuses_only_within_workspace(tmp_pa
         pool.shutdown()
 
 
-def test_workspace_run_store_enforces_concurrency_and_releases_failed_usage(tmp_path):
+def test_workspace_run_store_queues_beyond_concurrency_and_claims_one_execution_slot(tmp_path):
     registry = _registry(tmp_path)
     context = registry.get_or_create(Principal("auth-run-quota", UserRole.USER))
     stores = WorkspaceStoreFactory().for_context(context)
     first = stores.run_store.create("task-1", backend="hermes")
+    second = stores.run_store.create("task-2", backend="hermes")
+    stores.run_store.start(first.id, None, "runs/first.log")
 
     with pytest.raises(QuotaError, match="Concurrent"):
-        stores.run_store.create("task-2", backend="hermes")
+        stores.run_store.start(second.id, None, "runs/second.log")
 
     stores.run_store.finish(first.id, RunStatus.FAILED, error_code="provider_unavailable")
-    second = stores.run_store.create("task-2", backend="hermes")
+    stores.run_store.start(second.id, None, "runs/second.log")
     assert second.quota_reservation_id != first.quota_reservation_id
+
+
+def test_dispatcher_defers_queued_run_until_workspace_execution_slot_is_available(tmp_path):
+    registry = _registry(tmp_path)
+    context = registry.get_or_create(Principal("auth-dispatch-quota", UserRole.USER))
+    run_store = WorkspaceStoreFactory().for_context(context).run_store
+    active = run_store.create("task-active", backend="langchain")
+    queued = run_store.create("task-queued", backend="langchain")
+    run_store.start(active.id, None, "runs/active.log")
+
+    class Runner:
+        backend_name = "langchain"
+
+        def __init__(self):
+            self.run_store = run_store
+            self.completed = threading.Event()
+            self.errors: list[Exception] = []
+
+        def run(self, task_id, run_id):
+            self.run_store.start(run_id, None, f"runs/{run_id}.log")
+            self.run_store.finish(run_id, RunStatus.COMPLETED)
+            self.completed.set()
+
+        def handle_dispatcher_error(self, task_id, run_id, error):
+            self.errors.append(error)
+
+    runner = Runner()
+    dispatcher = ManagedTaskDispatcher(runner, workers=1)
+    try:
+        dispatcher.schedule(queued.task_id, queued.id)
+        assert not runner.completed.wait(0.15)
+        assert run_store.get(queued.id).status == RunStatus.QUEUED
+
+        run_store.finish(active.id, RunStatus.FAILED)
+        assert runner.completed.wait(2)
+        assert run_store.get(queued.id).status == RunStatus.COMPLETED
+        assert runner.errors == []
+    finally:
+        dispatcher.shutdown()
 
 
 def test_workspace_retry_reuses_one_reservation_and_consumes_it_once(tmp_path):
@@ -448,7 +486,7 @@ def test_workspace_retry_reuses_one_reservation_and_consumes_it_once(tmp_path):
     assert control_runs[1]["retry_of"] == first.id
 
 
-def test_retry_rechecks_concurrency_and_preserves_the_original_operation(tmp_path):
+def test_retry_rechecks_concurrency_when_execution_starts_and_preserves_the_original_operation(tmp_path):
     registry = _registry(tmp_path)
     context = registry.get_or_create(Principal("auth-retry-guards", UserRole.USER))
     service = QuotaService(registry.database)
@@ -477,15 +515,18 @@ def test_retry_rechecks_concurrency_and_preserves_the_original_operation(tmp_pat
         idempotency_key="active",
         run_id="run-active",
     )
+    service.start_run(context.workspace_id, active.run_id)
+    retry = service.admit_retry(
+        context.workspace_id,
+        previous_run_id=first.run_id,
+        task_id="task-1",
+        purpose=RunPurpose.PROBLEM,
+        run_id="run-retry",
+    )
     with pytest.raises(QuotaError, match="Concurrent"):
-        service.admit_retry(
-            context.workspace_id,
-            previous_run_id=first.run_id,
-            task_id="task-1",
-            purpose=RunPurpose.PROBLEM,
-            run_id="run-retry",
-        )
+        service.start_run(context.workspace_id, retry.run_id)
     service.settle_run(context.workspace_id, active.run_id, status="failed")
+    assert service.start_run(context.workspace_id, retry.run_id) == "running"
 
 
 def test_retry_moves_released_usage_to_the_retry_day_and_rechecks_daily_limit(tmp_path):

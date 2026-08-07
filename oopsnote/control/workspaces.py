@@ -153,7 +153,7 @@ class WorkspaceRegistry:
             row = connection.execute(
                 """
                 SELECT w.id AS workspace_id, q.daily_success_limit, q.max_concurrent_runs,
-                       (SELECT COUNT(*) FROM runs r WHERE r.workspace_id = w.id AND r.status IN ('queued', 'running')) AS active_runs,
+                       (SELECT COUNT(*) FROM runs r WHERE r.workspace_id = w.id AND r.status = 'running') AS active_runs,
                        (SELECT COALESCE(SUM(u.units), 0) FROM usage_reservations u
                         WHERE u.workspace_id = w.id AND u.usage_day_utc = ? AND u.state IN ('reserved', 'consumed')) AS used_units
                 FROM workspaces AS w
