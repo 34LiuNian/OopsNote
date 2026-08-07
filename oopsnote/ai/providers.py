@@ -209,6 +209,14 @@ class ProviderClientFactory:
             parsed = parsed._replace(path="/v1")
         return urlunsplit(parsed)
 
+    @staticmethod
+    def _uses_native_deepseek_api(profile: ProviderProfile) -> bool:
+        """Use the DeepSeek SDK only for DeepSeek's own API origin."""
+
+        if profile.provider != "deepseek" or profile.base_url is None:
+            return profile.provider == "deepseek"
+        return urlsplit(str(profile.base_url)).hostname == "api.deepseek.com"
+
     @classmethod
     def _uses_managed_non_thinking_mode(cls, profile: ProviderProfile) -> bool:
         """Whether this provider needs non-thinking mode for a strict tool loop."""
@@ -225,7 +233,7 @@ class ProviderClientFactory:
             raise ValueError("provider profile has no credential")
         api_key = self.secret_store.get(profile.credential_ref)
         provider = profile.provider.lower()
-        if provider == "deepseek":
+        if provider == "deepseek" and self._uses_native_deepseek_api(profile):
             try:
                 from langchain_deepseek import ChatDeepSeek
             except ImportError as error:
@@ -250,7 +258,7 @@ class ProviderClientFactory:
                 # not a lifecycle timeout or retry policy.
                 kwargs["max_tokens"] = 8192
             return ChatDeepSeek(**kwargs)
-        if provider in {"openai", "openai-compatible"}:
+        if provider in {"openai", "openai-compatible", "deepseek"}:
             if provider == "openai-compatible" and profile.base_url is None:
                 raise ValueError("openai-compatible provider requires base_url")
             try:
