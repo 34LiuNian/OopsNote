@@ -21,7 +21,7 @@ const NAV_ITEMS = [
   { href: "/library", label: "题库", icon: RepoIcon, section: "main" },
   { href: "/batch-segment", label: "批量扫描", icon: ScanIcon, section: "main" },
   { href: "/papers", label: "组卷", icon: ChecklistIcon, section: "main" },
-  { href: "/", label: "新建题目", icon: PlusIcon, section: "main", matchExact: true },
+  { href: "/new", label: "新建题目", icon: PlusIcon, section: "main", matchExact: true },
   { href: "/paper-builder", label: "快速重练", icon: BookIcon, section: "main" },
   { href: "/debug", label: "渲染调试", icon: BookIcon, section: "tools" },
   { href: "/settings", label: "设置", icon: GearIcon, section: "admin", matchExact: true },

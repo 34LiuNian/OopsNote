@@ -114,7 +114,7 @@ export async function POST(request: Request) {
     if (body.invitation === true) {
       if (!email || !name) return NextResponse.json({ error: "email 和 name 为必填项" }, { status: 400 });
       const invitation = await createInvitation({ email, name, role, createdByUserId: session.user.id, initialDailySuccessLimit: dailySuccessLimit, expiresInHours: 72 });
-      return NextResponse.json({ invitationUrl: `/invite?token=${encodeURIComponent(invitation.token)}`, expiresAt: invitation.expiresAt }, { status: 201 });
+      return NextResponse.json({ invitationCode: invitation.code, invitationUrl: `/invite?token=${encodeURIComponent(invitation.code)}`, expiresAt: invitation.expiresAt }, { status: 201 });
     }
     if (!email || !name || password.length < 12) {
       return NextResponse.json({ error: "email、name 和至少 12 位密码为必填项" }, { status: 400 });

@@ -41,6 +41,14 @@ export const auth = betterAuth({
     disableSignUp: true,
     minPasswordLength: 12,
   },
+  user: {
+    changeEmail: {
+      enabled: true,
+      // Internal beta accounts are not email-verified yet; keep this update in Better Auth,
+      // rather than allowing any application route to write identity rows directly.
+      updateEmailWithoutVerification: true,
+    },
+  },
   trustedOrigins: [baseURL],
   plugins: [
     betterAuthAdminGatePlugin,

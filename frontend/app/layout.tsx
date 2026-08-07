@@ -4,7 +4,7 @@ import "./globals.css";
 import "katex/dist/katex.min.css";
 import "@mantine/core/styles.css";
 import "@mantine/notifications/styles.css";
-import { AppLayout, SplashScreen } from "@/components/layout";
+import { SplashScreen } from "@/components/layout";
 import { AuthBoundary, AuthProvider, ThemeProvider, ReactQueryProvider } from "@/components/providers";
 import { MantineNotifications } from "@/components/ui";
 import { KatexAutoRender } from "@/components/renderers";
@@ -62,9 +62,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             <ThemeProvider initialPreference="system">
               <KatexAutoRender />
               <MantineNotifications />
-              <AuthBoundary>
-                <AppLayout>{children}</AppLayout>
-              </AuthBoundary>
+              <AuthBoundary>{children}</AuthBoundary>
             </ThemeProvider>
           </AuthProvider>
         </ReactQueryProvider>

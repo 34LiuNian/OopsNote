@@ -1,5 +1,5 @@
-import { UploadForm } from "../features/upload";
+import { redirect } from "next/navigation";
 
 export default function Page() {
-  return <UploadForm />;
+  redirect("/library");
 }

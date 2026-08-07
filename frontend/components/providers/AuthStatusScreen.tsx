@@ -1,6 +1,9 @@
 "use client";
 
 import { CircleAlert, LoaderCircle, RotateCcw } from "lucide-react";
+import { Button } from "@/components/ui/primitives";
+import { AuthenticationShell } from "@/components/auth/AuthenticationShell";
+import styles from "@/components/auth/AuthenticationShell.module.css";
 
 type AuthStatusScreenProps = {
   phase: "signin" | "callback";
@@ -20,25 +23,10 @@ export function AuthStatusScreen({ phase, error }: AuthStatusScreenProps) {
       ? "正在打开登录页面"
       : "正在验证身份信息";
 
-  return (
-    <main className="oops-auth-status" aria-busy={!isError}>
-      <div className="oops-auth-status__brand" aria-label="OopsNote">
-        <span className="oops-auth-status__mark" aria-hidden="true" />
-        <span>OopsNote</span>
-      </div>
-      <section className="oops-auth-status__content" aria-live="polite">
-        <div className={`oops-auth-status__indicator${isError ? " is-error" : ""}`}>
-          {isError ? <CircleAlert size={24} aria-hidden="true" /> : <LoaderCircle size={24} aria-hidden="true" />}
-        </div>
-        <h1>{title}</h1>
-        <p>{detail}</p>
-        {isError && (
-          <button type="button" onClick={() => window.location.reload()}>
-            <RotateCcw size={16} aria-hidden="true" />
-            重新登录
-          </button>
-        )}
-      </section>
-    </main>
-  );
+  return <AuthenticationShell title={title} description={detail || ""}>
+    <section className={styles.status} aria-live="polite" aria-busy={!isError}>
+      <div className={styles.statusIcon} data-error={isError}>{isError ? <CircleAlert size={22} aria-hidden="true" /> : <LoaderCircle size={22} aria-hidden="true" />}</div>
+      {isError && <Button type="button" variant="secondary" leadingVisual={RotateCcw} onClick={() => window.location.reload()}>重新登录</Button>}
+    </section>
+  </AuthenticationShell>;
 }

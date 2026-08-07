@@ -54,6 +54,11 @@ function tokenHash(token: string): string {
   return createHash("sha256").update(token).digest("hex");
 }
 
+function generateInvitationCode(): string {
+  const value = randomBytes(20).toString("hex").toUpperCase();
+  return value.match(/.{1,5}/g)?.join("-") || value;
+}
+
 function normalizeEmail(email: string): string {
   const normalized = email.trim().toLowerCase();
   if (!z.string().email().safeParse(normalized).success) throw new Error("email 格式无效");
@@ -101,7 +106,7 @@ export async function createInvitation(input: {
   createdByUserId: string;
   initialDailySuccessLimit?: number;
   expiresInHours?: number;
-}): Promise<{ id: string; token: string; expiresAt: Date }> {
+}): Promise<{ id: string; code: string; expiresAt: Date }> {
   const email = normalizeEmail(input.email);
   const name = input.name.trim();
   if (!name || name.length > 128) throw new Error("name 必须为 1 到 128 个字符");
@@ -115,7 +120,8 @@ export async function createInvitation(input: {
   if (existingUser) throw new Error("该邮箱已经注册");
 
   const id = randomUUID();
-  const token = randomBytes(32).toString("base64url");
+  // This displayed code still contains 160 bits of entropy. Only its hash is stored.
+  const code = generateInvitationCode();
   const createdAt = new Date();
   const expiresAt = new Date(createdAt.getTime() + Math.max(1, input.expiresInHours ?? 72) * 60 * 60 * 1000);
   const create = betterAuthDatabase.transaction(() => {
@@ -141,7 +147,7 @@ export async function createInvitation(input: {
        ) values (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ).run(
       id,
-      tokenHash(token),
+      tokenHash(code),
       email,
       name,
       input.role,
@@ -158,7 +164,7 @@ export async function createInvitation(input: {
     });
   });
   create();
-  return { id, token, expiresAt };
+  return { id, code, expiresAt };
 }
 
 export function listInvitations(limit = 100): InvitationRecord[] {

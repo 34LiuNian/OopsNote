@@ -1,20 +1,16 @@
 "use client";
 
-import { Avatar, Menu } from "@mantine/core";
+import { Menu } from "@mantine/core";
 import { Gauge, LogOut, UserRound } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useAuth } from "@/components/providers";
+import { InitialAvatar } from "@/components/ui/InitialAvatar";
 
 type QuotaSummary = {
   daily_success_limit: number;
   used_units: number;
 };
-
-function initials(name: string): string {
-  const words = name.trim().split(/\s+/).filter(Boolean);
-  return words.slice(0, 2).map((word) => word[0]).join("").toUpperCase() || "U";
-}
 
 export function AccountMenu() {
   const { user, signOut } = useAuth();
@@ -37,9 +33,7 @@ export function AccountMenu() {
     <Menu position="bottom-end" offset={8} shadow="md" width={224} withinPortal onOpen={() => void loadQuota()}>
       <Menu.Target>
         <button type="button" className="oops-account-trigger" aria-label="账户菜单">
-          <Avatar src={user?.picture} alt="" size={28} radius="xl" color="gray">
-            {user ? initials(displayName) : <UserRound size={16} />}
-          </Avatar>
+          {user ? <InitialAvatar name={displayName} image={user.picture} size={28} /> : <UserRound size={16} />}
           <span className="oops-account-trigger__name">{displayName}</span>
         </button>
       </Menu.Target>
