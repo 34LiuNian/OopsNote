@@ -133,7 +133,8 @@ html[data-oopsnote-color-scheme="dark"] {
   --batch-viewer-control-border: #4b4e55;
   --batch-viewer-text: #e7e9ee;
   --batch-viewer-text-muted: #b8bcc5;
-  --sidebar-bg: #18181b;
+  --sidebar-bg: #09090b;
+  --secondary-sidebar-bg: #09090b;
   --secondary-sidebar-bg: color-mix(in srgb, var(--sidebar-bg) 70%, var(--bgColor-default) 30%);
   --sidebar-border: #3f3f46;
   --sidebar-text: #a1a1aa;
