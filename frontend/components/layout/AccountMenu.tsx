@@ -2,6 +2,7 @@
 
 import { Avatar, Menu } from "@mantine/core";
 import { Gauge, LogOut, UserRound } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useAuth } from "@/components/providers";
 
@@ -17,6 +18,7 @@ function initials(name: string): string {
 
 export function AccountMenu() {
   const { user, signOut } = useAuth();
+  const router = useRouter();
   const displayName = user?.displayName ?? "登录";
   const [quota, setQuota] = useState<QuotaSummary | null>(null);
 
@@ -54,6 +56,9 @@ export function AccountMenu() {
           </div>
         )}
         <Menu.Divider />
+        <Menu.Item leftSection={<UserRound size={15} />} onClick={() => router.push("/settings/account")}>
+          我的账户
+        </Menu.Item>
         <Menu.Item color="red" leftSection={<LogOut size={15} />} onClick={signOut}>
           退出登录
         </Menu.Item>

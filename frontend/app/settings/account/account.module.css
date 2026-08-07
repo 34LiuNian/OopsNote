@@ -1,0 +1,14 @@
+.page { display: grid; min-width: 0; gap: 20px; }
+.panel { display: grid; gap: 24px; padding: 28px; border: 1px solid var(--borderColor-default); border-radius: 8px; background: var(--bgColor-default); box-shadow: var(--oops-shadow-sm); }
+.panelHeading { display: flex; align-items: flex-start; gap: 10px; }
+.panelHeading h2 { margin: 0; font-size: 21px; line-height: 1.3; }
+.panelHeading p, .avatarRow p, .footer p { margin: 4px 0 0; color: var(--fgColor-muted); font-size: 13px; line-height: 1.5; }
+.avatarRow { display: flex; align-items: center; gap: 22px; padding: 20px 0; border-block: 1px solid var(--borderColor-muted); }
+.avatarRow strong { display: block; font-size: 14px; }
+.hint { display: inline-flex; align-items: center; gap: 6px; margin-top: 9px; color: var(--fgColor-muted); font-size: 12px; }
+.fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
+.fullField { grid-column: 1 / -1; }
+.footer { display: flex; min-height: 36px; align-items: center; justify-content: space-between; gap: 16px; }
+.footer p { margin: 0; }
+.state { color: var(--fgColor-muted); }
+@media (max-width: 680px) { .panel { padding: 20px; } .fields { grid-template-columns: 1fr; } .fullField { grid-column: auto; } .footer { align-items: flex-start; flex-direction: column; } }

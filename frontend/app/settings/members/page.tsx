@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useState } from "react";
-import { Ban, Check, LoaderCircle, Plus, RefreshCcw, RotateCcw, ShieldAlert } from "lucide-react";
+import { Ban, Check, LoaderCircle, Plus, RefreshCcw, RotateCcw, ShieldAlert, UserPlus, UsersRound } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { isAdminUser } from "@/lib/auth";
@@ -163,7 +163,12 @@ export default function MembersPage() {
 
   return (
     <div className={styles.page}>
-      <PageHeader title="内测成员" description="管理登录账号、状态、角色和每日 AI 额度" />
+      <PageHeader title="成员管理" description="创建内测账户，并管理角色、访问状态与每日 AI 额度" />
+      <section className={styles.panel}>
+        <div className={styles.panelHeading}>
+          <UserPlus size={22} aria-hidden="true" />
+          <div><h2>创建成员</h2><p>邀请成员自行设置密码，或直接创建内部测试账号。</p></div>
+        </div>
       <form className={styles.toolbar} onSubmit={createMember}>
         <label className={styles.field}>显示名<input name="name" required /></label>
         <label className={styles.field}>邮箱<input name="email" type="email" required /></label>
@@ -173,8 +178,14 @@ export default function MembersPage() {
         <button className={styles.command} type="submit" name="intent" value="invite" disabled={busy === "create"}>{busy === "create" ? <LoaderCircle size={16} className="oops-login-spinner" /> : <Plus size={16} />}创建邀请</button>
         <button className={`${styles.command} ${styles.primary}`} type="submit" name="intent" value="create" disabled={busy === "create"}>直接创建</button>
       </form>
+      </section>
       {(message || error) && <p className={`${styles.message}${error ? ` ${styles.messageError}` : ""}`}>{error || message}</p>}
       {invitationUrl && <p className={styles.message}><code>{invitationUrl}</code> <button className={styles.command} type="button" onClick={() => void navigator.clipboard.writeText(invitationUrl)}>复制链接</button></p>}
+      <section className={styles.panel}>
+        <div className={styles.panelHeading}>
+          <UsersRound size={22} aria-hidden="true" />
+          <div><h2>管理成员</h2><p>{loading ? "正在同步成员信息..." : `共 ${members.length} 位成员`}</p></div>
+        </div>
       <div className={styles.tableWrap}>
         <table className={styles.table}>
           <thead><tr><th>成员</th><th>状态</th><th>角色</th><th>今日额度</th><th>并发</th><th>加入时间</th><th>操作</th></tr></thead>
@@ -199,6 +210,7 @@ export default function MembersPage() {
           </tbody>
         </table>
       </div>
+      </section>
       {invitations.length > 0 && <div className={styles.tableWrap}>
         <table className={styles.table}>
           <thead><tr><th>待处理邀请</th><th>角色</th><th>初始额度</th><th>状态</th><th>有效期</th><th>操作</th></tr></thead>
