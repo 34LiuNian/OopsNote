@@ -1,4 +1,5 @@
 .page { display: flex; min-width: 0; flex-direction: column; gap: 20px; }
+.headerActions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
 .panel { display: grid; gap: 22px; padding: 26px 28px; border: 1px solid var(--borderColor-default); border-radius: 8px; background: var(--bgColor-default); box-shadow: var(--oops-shadow-sm); }
 .panelHeading { display: flex; align-items: flex-start; gap: 10px; }
 .panelHeading h2 { margin: 0; font-size: 21px; line-height: 1.3; }
@@ -31,4 +32,10 @@
 .iconButton:hover { border-color: var(--borderColor-default); color: var(--fgColor-default); background: var(--bgColor-muted); }
 .iconButton:disabled { cursor: not-allowed; opacity: .4; }
 .role { min-height: 30px; padding: 0 7px; border: 1px solid var(--borderColor-default); border-radius: 4px; color: var(--fgColor-default); background: var(--bgColor-default); }
+.invitationTable { min-width: 700px; }
+.modalForm, .invitationResult { display: grid; gap: 18px; }
+.modalActions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+.roleSummary { display: flex; align-items: center; gap: 8px; padding: 12px; border-radius: 6px; color: var(--fgColor-muted); background: var(--bgColor-muted); font-size: 12px; }
+.invitationResult label { display: grid; gap: 8px; color: var(--fgColor-muted); font-size: 12px; }
+.invitationResult code { overflow-wrap: anywhere; padding: 14px; border: 1px solid var(--borderColor-default); border-radius: 6px; color: var(--fgColor-default); background: var(--bgColor-muted); font-size: 14px; }
 @media (max-width: 760px) { .panel { padding: 20px; } .toolbar { grid-template-columns: 1fr; } }

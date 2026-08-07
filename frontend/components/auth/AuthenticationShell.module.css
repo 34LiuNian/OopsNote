@@ -12,6 +12,9 @@
 .input:focus-within { border-color: #18181b; box-shadow: 0 0 0 3px rgb(24 24 27 / 14%); }
 .input input { width: 100%; min-width: 0; border: 0; outline: 0; color: #111111; background: transparent; font: inherit; font-weight: 400; }
 .error { margin: -4px 0 0; color: #dc2626; font-size: 13px; line-height: 1.45; }
+.hint { color: #737373; font-size: 12px; font-weight: 400; line-height: 1.4; }
+.optional { margin-left: 6px; color: #737373; font-size: 12px; font-weight: 400; }
+.spinner { animation: auth-spin .9s linear infinite; }
 .status { display: grid; justify-items: start; gap: 14px; color: #6b7280; }
 .status h2 { margin: 0; color: #111111; font-size: 24px; }
 .status p { margin: 0; font-size: 15px; line-height: 1.5; }

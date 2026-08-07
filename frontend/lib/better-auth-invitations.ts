@@ -4,40 +4,39 @@ import { runWithTransaction } from "@better-auth/core/context";
 import type { BetterAuthPlugin } from "better-auth";
 import { z } from "zod";
 import { betterAuthDatabase } from "./better-auth-database";
+import {
+  getRegistrationPolicy,
+  normalizeEmail,
+  normalizeUsername,
+  queueUserProvisioning,
+} from "./better-auth-registration";
 
-const invitationBody = z.object({
-  token: z.string().min(32),
+const registerBody = z.object({
+  username: z.string().min(3).max(32),
+  email: z.string().email(),
   password: z.string().min(12).max(128),
+  invitationCode: z.string().max(128).optional(),
 });
-
-type InvitationRole = "admin" | "user";
 
 type InvitationRow = {
   id: string;
   tokenHash: string;
-  email: string;
-  name: string;
-  role: InvitationRole;
+  maxUses: number;
+  useCount: number;
   initialDailySuccessLimit: number;
   createdByUserId: string;
   createdAt: string;
   expiresAt: string;
-  consumedAt: string | null;
-  consumedUserId: string | null;
-  workspaceProvisionedAt: string | null;
   revokedAt: string | null;
   revokedByUserId: string | null;
 };
 
-// The custom table uses synchronous better-sqlite3 statements inside Better Auth's
-// async transaction. Serialize redemption within the single frontend process so a
-// competing request cannot block the event loop while the first transaction awaits.
-let invitationMutationTail = Promise.resolve();
+let registrationMutationTail = Promise.resolve();
 
-async function withInvitationMutation<T>(operation: () => Promise<T>): Promise<T> {
-  const previous = invitationMutationTail;
+async function withRegistrationMutation<T>(operation: () => Promise<T>): Promise<T> {
+  const previous = registrationMutationTail;
   let release!: () => void;
-  invitationMutationTail = new Promise<void>((resolve) => { release = resolve; });
+  registrationMutationTail = new Promise<void>((resolve) => { release = resolve; });
   await previous;
   try {
     return await operation();
@@ -47,7 +46,7 @@ async function withInvitationMutation<T>(operation: () => Promise<T>): Promise<T
 }
 
 export type InvitationRecord = Omit<InvitationRow, "tokenHash"> & {
-  status: "pending" | "consumed" | "revoked" | "expired";
+  status: "active" | "exhausted" | "revoked" | "expired";
 };
 
 function tokenHash(token: string): string {
@@ -59,22 +58,22 @@ function generateInvitationCode(): string {
   return value.match(/.{1,5}/g)?.join("-") || value;
 }
 
-function normalizeEmail(email: string): string {
-  const normalized = email.trim().toLowerCase();
-  if (!z.string().email().safeParse(normalized).success) throw new Error("email 格式无效");
-  return normalized;
-}
-
 function invitationStatus(row: InvitationRow, now = new Date()): InvitationRecord["status"] {
-  if (row.consumedAt) return "consumed";
   if (row.revokedAt) return "revoked";
   if (new Date(row.expiresAt) <= now) return "expired";
-  return "pending";
+  if (Number(row.useCount) >= Number(row.maxUses)) return "exhausted";
+  return "active";
 }
 
 function publicInvitation(row: InvitationRow): InvitationRecord {
   const { tokenHash: _tokenHash, ...record } = row;
-  return { ...record, status: invitationStatus(row) };
+  return {
+    ...record,
+    maxUses: Number(row.maxUses),
+    useCount: Number(row.useCount),
+    initialDailySuccessLimit: Number(row.initialDailySuccessLimit),
+    status: invitationStatus(row),
+  };
 }
 
 export function recordAuthAudit(input: {
@@ -99,72 +98,51 @@ export function recordAuthAudit(input: {
   );
 }
 
-export async function createInvitation(input: {
-  email: string;
-  name: string;
-  role: InvitationRole;
+export function createInvitation(input: {
   createdByUserId: string;
-  initialDailySuccessLimit?: number;
-  expiresInHours?: number;
-}): Promise<{ id: string; code: string; expiresAt: Date }> {
-  const email = normalizeEmail(input.email);
-  const name = input.name.trim();
-  if (!name || name.length > 128) throw new Error("name 必须为 1 到 128 个字符");
-  const initialDailySuccessLimit = Math.trunc(input.initialDailySuccessLimit ?? 20);
+  maxUses: number;
+  expiresAt: Date;
+  initialDailySuccessLimit: number;
+}): { id: string; code: string; expiresAt: Date } {
+  const maxUses = Math.trunc(input.maxUses);
+  const initialDailySuccessLimit = Math.trunc(input.initialDailySuccessLimit);
+  if (maxUses < 1 || maxUses > 100) throw new Error("邀请码使用次数必须在 1 到 100 之间");
   if (initialDailySuccessLimit < 0 || initialDailySuccessLimit > 1_000_000) {
-    throw new Error("初始每日额度必须在 0 到 1000000 之间");
+    throw new Error("每日额度必须在 0 到 1000000 之间");
   }
-  const existingUser = betterAuthDatabase
-    .prepare('select 1 from "user" where "email" = ? limit 1')
-    .get(email);
-  if (existingUser) throw new Error("该邮箱已经注册");
+  const createdAt = new Date();
+  if (!Number.isFinite(input.expiresAt.getTime()) || input.expiresAt <= createdAt) {
+    throw new Error("邀请码过期时间必须晚于当前时间");
+  }
+  if (input.expiresAt.getTime() > createdAt.getTime() + 365 * 24 * 60 * 60 * 1000) {
+    throw new Error("邀请码有效期不能超过一年");
+  }
 
   const id = randomUUID();
-  // This displayed code still contains 160 bits of entropy. Only its hash is stored.
   const code = generateInvitationCode();
-  const createdAt = new Date();
-  const expiresAt = new Date(createdAt.getTime() + Math.max(1, input.expiresInHours ?? 72) * 60 * 60 * 1000);
-  const create = betterAuthDatabase.transaction(() => {
-    const superseded = betterAuthDatabase.prepare(
-      `select * from "oopsnote_invitation"
-       where "email" = ? and "consumedAt" is null and "revokedAt" is null and "expiresAt" > ?`,
-    ).all(email, createdAt.toISOString()) as InvitationRow[];
-    betterAuthDatabase.prepare(
-      `update "oopsnote_invitation"
-       set "revokedAt" = ?, "revokedByUserId" = ?
-       where "email" = ? and "consumedAt" is null and "revokedAt" is null and "expiresAt" > ?`,
-    ).run(createdAt.toISOString(), input.createdByUserId, email, createdAt.toISOString());
-    for (const invitation of superseded) {
-      recordAuthAudit({
-        actorUserId: input.createdByUserId,
-        action: "invitation.superseded",
-        invitationId: invitation.id,
-      });
-    }
+  betterAuthDatabase.transaction(() => {
     betterAuthDatabase.prepare(
       `insert into "oopsnote_invitation" (
-         "id", "tokenHash", "email", "name", "role", "initialDailySuccessLimit", "createdByUserId", "createdAt", "expiresAt"
-       ) values (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         "id", "tokenHash", "maxUses", "useCount", "initialDailySuccessLimit",
+         "createdByUserId", "createdAt", "expiresAt"
+       ) values (?, ?, ?, 0, ?, ?, ?, ?)`,
     ).run(
       id,
       tokenHash(code),
-      email,
-      name,
-      input.role,
+      maxUses,
       initialDailySuccessLimit,
       input.createdByUserId,
       createdAt.toISOString(),
-      expiresAt.toISOString(),
+      input.expiresAt.toISOString(),
     );
     recordAuthAudit({
       actorUserId: input.createdByUserId,
       action: "invitation.created",
       invitationId: id,
-      metadata: { email, role: input.role, initialDailySuccessLimit, expiresAt: expiresAt.toISOString() },
+      metadata: { maxUses, initialDailySuccessLimit, expiresAt: input.expiresAt.toISOString() },
     });
-  });
-  create();
-  return { id, code, expiresAt };
+  })();
+  return { id, code, expiresAt: input.expiresAt };
 }
 
 export function listInvitations(limit = 100): InvitationRecord[] {
@@ -181,82 +159,103 @@ export function revokeInvitation(invitationId: string, actorUserId: string): Inv
     const result = betterAuthDatabase.prepare(
       `update "oopsnote_invitation"
        set "revokedAt" = ?, "revokedByUserId" = ?
-       where "id" = ? and "consumedAt" is null and "revokedAt" is null and "expiresAt" > ?`,
+       where "id" = ? and "revokedAt" is null and "expiresAt" > ? and "useCount" < "maxUses"`,
     ).run(now, actorUserId, invitationId, now);
     if (result.changes !== 1) return null;
     recordAuthAudit({ actorUserId, action: "invitation.revoked", invitationId });
-    return betterAuthDatabase
-      .prepare('select * from "oopsnote_invitation" where "id" = ?')
-      .get(invitationId) as InvitationRow;
+    return betterAuthDatabase.prepare(
+      'select * from "oopsnote_invitation" where "id" = ?',
+    ).get(invitationId) as InvitationRow;
   });
   const row = revoke();
   return row ? publicInvitation(row) : null;
 }
 
-export function pendingInitialQuota(userId: string): number | null {
-  const row = betterAuthDatabase.prepare(
-    `select "initialDailySuccessLimit" from "oopsnote_invitation"
-     where "consumedUserId" = ? and "workspaceProvisionedAt" is null
-     order by "consumedAt" desc limit 1`,
-  ).get(userId) as { initialDailySuccessLimit: number } | undefined;
-  return row ? Number(row.initialDailySuccessLimit) : null;
-}
-
-export function markWorkspaceProvisioned(userId: string): void {
-  betterAuthDatabase.prepare(
-    `update "oopsnote_invitation" set "workspaceProvisionedAt" = ?
-     where "consumedUserId" = ? and "workspaceProvisionedAt" is null`,
-  ).run(new Date().toISOString(), userId);
-}
-
 export const betterAuthInvitationPlugin: BetterAuthPlugin = {
-  id: "oopsnote-invitations",
-  version: "2.0.0",
+  id: "oopsnote-registration",
+  version: "3.0.0",
   endpoints: {
-    redeemInvitation: createAuthEndpoint("/invite/redeem", {
+    registrationPolicy: createAuthEndpoint("/registration-policy", { method: "GET" }, async (ctx) => {
+      const policy = getRegistrationPolicy();
+      return ctx.json({ mode: policy.mode });
+    }),
+    registerUser: createAuthEndpoint("/register", {
       method: "POST",
-      body: invitationBody,
+      body: registerBody,
     }, async (ctx) => {
-      const { token, password } = ctx.body;
-      return withInvitationMutation(() => runWithTransaction(ctx.context.adapter, async () => {
-        const now = new Date().toISOString();
-        const invitation = betterAuthDatabase
-          .prepare('select * from "oopsnote_invitation" where "tokenHash" = ? limit 1')
-          .get(tokenHash(token)) as InvitationRow | undefined;
-        if (!invitation || invitationStatus(invitation, new Date(now)) !== "pending") {
-          throw ctx.error("BAD_REQUEST", { message: "邀请链接无效或已过期" });
+      const username = normalizeUsername(ctx.body.username);
+      const displayUsername = ctx.body.username.trim();
+      const email = normalizeEmail(ctx.body.email);
+      const invitationCode = ctx.body.invitationCode?.trim() || null;
+      return withRegistrationMutation(() => runWithTransaction(ctx.context.adapter, async () => {
+        const policy = getRegistrationPolicy();
+        if (policy.mode === "closed") {
+          throw ctx.error("FORBIDDEN", { message: "当前未开放注册" });
         }
-        if (await ctx.context.internalAdapter.findUserByEmail(invitation.email)) {
+        if (policy.mode === "invite" && !invitationCode) {
+          throw ctx.error("BAD_REQUEST", { message: "请输入有效的邀请码" });
+        }
+        if (await ctx.context.internalAdapter.findUserByEmail(email)) {
           throw ctx.error("BAD_REQUEST", { message: "该邮箱已经注册" });
         }
-        const claimed = betterAuthDatabase.prepare(
-          `update "oopsnote_invitation" set "consumedAt" = ?
-           where "id" = ? and "consumedAt" is null and "revokedAt" is null and "expiresAt" > ?`,
-        ).run(now, invitation.id, now);
-        if (claimed.changes !== 1) {
-          throw ctx.error("BAD_REQUEST", { message: "邀请链接无效或已过期" });
+        const existingUsername = betterAuthDatabase.prepare(
+          'select 1 from "user" where "username" = ? limit 1',
+        ).get(username);
+        if (existingUsername) throw ctx.error("BAD_REQUEST", { message: "该用户名已被使用" });
+
+        let invitation: InvitationRow | null = null;
+        let dailySuccessLimit = policy.openDailySuccessLimit;
+        if (invitationCode) {
+          invitation = betterAuthDatabase.prepare(
+            'select * from "oopsnote_invitation" where "tokenHash" = ? limit 1',
+          ).get(tokenHash(invitationCode)) as InvitationRow | undefined || null;
+          if (!invitation || invitationStatus(invitation) !== "active") {
+            throw ctx.error("BAD_REQUEST", { message: "邀请码无效、已用完或已过期" });
+          }
+          dailySuccessLimit = Number(invitation.initialDailySuccessLimit);
+          const claimed = betterAuthDatabase.prepare(
+            `update "oopsnote_invitation" set "useCount" = "useCount" + 1
+             where "id" = ? and "revokedAt" is null and "expiresAt" > ? and "useCount" < "maxUses"`,
+          ).run(invitation.id, new Date().toISOString());
+          if (claimed.changes !== 1) {
+            throw ctx.error("BAD_REQUEST", { message: "邀请码无效、已用完或已过期" });
+          }
+        } else if (policy.mode !== "open") {
+          throw ctx.error("BAD_REQUEST", { message: "请输入有效的邀请码" });
         }
+
         const user = await ctx.context.internalAdapter.createUser({
-          email: invitation.email,
-          name: invitation.name,
-          role: invitation.role,
+          email,
           emailVerified: false,
+          name: displayUsername,
+          username,
+          displayUsername,
+          role: "user",
         });
-        const hashedPassword = await ctx.context.password.hash(password);
+        const hashedPassword = await ctx.context.password.hash(ctx.body.password);
         await ctx.context.internalAdapter.linkAccount({
           accountId: user.id,
           providerId: "credential",
           userId: user.id,
           password: hashedPassword,
         });
-        betterAuthDatabase.prepare(
-          'update "oopsnote_invitation" set "consumedUserId" = ? where "id" = ?',
-        ).run(user.id, invitation.id);
+        queueUserProvisioning({
+          userId: user.id,
+          dailySuccessLimit,
+          source: invitation ? "invitation" : "open",
+        });
+        if (invitation) {
+          betterAuthDatabase.prepare(
+            `insert into "oopsnote_invitation_redemption" ("id", "invitationId", "userId", "createdAt")
+             values (?, ?, ?, ?)`,
+          ).run(randomUUID(), invitation.id, user.id, new Date().toISOString());
+        }
         recordAuthAudit({
           actorUserId: user.id,
-          action: "invitation.consumed",
+          action: invitation ? "invitation.redeemed" : "registration.open",
           targetUserId: user.id,
-          invitationId: invitation.id,
+          invitationId: invitation?.id,
+          metadata: { username, email, dailySuccessLimit },
         });
         return ctx.json({ user });
       }));

@@ -32,7 +32,7 @@ const AuthContext = createContext<AuthContextValue>({
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const isPublicAuthPage = pathname === "/login" || pathname === "/invite";
+  const isPublicAuthPage = pathname === "/login" || pathname === "/register" || pathname === "/invite";
   const betterAuthEnabled = isBetterAuthMode();
   const betterSession = authClient.useSession();
   const isCallback = pathname === "/auth/callback";

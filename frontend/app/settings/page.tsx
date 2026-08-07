@@ -46,7 +46,7 @@ export default function SettingsPage() {
 
   return (
     <Box sx={{ display: "flex", flexDirection: "column", gap: 4 }}>
-      <PageHeader title="设置" description="管理 OopsNote 的 AI 运行参数" />
+      <PageHeader title="系统运行" description="管理 OopsNote 的 AI 运行参数" />
       <SettingsRuntimeSection
         value={value}
         current={runtime.data?.max_concurrency ?? null}

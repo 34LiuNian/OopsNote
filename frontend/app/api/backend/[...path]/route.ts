@@ -1,6 +1,6 @@
 import { auth } from "@/lib/better-auth";
 import { signInternalIdentity } from "@/lib/internal-identity";
-import { markWorkspaceProvisioned, pendingInitialQuota } from "@/lib/better-auth-invitations";
+import { markWorkspaceProvisioned, pendingProvisioning } from "@/lib/better-auth-registration";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -39,8 +39,8 @@ async function proxy(request: Request, context: RouteContext): Promise<Response>
     return Response.json({ detail: "Not found" }, { status: 404 });
   }
   const backendUrl = (process.env.OOPSNOTE_BACKEND_URL || "http://127.0.0.1:8000").replace(/\/$/, "");
-  const initialDailySuccessLimit = pendingInitialQuota(session.user.id);
-  if (initialDailySuccessLimit !== null) {
+  const pending = pendingProvisioning(session.user.id);
+  if (pending !== null) {
     const bootstrapPath = "/internal/members/provision-self";
     const bootstrapIdentity = signInternalIdentity({
       userId: session.user.id,
@@ -56,7 +56,10 @@ async function proxy(request: Request, context: RouteContext): Promise<Response>
           "x-oopsnote-identity": bootstrapIdentity.encoded,
           "x-oopsnote-signature": bootstrapIdentity.signature,
         },
-        body: JSON.stringify({ daily_success_limit: initialDailySuccessLimit }),
+          body: JSON.stringify({
+            daily_success_limit: pending.dailySuccessLimit,
+            preserve_existing_quota: pending.preserveExistingQuota,
+          }),
         cache: "no-store",
       });
       if (!bootstrapResponse.ok) {

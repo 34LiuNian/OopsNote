@@ -1,10 +1,11 @@
 import { betterAuth } from "better-auth";
-import { admin } from "better-auth/plugins";
+import { admin, username } from "better-auth/plugins";
 import { nextCookies } from "better-auth/next-js";
 import { SqliteDialect } from "kysely";
 import { betterAuthInvitationPlugin } from "./better-auth-invitations";
 import { betterAuthDatabase } from "./better-auth-database";
 import { betterAuthAdminGatePlugin } from "./better-auth-admin-gate";
+import { normalizeUsername } from "./better-auth-registration";
 export { betterAuthIdentityStats } from "./better-auth-database";
 import fs from "node:fs";
 
@@ -25,6 +26,11 @@ const baseURL = (
   process.env.NEXT_PUBLIC_BETTER_AUTH_URL ||
   "http://localhost:3000"
 ).replace(/\/$/, "");
+const trustedOrigins = new Set([baseURL]);
+if (process.env.NODE_ENV === "development") {
+  trustedOrigins.add("http://localhost:3000");
+  trustedOrigins.add("http://127.0.0.1:3000");
+}
 
 export const auth = betterAuth({
   appName: "OopsNote",
@@ -49,13 +55,25 @@ export const auth = betterAuth({
       updateEmailWithoutVerification: true,
     },
   },
-  trustedOrigins: [baseURL],
+  trustedOrigins: [...trustedOrigins],
   plugins: [
     betterAuthAdminGatePlugin,
     admin({
       defaultRole: "user",
       adminRoles: ["admin"],
       bannedUserMessage: "此账号已被管理员禁用",
+    }),
+    username({
+      minUsernameLength: 3,
+      maxUsernameLength: 32,
+      usernameValidator: (value) => {
+        try {
+          normalizeUsername(value);
+          return true;
+        } catch {
+          return false;
+        }
+      },
     }),
     betterAuthInvitationPlugin,
     nextCookies(),

@@ -423,6 +423,38 @@ def test_better_auth_self_provision_applies_invitation_quota_only_to_the_signed_
     assert registry.quota_summary("auth-other") is None
 
 
+def test_better_auth_self_provision_does_not_replace_an_existing_quota(monkeypatch, tmp_path):
+    registry = WorkspaceRegistry(
+        ControlDatabase(tmp_path / "control" / "app.sqlite"),
+        tmp_path / "storage",
+    )
+    registry.provision("auth-existing", daily_success_limit=9)
+    monkeypatch.setattr(main, "WORKSPACE_REGISTRY", registry)
+    monkeypatch.setattr(main, "WORKSPACE_STORE_FACTORY", WorkspaceStoreFactory())
+    now = int(time.time())
+    environment = {
+        "OOPSNOTE_AUTH_MODE": "better-auth",
+        "OOPSNOTE_BFF_HMAC_SECRET": SECRET.decode("ascii"),
+    }
+    with patch.dict("os.environ", environment, clear=False):
+        client = TestClient(main.app)
+        _payload, encoded, signature = _signed_identity(
+            user_id="auth-existing",
+            issued_at=now,
+            method="POST",
+            path="/internal/members/provision-self",
+        )
+        response = client.post(
+            "/internal/members/provision-self",
+            headers={"x-oopsnote-identity": encoded, "x-oopsnote-signature": signature},
+            json={"daily_success_limit": 4, "preserve_existing_quota": True},
+        )
+
+    assert response.status_code == 200
+    assert response.json()["quota"]["daily_success_limit"] == 9
+    assert registry.quota_summary("auth-existing")["daily_success_limit"] == 9
+
+
 def test_own_quota_endpoint_uses_only_the_signed_user(monkeypatch, tmp_path):
     registry = WorkspaceRegistry(
         ControlDatabase(tmp_path / "control" / "app.sqlite"),

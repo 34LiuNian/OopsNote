@@ -11,4 +11,10 @@
 .footer { display: flex; min-height: 36px; align-items: center; justify-content: space-between; gap: 16px; }
 .footer p { margin: 0; }
 .state { color: var(--fgColor-muted); }
+.usageGrid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border: 1px solid var(--borderColor-muted); border-radius: 7px; }
+.usageGrid > div { display: grid; gap: 8px; padding: 20px; border-right: 1px solid var(--borderColor-muted); }
+.usageGrid > div:last-child { border-right: 0; }
+.usageGrid span { display: inline-flex; align-items: center; gap: 5px; color: var(--fgColor-muted); font-size: 12px; }
+.usageGrid strong { font-size: 24px; }
 @media (max-width: 680px) { .panel { padding: 20px; } .fields { grid-template-columns: 1fr; } .fullField { grid-column: auto; } .footer { align-items: flex-start; flex-direction: column; } }
+@media (max-width: 760px) { .usageGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .usageGrid > div:nth-child(2) { border-right: 0; } .usageGrid > div:nth-child(-n+2) { border-bottom: 1px solid var(--borderColor-muted); } }

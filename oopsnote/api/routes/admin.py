@@ -39,6 +39,7 @@ class SelfProvisionRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     daily_success_limit: int = Field(ge=0, le=1_000_000)
+    preserve_existing_quota: bool = False
 
 
 def _api():
@@ -103,9 +104,10 @@ def provision_self(payload: SelfProvisionRequest, request: Request) -> dict[str,
     if not isinstance(principal, Principal):
         raise HTTPException(status_code=401, detail="Missing authenticated user")
     api = _api()
+    existing_quota = api.WORKSPACE_REGISTRY.quota_summary(principal.user_id)
     workspace = api.WORKSPACE_REGISTRY.provision(
         principal.user_id,
-        daily_success_limit=payload.daily_success_limit,
+        daily_success_limit=None if payload.preserve_existing_quota and existing_quota is not None else payload.daily_success_limit,
     )
     return {
         "auth_user_id": principal.user_id,

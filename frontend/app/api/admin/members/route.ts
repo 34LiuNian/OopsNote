@@ -2,6 +2,13 @@ import { NextResponse } from "next/server";
 import { auth, betterAuthIdentityStats } from "@/lib/better-auth";
 import { signInternalIdentity } from "@/lib/internal-identity";
 import { createInvitation, listInvitations, recordAuthAudit, revokeInvitation } from "@/lib/better-auth-invitations";
+import {
+  markWorkspaceProvisioned,
+  normalizeEmail,
+  normalizeUsername,
+  pendingInitialQuota,
+  queueUserProvisioning,
+} from "@/lib/better-auth-registration";
 import { withAdminGate } from "@/lib/better-auth-admin-gate";
 
 export const runtime = "nodejs";
@@ -37,12 +44,7 @@ async function backendAdminRequest(
   body: unknown,
 ): Promise<unknown> {
   const backendUrl = (process.env.OOPSNOTE_BACKEND_URL || "http://127.0.0.1:8000").replace(/\/$/, "");
-  const identity = signInternalIdentity({
-    userId: session.user.id,
-    role: "admin",
-    method,
-    path,
-  });
+  const identity = signInternalIdentity({ userId: session.user.id, role: "admin", method, path });
   const response = await fetch(`${backendUrl}${path}`, {
     method,
     headers: {
@@ -64,10 +66,8 @@ export async function GET(request: Request) {
     const limit = Math.min(Math.max(Number(url.searchParams.get("limit") || 50), 1), 100);
     const offset = Math.max(Number(url.searchParams.get("offset") || 0), 0);
     const searchValue = url.searchParams.get("searchValue") || undefined;
-    const result = await auth.api.listUsers({
-      headers: request.headers,
-      query: { limit, offset, searchValue },
-    });
+    const result = await auth.api.listUsers({ headers: request.headers, query: { limit, offset, searchValue } });
+    let quotaAvailable = true;
     let summaries: Record<string, unknown> = {};
     try {
       const summary = await backendAdminRequest(
@@ -78,11 +78,17 @@ export async function GET(request: Request) {
       ) as { members?: Record<string, unknown> };
       summaries = summary.members || {};
     } catch (error) {
+      quotaAvailable = false;
       console.warn("Unable to load member quota summaries", error);
     }
     return NextResponse.json({
       ...result,
-      users: result.users.map((user) => ({ ...user, quota: summaries[user.id] || null })),
+      quotaAvailable,
+      users: result.users.map((user) => ({
+        ...user,
+        quota: summaries[user.id] || null,
+        provisioningPending: pendingInitialQuota(user.id) !== null,
+      })),
       invitations: listInvitations(),
     });
   } catch (error) {
@@ -94,36 +100,58 @@ export async function POST(request: Request) {
   try {
     const session = await requireAdmin(request);
     const body = await request.json() as {
+      kind?: unknown;
+      username?: unknown;
       email?: unknown;
-      name?: unknown;
       password?: unknown;
-      role?: unknown;
-      invitation?: unknown;
-      daily_success_limit?: unknown;
+      dailySuccessLimit?: unknown;
+      maxUses?: unknown;
+      expiresAt?: unknown;
     };
-    const email = typeof body.email === "string" ? body.email.trim() : "";
-    const name = typeof body.name === "string" ? body.name.trim() : "";
-    const password = typeof body.password === "string" ? body.password : "";
-    const role = body.role === "admin" ? "admin" : "user";
-    const dailySuccessLimit = body.daily_success_limit === undefined || body.daily_success_limit === ""
-      ? 20
-      : Number(body.daily_success_limit);
+    const dailySuccessLimit = Number(body.dailySuccessLimit);
     if (!Number.isInteger(dailySuccessLimit) || dailySuccessLimit < 0 || dailySuccessLimit > 1_000_000) {
       return NextResponse.json({ error: "每日额度必须是 0 到 1000000 的整数" }, { status: 400 });
     }
-    if (body.invitation === true) {
-      if (!email || !name) return NextResponse.json({ error: "email 和 name 为必填项" }, { status: 400 });
-      const invitation = await createInvitation({ email, name, role, createdByUserId: session.user.id, initialDailySuccessLimit: dailySuccessLimit, expiresInHours: 72 });
-      return NextResponse.json({ invitationCode: invitation.code, invitationUrl: `/invite?token=${encodeURIComponent(invitation.code)}`, expiresAt: invitation.expiresAt }, { status: 201 });
+    if (body.kind === "invitation") {
+      const maxUses = Number(body.maxUses);
+      const expiresAt = new Date(typeof body.expiresAt === "string" ? body.expiresAt : "");
+      const invitation = createInvitation({
+        createdByUserId: session.user.id,
+        maxUses,
+        expiresAt,
+        initialDailySuccessLimit: dailySuccessLimit,
+      });
+      return NextResponse.json({
+        invitationCode: invitation.code,
+        invitationUrl: `/register?code=${encodeURIComponent(invitation.code)}`,
+        expiresAt: invitation.expiresAt,
+      }, { status: 201 });
     }
-    if (!email || !name || password.length < 12) {
-      return NextResponse.json({ error: "email、name 和至少 12 位密码为必填项" }, { status: 400 });
+
+    const username = normalizeUsername(typeof body.username === "string" ? body.username : "");
+    const displayUsername = typeof body.username === "string" ? body.username.trim() : "";
+    const email = normalizeEmail(typeof body.email === "string" ? body.email : "");
+    const password = typeof body.password === "string" ? body.password : "";
+    if (password.length < 12) {
+      return NextResponse.json({ error: "密码至少需要 12 个字符" }, { status: 400 });
     }
     const result = await auth.api.createUser({
       headers: withAdminGate(request.headers),
-      body: { email, name, password, role },
+      body: {
+        email,
+        name: displayUsername,
+        password,
+        role: "user",
+        data: { username, displayUsername },
+      },
     });
-    recordAuthAudit({ actorUserId: session.user.id, action: "user.created", targetUserId: result.user.id, metadata: { role } });
+    queueUserProvisioning({ userId: result.user.id, dailySuccessLimit, source: "admin" });
+    recordAuthAudit({
+      actorUserId: session.user.id,
+      action: "user.created",
+      targetUserId: result.user.id,
+      metadata: { role: "user", username },
+    });
     let workspaceProvisioned = false;
     try {
       await backendAdminRequest(
@@ -132,6 +160,7 @@ export async function POST(request: Request) {
         "POST",
         { auth_user_id: result.user.id, daily_success_limit: dailySuccessLimit },
       );
+      markWorkspaceProvisioned(result.user.id);
       workspaceProvisioned = true;
     } catch (error) {
       console.warn("Member was created but workspace provisioning is pending", error);
@@ -158,13 +187,13 @@ export async function PATCH(request: Request) {
     if (action === "revoke-invitation") {
       if (!invitationId) return NextResponse.json({ error: "invitationId 无效" }, { status: 400 });
       const invitation = revokeInvitation(invitationId, session.user.id);
-      if (!invitation) return NextResponse.json({ error: "邀请不存在、已使用、已撤销或已过期" }, { status: 409 });
+      if (!invitation) return NextResponse.json({ error: "邀请不存在、已用完、已撤销或已过期" }, { status: 409 });
       return NextResponse.json({ invitation });
     }
     if (!userId || !["ban", "unban", "set-role", "revoke-sessions"].includes(action)) {
       return NextResponse.json({ error: "userId 或 action 无效" }, { status: 400 });
     }
-    if (userId === session.user.id && (action === "ban" || action === "set-role") && body.role !== "admin") {
+    if (userId === session.user.id && (action === "ban" || (action === "set-role" && body.role !== "admin"))) {
       return NextResponse.json({ error: "不能禁用或降级当前管理员" }, { status: 400 });
     }
     if (action === "set-role" || action === "ban") {

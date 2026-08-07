@@ -111,7 +111,7 @@ export default function LangChainPolicyPage() {
       <div className={styles.policyInner}>
         <header className={styles.policyHeader}>
           <div>
-            <h1 className={styles.policyTitle}>LangChain 策略</h1>
+            <h1 className={styles.policyTitle}>AI 策略</h1>
             <div className={styles.policyDescription}>后续新 run 使用此策略；运行中的 run 保留已冻结快照。</div>
             <div className={styles.policyMeta}>
               <span>{activePolicy.updated_at ? `上次保存于 ${formatUpdatedAt(activePolicy.updated_at)}` : "尚未保存"}</span>

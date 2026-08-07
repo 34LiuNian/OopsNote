@@ -51,7 +51,7 @@ export function AccountMenu() {
         )}
         <Menu.Divider />
         <Menu.Item leftSection={<UserRound size={15} />} onClick={() => router.push("/settings/account")}>
-          我的账户
+          个人账号
         </Menu.Item>
         <Menu.Item color="red" leftSection={<LogOut size={15} />} onClick={signOut}>
           退出登录
