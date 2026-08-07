@@ -17,7 +17,7 @@ function initials(name: string): string {
 
 export function AccountMenu() {
   const { user, signOut } = useAuth();
-  const displayName = user?.displayName ?? "已登录";
+  const displayName = user?.displayName ?? "登录";
   const [quota, setQuota] = useState<QuotaSummary | null>(null);
 
   async function loadQuota() {

@@ -17,7 +17,7 @@ export function AuthStatusScreen({ phase, error }: AuthStatusScreenProps) {
   const detail = isError
     ? error
     : phase === "signin"
-      ? "正在转到 Pocket ID"
+      ? "正在打开登录页面"
       : "正在验证身份信息";
 
   return (
