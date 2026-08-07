@@ -71,7 +71,8 @@ npm --prefix frontend run lint
 API 与前端：
 
 ```powershell
-.\.venv\Scripts\python.exe -m uvicorn oopsnote.api.main:app --env-file deploy/latex-renderer/.env.local --reload
+$env:OOPSNOTE_AUTH_MODE='better-auth'
+.\.venv\Scripts\python.exe -m uvicorn oopsnote.api.main:app --env-file frontend/.env.local --reload
 npm --prefix frontend install
 npm --prefix frontend run dev
 ```

@@ -787,6 +787,8 @@ def _run_managed(task_id: str, run_id: str, backend: str) -> None:
 async def lifespan(_: FastAPI):
     ai_settings.retire_legacy_provider_configuration()
     auth_config = auth_config_from_env()
+    if auth_config.better_auth:
+        internal_identity_config_from_env()
     runners = [] if auth_config.better_auth else list(_RUNNERS.values())
     for runner in runners:
         runner.recover_orphaned_running()

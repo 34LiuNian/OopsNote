@@ -139,6 +139,21 @@ def test_fastapi_better_auth_mode_requires_and_accepts_the_signed_bff_identity()
     assert accepted.status_code == 200
 
 
+def test_better_auth_app_startup_rejects_short_bff_secret():
+    environment = {
+        "OOPSNOTE_AUTH_MODE": "better-auth",
+        "OOPSNOTE_BFF_HMAC_SECRET_FILE": "",
+        "OOPSNOTE_BFF_HMAC_SECRET": "too-short",
+    }
+
+    with patch.dict("os.environ", environment, clear=False), pytest.raises(
+        RuntimeError,
+        match="at least 32 bytes",
+    ):
+        with TestClient(main.app):
+            pass
+
+
 def test_better_auth_requests_use_the_authenticated_user_workspace(monkeypatch, tmp_path):
     registry = WorkspaceRegistry(
         ControlDatabase(tmp_path / "control" / "app.sqlite"),

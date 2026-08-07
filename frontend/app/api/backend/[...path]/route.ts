@@ -56,19 +56,29 @@ async function proxy(request: Request, context: RouteContext): Promise<Response>
           "x-oopsnote-identity": bootstrapIdentity.encoded,
           "x-oopsnote-signature": bootstrapIdentity.signature,
         },
-          body: JSON.stringify({
-            daily_success_limit: pending.dailySuccessLimit,
-            preserve_existing_quota: pending.preserveExistingQuota,
-          }),
+        body: JSON.stringify({
+          daily_success_limit: pending.dailySuccessLimit,
+          preserve_existing_quota: pending.preserveExistingQuota,
+        }),
         cache: "no-store",
       });
       if (!bootstrapResponse.ok) {
-        return Response.json({ detail: "Workspace initialization is unavailable" }, { status: 503 });
+        console.error(
+          "OopsNote workspace provisioning was rejected by the backend",
+          { status: bootstrapResponse.status },
+        );
+        return Response.json(
+          { detail: "工作区初始化失败，后端拒绝了身份或配置。请检查后端认证设置。" },
+          { status: 502 },
+        );
       }
       markWorkspaceProvisioned(session.user.id);
     } catch (error) {
       console.error("OopsNote initial workspace quota provisioning failed", error);
-      return Response.json({ detail: "Workspace initialization is unavailable" }, { status: 503 });
+      return Response.json(
+        { detail: "OopsNote 后端未运行，暂时无法初始化工作区。" },
+        { status: 503 },
+      );
     }
   }
   const target = `${backendUrl}${pathName}${new URL(request.url).search}`;
