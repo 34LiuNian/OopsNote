@@ -562,14 +562,15 @@ def finalize_task(
                 problem_json,
                 "knowledge tag selection subject does not match the problem",
             )
-        valid_leaf_values = set(_stores().tag_store.ai_knowledge_leaves(
+        valid_leaf_values = _stores().tag_store.ai_knowledge_leaves(
             subject,
             list(selection.get("branch_ids") or []),
             scope=selection.get("scope"),
-        ))
+        )
+        valid_leaf_set = set(valid_leaf_values)
         invalid_tags = list(dict.fromkeys(
             value for value in problem.knowledge_points
-            if value not in valid_leaf_values
+            if value not in valid_leaf_set
         ))
         if invalid_tags:
             _raise_validation_error(
@@ -577,7 +578,8 @@ def finalize_task(
                 TaskStage.FINALIZING,
                 problem_json,
                 "knowledge_points must contain only knowledge-tree leaf tags; "
-                f"invalid: {', '.join(invalid_tags)}"
+                f"invalid: {', '.join(invalid_tags)}; "
+                f"allowed leaves: {', '.join(valid_leaf_values)}"
             )
     if problem.error_hypothesis:
         valid_error_values = set(_stores().tag_store.ai_values(

@@ -583,6 +583,28 @@ def test_finalize_rejects_non_leaf_knowledge_tag(tmp_path, monkeypatch):
         )
 
 
+def test_finalize_tag_rejection_reports_authorized_leaf_values(tmp_path, monkeypatch):
+    task_store = configure_stores(tmp_path, monkeypatch)
+    task = task_store.create(TaskCreateRequest(subject="math"))
+    task_store.update(task.id, status=TaskStatus.PROCESSING, active_run_id="run-1")
+    advance_to_finalizing(task.id)
+    problem = valid_problem()
+    problem["knowledge_points"] = ["集合"]
+
+    with pytest.raises(ValueError) as captured:
+        server.finalize_task(
+            task.id,
+            json.dumps(problem, ensure_ascii=False),
+            run_id="run-1",
+            sync_to_obsidian=False,
+        )
+
+    message = str(captured.value)
+    assert "invalid: 集合" in message
+    assert "allowed leaves:" in message
+    assert valid_problem()["knowledge_points"][0] in message
+
+
 def test_managed_ai_cannot_create_knowledge_tag(tmp_path, monkeypatch):
     task_store = configure_stores(tmp_path, monkeypatch)
 
