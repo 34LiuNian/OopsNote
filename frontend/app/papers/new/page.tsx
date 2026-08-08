@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { useRouter } from "next/navigation";
 import { Box, Button, FormControl, Spinner, Text, TextInput } from "@/components/ui/primitives";
+import { ErrorBanner } from "@/components/ui/ErrorBanner";
 import { DEFAULT_SUBJECT, SUBJECT_OPTIONS } from "@/config/subjects";
 import { getKnowledgeTree } from "@/features/tags/api";
 import { createPaper } from "@/features/papers";
@@ -221,7 +222,7 @@ export default function NewPaperPage() {
                 <span>选择知识点</span>
                 <span className={styles.stepHint}>从左侧知识树选择</span>
               </div>
-              {treeError ? <Text sx={{ color: "danger.fg" }}>{treeError}</Text> : null}
+              <ErrorBanner message={treeError} title="加载知识树失败" />
               <div className={styles.chipList}>
                 {selectedItems.length ? selectedItems.map((node) => (
                   <span className={styles.chip} key={node.id}>
@@ -340,7 +341,7 @@ export default function NewPaperPage() {
                 </div>
               </section>
             </div>
-            {error ? <Text sx={{ color: "danger.fg" }}>{error}</Text> : null}
+            <ErrorBanner message={error} title="创建试卷失败" />
           </div>
 
           <div className={styles.bottomBar}>

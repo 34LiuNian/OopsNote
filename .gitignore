@@ -67,6 +67,7 @@ venv/
 /frontend/public/workbox-*.js
 /frontend/.turbo/
 /frontend/coverage/
+/frontend/data/
 *.tsbuildinfo
 
 # Local Pi credentials and installed JavaScript packages

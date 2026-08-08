@@ -6,6 +6,7 @@ import { TagChip } from "@/components/tags/TagChip";
 import { TagSuggestionList } from "@/components/tags/TagSuggestionList";
 import type { TagDimension, TagDimensionStyle, TagItem } from "@/types/api";
 import { searchTags } from "@/features/tags/api";
+import { notify } from "@/lib/notify";
 import { sortTagItemsByQuery } from "@/features/tags/ranking";
 
 export type { TagDimension, TagDimensionStyle };
@@ -112,8 +113,9 @@ export const TagPicker = memo(function TagPicker({
         if (lastRequest.current === requestId) {
           setSuggestions(Array.isArray(data.items) ? data.items : []);
         }
-      } catch {
+      } catch (reason) {
         if (lastRequest.current === requestId) setSuggestions([]);
+        notify.error({ title: "标签建议加载失败", description: reason instanceof Error ? reason.message : "无法搜索标签" });
       } finally {
         if (lastRequest.current === requestId) setLoading(false);
       }

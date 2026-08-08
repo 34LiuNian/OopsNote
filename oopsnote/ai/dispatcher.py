@@ -95,10 +95,14 @@ class ManagedTaskDispatcher:
         while True:
             item = self._queue.get()
             _priority, _sequence, task_id, run_id = item
+            concurrency_deferred = False
             try:
                 if task_id is None or run_id is None:
                     return
                 try:
+                    if not self.runner.run_store.claim_execution(run_id):
+                        concurrency_deferred = True
+                        continue
                     self.runner.run(task_id, run_id)
                 except Exception as error:
                     # One malformed/deleted task must not permanently shrink the
@@ -122,7 +126,14 @@ class ManagedTaskDispatcher:
                         yielded = self.runner.run_store.get(run_id)
                     except KeyError:
                         yielded = None
-                    if yielded is not None and yielded.status == RunStatus.QUEUED:
+                    if (
+                        yielded is not None
+                        and yielded.status == RunStatus.QUEUED
+                        and not self._stopping.is_set()
+                    ):
+                        self.runner.run_store.defer_execution(run_id)
+                        if concurrency_deferred:
+                            self._stopping.wait(0.05)
                         self.schedule(task_id, run_id)
                 self._queue.task_done()
 

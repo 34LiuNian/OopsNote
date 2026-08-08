@@ -5,12 +5,12 @@ import {
   Box,
   Button,
   Text,
-  Label,
   Select,
   TextInput,
   FormControl,
   Spinner,
 } from "@/components/ui/primitives";
+import { ErrorBanner } from "@/components/ui/ErrorBanner";
 import { compilePaper, useProblemList } from "../../features/tasks";
 import { ProblemListItem } from "../../components/ProblemListItem";
 import { TagSelectorRow } from "../../components/TagSelectorRow";
@@ -18,6 +18,7 @@ import { useTagDimensions } from "../../features/tags";
 import { SUBJECT_OPTIONS } from "../../config/subjects";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { ApiError } from "@/lib/api";
+import { notify } from "@/lib/notify";
 
 const BUILDER_SUBJECT_OPTIONS = [
   ...SUBJECT_OPTIONS,
@@ -108,6 +109,7 @@ export default function PaperBuilderPage() {
   async function generatePaper() {
     if (selectedCount === 0) {
       setPaperError({ message: "请先选择要加入试卷的题目。" });
+      notify.error({ title: "无法生成试卷", description: "请先选择要加入试卷的题目。" });
       return;
     }
     setPaperError(null);
@@ -136,6 +138,10 @@ export default function PaperBuilderPage() {
         message: err instanceof Error ? err.message : "生成失败，请稍后重试。",
         log,
       });
+      notify.error({
+        title: "生成试卷失败",
+        description: log ? `${err instanceof Error ? err.message : "生成失败，请稍后重试。"}\n${log}` : err instanceof Error ? err.message : "生成失败，请稍后重试。",
+      });
     } finally {
       setPaperLoading(false);
     }
@@ -160,7 +166,7 @@ export default function PaperBuilderPage() {
         <Box sx={{ borderColor: "border.default", borderRadius: 2 }}>
           <Box sx={{ display: "flex", justifyContent: "flex-end", alignItems: "center", flexWrap: "wrap", gap: 2, mb: 3 }}>
             <Box sx={{ display: "flex", gap: 2, alignItems: "center" }}>
-              {error && <Label variant="danger">{error}</Label>}
+              <ErrorBanner message={error ?? ""} title="加载题库失败" />
               <Text sx={{ color: "fg.muted" }}>已选 {selectedCount} 道</Text>
               <Button 
                 size="small" 

@@ -1,0 +1,4 @@
+.nav { display: flex; min-width: 0; gap: 4px; overflow-x: auto; border-bottom: 1px solid var(--borderColor-default); }
+.link { display: inline-flex; min-height: 42px; flex: 0 0 auto; align-items: center; gap: 7px; padding: 0 13px; border-bottom: 2px solid transparent; color: var(--fgColor-muted); font-size: 13px; font-weight: 600; text-decoration: none; }
+.link:hover { color: var(--fgColor-default); background: var(--bgColor-muted); }
+.active { border-bottom-color: var(--fgColor-default); color: var(--fgColor-default); }

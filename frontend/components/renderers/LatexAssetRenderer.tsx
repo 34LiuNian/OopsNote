@@ -1,6 +1,7 @@
 "use client";
 
 import { Box, Text } from "@/components/ui/primitives";
+import { ErrorBanner } from "@/components/ui/ErrorBanner";
 import { useLatexAsset } from "@/hooks/useLatexAsset";
 import { SvgMarkup } from "./SvgMarkup";
 
@@ -28,6 +29,7 @@ export function LatexAssetRenderer({
   if (status === "error") {
     return (
       <Box sx={{ p: 2, border: "1px solid", borderColor: "danger.emphasis", borderRadius: 1, bg: "danger.subtle" }}>
+        <ErrorBanner message={error || errorLabel} title="LaTeX 渲染失败" />
         <Text sx={{ color: "danger.fg", fontSize: 1, whiteSpace: "pre-wrap" }}>{error || errorLabel}</Text>
       </Box>
     );

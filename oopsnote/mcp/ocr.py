@@ -277,7 +277,8 @@ def ocr_image(task_id: str, run_id: str) -> dict[str, Any]:
     # and to let tests replace the shared MCP stores.
     from oopsnote.mcp import server
 
-    task = server.TASK_STORE.get(task_id)
+    stores = server._stores()
+    task = stores.task_store.get(task_id)
     if not run_id or task.active_run_id != run_id:
         raise ValueError(f"run_id {run_id} is not active for task {task_id}")
     run = server._active_task_run(task_id, run_id)
@@ -289,7 +290,7 @@ def ocr_image(task_id: str, run_id: str) -> dict[str, Any]:
         if cached is not None:
             _OCR_RESULTS.move_to_end(cache_key)
             return deepcopy(cached)
-    image_path = server.ASSET_STORE.resolve(task.asset_path)
+    image_path = stores.asset_store.resolve(task.asset_path)
     snapshot = run.provider_profile_snapshot
     is_langchain_snapshot = isinstance(snapshot, dict) and isinstance(snapshot.get("vision"), dict)
     if is_langchain_snapshot and _RUN_MODEL_RESOLVER is None:
@@ -312,7 +313,7 @@ def ocr_image(task_id: str, run_id: str) -> dict[str, Any]:
             "ocr_invalid_response",
             f"DashScope OCR returned an invalid result: {error}",
         ) from error
-    server.RUN_STORE.record_artifact(
+    stores.run_store.record_artifact(
         run.id,
         RunArtifact(
             stage=TaskStage.OCR,
@@ -322,7 +323,7 @@ def ocr_image(task_id: str, run_id: str) -> dict[str, Any]:
         ),
     )
     try:
-        server.TASK_STORE.transition(
+        stores.task_store.transition(
             task_id,
             expected_statuses={TaskStatus.PROCESSING},
             expected_active_run_id=run_id,

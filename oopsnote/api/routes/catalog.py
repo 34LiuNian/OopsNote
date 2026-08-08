@@ -6,9 +6,10 @@ from datetime import datetime
 from typing import Any, Optional
 from uuid import NAMESPACE_URL, uuid5
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Request
 
 from oopsnote.api.schemas import TagInput, TagRenameInput
+from oopsnote.api.auth import AuthenticationError, require_admin_request
 from oopsnote.core import Problem, Searcher, SearchQuery, TagDimension, TagItem
 from oopsnote.obsidian.syncer import ObsidianSyncer
 
@@ -17,7 +18,14 @@ router = APIRouter()
 def _api():
     from oopsnote.api import main
 
-    return main
+    return main.request_api()
+
+
+def _require_admin(request: Request) -> None:
+    try:
+        require_admin_request(request)
+    except AuthenticationError as error:
+        raise HTTPException(status_code=error.status_code, detail=error.detail) from error
 
 
 def _tag_reference_count(dimension: TagDimension, value: str) -> int:
@@ -262,7 +270,8 @@ def get_tag_dimensions() -> dict[str, Any]:
 
 
 @router.put("/settings/tag-dimensions")
-def update_tag_dimensions(payload: dict[str, Any]) -> dict[str, Any]:
+def update_tag_dimensions(payload: dict[str, Any], request: Request) -> dict[str, Any]:
+    _require_admin(request)
     api = _api()
     dimensions = payload.get("dimensions")
     if isinstance(dimensions, dict):
@@ -350,7 +359,11 @@ def merge_tags(source_id: str, payload: dict[str, str]) -> dict[str, Any]:
 @router.post("/sync")
 def sync(subject: Optional[str] = None) -> dict[str, str]:
     api = _api()
-    syncer = ObsidianSyncer(task_store=api.TASK_STORE, tag_store=api.TAG_STORE)
+    syncer = ObsidianSyncer(
+        task_store=api.TASK_STORE,
+        tag_store=api.TAG_STORE,
+        vault_root=getattr(api, "OBSIDIAN_VAULT_ROOT", None),
+    )
     report = syncer.sync_for_subject(subject) if subject else syncer.sync()
     return {"message": str(report)}
 

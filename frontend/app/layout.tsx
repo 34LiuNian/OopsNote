@@ -4,9 +4,9 @@ import "./globals.css";
 import "katex/dist/katex.min.css";
 import "@mantine/core/styles.css";
 import "@mantine/notifications/styles.css";
-import { AppLayout, SplashScreen } from "@/components/layout";
+import { SplashScreen } from "@/components/layout";
 import { AuthBoundary, AuthProvider, ThemeProvider, ReactQueryProvider } from "@/components/providers";
-import { MantineNotifications } from "@/components/ui";
+import { GlobalErrorBoundary, GlobalErrorMonitor, MantineNotifications } from "@/components/ui";
 import { KatexAutoRender } from "@/components/renderers";
 
 export const viewport: Viewport = {
@@ -15,7 +15,7 @@ export const viewport: Viewport = {
   viewportFit: "cover",
   themeColor: [
     { media: "(prefers-color-scheme: light)", color: "#ffffff" },
-    { media: "(prefers-color-scheme: dark)", color: "#18181b" },
+    { media: "(prefers-color-scheme: dark)", color: "#09090b" },
   ],
 };
 
@@ -56,18 +56,19 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         )}
       </head>
       <body style={{ backgroundColor: "Canvas", color: "CanvasText" }}>
-        <SplashScreen />
-        <ReactQueryProvider>
-          <AuthProvider>
-            <ThemeProvider initialPreference="system">
-              <KatexAutoRender />
-              <MantineNotifications />
-              <AuthBoundary>
-                <AppLayout>{children}</AppLayout>
-              </AuthBoundary>
-            </ThemeProvider>
-          </AuthProvider>
-        </ReactQueryProvider>
+        <GlobalErrorBoundary>
+          <SplashScreen />
+          <ReactQueryProvider>
+            <AuthProvider>
+              <ThemeProvider initialPreference="system">
+                <KatexAutoRender />
+                <MantineNotifications />
+                <GlobalErrorMonitor />
+                <AuthBoundary>{children}</AuthBoundary>
+              </ThemeProvider>
+            </AuthProvider>
+          </ReactQueryProvider>
+        </GlobalErrorBoundary>
       </body>
     </html>
   );

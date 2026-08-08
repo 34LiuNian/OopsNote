@@ -7,22 +7,30 @@ import secrets
 import socket
 import threading
 import time
+from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 
 import uvicorn
 
 from oopsnote.mcp.restricted import create_restricted_mcp
+from oopsnote.mcp.context import McpCapability, McpStores, activate_capability, reset_capability
+from oopsnote.core import WorkspaceId, WorkspaceStores
 
 
-class _BearerAuthApp:
-    def __init__(self, app: Any, token: str) -> None:
+class _CapabilityAuthApp:
+    def __init__(self, app: Any, runtime: "SharedMcpHttpRuntime") -> None:
         self.app = app
-        self.expected = f"Bearer {token}".encode("ascii")
+        self.runtime = runtime
 
     async def __call__(self, scope: dict, receive: Any, send: Any) -> None:
         if scope.get("type") == "http":
             headers = dict(scope.get("headers") or [])
-            if headers.get(b"authorization") != self.expected:
+            raw = headers.get(b"authorization", b"")
+            prefix = b"Bearer "
+            token = raw[len(prefix):].decode("ascii", errors="ignore") if raw.startswith(prefix) else ""
+            try:
+                capability = self.runtime.capability_for_token(token)
+            except KeyError:
                 await send(
                     {
                         "type": "http.response.start",
@@ -32,6 +40,13 @@ class _BearerAuthApp:
                 )
                 await send({"type": "http.response.body", "body": b"Unauthorized"})
                 return
+            context_token = activate_capability(capability) if capability is not None else None
+            try:
+                await self.app(scope, receive, send)
+            finally:
+                if context_token is not None:
+                    reset_capability(context_token)
+            return
         await self.app(scope, receive, send)
 
 
@@ -45,6 +60,8 @@ class SharedMcpHttpRuntime:
         self._socket: Optional[socket.socket] = None
         self._url: Optional[str] = None
         self._token: Optional[str] = None
+        self._tokens: dict[str, McpCapability | None] = {}
+        self._workspace_tokens: dict[WorkspaceId, str] = {}
 
     def start(self) -> dict[str, str]:
         with self._lock:
@@ -53,7 +70,8 @@ class SharedMcpHttpRuntime:
 
             token = secrets.token_urlsafe(32)
             mcp = create_restricted_mcp(stateless_http=True)
-            app = _BearerAuthApp(mcp.streamable_http_app(), token)
+            self._tokens[token] = None
+            app = _CapabilityAuthApp(mcp.streamable_http_app(), self)
             listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             listener.bind(("127.0.0.1", 0))
@@ -96,6 +114,51 @@ class SharedMcpHttpRuntime:
             "OOPSNOTE_MCP_TOKEN": self._token,
         }
 
+    def environment_for(
+        self,
+        workspace_id: WorkspaceId,
+        stores: WorkspaceStores,
+        *,
+        ttl_seconds: int = 3_600,
+    ) -> dict[str, str]:
+        """Return a loopback token scoped to one workspace's physical stores."""
+        workspace = WorkspaceId.parse(workspace_id)
+        with self._lock:
+            if not self._url or not self._token:
+                raise RuntimeError("Shared OopsNote MCP HTTP server is not running")
+            token = self._workspace_tokens.get(workspace)
+            if token is not None:
+                capability = self._tokens.get(token)
+                if capability is None or not capability.is_valid():
+                    self._tokens.pop(token, None)
+                    self._workspace_tokens.pop(workspace, None)
+                    token = None
+            if token is None:
+                token = secrets.token_urlsafe(32)
+                self._workspace_tokens[workspace] = token
+                self._tokens[token] = McpCapability(
+                    workspace_id=workspace,
+                    stores=McpStores(
+                        task_store=stores.task_store,
+                        tag_store=stores.tag_store,
+                        asset_store=stores.asset_store,
+                        run_store=stores.run_store,
+                    ),
+                    expires_at=datetime.now(timezone.utc) + timedelta(seconds=max(60, ttl_seconds)),
+                )
+            return {"OOPSNOTE_MCP_URL": self._url, "OOPSNOTE_MCP_TOKEN": token}
+
+    def capability_for_token(self, token: str) -> McpCapability | None:
+        with self._lock:
+            if token not in self._tokens:
+                raise KeyError(token)
+            capability = self._tokens[token]
+            if capability is not None and not capability.is_valid():
+                self._tokens.pop(token, None)
+                self._workspace_tokens.pop(capability.workspace_id, None)
+                raise KeyError(token)
+            return capability
+
     def shutdown(self) -> None:
         with self._lock:
             server = self._server
@@ -106,6 +169,8 @@ class SharedMcpHttpRuntime:
             self._socket = None
             self._url = None
             self._token = None
+            self._tokens.clear()
+            self._workspace_tokens.clear()
         if server is not None:
             server.should_exit = True
         if thread is not None:

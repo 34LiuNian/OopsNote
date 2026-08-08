@@ -1012,6 +1012,28 @@ def test_provider_factory_configures_deepseek_non_thinking_tool_loop(monkeypatch
     assert captured["bind_kwargs"] == {"tool_choice": "required", "parallel_tool_calls": False}
 
 
+def test_deepseek_profile_on_custom_gateway_uses_openai_compatible_adapter(monkeypatch):
+    captured = {}
+
+    class ChatModel:
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+
+    monkeypatch.setitem(sys.modules, "langchain_openai", SimpleNamespace(ChatOpenAI=ChatModel))
+    vault = MemorySecretStore()
+    profile = ProviderProfile(
+        id="gateway", version=1, provider="deepseek", model="gemini-3.6-flash",
+        base_url="https://modelflare.dev", credential_ref=vault.put("secret"),
+    )
+
+    ProviderClientFactory(vault).create_chat_model(profile)
+
+    assert captured["model"] == "gemini-3.6-flash"
+    assert captured["base_url"] == "https://modelflare.dev/v1"
+    assert captured["api_key"] == "secret"
+    assert captured["max_retries"] == 0
+
+
 def test_langchain_places_immutable_rules_in_system_message(tmp_path):
     from langchain_core.messages import HumanMessage, SystemMessage
 

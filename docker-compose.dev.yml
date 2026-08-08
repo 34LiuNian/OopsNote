@@ -5,11 +5,12 @@ services:
     environment:
       NODE_ENV: development
       OOPSNOTE_BACKEND_URL: http://backend:8000
-      NEXT_PUBLIC_OIDC_AUTHORITY: https://auth.alan-ztr.eu.org
-      NEXT_PUBLIC_OIDC_CLIENT_ID: oopsnote-dev
-      NEXT_PUBLIC_OIDC_REDIRECT_URI: https://dev-oopsnote.alan-ztr.eu.org/auth/callback
-      NEXT_PUBLIC_OIDC_POST_LOGOUT_REDIRECT_URI: https://dev-oopsnote.alan-ztr.eu.org/
-      NEXT_PUBLIC_OIDC_SCOPE: openid profile email
+      NEXT_PUBLIC_AUTH_MODE: better-auth
+      BETTER_AUTH_URL: https://dev-oopsnote.alan-ztr.eu.org
+      OOPSNOTE_AUTH_DB_PATH: /auth/auth.sqlite
+      OOPSNOTE_BETTER_AUTH_SECRET_FILE: /run/secrets/oopsnote_dev_better_auth_secret
+      OOPSNOTE_BFF_HMAC_SECRET_FILE: /run/secrets/oopsnote_dev_bff_hmac_secret
+      OOPSNOTE_BOOTSTRAP_SECRET_FILE: /run/secrets/oopsnote_dev_bootstrap_secret
     command: >-
       sh -c 'if [ ! -x node_modules/.bin/next ]; then npm ci; fi; npx next dev --webpack -H 0.0.0.0'
     ports:
@@ -17,6 +18,11 @@ services:
     volumes:
       - ./frontend:/app
       - oopsnote-dev-frontend-node-modules:/app/node_modules
+      - oopsnote-dev-auth:/auth
+    secrets:
+      - oopsnote_dev_better_auth_secret
+      - oopsnote_dev_bff_hmac_secret
+      - oopsnote_dev_bootstrap_secret
     depends_on:
       backend:
         condition: service_healthy
@@ -34,14 +40,15 @@ services:
       OOPSNOTE_STORAGE_DIR: /data
       OOPSNOTE_LATEX_RENDERER_URL: http://latex-renderer:8080
       OOPSNOTE_RPC_MAX_WORKERS: "1"
-      OOPSNOTE_AUTH_ISSUER: https://auth.alan-ztr.eu.org
-      OOPSNOTE_AUTH_AUDIENCE: oopsnote-dev
-      OOPSNOTE_AUTH_JWKS_URL: http://pocket-id:1411/.well-known/jwks.json
+      OOPSNOTE_AUTH_MODE: better-auth
+      OOPSNOTE_BFF_HMAC_SECRET_FILE: /run/secrets/oopsnote_dev_bff_hmac_secret
     volumes:
       - ./:/app
       - oopsnote-dev-data:/data
       - ./deploy/pi:/app/.pi:ro
       - ./deploy/pi-rust:/app/.pi-rust:ro
+    secrets:
+      - oopsnote_dev_bff_hmac_secret
     depends_on:
       latex-renderer:
         condition: service_healthy
@@ -52,7 +59,6 @@ services:
       retries: 5
     networks:
       - dev-app
-      - pocket-id
 
   latex-renderer:
     build:
@@ -80,10 +86,16 @@ services:
 
 volumes:
   oopsnote-dev-data:
+  oopsnote-dev-auth:
   oopsnote-dev-frontend-node-modules:
 
 networks:
   dev-app:
-  pocket-id:
-    external: true
-    name: oopsnote_app
+
+secrets:
+  oopsnote_dev_better_auth_secret:
+    file: ./deploy/oopsnote/secrets/dev_better_auth_secret
+  oopsnote_dev_bff_hmac_secret:
+    file: ./deploy/oopsnote/secrets/dev_bff_hmac_secret
+  oopsnote_dev_bootstrap_secret:
+    file: ./deploy/oopsnote/secrets/dev_bootstrap_secret

@@ -1,17 +1,18 @@
 "use client";
 
+import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { ShieldCheck, Users } from "lucide-react";
 import {
-  PlusIcon,
-  RepoIcon,
+  BlocksIcon,
   BookIcon,
   ChecklistIcon,
-  ScanIcon,
   GearIcon,
-  BlocksIcon,
   GitBranchIcon,
+  PlusIcon,
+  RepoIcon,
+  ScanIcon,
 } from "@/components/ui/icons";
-import Link from "next/link";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { isAdminUser } from "@/lib/auth";
 
@@ -19,13 +20,15 @@ const NAV_ITEMS = [
   { href: "/library", label: "题库", icon: RepoIcon, section: "main" },
   { href: "/batch-segment", label: "批量扫描", icon: ScanIcon, section: "main" },
   { href: "/papers", label: "组卷", icon: ChecklistIcon, section: "main" },
-  { href: "/", label: "新建题目", icon: PlusIcon, section: "main", matchExact: true },
+  { href: "/new", label: "新建题目", icon: PlusIcon, section: "main", matchExact: true },
   { href: "/paper-builder", label: "快速重练", icon: BookIcon, section: "main" },
-  { href: "/debug", label: "渲染调试", icon: BookIcon, section: "tools" },
-  { href: "/settings", label: "设置", icon: GearIcon, section: "admin", matchExact: true },
+  { href: "/settings/members", label: "成员", icon: Users, section: "admin" },
+  { href: "/settings/access", label: "注册与访问", icon: ShieldCheck, section: "admin" },
   { href: "/settings/channels", label: "AI 渠道", icon: BlocksIcon, section: "admin" },
-  { href: "/settings/policy", label: "LangChain 策略", icon: GitBranchIcon, section: "admin" },
-];
+  { href: "/settings/policy", label: "AI 策略", icon: GitBranchIcon, section: "admin" },
+  { href: "/settings", label: "系统运行", icon: GearIcon, section: "admin", matchExact: true },
+  { href: "/debug", label: "渲染调试", icon: BookIcon, section: "tools" },
+] as const;
 
 function NavigationItems({
   collapsed,
@@ -38,84 +41,49 @@ function NavigationItems({
 }) {
   const pathname = usePathname();
   const { user } = useAuth();
+  const mainItems = NAV_ITEMS.filter((item) => item.section === "main");
+  const toolItems = NAV_ITEMS.filter((item) => item.section === "tools");
+  const adminItems = NAV_ITEMS.filter((item) => item.section === "admin" && isAdminUser(user));
+  const isActive = (item: (typeof NAV_ITEMS)[number]) => "matchExact" in item && item.matchExact ? pathname === item.href : pathname.startsWith(item.href);
 
-  const mainItems = NAV_ITEMS.filter((i) => i.section === "main");
-  const toolItems = NAV_ITEMS.filter((i) => i.section === "tools");
-  const adminItems = NAV_ITEMS.filter((i) => i.section === "admin" && isAdminUser(user));
-
-  const isActive = (item: (typeof NAV_ITEMS)[number]) => {
-    if (item.matchExact) return pathname === item.href;
-    return pathname.startsWith(item.href);
+  const renderItem = (item: (typeof NAV_ITEMS)[number]) => {
+    const active = isActive(item);
+    return (
+      <Link
+        key={item.href}
+        href={item.href}
+        className={`app-sidebar__link${active ? " is-active" : ""}`}
+        aria-current={active ? "page" : undefined}
+        title={collapsed ? item.label : undefined}
+        onClick={() => onNavigate?.(item.href)}
+      >
+        <item.icon size={17} strokeWidth={1.9} />
+        {!collapsed && <span>{item.label}</span>}
+      </Link>
+    );
   };
 
   return (
     <nav className="app-sidebar__nav" aria-label={ariaLabel}>
-        {mainItems.map((item) => {
-          const active = isActive(item);
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={`app-sidebar__link${active ? " is-active" : ""}`}
-              aria-current={active ? "page" : undefined}
-              title={collapsed ? item.label : undefined}
-              onClick={() => onNavigate?.(item.href)}
-            >
-              <item.icon size={17} strokeWidth={1.9} />
-              {!collapsed && <span>{item.label}</span>}
-            </Link>
-          );
-        })}
-
-        {adminItems.length > 0 && <>
+      {mainItems.map(renderItem)}
+      {adminItems.length > 0 && (
+        <>
           <div className="app-sidebar__divider" />
-          {!collapsed && <span className="app-sidebar__label">管理</span>}
-          {adminItems.map((item) => {
-            const active = isActive(item);
-            return (
-              <Link key={item.href} href={item.href} className={`app-sidebar__link${active ? " is-active" : ""}`} aria-current={active ? "page" : undefined} title={collapsed ? item.label : undefined} onClick={() => onNavigate?.(item.href)}>
-                <item.icon size={17} strokeWidth={1.9} />
-                {!collapsed && <span>{item.label}</span>}
-              </Link>
-            );
-          })}
-        </>}
-        <div className="app-sidebar__divider" />
-        {!collapsed && <span className="app-sidebar__label">工具</span>}
-        {toolItems.map((item) => {
-          const active = isActive(item);
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={`app-sidebar__link${active ? " is-active" : ""}`}
-              aria-current={active ? "page" : undefined}
-              title={collapsed ? item.label : undefined}
-              onClick={() => onNavigate?.(item.href)}
-            >
-              <item.icon size={17} strokeWidth={1.9} />
-              {!collapsed && <span>{item.label}</span>}
-            </Link>
-          );
-        })}
+          {!collapsed && <span className="app-sidebar__label">系统管理</span>}
+          {adminItems.map(renderItem)}
+        </>
+      )}
+      <div className="app-sidebar__divider" />
+      {!collapsed && <span className="app-sidebar__label">工具</span>}
+      {toolItems.map(renderItem)}
     </nav>
   );
 }
 
-export function Sidebar({
-  collapsed,
-  onNavigate,
-}: {
-  collapsed: boolean;
-  onNavigate?: (href: string) => void;
-}) {
+export function Sidebar({ collapsed, onNavigate }: { collapsed: boolean; onNavigate?: (href: string) => void }) {
   return (
     <aside id="oops-primary-sidebar" className={`app-sidebar oops-desktop-sidebar${collapsed ? " is-collapsed" : ""}`}>
-      <NavigationItems
-        collapsed={collapsed}
-        onNavigate={onNavigate}
-        ariaLabel={collapsed ? "快捷导航" : "主导航"}
-      />
+      <NavigationItems collapsed={collapsed} onNavigate={onNavigate} ariaLabel={collapsed ? "快捷导航" : "主导航"} />
     </aside>
   );
 }

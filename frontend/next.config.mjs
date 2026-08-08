@@ -14,17 +14,22 @@ const nextConfig = {
   allowedDevOrigins: ['127.0.0.1', 'localhost', 'dev-oopsnote.alan-ztr.eu.org'],
   // Enable standalone output for production deployment
   output: 'standalone',
+  serverExternalPackages: ['better-sqlite3'],
   async rewrites() {
     // This is evaluated by Next.js on the server/build side. Keep the Docker
     // service hostname out of browser-visible NEXT_PUBLIC_* configuration.
     const backendUrl = process.env.OOPSNOTE_BACKEND_URL || 'http://127.0.0.1:8000';
-    
-    return [
-      {
-        source: '/api/:path*',
-        destination: `${backendUrl}/:path*`,
-      },
-    ];
+
+    // Let filesystem route handlers own /api/auth and /api/backend first.
+    // The legacy rewrite remains only for the pre-cutover frontend callers.
+    return {
+      afterFiles: [
+        {
+          source: '/api/:path((?!auth(?:/|$)|backend(?:/|$)).*)',
+          destination: `${backendUrl}/:path*`,
+        },
+      ],
+    };
   },
   async redirects() {
     return [{ source: '/settings/providers', destination: '/settings/channels', permanent: false }];

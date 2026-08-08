@@ -176,6 +176,24 @@ def test_problem_normalizes_oopsmark_option_bodies():
     assert problem.options == ["$x$", "$y$"]
 
 
+def test_single_choice_rejects_multiple_option_labels():
+    with pytest.raises(ValueError, match="exactly one option label"):
+        Problem(
+            content_format=ContentFormat.OOPSMARK_V1,
+            question_type="单选题",
+            options=["甲", "乙", "丙", "丁"],
+            answer="A、C、D",
+        )
+
+    problem = Problem(
+        content_format=ContentFormat.OOPSMARK_V1,
+        question_type="多选题",
+        options=["甲", "乙", "丙", "丁"],
+        answer="A、C、D",
+    )
+    assert problem.answer == "A、C、D"
+
+
 def test_oopsmark_answer_conclusion_contract_is_explicit_and_non_mutating():
     assert validate_answer_conclusion("由 $x+1=2$，所以 $x=1$。").code == "answer-contains-derivation"
     assert validate_answer_conclusion("$x+1=2$\n\n$x=1$").code == "answer-derivation-layout"

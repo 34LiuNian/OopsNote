@@ -1,5 +1,9 @@
 "use client";
 
+import { isBetterAuthMode } from "./auth-mode";
+
+export { isBetterAuthMode } from "./auth-mode";
+
 type AuthConfig = {
   authority: string;
   clientId: string;
@@ -139,6 +143,7 @@ function userFromUserInfo(payload: unknown): AuthUser {
 export function isAdminUser(user: AuthUser | null): boolean {
   if (isLocalAuthMode()) return user?.subject === LOCAL_USER.subject;
   if (!user) return false;
+  if (isBetterAuthMode()) return user.roles.includes("admin");
   const subjects = (process.env.NEXT_PUBLIC_ADMIN_SUBJECTS || "").split(",").map((value) => value.trim()).filter(Boolean);
   if (subjects.includes(user.subject)) return true;
   const configured = (process.env.NEXT_PUBLIC_ADMIN_ROLES || "admin").split(",").map((value) => value.trim()).filter(Boolean);
@@ -175,6 +180,12 @@ export async function refreshCurrentUser(): Promise<AuthUser> {
 
 export async function beginSignin(returnTo?: string): Promise<void> {
   if (isLocalAuthMode()) return;
+  if (isBetterAuthMode()) {
+    const url = new URL("/login", window.location.origin);
+    url.searchParams.set("returnTo", returnTo || window.location.pathname || "/");
+    window.location.assign(url.toString());
+    return;
+  }
   const config = authConfig();
   const verifier = randomString();
   const state = randomString();
@@ -228,16 +239,13 @@ export async function completeSignin(urlString: string): Promise<string> {
     expires_at: Date.now() + Math.max(60, token.expires_in || 300) * 1000,
   });
   window.sessionStorage.removeItem(STATE_KEY);
-  try {
-    await refreshCurrentUser();
-  } catch (error) {
-    console.warn("OIDC sign-in succeeded but userinfo could not be loaded", error);
-  }
+  await refreshCurrentUser();
   return stored.returnTo || "/";
 }
 
 export async function accessTokenOrRedirect(): Promise<string> {
   if (isLocalAuthMode()) return "";
+  if (isBetterAuthMode()) return "";
   const session = loadSession();
   if (session) return session.access_token;
   await beginSignin(window.location.pathname + window.location.search);
@@ -245,7 +253,7 @@ export async function accessTokenOrRedirect(): Promise<string> {
 }
 
 export function hasAccessToken(): boolean {
-  return isLocalAuthMode() || Boolean(loadSession());
+  return isLocalAuthMode() || (!isBetterAuthMode() && Boolean(loadSession()));
 }
 
 export function beginSignout(): never {

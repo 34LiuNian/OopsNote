@@ -4,6 +4,7 @@ services:
       context: ./frontend
       args:
         OOPSNOTE_BACKEND_URL: http://backend:8000
+        NEXT_PUBLIC_AUTH_MODE: ${NEXT_PUBLIC_AUTH_MODE:-better-auth}
         NEXT_PUBLIC_OIDC_AUTHORITY: https://auth.alan-ztr.eu.org
         NEXT_PUBLIC_OIDC_CLIENT_ID: abd3d0b3-46f3-4aaa-994c-1c9258c74c1e
         NEXT_PUBLIC_OIDC_REDIRECT_URI: https://oopsnote.alan-ztr.eu.org/auth/callback
@@ -12,6 +13,17 @@ services:
         NEXT_PUBLIC_ADMIN_SUBJECTS: 5cf94ffe-c14b-4c32-9092-7ff8ab947579
     environment:
       NODE_ENV: production
+      NEXT_PUBLIC_AUTH_MODE: ${NEXT_PUBLIC_AUTH_MODE:-better-auth}
+      BETTER_AUTH_URL: https://oopsnote.alan-ztr.eu.org
+      OOPSNOTE_AUTH_DB_PATH: /auth/auth.sqlite
+      OOPSNOTE_BACKEND_URL: http://backend:8000
+      OOPSNOTE_BETTER_AUTH_SECRET_FILE: /run/secrets/oopsnote_better_auth_secret
+      OOPSNOTE_BFF_HMAC_SECRET_FILE: /run/secrets/oopsnote_bff_hmac_secret
+    volumes:
+      - oopsnote-auth:/auth
+    secrets:
+      - oopsnote_better_auth_secret
+      - oopsnote_bff_hmac_secret
     ports:
       - "127.0.0.1:13000:3000"
     networks:
@@ -25,16 +37,10 @@ services:
       OOPSNOTE_STORAGE_DIR: /data
       OOPSNOTE_LATEX_RENDERER_URL: http://latex-renderer:8080
       OOPSNOTE_RPC_MAX_WORKERS: "1"
-      OOPSNOTE_AUTH_ISSUER: https://auth.alan-ztr.eu.org
-      OOPSNOTE_AUTH_AUDIENCE: abd3d0b3-46f3-4aaa-994c-1c9258c74c1e
-      OOPSNOTE_AUTH_JWKS_URL: http://pocket-id:1411/.well-known/jwks.json
-      OOPSNOTE_ADMIN_SUBJECTS: 5cf94ffe-c14b-4c32-9092-7ff8ab947579
+      OOPSNOTE_AUTH_MODE: ${OOPSNOTE_AUTH_MODE:-better-auth}
+      OOPSNOTE_BFF_HMAC_SECRET_FILE: /run/secrets/oopsnote_bff_hmac_secret
       OOPSNOTE_SECRET_STORE_PATH: /vault/credentials.json
       OOPSNOTE_SECRET_STORE_KEY_FILE: /run/secrets/oopsnote_secret_store_key
-    ports:
-      # Caddy reaches the large batch-source upload route through this
-      # loopback-only port, bypassing the Next.js rewrite body limit.
-      - "127.0.0.1:18000:8000"
     volumes:
       - oopsnote-data:/data
       - oopsnote-vault:/vault
@@ -42,6 +48,7 @@ services:
       - ./deploy/pi-rust:/app/.pi-rust:ro
     secrets:
       - oopsnote_secret_store_key
+      - oopsnote_bff_hmac_secret
     depends_on:
       latex-renderer:
         condition: service_healthy
@@ -55,6 +62,7 @@ services:
       retries: 5
 
   pocket-id:
+    profiles: ["oidc-rollback"]
     image: ghcr.io/pocket-id/pocket-id:v2.7.0
     env_file:
       - ./deploy/pocket-id/pocket-id.env
@@ -103,6 +111,7 @@ services:
 
 volumes:
   oopsnote-data:
+  oopsnote-auth:
   oopsnote-vault:
   pocket-id-data:
 
@@ -112,6 +121,10 @@ networks:
     internal: true
 
 secrets:
+  oopsnote_better_auth_secret:
+    file: ./deploy/oopsnote/secrets/better_auth_secret
+  oopsnote_bff_hmac_secret:
+    file: ./deploy/oopsnote/secrets/bff_hmac_secret
   oopsnote_secret_store_key:
     file: ./deploy/oopsnote/secrets/credential_store_key
   pocket_id_encryption_key:

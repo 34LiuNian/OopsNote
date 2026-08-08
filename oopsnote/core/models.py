@@ -7,6 +7,7 @@ JSON uuid (problem_id) 与 Obsidian 文件名 (日期-序号.md) 一一对应。
 from __future__ import annotations
 
 import hashlib
+import re
 from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Literal, Optional
@@ -217,6 +218,14 @@ class Problem(BaseModel):
 
     @model_validator(mode="after")
     def validate_versioned_content(self) -> "Problem":
+        if self.question_type == QuestionType.SINGLE_CHOICE and self.options:
+            choice_answer = re.fullmatch(
+                r"\s*(?:答案(?:为|是)?[:：]?\s*)?([A-H](?:[\s,，、/;；]*[A-H])*)\s*",
+                self.answer,
+                flags=re.IGNORECASE,
+            )
+            if choice_answer and len(re.findall(r"[A-H]", choice_answer.group(1), re.IGNORECASE)) > 1:
+                raise ValueError("single-choice answer must contain exactly one option label")
         if self.content_format != ContentFormat.OOPSMARK_V1:
             return self
         # Normalize newlines before validation
@@ -422,6 +431,8 @@ class TaskRun(BaseModel):
 
     id: str = Field(default_factory=lambda: uuid4().hex)
     task_id: str
+    workspace_id: Optional[str] = None
+    quota_reservation_id: Optional[str] = None
     purpose: RunPurpose = RunPurpose.PROBLEM
     priority: int = Field(default=0, ge=0, le=100)
     diagram_item_id: Optional[str] = None

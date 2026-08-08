@@ -38,6 +38,7 @@ from oopsnote.core import (
     subjects_match,
 )
 from oopsnote.obsidian.syncer import OBSIDIAN_SYNC_QUEUE, ObsidianSyncer
+from oopsnote.mcp.context import McpStores, current_capability
 
 # ── Server ───────────────────────────────────────────
 
@@ -67,7 +68,7 @@ ManagedStudentResponseStatus = Literal["answered", "unanswered", "unknown"]
 
 
 def _require_active_run(task_id: str, run_id: str) -> TaskRecord:
-    task = TASK_STORE.get(task_id)
+    task = _stores().task_store.get(task_id)
     if not run_id or task.active_run_id != run_id:
         raise ValueError(f"run_id {run_id} is not active for task {task_id}")
     return task
@@ -128,7 +129,7 @@ def _update_completed_task_message(
 ) -> Optional[TaskRecord]:
     """Attach derived-work status only while the same completion is current."""
     try:
-        return TASK_STORE.transition(
+        return _stores().task_store.transition(
             task_id,
             expected_statuses={TaskStatus.COMPLETED},
             expected_active_run_id=None,
@@ -151,6 +152,25 @@ ASSET_STORE = AssetStore(base_dir=STORAGE_DIR / "assets")
 RUN_STORE = RunStore(base_dir=STORAGE_DIR / "runs")
 
 
+def _stores() -> McpStores:
+    capability = current_capability()
+    if capability is not None:
+        return capability.stores
+    return McpStores(
+        task_store=TASK_STORE,
+        tag_store=TAG_STORE,
+        asset_store=ASSET_STORE,
+        run_store=RUN_STORE,
+    )
+
+
+def _obsidian_vault_root() -> Path:
+    capability = current_capability()
+    if capability is not None:
+        return capability.stores.task_store.base_dir.parent / "obsidian-vault"
+    return STORAGE_DIR.parent / "vaults"
+
+
 # ═════════════════════════════════════════════════════
 # 任务
 # ═════════════════════════════════════════════════════
@@ -169,12 +189,13 @@ def create_task(
         asset_base64=asset_base64,
     )
 
-    task = TASK_STORE.create(payload)
+    stores = _stores()
+    task = stores.task_store.create(payload)
 
     # 如果传了 base64 图片，落盘后更新 asset_path
     if asset_base64:
-        path = ASSET_STORE.save_base64(asset_base64)
-        task = TASK_STORE.update(task.id, asset_path=path)
+        path = stores.asset_store.save_base64(asset_base64)
+        task = stores.task_store.update(task.id, asset_path=path)
 
     return task
 
@@ -189,7 +210,7 @@ def _active_task_run(task_id: str, run_id: str):
     """Return the lifecycle-owned run after checking it matches the active task."""
 
     try:
-        run = RUN_STORE.get(run_id)
+        run = _stores().run_store.get(run_id)
     except KeyError as error:
         raise ValueError(f"run_id {run_id} has no managed run record") from error
     if run.task_id != task_id:
@@ -241,7 +262,7 @@ def _record_validation_error(
     error: ValueError,
 ) -> None:
     """Retain rejected managed output on its run without changing task state."""
-    RUN_STORE.record_validation_error(
+    _stores().run_store.record_validation_error(
         run_id,
         RunValidationError(
             stage=stage,
@@ -268,7 +289,7 @@ def list_tasks(
     limit: int = 20,
 ) -> list[TaskRecord]:
     """列出任务。可按状态过滤。"""
-    tasks = TASK_STORE.list_all()
+    tasks = _stores().task_store.list_all()
     if status:
         tasks = [t for t in tasks if t.status.value == status]
     tasks.sort(key=lambda t: t.created_at, reverse=True)
@@ -291,7 +312,7 @@ def update_task(
     if last_error is not None:
         fields["last_error"] = last_error
     try:
-        return TASK_STORE.update(task_id, **fields)
+        return _stores().task_store.update(task_id, **fields)
     except KeyError:
         return None
 
@@ -304,7 +325,7 @@ def mark_task_status(
 ) -> Optional[TaskRecord]:
     """标记任务状态。status: pending/processing/completed/failed/cancelled"""
     try:
-        return TASK_STORE.mark_status(task_id, TaskStatus(status), error)
+        return _stores().task_store.mark_status(task_id, TaskStatus(status), error)
     except (KeyError, ValueError):
         return None
 
@@ -333,7 +354,7 @@ def report_task_stage(
         raise ValueError(
             f"stage {requested_stage.value} cannot follow {previous}"
         )
-    task = TASK_STORE.transition(
+    task = _stores().task_store.transition(
         task_id,
         expected_statuses={TaskStatus.PROCESSING},
         expected_active_run_id=run_id,
@@ -376,7 +397,7 @@ def submit_solution_candidate(
         _record_validation_error(run.id, TaskStage.SOLVING, problem_json, error)
         raise
     try:
-        RUN_STORE.submit_solution_candidate(
+        _stores().run_store.submit_solution_candidate(
             run.id,
             candidate,
             RunArtifact(
@@ -395,7 +416,7 @@ def submit_solution_candidate(
     metadata = dict(task.metadata)
     metadata.pop("_managed_tag_selection", None)
     metadata.pop("_managed_error_candidates", None)
-    TASK_STORE.transition(
+    _stores().task_store.transition(
         task_id,
         expected_statuses={TaskStatus.PROCESSING},
         expected_active_run_id=run_id,
@@ -431,7 +452,7 @@ def _fail_active_task(
 ) -> dict[str, Any]:
     """Atomically persist one classified failure for the active managed run."""
     task = _require_active_run(task_id, run_id)
-    failed = TASK_STORE.transition(
+    failed = _stores().task_store.transition(
         task_id,
         expected_statuses={TaskStatus.PROCESSING},
         expected_active_run_id=run_id,
@@ -541,14 +562,15 @@ def finalize_task(
                 problem_json,
                 "knowledge tag selection subject does not match the problem",
             )
-        valid_leaf_values = set(TAG_STORE.ai_knowledge_leaves(
+        valid_leaf_values = _stores().tag_store.ai_knowledge_leaves(
             subject,
             list(selection.get("branch_ids") or []),
             scope=selection.get("scope"),
-        ))
+        )
+        valid_leaf_set = set(valid_leaf_values)
         invalid_tags = list(dict.fromkeys(
             value for value in problem.knowledge_points
-            if value not in valid_leaf_values
+            if value not in valid_leaf_set
         ))
         if invalid_tags:
             _raise_validation_error(
@@ -556,10 +578,11 @@ def finalize_task(
                 TaskStage.FINALIZING,
                 problem_json,
                 "knowledge_points must contain only knowledge-tree leaf tags; "
-                f"invalid: {', '.join(invalid_tags)}"
+                f"invalid: {', '.join(invalid_tags)}; "
+                f"allowed leaves: {', '.join(valid_leaf_values)}"
             )
     if problem.error_hypothesis:
-        valid_error_values = set(TAG_STORE.ai_values(
+        valid_error_values = set(_stores().tag_store.ai_values(
             dimension=TagDimension.ERROR,
             subject=subject,
             scope="core",
@@ -576,7 +599,7 @@ def finalize_task(
                 "error_hypothesis must contain existing error tags; create missing tags first; "
                 f"invalid: {', '.join(invalid_errors)}"
             )
-    RUN_STORE.record_artifact(
+    _stores().run_store.record_artifact(
         run.id,
         RunArtifact(
             stage=TaskStage.FINALIZING,
@@ -585,7 +608,7 @@ def finalize_task(
             parsed_output=problem.model_dump(mode="json"),
         ),
     )
-    completed = TASK_STORE.transition(
+    completed = _stores().task_store.transition(
         task_id,
         expected_statuses={TaskStatus.PROCESSING},
         expected_active_run_id=run_id,
@@ -608,9 +631,9 @@ def finalize_task(
     if sync_to_obsidian:
         try:
             syncer = ObsidianSyncer(
-                task_store=TASK_STORE,
-                tag_store=TAG_STORE,
-                vault_root=STORAGE_DIR.parent / "vaults",
+                task_store=_stores().task_store,
+                tag_store=_stores().tag_store,
+                vault_root=_obsidian_vault_root(),
             )
             OBSIDIAN_SYNC_QUEUE.enqueue(syncer, problem, task_id=task_id)
             sync_queued = True
@@ -647,7 +670,7 @@ def set_task_problem(
 
     problem = Problem.model_validate(json.loads(problem_json))
     try:
-        return TASK_STORE.set_problem(task_id, problem)
+        return _stores().task_store.set_problem(task_id, problem)
     except KeyError:
         return None
 
@@ -673,7 +696,7 @@ def list_tags(
             return {
                 "mode": "branches",
                 "max_branches": 6,
-                "items": TAG_STORE.ai_knowledge_branches(subject, scope=scope),
+                "items": _stores().tag_store.ai_knowledge_branches(subject, scope=scope),
             }
         selected_branch_ids = list(dict.fromkeys(
             value.strip() for value in branch_ids if value.strip()
@@ -681,7 +704,7 @@ def list_tags(
         return {
             "mode": "leaves",
             "branch_ids": selected_branch_ids,
-            "items": TAG_STORE.ai_knowledge_leaves(
+                "items": _stores().tag_store.ai_knowledge_leaves(
                 subject,
                 selected_branch_ids,
                 scope=scope,
@@ -691,7 +714,7 @@ def list_tags(
         raise ValueError("branch_ids are only supported for knowledge tags")
     return {
         "mode": "values",
-        "items": TAG_STORE.ai_values(
+        "items": _stores().tag_store.ai_values(
             dimension=dim,
             subject=subject,
             scope=scope,
@@ -710,7 +733,7 @@ def create_tag(
     dim = TagDimension(dimension)
     if dim == TagDimension.KNOWLEDGE:
         raise ValueError("managed AI cannot create knowledge tags")
-    return TAG_STORE.upsert(
+    return _stores().tag_store.upsert(
         dimension=dim,
         value=value,
         aliases=aliases or [],
@@ -721,7 +744,7 @@ def create_tag(
 @mcp.tool()
 def delete_tag(tag_id: str) -> bool:
     """按 ID 删除用户标签。内置标签不可删。"""
-    return TAG_STORE.delete(tag_id)
+    return _stores().tag_store.delete(tag_id)
 
 
 # ═════════════════════════════════════════════════════
@@ -747,7 +770,7 @@ def search_problems(
         regex=regex,
         limit=limit,
     )
-    searcher = Searcher(TASK_STORE.list_all())
+    searcher = Searcher(_stores().task_store.list_all())
     return searcher.search(query)
 
 
@@ -764,9 +787,9 @@ def sync_to_obsidian(subject: Optional[str] = None) -> str:
     不传 subject 则同步全部学科，传则只同步指定学科。
     """
     syncer = ObsidianSyncer(
-        task_store=TASK_STORE,
-        tag_store=TAG_STORE,
-        vault_root=STORAGE_DIR.parent / "vaults",
+        task_store=_stores().task_store,
+        tag_store=_stores().tag_store,
+        vault_root=_obsidian_vault_root(),
     )
     if subject:
         report = syncer.sync_for_subject(subject)
@@ -786,7 +809,7 @@ def get_asset_path(task_id: str, run_id: str) -> str:
     task = _require_active_run(task_id, run_id)
     if not task.asset_path:
         raise ValueError(f"task {task_id} has no image asset")
-    return str(ASSET_STORE.resolve(task.asset_path))
+    return str(_stores().asset_store.resolve(task.asset_path))
 
 
 # ═════════════════════════════════════════════════════

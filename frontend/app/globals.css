@@ -1,9 +1,12 @@
+@import "./design-tokens.css";
 @import "../components/image-selection/imageSelection.css";
 @import "../components/batch-continuous/batchContinuous.css";
 
 @font-face {
   font-family: 'OopsNoteFont';
-  src: url('/fonts/Sirivennela-Regular.ttf') format('truetype');
+  src:
+    url('/fonts/Sirivennela-Regular.woff2') format('woff2'),
+    url('/fonts/Sirivennela-Regular.woff') format('woff');
   font-weight: normal;
   font-style: normal;
   font-display: swap;
@@ -11,54 +14,6 @@
 :root {
   font-family: 'Inter', 'Noto Sans SC', 'HarmonyOS Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
-  --oops-transition-fast: 150ms cubic-bezier(0.4, 0, 0.2, 1);
-  --oops-transition-normal: 250ms cubic-bezier(0.4, 0, 0.2, 1);
-  --oops-transition-slow: 400ms cubic-bezier(0.4, 0, 0.2, 1);
-  --oops-shadow-sm: 0 1px 2px rgba(0,0,0,0.06), 0 1px 3px rgba(0,0,0,0.1);
-  --oops-shadow-md: 0 4px 6px -1px rgba(0,0,0,0.08), 0 2px 4px -2px rgba(0,0,0,0.06);
-  --oops-shadow-lg: 0 10px 15px -3px rgba(0,0,0,0.08), 0 4px 6px -4px rgba(0,0,0,0.04);
-  --oops-shadow-float: 0 20px 25px -5px rgba(0,0,0,0.1), 0 8px 10px -6px rgba(0,0,0,0.05);
-  --oops-context-shadow: -3px -3px 10px rgba(0, 0, 0, 0.025);
-  --oops-shell-shadow: -5px -5px 16px rgba(0, 0, 0, 0.055);
-  --oops-radius-sm: 6px;
-  --oops-radius-md: 8px;
-  --oops-radius-lg: 12px;
-  --oops-scrollbar-thumb: rgb(113 113 122 / 28%);
-  --oops-scrollbar-thumb-hover: rgb(63 63 70 / 52%);
-  --oops-scrollbar-thumb-active: rgb(39 39 42 / 68%);
-  
-  /* OopsNote product tokens: quiet neutral surfaces and ink actions. */
-  --fgColor-default: #18181b;
-  --fgColor-muted: #71717a;
-  --fgColor-accent: #27272a;
-  --fgColor-accent-emphasis: #18181b;
-  --fgColor-success: #15803d;
-  --fgColor-danger: #dc2626;
-  --fgColor-danger-emphasis: #b91c1c;
-  --fgColor-attention: #b45309;
-  --fgColor-info: #2563eb;
-  --bgColor-default: #ffffff;
-  --bgColor-muted: #f4f4f5;
-  --bgColor-overlay: rgb(255 255 255 / 0.88);
-  --bgColor-accent-muted: #f4f4f5;
-  --bgColor-success-muted: #dcfce7;
-  --bgColor-danger-muted: #fee2e2;
-  --bgColor-attention-muted: #fef3c7;
-  --borderColor-default: #e4e4e7;
-  --borderColor-muted: #f4f4f5;
-  --sidebar-bg: #f4f4f5;
-  --secondary-sidebar-bg: color-mix(in srgb, var(--sidebar-bg) 70%, var(--bgColor-default) 30%);
-  --sidebar-border: #e4e4e7;
-  --sidebar-text: #52525b;
-  --sidebar-text-strong: #18181b;
-  --sidebar-hover: #e4e4e7;
-  --sidebar-active: #e4e4e7;
-  --batch-viewer-canvas: #e4e4e7;
-  --batch-viewer-toolbar: #f4f4f5;
-  --batch-viewer-control: #ffffff;
-  --batch-viewer-control-border: #d4d4d8;
-  --batch-viewer-text: #27272a;
-  --batch-viewer-text-muted: #71717a;
 }
 
 html {
@@ -87,64 +42,13 @@ html {
     background-color: inherit;
   }
   .oops-list-item:active {
-    background-color: var(--bgColor-muted, #f6f8fa);
+    background-color: var(--bgColor-muted);
   }
 }
 
-html[data-oopsnote-color-scheme="light"] {
-  color-scheme: light;
-  --oops-shadow-sm: 0 1px 2px rgba(0,0,0,0.06), 0 1px 3px rgba(0,0,0,0.1);
-  --oops-shadow-md: 0 4px 6px -1px rgba(0,0,0,0.08), 0 2px 4px -2px rgba(0,0,0,0.06);
-}
-
-html[data-oopsnote-color-scheme="dark"] {
-  color-scheme: dark;
-  --oops-shadow-sm: 0 1px 2px rgba(0,0,0,0.3), 0 1px 3px rgba(0,0,0,0.4);
-  --oops-shadow-md: 0 4px 6px -1px rgba(0,0,0,0.35), 0 2px 4px -2px rgba(0,0,0,0.25);
-  --oops-shadow-lg: 0 10px 15px -3px rgba(0,0,0,0.3), 0 4px 6px -4px rgba(0,0,0,0.2);
-  --oops-shadow-float: 0 20px 25px -5px rgba(0,0,0,0.35), 0 8px 10px -6px rgba(0,0,0,0.2);
-  --oops-context-shadow: -3px -3px 10px rgba(0, 0, 0, 0.12);
-  --oops-shell-shadow: -5px -5px 16px rgba(0, 0, 0, 0.24);
-  --oops-scrollbar-thumb: rgb(161 161 170 / 22%);
-  --oops-scrollbar-thumb-hover: rgb(161 161 170 / 42%);
-  --oops-scrollbar-thumb-active: rgb(212 212 216 / 56%);
-  
-  --fgColor-default: #fafafa;
-  --fgColor-muted: #a1a1aa;
-  --fgColor-accent: #fafafa;
-  --fgColor-accent-emphasis: #ffffff;
-  --fgColor-success: #4ade80;
-  --fgColor-danger: #f87171;
-  --fgColor-danger-emphasis: #fca5a5;
-  --fgColor-attention: #fbbf24;
-  --fgColor-info: #60a5fa;
-  --bgColor-default: #09090b;
-  --bgColor-muted: #18181b;
-  --bgColor-overlay: rgb(24 24 27 / 0.92);
-  --bgColor-accent-muted: #27272a;
-  --bgColor-success-muted: #14532d;
-  --bgColor-danger-muted: #450a0a;
-  --bgColor-attention-muted: #451a03;
-  --borderColor-default: #27272a;
-  --borderColor-muted: #1f1f22;
-  --batch-viewer-canvas: #202124;
-  --batch-viewer-toolbar: #2a2c30;
-  --batch-viewer-control: #1f2023;
-  --batch-viewer-control-border: #4b4e55;
-  --batch-viewer-text: #e7e9ee;
-  --batch-viewer-text-muted: #b8bcc5;
-  --sidebar-bg: #18181b;
-  --secondary-sidebar-bg: color-mix(in srgb, var(--sidebar-bg) 70%, var(--bgColor-default) 30%);
-  --sidebar-border: #3f3f46;
-  --sidebar-text: #a1a1aa;
-  --sidebar-text-strong: #fafafa;
-  --sidebar-hover: #27272a;
-  --sidebar-active: #3f3f46;
-}
-
 .oops-svg {
-  --oops-svg-background: var(--bgColor-default, Canvas);
-  color: var(--fgColor-default, CanvasText);
+  --oops-svg-background: var(--bgColor-default);
+  color: var(--fgColor-default);
 }
 
 body {
@@ -370,6 +274,8 @@ html[data-oopsnote-paper-compose="active"] .oops-page-enter {
 .oops-account-menu__identity { display: flex; min-width: 0; flex-direction: column; gap: 3px; padding: 4px 8px; }
 .oops-account-menu__identity strong { overflow: hidden; font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
 .oops-account-menu__identity span { overflow: hidden; color: var(--fgColor-muted); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.oops-account-menu__quota { display: grid; grid-template-columns: 16px 1fr auto; align-items: center; gap: 7px; margin: 7px 8px 3px; padding: 8px; border: 1px solid var(--borderColor-default); border-radius: 6px; color: var(--fgColor-muted); background: var(--bgColor-muted); font-size: 12px; }
+.oops-account-menu__quota strong { color: var(--fgColor-default); font-size: 12px; font-variant-numeric: tabular-nums; }
 
 .oops-app-body {
   display: flex;
@@ -601,7 +507,7 @@ html[data-oopsnote-paper-compose="active"] .oops-page-enter {
     display: block;
     padding: 0;
     border: 0;
-    background: rgb(0 0 0 / 22%);
+    background: var(--oops-backdrop);
     opacity: 0;
     visibility: hidden;
     pointer-events: none;
@@ -680,9 +586,9 @@ html[data-oopsnote-color-scheme="dark"] .problem-content__illustration > img.is-
 }
 .tag-picker__field:hover { border-color: var(--borderColor-emphasis); background: var(--bgColor-muted); }
 .tag-picker__field.is-focused {
-  border-color: var(--focus-outlineColor, var(--borderColor-accent-emphasis));
+  border-color: var(--fgColor-info);
   background: var(--bgColor-default);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--focus-outlineColor, #2f81f7) 22%, transparent);
+  box-shadow: var(--oops-focus-ring);
 }
 .tag-picker__token {
   display: inline-flex;
@@ -732,8 +638,8 @@ html[data-oopsnote-color-scheme="dark"] .problem-content__illustration > img.is-
   padding: 3px;
   border: 1px solid var(--borderColor-default);
   border-radius: 5px;
-  background: var(--bgColor-overlay, var(--bgColor-default));
-  box-shadow: var(--shadow-resting-medium, 0 8px 24px rgb(0 0 0 / 18%));
+  background: var(--bgColor-overlay);
+  box-shadow: var(--oops-shadow-lg);
 }
 .tag-picker__suggestion {
   display: flex;
@@ -826,10 +732,9 @@ html[data-oopsnote-color-scheme="dark"] .problem-content__illustration > img.is-
   padding: 12px;
   border: 1px solid var(--borderColor-default);
   border-radius: var(--oops-radius-sm);
-  background: #f5f5f5;
+  background: var(--oops-image-canvas);
   text-align: center;
 }
-html[data-oopsnote-color-scheme="dark"] .figure-cropper__viewport { background: #050505; }
 .figure-cropper__viewport > .image-selection-stage { margin: 0 auto; }
 
 @media (max-width: 720px) {
@@ -961,7 +866,7 @@ html[data-oopsnote-color-scheme="dark"] .figure-cropper__viewport { background: 
 .capture-file-navigation button:disabled { opacity: 0.45; cursor: not-allowed; }
 .capture-auto-recognize { gap: 7px; color: var(--fgColor-muted); font-size: 12px; cursor: pointer; }
 .capture-auto-recognize p { margin: 0; }
-.capture-auto-recognize__input { width: 14px; height: 14px; margin: 0; accent-color: #18181b; }
+.capture-auto-recognize__input { width: 14px; height: 14px; margin: 0; accent-color: var(--fgColor-accent); }
 
 .capture-metadata {
   padding: 16px 18px 18px;
@@ -1102,11 +1007,11 @@ html[data-oopsnote-color-scheme="dark"] .figure-cropper__viewport { background: 
 .batch-selection-list small { display: block; overflow: hidden; letter-spacing: 0; text-overflow: ellipsis; white-space: nowrap; }
 .batch-selection-list strong { font-size: 12px; }
 .batch-selection-list small { margin-top: 3px; color: var(--fgColor-muted); font-size: 11px; }
-.batch-selection-list__number { display: grid; width: 26px; height: 26px; place-items: center; border-radius: 5px; color: #fff; background: #0c7f3e; font-size: 11px; font-weight: 700; }
-.batch-selection-list__number.is-processing { background: #0f766e; }
-.batch-selection-list__number.is-completed { background: #475569; }
+.batch-selection-list__number { display: grid; width: 26px; height: 26px; place-items: center; border-radius: 5px; color: var(--fgColor-on-emphasis); background: var(--fgColor-muted); font-size: 11px; font-weight: 700; }
+.batch-selection-list__number.is-processing { background: var(--fgColor-info); }
+.batch-selection-list__number.is-completed { background: var(--fgColor-success); }
 .batch-selection-list__number.is-failed { background: var(--fgColor-danger); }
-.batch-selection-list__number.is-needs_review { background: #b45309; }
+.batch-selection-list__number.is-needs_review { background: var(--fgColor-attention); }
 .batch-selection-list__empty { margin: 20px 10px; color: var(--fgColor-muted); font-size: 12px; line-height: 1.6; text-align: center; }
 .task-trace-link { display: inline-flex; min-height: 26px; align-items: center; padding: 0 8px; border: 1px solid var(--borderColor-default); border-radius: 5px; color: var(--fgColor-default); font-size: 12px; font-weight: 600; text-decoration: none; }
 .task-trace-link:hover { background: var(--bgColor-muted); }
@@ -1128,7 +1033,7 @@ html[data-oopsnote-color-scheme="dark"] .figure-cropper__viewport { background: 
   .batch-continuous-workspace.has-right,
   .batch-continuous-workspace.has-left.has-right { position: relative; display: block; }
   .batch-document-column { height: 100%; }
-  .batch-selection-rail { position: absolute; z-index: 30; top: 0; right: 0; bottom: 0; width: min(300px, 86vw); box-shadow: -10px 0 24px rgb(0 0 0 / 22%); }
+  .batch-selection-rail { position: absolute; z-index: 30; top: 0; right: 0; bottom: 0; width: min(300px, 86vw); box-shadow: var(--oops-shadow-float); }
   .batch-save-state { max-width: 94px; overflow: hidden; text-overflow: ellipsis; }
   .batch-workflow-toolbar .mantine-Button-root { padding-inline: 8px; }
 }
@@ -1227,7 +1132,7 @@ select {
 .oops-select-dropdown {
   border-color: var(--borderColor-default);
   border-radius: var(--oops-radius-md);
-  background: var(--bgColor-overlay, var(--bgColor-default));
+  background: var(--bgColor-overlay);
   box-shadow: var(--oops-shadow-lg);
 }
 
@@ -1326,25 +1231,17 @@ select {
 
 /* === Card & Surface === */
 .oops-card {
-  border: 1px solid var(--borderColor-default, #d0d7de);
+  border: 1px solid var(--borderColor-default);
   border-radius: var(--oops-radius-md);
-  background: var(--bgColor-default, #fff);
+  background: var(--bgColor-default);
   box-shadow: none;
   transition: border-color var(--oops-transition-fast), background-color var(--oops-transition-fast), box-shadow var(--oops-transition-fast);
-}
-html[data-oopsnote-color-scheme="dark"] .oops-card {
-  border-color: var(--borderColor-default, #3d444d);
-  background: var(--bgColor-default, #0d1117);
 }
 .oops-card:hover {
   border-color: color-mix(in srgb, var(--borderColor-default) 72%, var(--fgColor-muted));
 }
 .oops-card-elevated {
   box-shadow: var(--oops-shadow-sm);
-}
-html[data-oopsnote-color-scheme="dark"] .oops-card-elevated {
-  border-color: var(--borderColor-default, #3d444d);
-  background: var(--bgColor-default, #0d1117);
 }
 .oops-card-elevated:hover {
   box-shadow: var(--oops-shadow-md);
@@ -1368,19 +1265,15 @@ html[data-oopsnote-color-scheme="dark"] .oops-card-elevated {
 .oops-section-subtitle {
   font-size: 12px;
   color: var(--fgColor-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  font-weight: 500;
+  letter-spacing: 0;
+  font-weight: 600;
 }
 
-/* === Glass effect for overlays === */
+/* === Translucent overlay surface === */
 .oops-glass {
   backdrop-filter: blur(12px) saturate(180%);
   -webkit-backdrop-filter: blur(12px) saturate(180%);
-  background: rgba(255, 255, 255, 0.78);
-}
-html[data-oopsnote-color-scheme="dark"] .oops-glass {
-  background: rgba(30, 33, 38, 0.82);
+  background: var(--bgColor-overlay);
 }
 
 /* === Pill badge === */
@@ -1389,21 +1282,16 @@ html[data-oopsnote-color-scheme="dark"] .oops-glass {
   align-items: center;
   gap: 4px;
   padding: 2px 8px;
-  border-radius: 999px;
+  border-radius: var(--oops-radius-full);
   font-size: 11px;
   font-weight: 500;
   line-height: 1.4;
 }
-.oops-badge-success { background: var(--bgColor-success-muted, #dafbe1); color: var(--fgColor-success, #1a7f37); }
-.oops-badge-danger { background: var(--bgColor-danger-muted, #ffebe9); color: var(--fgColor-danger, #cf222e); }
-.oops-badge-accent { background: var(--bgColor-accent-muted, #ddf4ff); color: var(--fgColor-accent, #0969da); }
-.oops-badge-muted { background: var(--bgColor-muted, #f6f8fa); color: var(--fgColor-muted, #656d76); }
-.oops-badge-warning { background: var(--bgColor-attention-muted, #fff8c5); color: var(--fgColor-attention, #9a6700); }
-html[data-oopsnote-color-scheme="dark"] .oops-badge-success { background: var(--bgColor-success-muted, #0f2d16); color: var(--fgColor-success, #3fb950); }
-html[data-oopsnote-color-scheme="dark"] .oops-badge-danger { background: var(--bgColor-danger-muted, #3c1318); color: var(--fgColor-danger, #f85149); }
-html[data-oopsnote-color-scheme="dark"] .oops-badge-accent { background: var(--bgColor-accent-muted, #0c2d6b); color: var(--fgColor-accent, #58a6ff); }
-html[data-oopsnote-color-scheme="dark"] .oops-badge-muted { background: var(--bgColor-muted, #161b22); color: var(--fgColor-muted, #8b949e); }
-html[data-oopsnote-color-scheme="dark"] .oops-badge-warning { background: var(--bgColor-attention-muted, #2d2000); color: var(--fgColor-attention, #d29922); }
+.oops-badge-success { background: var(--bgColor-success-muted); color: var(--fgColor-success); }
+.oops-badge-danger { background: var(--bgColor-danger-muted); color: var(--fgColor-danger); }
+.oops-badge-accent { background: var(--bgColor-accent-muted); color: var(--fgColor-accent); }
+.oops-badge-muted { background: var(--bgColor-muted); color: var(--fgColor-muted); }
+.oops-badge-warning { background: var(--bgColor-attention-muted); color: var(--fgColor-attention); }
 
 /* Failed tasks are an exception workflow: explain first, then offer recovery. */
 .failed-task-panel {
@@ -1528,9 +1416,7 @@ html[data-oopsnote-color-scheme="dark"] .oops-badge-warning { background: var(--
   position: absolute;
   z-index: -1;
   inset: 0;
-  background:
-    linear-gradient(90deg, rgb(0 0 0 / 0.88) 0%, rgb(0 0 0 / 0.72) 58%, rgb(0 0 0 / 0.44) 100%),
-    linear-gradient(0deg, rgb(0 0 0 / 0.72), transparent 62%);
+  background: var(--oops-media-overlay);
   transition: opacity var(--oops-transition-normal);
 }
 
@@ -1558,11 +1444,11 @@ html[data-oopsnote-color-scheme="dark"] .oops-badge-warning { background: var(--
 .failed-task-card__reason {
   display: -webkit-box;
   overflow: hidden;
-  color: #fff;
+  color: var(--oops-media-ink);
   font-size: 15px;
   font-weight: 600;
   line-height: 1.5;
-  text-shadow: 0 1px 3px rgb(0 0 0 / 0.8);
+  text-shadow: var(--oops-media-text-shadow);
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
 }
@@ -1578,10 +1464,10 @@ html[data-oopsnote-color-scheme="dark"] .oops-badge-warning { background: var(--
   flex-wrap: wrap;
   gap: 4px;
   padding: 6px;
-  border: 1px solid rgb(255 255 255 / 0.2);
+  border: 1px solid color-mix(in srgb, var(--oops-media-ink) 20%, transparent);
   border-radius: var(--oops-radius-sm);
   opacity: 0;
-  background: rgb(9 9 11 / 0.78);
+  background: var(--oops-media-overlay);
   box-shadow: var(--oops-shadow-sm);
   backdrop-filter: blur(8px);
   transform: translateY(6px);
@@ -1590,14 +1476,14 @@ html[data-oopsnote-color-scheme="dark"] .oops-badge-warning { background: var(--
 
 .failed-task-card__detail {
   padding: 5px 4px;
-  color: #d4d4d8;
+  color: var(--oops-media-ink-muted);
   font-size: 13px;
   font-weight: 600;
   text-decoration: none;
 }
 
 .failed-task-card__detail:hover {
-  color: #fff;
+  color: var(--oops-media-ink);
   text-decoration: underline;
   text-underline-offset: 3px;
 }
@@ -1705,10 +1591,7 @@ html[data-oopsnote-color-scheme="dark"] .oops-badge-warning { background: var(--
   border-radius: var(--oops-radius-sm);
 }
 .oops-list-item:hover {
-  background-color: var(--bgColor-muted, #f6f8fa);
-}
-html[data-oopsnote-color-scheme="dark"] .oops-list-item:hover {
-  background-color: var(--bgColor-muted, #161b22);
+  background-color: var(--bgColor-muted);
 }
 
 /* === Empty state === */
@@ -1809,16 +1692,9 @@ html[data-oopsnote-color-scheme="dark"] .oops-list-item:hover {
 }
 
 /* TaskProgressBar animations */
-@keyframes pulse {
-  0% { box-shadow: 0 0 0 0 rgba(9, 105, 218, 0.4); }
-  70% { box-shadow: 0 0 0 0.5rem rgba(9, 105, 218, 0); }
-  100% { box-shadow: 0 0 0 0 rgba(9, 105, 218, 0); }
-}
-
-@keyframes ripple {
-  0% { box-shadow: 0 0 0 0 rgba(9, 105, 218, 0); }
-  50% { box-shadow: 0 0 0 0.5rem rgba(9, 105, 218, 0.25); }
-  100% { box-shadow: 0 0 0 1.25rem rgba(9, 105, 218, 0); }
+@keyframes oops-progress-pulse {
+  0%, 100% { opacity: 0.72; }
+  50% { opacity: 1; }
 }
 
 @keyframes progressLine {
@@ -1876,39 +1752,21 @@ html.oops-splash-skip #oops-splash {
 
 /* ── Triple spinning circles ── */
 .oops-splash__circle {
-  width: 120px;
-  height: 120px;
+  width: 32px;
+  height: 32px;
   border-radius: 50%;
-  border: 3px solid transparent;
-  border-top-color: rgba(255, 255, 255, 0.95);
-  animation: oops-splash-spin 1.8s linear infinite;
+  border: 2px solid color-mix(in srgb, var(--oops-media-ink) 24%, transparent);
+  border-top-color: var(--oops-media-ink);
+  animation: oops-splash-spin 0.8s linear infinite;
   position: relative;
 }
 
 .oops-splash__circle::before {
-  content: "";
-  position: absolute;
-  top: 5px;
-  left: 5px;
-  right: 5px;
-  bottom: 5px;
-  border-radius: 50%;
-  border: 3px solid transparent;
-  border-top-color: rgba(255, 255, 255, 0.45);
-  animation: oops-splash-spin-reverse 0.6s linear infinite;
+  content: none;
 }
 
 .oops-splash__circle::after {
-  content: "";
-  position: absolute;
-  top: 15px;
-  left: 15px;
-  right: 15px;
-  bottom: 15px;
-  border-radius: 50%;
-  border: 3px solid transparent;
-  border-top-color: rgba(255, 255, 255, 0.7);
-  animation: oops-splash-spin 1s linear infinite;
+  content: none;
 }
 
 /* ── Text ── */
@@ -1916,15 +1774,15 @@ html.oops-splash-skip #oops-splash {
   display: flex;
   flex-direction: column;
   align-items: center;
-  color: #fff;
+  color: var(--oops-media-ink);
   z-index: 2;
-  margin-top: 36px;
+  margin-top: 16px;
 }
 
 .oops-splash__name {
   font-size: 22px;
   font-weight: 600;
-  letter-spacing: 0.06em;
+  letter-spacing: 0;
   font-family: 'OopsNoteFont', sans-serif;
 }
 
@@ -1932,7 +1790,7 @@ html.oops-splash-skip #oops-splash {
   margin-top: 8px;
   font-size: 14px;
   opacity: 0.5;
-  letter-spacing: 0.08em;
+  letter-spacing: 0;
 }
 
 /* ── Left / Right curtain panels ── */
@@ -1942,7 +1800,7 @@ html.oops-splash-skip #oops-splash {
   width: 51%;
   height: 100%;
   z-index: 1;
-  background: #1c2028;
+  background: var(--oops-splash-bg);
 }
 
 .oops-splash__section--left  { left: 0; }
@@ -2026,11 +1884,6 @@ html.oops-splash-skip #oops-splash {
   100% { transform: rotate(360deg); }
 }
 
-@keyframes oops-splash-spin-reverse {
-  0%   { transform: rotate(0deg); }
-  100% { transform: rotate(-360deg); }
-}
-
 /* === Page entrance animation (after splash) === */
 .oops-page-enter {
   animation: fadeIn 0.25s 0.9s ease-out both;
@@ -2065,20 +1918,16 @@ html.oops-splash-skip #oops-splash {
   justify-content: space-around;
   height: calc(56px + env(safe-area-inset-bottom));
   padding-bottom: env(safe-area-inset-bottom);
-  border-top: 1px solid var(--borderColor-muted, #d0d7de);
+  border-top: 1px solid var(--borderColor-muted);
   backdrop-filter: blur(12px) saturate(180%);
   -webkit-backdrop-filter: blur(12px) saturate(180%);
-  background: rgba(255, 255, 255, 0.88);
+  background: var(--bgColor-overlay);
 }
 /* Hide tab bar on desktop (≥ 544px, Primer sm breakpoint) */
 @media (min-width: 544px) {
   .oops-mobile-tabbar {
     display: none;
   }
-}
-html[data-oopsnote-color-scheme="dark"] .oops-mobile-tabbar {
-  background: rgba(30, 33, 38, 0.9);
-  border-top-color: var(--borderColor-muted, #3d444d);
 }
 .oops-mobile-tabbar a,
 .oops-mobile-tabbar button {
@@ -2090,7 +1939,7 @@ html[data-oopsnote-color-scheme="dark"] .oops-mobile-tabbar {
   gap: 2px;
   border: none;
   background: transparent;
-  color: var(--fgColor-muted, #656d76);
+  color: var(--fgColor-muted);
   font-size: 10px;
   font-weight: 500;
   text-decoration: none;
@@ -2101,182 +1950,11 @@ html[data-oopsnote-color-scheme="dark"] .oops-mobile-tabbar {
 }
 .oops-mobile-tabbar a.active,
 .oops-mobile-tabbar button.active {
-  color: var(--fgColor-accent, #0969da);
+  color: var(--fgColor-accent);
 }
 .oops-mobile-tabbar a:active,
 .oops-mobile-tabbar button:active {
-  color: var(--fgColor-accent, #0969da);
+  color: var(--fgColor-accent);
   transform: scale(0.92);
   transition: transform 80ms ease;
-}
-
-/* === Login brand panel (left column) === */
-.oops-login-brand {
-  background: linear-gradient(160deg, #0550ae 0%, #0969da 40%, #1a7f37 100%);
-  color: white;
-}
-html[data-oopsnote-color-scheme="dark"] .oops-login-brand {
-  background: linear-gradient(160deg, #0a3069 0%, #1158c7 40%, #0f3d1e 100%);
-}
-
-/* Login form card entrance */
-.oops-login-card {
-  animation: oops-login-card-in 0.45s cubic-bezier(0.16, 1, 0.3, 1);
-}
-@keyframes oops-login-card-in {
-  from { opacity: 0; transform: translateY(20px) scale(0.97); }
-  to   { opacity: 1; transform: translateY(0)   scale(1); }
-}
-
-/* Login logo pulse */
-.oops-login-logo {
-  animation: oops-login-logo-in 0.5s cubic-bezier(0.16, 1, 0.3, 1) 0.1s both;
-}
-@keyframes oops-login-logo-in {
-  from { opacity: 0; transform: scale(0.6); }
-  to   { opacity: 1; transform: scale(1); }
-}
-
-/* Breathing glow */
-.oops-login-glow {
-  animation: oops-login-glow-pulse 4s ease-in-out infinite;
-}
-@keyframes oops-login-glow-pulse {
-  0%, 100% { opacity: 0.5; transform: translate(-50%, -50%) scale(1); }
-  50%      { opacity: 0.8; transform: translate(-50%, -50%) scale(1.15); }
-}
-
-/* Floating decorative circles */
-.oops-login-circle {
-  position: absolute;
-  border-radius: 50%;
-  pointer-events: none;
-  border: 1.5px solid rgba(255,255,255,0.1);
-}
-.oops-login-circle-1 {
-  width: 300px; height: 300px;
-  bottom: -100px; right: -80px;
-  animation: oops-float 8s ease-in-out infinite;
-}
-.oops-login-circle-2 {
-  width: 180px; height: 180px;
-  top: -50px; left: -50px;
-  animation: oops-float 6s ease-in-out 1s infinite reverse;
-}
-.oops-login-circle-3 {
-  width: 120px; height: 120px;
-  top: 30%; right: -30px;
-  border-color: rgba(255,255,255,0.06);
-  animation: oops-float 7s ease-in-out 0.5s infinite;
-}
-@keyframes oops-float {
-  0%, 100% { transform: translateY(0); }
-  50%      { transform: translateY(-14px); }
-}
-
-/* Right panel subtle dot grid */
-.oops-login-right {
-  background-image: radial-gradient(circle, var(--borderColor-muted, rgba(0,0,0,0.06)) 1px, transparent 1px);
-  background-size: 24px 24px;
-}
-html[data-oopsnote-color-scheme="dark"] .oops-login-right {
-  background-image: radial-gradient(circle, rgba(255,255,255,0.03) 1px, transparent 1px);
-}
-
-/* OIDC transitions share one stable screen instead of revealing the app shell. */
-.oops-auth-status {
-  display: flex;
-  min-height: 100dvh;
-  flex-direction: column;
-  background: var(--bgColor-default);
-  color: var(--fgColor-default);
-}
-
-.oops-auth-status__brand {
-  display: flex;
-  height: 58px;
-  align-items: center;
-  gap: 10px;
-  padding: 0 24px;
-  border-bottom: 1px solid var(--borderColor-muted);
-  color: var(--fgColor-default);
-  font-family: 'OopsNoteFont', Inter, 'Noto Sans SC', sans-serif;
-  font-size: 28px;
-  line-height: 1;
-}
-
-.oops-auth-status__mark {
-  width: 28px;
-  height: 28px;
-  flex: 0 0 28px;
-  background: currentColor;
-  -webkit-mask: url('/favicon.svg') center / contain no-repeat;
-  mask: url('/favicon.svg') center / contain no-repeat;
-}
-
-.oops-auth-status__content {
-  display: flex;
-  width: min(100% - 40px, 360px);
-  min-height: calc(100dvh - 58px);
-  align-items: center;
-  align-self: center;
-  flex-direction: column;
-  justify-content: center;
-  text-align: center;
-}
-
-.oops-auth-status__indicator {
-  display: grid;
-  width: 48px;
-  height: 48px;
-  margin-bottom: 20px;
-  place-items: center;
-  border: 1px solid var(--borderColor-default);
-  border-radius: 50%;
-  color: var(--fgColor-default);
-  background: var(--bgColor-muted);
-}
-
-.oops-auth-status__indicator svg { animation: oops-auth-status-spin 0.9s linear infinite; }
-.oops-auth-status__indicator.is-error { color: var(--fgColor-danger); background: var(--bgColor-danger-muted); }
-.oops-auth-status__indicator.is-error svg { animation: none; }
-
-.oops-auth-status h1 { margin: 0; font-size: 20px; font-weight: 650; line-height: 1.4; }
-.oops-auth-status p { margin: 8px 0 0; color: var(--fgColor-muted); font-size: 14px; line-height: 1.5; }
-
-.oops-auth-status button {
-  display: inline-flex;
-  min-height: 36px;
-  align-items: center;
-  gap: 7px;
-  margin-top: 24px;
-  padding: 0 12px;
-  border: 1px solid var(--borderColor-default);
-  border-radius: var(--oops-radius-sm);
-  color: var(--fgColor-default);
-  background: var(--bgColor-default);
-  font: inherit;
-  font-size: 14px;
-  cursor: pointer;
-}
-
-.oops-auth-status button:hover { background: var(--bgColor-muted); }
-.oops-auth-status button:focus-visible { outline: 2px solid var(--fgColor-info); outline-offset: 2px; }
-
-@keyframes oops-auth-status-spin {
-  to { transform: rotate(360deg); }
-}
-
-@media (max-width: 543px) {
-  .oops-auth-status__brand { height: 50px; padding-inline: 16px; font-size: 26px; }
-  .oops-auth-status__content { min-height: calc(100dvh - 50px); }
-}
-
-/* === Login error slide-down animation === */
-@keyframes oops-slide-down-kf {
-  from { opacity: 0; transform: translateY(-6px); }
-  to   { opacity: 1; transform: translateY(0); }
-}
-.oops-slide-down {
-  animation: oops-slide-down-kf 0.2s ease-out;
 }

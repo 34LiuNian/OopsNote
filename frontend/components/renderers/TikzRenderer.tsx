@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Box, Text } from "@/components/ui/primitives";
+import { ErrorBanner } from "@/components/ui/ErrorBanner";
 import { sanitizeSvgMarkup, SvgMarkup } from "./SvgMarkup";
 import { apiErrorFromResponse, fetchApi } from "@/lib/api";
 
@@ -73,7 +74,12 @@ export function TikzRenderer({
 
   if (svg) return <SvgMarkup svg={svg} label="TikZ 图形" colorMode="themed" fit={fit} />;
   void allowBackendFallback;
-  if (error) return <Text sx={{ color: "danger.fg", fontSize: 1 }}>{error}</Text>;
+  if (error) {
+    return <>
+      <ErrorBanner message={error} title="TikZ 渲染失败" />
+      <Text sx={{ color: "danger.fg", fontSize: 1 }}>{error}</Text>
+    </>;
+  }
 
   return (
     <Box sx={{ py: 2 }}>

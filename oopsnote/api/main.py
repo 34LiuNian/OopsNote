@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import os
 import logging
+import sys
+import threading
 from contextlib import asynccontextmanager
 from functools import lru_cache
 from pathlib import Path
@@ -16,17 +18,28 @@ from typing import Any, Optional
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
 
 from oopsnote.ai import HermesRunner, LangChainRunner, PiRpcBackend, PiRpcRunner
 from oopsnote.ai.langchain_tools import McpHttpToolClient
 from oopsnote.ai.providers import ProviderClientFactory, ProviderProfile
 from oopsnote.ai.secrets import SecretStore, secret_store_from_environment
-from oopsnote.api.auth import AuthenticationError, auth_config_from_env, authenticate_request
-from oopsnote.api.errors import category_for_error_code, error_detail, scope_for_path
-from oopsnote.api.routes import ai_settings, batch, catalog, latex, papers, study, tasks
+from oopsnote.api.auth import (
+    AuthenticationError,
+    auth_config_from_env,
+    authenticate_internal_request,
+    authenticate_request,
+    internal_identity_config_from_env,
+)
+from oopsnote.api.errors import ApiErrorCategory, category_for_error_code, error_detail, scope_for_path
+from oopsnote.api.routes import account, admin, ai_settings, batch, catalog, latex, papers, study, tasks
+from oopsnote.api.context import (
+    RequestContext,
+    activate_request_context,
+    current_request_context,
+    reset_request_context,
+)
 from oopsnote.api.schemas import TagInput, TagRenameInput, UploadRequest
 from oopsnote.catalog import KNOWLEDGE_TAGS_PATH, KNOWLEDGE_TREES_PATH
 from oopsnote.content import option_label
@@ -38,6 +51,7 @@ from oopsnote.core import (
     BatchSessionStore,
     BatchProcessJobStore,
     BatchSessionUpdateRequest,
+    DiagramStatus,
     Problem,
     PaperDraftStore,
     ProblemMergeStore,
@@ -46,8 +60,13 @@ from oopsnote.core import (
     TaskRecord,
     TaskStatus,
     TaskStore,
+    WorkspaceId,
+    WorkspaceStoreFactory,
+    WorkspaceStores,
 )
+from oopsnote.control import ControlDatabase, WorkspaceRegistry
 from oopsnote.mcp.http_runtime import SharedMcpHttpRuntime
+from oopsnote.mcp.context import current_capability
 from oopsnote.mcp.ocr import (
     clear_ocr_run_model_resolver,
     clear_ocr_vault,
@@ -81,6 +100,41 @@ APP_SETTINGS_STORE = AppSettingsStore(STORAGE_DIR / "settings" / "app_settings.j
 RUN_STORE = RunStore(STORAGE_DIR / "runs")
 PAPER_DRAFT_STORE = PaperDraftStore(STORAGE_DIR / "papers")
 PROBLEM_MERGE_STORE = ProblemMergeStore(STORAGE_DIR / "settings" / "problem_merges.json")
+CONTROL_DATABASE = ControlDatabase(STORAGE_DIR / "control" / "app.sqlite")
+WORKSPACE_REGISTRY = WorkspaceRegistry(CONTROL_DATABASE, STORAGE_DIR)
+WORKSPACE_STORE_FACTORY = WorkspaceStoreFactory()
+
+
+def _active_stores():
+    context = current_request_context()
+    if context is None:
+        return None
+    return context.stores
+
+
+def request_api():
+    """Return a route facade whose user-owned stores follow the request context."""
+    context = current_request_context()
+    module = sys.modules[__name__]
+    if context is None:
+        return module
+    stores = context.stores
+
+    class ScopedApi:
+        TASK_STORE = stores.task_store
+        TAG_STORE = stores.tag_store
+        ASSET_STORE = stores.asset_store
+        BATCH_SESSION_STORE = stores.batch_session_store
+        BATCH_PROCESS_JOB_STORE = stores.batch_process_job_store
+        PAPER_DRAFT_STORE = stores.paper_draft_store
+        PROBLEM_MERGE_STORE = stores.problem_merge_store
+        RUN_STORE = stores.run_store
+        OBSIDIAN_VAULT_ROOT = context.workspace.root / "obsidian-vault"
+
+        def __getattr__(self, name: str):
+            return getattr(module, name)
+
+    return ScopedApi()
 MCP_HTTP_RUNTIME = SharedMcpHttpRuntime()
 _SUPPORTED_AI_BACKENDS = frozenset({"hermes", "langchain", "pi"})
 _DEFAULT_AI_BACKEND = os.getenv("OOPSNOTE_AI_BACKEND", "langchain").strip().lower()
@@ -112,49 +166,66 @@ def get_secret_store() -> SecretStore:
     return secret_store_from_environment()
 
 
-def _new_hermes_runner() -> HermesRunner:
+def _new_hermes_runner(stores: WorkspaceStores | None = None) -> HermesRunner:
     return HermesRunner(
         project_root=PROJECT_ROOT,
-        task_store=TASK_STORE,
-        run_store=RUN_STORE,
+        task_store=stores.task_store if stores else TASK_STORE,
+        run_store=stores.run_store if stores else RUN_STORE,
         **_runner_settings(),
     )
 
 
-def _new_pi_runner() -> PiRpcRunner:
-    return PiRpcRunner(
+def _new_pi_runner(
+    stores: WorkspaceStores | None = None,
+    workspace_id: WorkspaceId | None = None,
+) -> PiRpcRunner:
+    runner = PiRpcRunner(
         backend=PiRpcBackend(
             PROJECT_ROOT,
             runtime=os.getenv("OOPSNOTE_RPC_RUNTIME", "pi-rust"),
         ),
         project_root=PROJECT_ROOT,
-        task_store=TASK_STORE,
-        run_store=RUN_STORE,
+        task_store=stores.task_store if stores else TASK_STORE,
+        run_store=stores.run_store if stores else RUN_STORE,
         max_concurrent_tasks=int(APP_SETTINGS_STORE.get().get("pi_concurrency", os.getenv(
             "OOPSNOTE_RPC_MAX_WORKERS", os.getenv("OOPSNOTE_PI_MAX_CONCURRENT_TASKS", "3")
         ))),
         **_runner_settings(),
     )
+    if stores is not None and workspace_id is not None:
+        MCP_HTTP_RUNTIME.start()
+        runner.set_child_environment_provider(
+            lambda: MCP_HTTP_RUNTIME.environment_for(workspace_id, stores)
+        )
+    return runner
 
 
 def _langchain_provider_factory() -> ProviderClientFactory:
     return ProviderClientFactory(get_secret_store())
 
 
-def _langchain_tool_client() -> McpHttpToolClient:
+def _langchain_tool_client(
+    stores: WorkspaceStores | None = None,
+    workspace_id: WorkspaceId | None = None,
+) -> McpHttpToolClient:
     environment = MCP_HTTP_RUNTIME.start()
+    if stores is not None and workspace_id is not None:
+        environment = MCP_HTTP_RUNTIME.environment_for(workspace_id, stores)
     return McpHttpToolClient(environment["OOPSNOTE_MCP_URL"], environment["OOPSNOTE_MCP_TOKEN"])
 
 
-def _new_langchain_runner() -> LangChainRunner:
+def _new_langchain_runner(
+    stores: WorkspaceStores | None = None,
+    workspace_id: WorkspaceId | None = None,
+) -> LangChainRunner:
     return LangChainRunner(
         project_root=PROJECT_ROOT,
-        task_store=TASK_STORE,
-        run_store=RUN_STORE,
+        task_store=stores.task_store if stores else TASK_STORE,
+        run_store=stores.run_store if stores else RUN_STORE,
         settings_store=APP_SETTINGS_STORE,
         provider_factory=_langchain_provider_factory,
-        tool_client_factory=_langchain_tool_client,
-        asset_store=ASSET_STORE,
+        tool_client_factory=lambda: _langchain_tool_client(stores, workspace_id),
+        asset_store=stores.asset_store if stores else ASSET_STORE,
         max_concurrent_tasks=int(APP_SETTINGS_STORE.get().get("ai_max_concurrency", 4)),
         **_runner_settings(),
     )
@@ -162,7 +233,9 @@ def _new_langchain_runner() -> LangChainRunner:
 
 def _langchain_vision_model(run_id: str) -> Any | None:
     """Resolve Vision from the immutable run strategy at the shared MCP boundary."""
-    run = RUN_STORE.get(run_id)
+    capability = current_capability()
+    run_store = capability.stores.run_store if capability is not None else RUN_STORE
+    run = run_store.get(run_id)
     snapshot = run.provider_profile_snapshot
     if not isinstance(snapshot, dict) or not isinstance(snapshot.get("vision"), dict):
         return None
@@ -183,6 +256,48 @@ _RUNNERS = _build_enabled_runners(_ENABLED_AI_BACKENDS)
 HERMES_RUNNER = _RUNNERS.get("hermes")
 PI_RUNNER = _RUNNERS.get("pi")
 LANGCHAIN_RUNNER = _RUNNERS.get("langchain")
+
+
+class WorkspaceRunnerPool:
+    """Own one durable dispatcher/runtime set per workspace and backend."""
+
+    def __init__(self) -> None:
+        self._lock = threading.RLock()
+        self._runners: dict[tuple[WorkspaceId, str], Any] = {}
+
+    def get(self, workspace_id: WorkspaceId, stores: WorkspaceStores, backend: str):
+        key = (WorkspaceId.parse(workspace_id), backend)
+        with self._lock:
+            existing = self._runners.get(key)
+            if existing is not None:
+                return existing
+            factories = {
+                "hermes": lambda: _new_hermes_runner(stores),
+                "langchain": lambda: _new_langchain_runner(stores, key[0]),
+                "pi": lambda: _new_pi_runner(stores, key[0]),
+            }
+            runner = factories[backend]()
+            reconcile = getattr(stores.run_store, "reconcile_control_runs", None)
+            if callable(reconcile):
+                reconcile()
+            runner.recover_orphaned_running()
+            runner.recover_stale()
+            runner.start_dispatcher()
+            runner.recover_queued()
+            self._runners[key] = runner
+            return runner
+
+    def shutdown(self) -> None:
+        with self._lock:
+            runners = list(self._runners.values())
+            self._runners.clear()
+        for runner in runners:
+            runner.shutdown_dispatcher()
+            if isinstance(runner, PiRpcRunner):
+                runner.shutdown()
+
+
+WORKSPACE_RUNNER_POOL = WorkspaceRunnerPool()
 
 _DEFAULT_TAG_DIMENSIONS = {
     "knowledge": {"label": "知识体系", "label_variant": "default"},
@@ -232,13 +347,17 @@ def _batch_session_view(record: BatchSessionRecord) -> dict[str, Any]:
 
 
 def _batch_source_available(record: BatchSessionRecord) -> bool:
-    return ASSET_STORE.is_available(record.asset_path, record.file_hash)
+    stores = _active_stores()
+    asset_store = stores.asset_store if stores else ASSET_STORE
+    return asset_store.is_available(record.asset_path, record.file_hash)
 
 
 def _batch_submitted_selection_views(file_hash: str) -> list[dict[str, Any]]:
     """Return immutable task provenance for rendering after session edits/deletion."""
     views: list[dict[str, Any]] = []
-    for task in TASK_STORE.list_all():
+    stores = _active_stores()
+    task_store = stores.task_store if stores else TASK_STORE
+    for task in task_store.list_all():
         snapshot = task.metadata.get("selection_snapshot")
         if not isinstance(snapshot, dict) or snapshot.get("source_file_hash") != file_hash:
             continue
@@ -260,7 +379,9 @@ def _batch_submitted_selection_views(file_hash: str) -> list[dict[str, Any]]:
 
 def _sync_batch_source_references(file_hash: str, filename: str) -> None:
     """Keep persisted task/problem source labels aligned with a renamed batch file."""
-    for task in TASK_STORE.list_all():
+    stores = _active_stores()
+    task_store = stores.task_store if stores else TASK_STORE
+    for task in task_store.list_all():
         metadata = task.metadata
         trace = metadata.get("trace")
         if not isinstance(trace, dict) or trace.get("kind") != "batch_segment":
@@ -285,7 +406,7 @@ def _sync_batch_source_references(file_hash: str, filename: str) -> None:
                 }
             )
         if next_metadata != metadata or next_problem != task.problem:
-            TASK_STORE.update(task.id, metadata=next_metadata, problem=next_problem)
+            task_store.update(task.id, metadata=next_metadata, problem=next_problem)
 
 
 def _trace_view(trace: Any) -> Any:
@@ -295,7 +416,9 @@ def _trace_view(trace: Any) -> Any:
     available = False
     if file_hash:
         try:
-            BATCH_SESSION_STORE.get(file_hash)
+            stores = _active_stores()
+            batch_session_store = stores.batch_session_store if stores else BATCH_SESSION_STORE
+            batch_session_store.get(file_hash)
         except KeyError:
             pass
         else:
@@ -303,7 +426,7 @@ def _trace_view(trace: Any) -> Any:
     current = {**trace, "batch_session_available": available}
     if file_hash and available:
         try:
-            current["source_file_name"] = BATCH_SESSION_STORE.get(file_hash).filename
+            current["source_file_name"] = batch_session_store.get(file_hash).filename
         except KeyError:
             pass
     return current
@@ -317,7 +440,9 @@ def _problem_source(task: TaskRecord, problem: Problem) -> Optional[str]:
         trace_filename = trace.get("source_file_name")
         if file_hash:
             try:
-                session = BATCH_SESSION_STORE.get(file_hash)
+                stores = _active_stores()
+                batch_session_store = stores.batch_session_store if stores else BATCH_SESSION_STORE
+                session = batch_session_store.get(file_hash)
             except KeyError:
                 pass
             else:
@@ -335,12 +460,14 @@ def _sync_batch_session_tasks(record: BatchSessionRecord) -> BatchSessionRecord:
 def _sync_batch_session_tasks_locked(record: BatchSessionRecord) -> BatchSessionRecord:
     changed = False
     segments = []
+    stores = _active_stores()
+    task_store = stores.task_store if stores else TASK_STORE
     for segment in record.segments:
         if not segment.task_id:
             segments.append(segment)
             continue
         try:
-            task = TASK_STORE.get(segment.task_id)
+            task = task_store.get(segment.task_id)
         except KeyError:
             next_segment = segment.model_copy(
                 update={"status": "failed", "error": "关联任务不存在"}
@@ -398,7 +525,9 @@ def _asset_view(record: TaskRecord) -> Optional[dict[str, Any]]:
     if not record.asset_path:
         return None
     filename = Path(record.asset_path).name
-    path = STORAGE_DIR / record.asset_path.lstrip("/")
+    stores = _active_stores()
+    asset_root = stores.asset_store.base_dir if stores else ASSET_STORE.base_dir
+    path = asset_root / Path(record.asset_path).name
     return {
         "asset_id": Path(filename).stem,
         "source": "upload",
@@ -408,7 +537,18 @@ def _asset_view(record: TaskRecord) -> Optional[dict[str, Any]]:
     }
 
 
+def _diagram_requires_human_review(item: Any) -> bool:
+    if not item.last_error_code and not item.needs_review:
+        return False
+    return category_for_error_code(
+        item.last_error_code,
+        needs_review=item.needs_review,
+    ) == ApiErrorCategory.HUMAN_REVIEW
+
+
 def _problem_view(task: TaskRecord, problem: Problem) -> dict[str, Any]:
+    stores = _active_stores()
+    asset_store = stores.asset_store if stores else ASSET_STORE
     metadata = task.metadata
     difficulty_reason = difficulty_review_reason(task)
     diagram = task.diagram_items[0] if task.diagram_items else None
@@ -427,19 +567,32 @@ def _problem_view(task: TaskRecord, problem: Problem) -> dict[str, Any]:
     diagram_svg = None
     if selected and selected.svg_path:
         try:
-            diagram_svg = ASSET_STORE.resolve(selected.svg_path).read_text(encoding="utf-8")
+            diagram_svg = asset_store.resolve(selected.svg_path).read_text(encoding="utf-8")
         except (FileNotFoundError, OSError, UnicodeError, ValueError):
             diagram_svg = None
-    diagram_items = [
-        {
-            **item.model_dump(mode="json"),
-            "error_category": (
-                category_for_error_code(item.last_error_code, needs_review=item.needs_review).value
-                if item.last_error_code or item.needs_review else None
-            ),
-        }
-        for item in task.diagram_items
-    ]
+    def diagram_category(item: Any) -> ApiErrorCategory | None:
+        if item is None:
+            return None
+        if not item.last_error_code and not item.needs_review:
+            return None
+        return category_for_error_code(item.last_error_code, needs_review=item.needs_review)
+
+    def diagram_requires_review(item: Any) -> bool:
+        return _diagram_requires_human_review(item)
+
+    diagram_items = []
+    for item in task.diagram_items:
+        category = diagram_category(item)
+        item_view = item.model_dump(mode="json")
+        # Older runs persisted every technical failure as NEEDS_REVIEW. Derive
+        # the public state from the authoritative error category until those
+        # records are naturally rewritten by a retry or manual action.
+        if item_view["status"] == DiagramStatus.NEEDS_REVIEW.value and not diagram_requires_review(item):
+            item_view["status"] = DiagramStatus.FAILED.value
+        item_view["needs_review"] = diagram_requires_review(item)
+        item_view["error_category"] = category.value if category else None
+        diagram_items.append(item_view)
+    selected_diagram_category = diagram_category(diagram)
     return {
         "problem_id": problem.id,
         "question_no": task.effective_question_no(),
@@ -468,13 +621,17 @@ def _problem_view(task: TaskRecord, problem: Problem) -> dict[str, Any]:
         "diagram_image_tone": diagram.image_tone if diagram else "auto",
         "diagram_position": diagram.position if diagram else "right",
         "diagram_scale_percent": diagram.scale_percent if diagram else 100,
-        "diagram_render_status": diagram.status.value if diagram else None,
+        "diagram_render_status": (
+            DiagramStatus.FAILED.value
+            if diagram and diagram.status == DiagramStatus.NEEDS_REVIEW and not diagram_requires_review(diagram)
+            else diagram.status.value if diagram else None
+        ),
         "diagram_error": diagram.last_error if diagram else None,
         "diagram_error_category": (
-            category_for_error_code(diagram.last_error_code, needs_review=diagram.needs_review).value
-            if diagram and (diagram.last_error_code or diagram.needs_review) else None
+            selected_diagram_category.value
+            if selected_diagram_category else None
         ),
-        "diagram_needs_review": diagram.needs_review if diagram else False,
+        "diagram_needs_review": diagram_requires_review(diagram) if diagram else False,
         "diagram_items": diagram_items,
         "knowledge_tags": problem.knowledge_points,
         "error_tags": problem.error_hypothesis,
@@ -538,18 +695,22 @@ def _run_view(run: Any) -> dict[str, Any]:
 
 
 def _task_view(record: TaskRecord) -> dict[str, Any]:
+    stores = _active_stores()
+    task_store = stores.task_store if stores else TASK_STORE
+    run_store = stores.run_store if stores else RUN_STORE
+    merge_store = stores.problem_merge_store if stores else PROBLEM_MERGE_STORE
     problem = record.problem
-    run = RUN_STORE.latest_for_task(record.id)
+    run = run_store.latest_for_task(record.id)
     diagram_runs = [
-        candidate for candidate in RUN_STORE.list_for_task(record.id)
+        candidate for candidate in run_store.list_for_task(record.id)
         if candidate.purpose.value == "diagram"
     ]
     merged_into = None
     if problem:
-        canonical_problem_id = PROBLEM_MERGE_STORE.canonical_for(problem.id)
+        canonical_problem_id = merge_store.canonical_for(problem.id)
         if canonical_problem_id != problem.id:
             target = next(
-                (task for task in TASK_STORE.list_all() if task.problem and task.problem.id == canonical_problem_id),
+                (task for task in task_store.list_all() if task.problem and task.problem.id == canonical_problem_id),
                 None,
             )
             if target:
@@ -564,7 +725,7 @@ def _task_view(record: TaskRecord) -> dict[str, Any]:
             category_for_error_code(record.last_error_code).value
             if record.last_error_code else None
         ),
-        "diagram_needs_review": any(item.needs_review for item in record.diagram_items),
+        "diagram_needs_review": any(_diagram_requires_human_review(item) for item in record.diagram_items),
         "revision_count": record.revision_count,
         "last_revised_at": (
             record.last_revised_at.isoformat() if record.last_revised_at else None
@@ -605,7 +766,7 @@ def _task_summary(record: TaskRecord) -> dict[str, Any]:
             category_for_error_code(record.last_error_code).value
             if record.last_error_code else None
         ),
-        "diagram_needs_review": any(item.needs_review for item in record.diagram_items),
+        "diagram_needs_review": any(_diagram_requires_human_review(item) for item in record.diagram_items),
         "created_at": record.created_at.isoformat(),
         "updated_at": record.updated_at.isoformat(),
         "subject": record.subject,
@@ -629,6 +790,11 @@ def _problem_summary(task: TaskRecord, problem: Problem) -> dict[str, Any]:
 def _runner_for(backend: str):
     if backend not in _SUPPORTED_AI_BACKENDS:
         raise HTTPException(status_code=422, detail="backend must be pi, langchain, or hermes")
+    context = current_request_context()
+    if context is not None:
+        if backend not in _ENABLED_AI_BACKENDS:
+            raise HTTPException(status_code=422, detail=f"backend {backend} is not enabled")
+        return WORKSPACE_RUNNER_POOL.get(context.workspace.workspace_id, context.stores, backend)
     try:
         return _RUNNERS[backend]
     except KeyError:
@@ -647,11 +813,14 @@ def _run_managed(task_id: str, run_id: str, backend: str) -> None:
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     ai_settings.retire_legacy_provider_configuration()
-    runners = list(_RUNNERS.values())
+    auth_config = auth_config_from_env()
+    if auth_config.better_auth:
+        internal_identity_config_from_env()
+    runners = [] if auth_config.better_auth else list(_RUNNERS.values())
     for runner in runners:
         runner.recover_orphaned_running()
         runner.recover_stale()
-    if PI_RUNNER is not None:
+    if PI_RUNNER is not None and not auth_config.better_auth:
         PI_RUNNER.set_child_environment(MCP_HTTP_RUNTIME.start())
     for runner in runners:
         runner.start_dispatcher()
@@ -662,8 +831,9 @@ async def lifespan(_: FastAPI):
     finally:
         for runner in runners:
             runner.shutdown_dispatcher()
-        if PI_RUNNER is not None:
+        if PI_RUNNER is not None and not auth_config.better_auth:
             PI_RUNNER.shutdown()
+        WORKSPACE_RUNNER_POOL.shutdown()
         MCP_HTTP_RUNTIME.shutdown()
         clear_ocr_vault()
         clear_ocr_run_model_resolver()
@@ -713,18 +883,41 @@ async def internal_server_error(request: Request, error: Exception) -> JSONRespo
 
 
 @app.middleware("http")
-async def oidc_authentication(request, call_next):
+async def authentication(request, call_next):
     config = auth_config_from_env()
     if (
-        not config.enabled
-        or request.url.path == "/health"
+        request.url.path == "/health"
+        or config.local
+        or (not config.enabled and not config.better_auth)
     ):
         return await call_next(request)
+    context_token = None
     try:
-        request.state.auth = authenticate_request(request, config)
+        if config.better_auth:
+            principal = authenticate_internal_request(
+                request,
+                internal_identity_config_from_env(),
+            )
+            workspace = WORKSPACE_REGISTRY.get_or_create(principal)
+            request.state.principal = principal
+            request.state.workspace_context = workspace
+            request.state.workspace_stores = WORKSPACE_STORE_FACTORY.for_context(workspace)
+            request_context = RequestContext(
+                principal=principal,
+                workspace=workspace,
+                stores=request.state.workspace_stores,
+            )
+            request.state.oopsnote_context = request_context
+            context_token = activate_request_context(request_context)
+        else:
+            request.state.auth = authenticate_request(request, config)
     except AuthenticationError as error:
         return JSONResponse(status_code=error.status_code, content={"detail": error.detail})
-    return await call_next(request)
+    try:
+        return await call_next(request)
+    finally:
+        if context_token is not None:
+            reset_request_context(context_token)
 
 
 app.add_middleware(
@@ -733,7 +926,19 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-app.mount("/assets", StaticFiles(directory=STORAGE_DIR / "assets"), name="assets")
+
+
+@app.get("/assets/{asset_name}")
+def get_asset(asset_name: str):
+    """Serve one authenticated asset from the active workspace only."""
+    if Path(asset_name).name != asset_name:
+        raise HTTPException(status_code=404, detail="Asset not found")
+    stores = _active_stores()
+    asset_root = (stores.asset_store.base_dir if stores else ASSET_STORE.base_dir).resolve()
+    asset_path = (asset_root / asset_name).resolve()
+    if asset_path.parent != asset_root or not asset_path.is_file():
+        raise HTTPException(status_code=404, detail="Asset not found")
+    return FileResponse(asset_path)
 
 
 @app.get("/health")
@@ -753,13 +958,20 @@ def health() -> dict[str, Any]:
         "status": "ok",
         "version": "0.3.0",
         "auth": {
-            "mode": auth_config.mode if (auth_config.enabled or auth_config.local) else "disabled",
+            "mode": (
+                auth_config.mode
+                if (auth_config.enabled or auth_config.local or auth_config.better_auth)
+                else "disabled"
+            ),
         },
         "ai": ai_status,
     }
 
 
 app.include_router(tasks.router)
+app.include_router(account.router)
+app.include_router(admin.router)
+app.include_router(admin.internal_router)
 app.include_router(batch.router)
 app.include_router(ai_settings.router)
 app.include_router(catalog.router)

@@ -1,0 +1,10 @@
+services:
+  frontend:
+    environment:
+      OOPSNOTE_BOOTSTRAP_SECRET_FILE: /run/secrets/oopsnote_bootstrap_secret
+    secrets:
+      - oopsnote_bootstrap_secret
+
+secrets:
+  oopsnote_bootstrap_secret:
+    file: ./deploy/oopsnote/secrets/bootstrap_secret

@@ -90,7 +90,14 @@ def _run_xelatex(
     no_pdf: bool,
     passes: int = 2,
 ) -> tuple[Path, str]:
-    environment = {"PATH": os.environ["PATH"], "openin_any": "p", "openout_any": "p"}
+    # Keep the host TeX runtime context (notably USERPROFILE, TEMP, and
+    # LOCALAPPDATA for MiKTeX's logs/cache) while applying the restricted I/O
+    # knobs required by the renderer boundary.
+    environment = {
+        **os.environ,
+        "openin_any": "p",
+        "openout_any": "p",
+    }
     command = [
         "xelatex", "-interaction=nonstopmode", "-halt-on-error", "-file-line-error",
         "-no-shell-escape",

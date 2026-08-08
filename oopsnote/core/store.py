@@ -12,7 +12,7 @@ import threading
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional, TypeVar
+from typing import Any, Optional, TypeVar
 from uuid import uuid4
 
 from pydantic import BaseModel
@@ -369,6 +369,9 @@ class RunStore:
         task_id: str,
         prompt_version: str = "unversioned",
         *,
+        run_id: Optional[str] = None,
+        workspace_id: Optional[Any] = None,
+        quota_reservation_id: Optional[str] = None,
         backend: str = "pi",
         runtime_kind: Optional[str] = None,
         runtime_version: Optional[str] = None,
@@ -391,7 +394,10 @@ class RunStore:
             ]
             attempt = 1 + max((run.attempt for run in previous_runs), default=0)
             run = TaskRun(
+                id=run_id or uuid4().hex,
                 task_id=task_id,
+                workspace_id=str(workspace_id) if workspace_id is not None else None,
+                quota_reservation_id=quota_reservation_id,
                 purpose=purpose,
                 priority=priority,
                 diagram_item_id=diagram_item_id,
@@ -587,6 +593,15 @@ class RunStore:
             started_at=self.get(run_id).started_at or now,
             heartbeat_at=now,
         )
+
+    def claim_execution(self, run_id: str) -> bool:
+        """Claim any external execution capacity before invoking a runner."""
+        self.get(run_id)
+        return True
+
+    def defer_execution(self, run_id: str) -> None:
+        """Release external execution capacity while leaving the run queued."""
+        self.get(run_id)
 
     def yield_run(self, run_id: str) -> TaskRun:
         """Return a cooperative work quantum to the durable priority queue."""

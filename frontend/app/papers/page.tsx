@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Box, Button, Spinner, Text } from "@/components/ui/primitives";
+import { ErrorBanner } from "@/components/ui/ErrorBanner";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { deletePaper, listPapers } from "@/features/papers";
 import { confirmAction } from "@/lib/confirm";
@@ -42,7 +43,7 @@ export default function PapersPage() {
         action={<Button variant="primary" size="small" onClick={() => router.push("/papers/new")}>新建试卷</Button>}
       />
       {loading ? <Box sx={{ p: 5, textAlign: "center" }}><Spinner /></Box> : null}
-      {error ? <Text sx={{ color: "danger.fg" }}>{error}</Text> : null}
+      <ErrorBanner message={error} title="加载试卷草稿失败" />
       {!loading && !papers.length ? (
         <Box sx={{ p: 5, border: "1px dashed", borderColor: "border.default", borderRadius: 2, textAlign: "center" }}>
           <Text sx={{ color: "fg.muted" }}>还没有试卷草稿。</Text>

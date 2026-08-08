@@ -52,6 +52,26 @@ redistributed build. Before the first public release, verify the upstream
 copyright line against the exact font distribution and add the official OFL
 text to the release notices.
 
+## Gloock Regular
+
+- File: `frontend/public/fonts/Gloock-Regular.ttf`
+- License: SIL Open Font License 1.1 (OFL-1.1)
+- License text: `frontend/public/fonts/Gloock-OFL.txt`
+- Project: [Gloock](https://fonts.google.com/specimen/Gloock)
+
+Gloock is used for the authentication-page heading and generated initial
+avatars. It is distributed under OFL-1.1, not BSD-2-Clause; the bundled
+license text remains authoritative and must be retained in redistributions.
+
+## User-supplied authentication background
+
+- File: `frontend/public/auth-background.webp`
+- Source: supplied by the OopsNote project owner for this application.
+
+Before a public distribution, the project owner must confirm that this image
+may be redistributed under the intended release terms. It is not relicensed
+by the root AGPL notice.
+
 ## MIT loading component
 
 The loading component is treated as third-party MIT material according to its

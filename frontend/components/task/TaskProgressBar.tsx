@@ -16,10 +16,10 @@ interface TaskProgressBarProps {
 
 // 状态颜色规范（使用 Primer 语义化 token，适配亮暗模式）
 const STATUS_COLORS = {
-  success: "var(--fgColor-success, #2da44e)",
-  error: "var(--fgColor-danger, #cf222e)",
-  processing: "var(--fgColor-accent, #0969da)",
-  wait: "var(--fgColor-muted, #8c959f)",
+  success: "var(--fgColor-success)",
+  error: "var(--fgColor-danger)",
+  processing: "var(--fgColor-info)",
+  wait: "var(--fgColor-muted)",
 } as const;
 
 interface NodeStyle {
@@ -75,9 +75,9 @@ function NodeDot({ status }: { status: keyof typeof STATUS_COLORS }) {
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        boxShadow: status === "processing" ? `0 0 0 0.25rem ${color}40` : "none",
+        boxShadow: status === "processing" ? "var(--oops-focus-ring)" : "none",
         transition: "all 0.4s ease-in-out",
-        animation: status === "processing" ? "pulse 1.5s ease-in-out infinite" : "none",
+        animation: status === "processing" ? "oops-progress-pulse 1.5s ease-in-out infinite" : "none",
         opacity: status === "wait" ? 0.5 : 1,
         flexShrink: 0,
       }}
@@ -176,7 +176,7 @@ export function TaskProgressBar({ progressState, latestLine, error, statusMessag
                 <Text sx={{ display: "block", fontSize: 1, fontWeight: 600, color: textColor, transition: "all 0.4s ease-in-out", opacity: isDisabled ? 0.5 : 1, animation: nodeStatus === "processing" ? "fadeIn 0.3s ease-in-out" : "none" }}>
                   {step.title}
                 </Text>
-                <Text sx={{ display: "block", fontSize: 0, color: isDisabled ? STATUS_COLORS.wait : "var(--fgColor-muted, #8c959f)", mt: 1, transition: "all 0.4s ease-in-out" }}>
+                <Text sx={{ display: "block", fontSize: 0, color: STATUS_COLORS.wait, mt: 1, transition: "color var(--oops-transition-slow)" }}>
                   {subtitle}
                 </Text>
               </Box>
@@ -231,7 +231,7 @@ export function TaskProgressBar({ progressState, latestLine, error, statusMessag
                 <Text sx={{ display: "block", fontSize: 1, fontWeight: 600, color: textColor, opacity: isDisabled ? 0.5 : 1 }}>
                   {step.title}
                 </Text>
-                <Text sx={{ display: "block", fontSize: 0, color: isDisabled ? STATUS_COLORS.wait : "var(--fgColor-muted, #8c959f)", mt: "2px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "calc(100vw - 100px)" }}>
+                <Text sx={{ display: "block", fontSize: 0, color: STATUS_COLORS.wait, mt: "2px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "calc(100vw - 100px)" }}>
                   {subtitle}
                 </Text>
               </Box>

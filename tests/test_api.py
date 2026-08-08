@@ -122,6 +122,25 @@ def test_health_reports_explicit_local_auth_mode():
     assert response.json()["auth"]["mode"] == "local"
 
 
+def test_asset_route_serves_only_one_file_from_the_active_asset_root(tmp_path, monkeypatch):
+    asset_root = tmp_path / "assets"
+    asset_root.mkdir()
+    (asset_root / "owned.png").write_bytes(b"owned")
+    (tmp_path / "secret.txt").write_bytes(b"secret")
+    monkeypatch.setattr(main, "ASSET_STORE", AssetStore(asset_root))
+
+    with patch.dict("os.environ", {"OOPSNOTE_AUTH_MODE": "local"}, clear=False):
+        client = TestClient(main.app)
+        served = client.get("/assets/owned.png")
+        missing = client.get("/assets/missing.png")
+        traversal = client.get("/assets/../secret.txt")
+
+    assert served.status_code == 200
+    assert served.content == b"owned"
+    assert missing.status_code == 404
+    assert traversal.status_code == 404
+
+
 def test_auth_config_rejects_unknown_mode():
     with patch.dict("os.environ", {"OOPSNOTE_AUTH_MODE": "bypass"}, clear=False), pytest.raises(RuntimeError):
         auth.auth_config_from_env()

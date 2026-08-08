@@ -10,7 +10,7 @@ export function PageHeader({
   action?: React.ReactNode;
 }) {
   return (
-    <Box className="page-header">
+    <Box className="page-header" sx={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 3, flexWrap: "wrap" }}>
       <Box>
         <Heading as="h1" sx={{ fontSize: 4, m: 0 }}>{title}</Heading>
         <Text sx={{ color: "fg.muted", fontSize: 1 }}>{description}</Text>

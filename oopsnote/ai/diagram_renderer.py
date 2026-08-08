@@ -49,7 +49,9 @@ class TikzRenderClient:
             raise TikzRenderError(
                 "renderer_unavailable",
                 "LaTeX renderer is not configured",
-                retryable=True,
+                # Missing configuration is deterministic. Retrying the same
+                # run cannot create a renderer endpoint or change its URL.
+                retryable=False,
             )
         try:
             response = httpx.post(

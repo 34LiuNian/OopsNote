@@ -73,7 +73,7 @@
 .channelItemActive {
   border-color: var(--borderColor-muted);
   background: var(--bgColor-default);
-  box-shadow: 0 1px 2px rgb(15 23 42 / 4%);
+  box-shadow: var(--oops-shadow-sm);
 }
 
 .channelSelect {
@@ -128,7 +128,7 @@
   overflow: hidden;
   border: 1px solid color-mix(in srgb, var(--borderColor-muted) 78%, transparent);
   border-radius: 8px;
-  background: #fff;
+  background: var(--oops-logo-surface);
 }
 
 .providerMark img { display: block; width: 68%; height: 68%; object-fit: contain; }
@@ -198,7 +198,7 @@
   border: 1px solid var(--borderColor-default);
   border-radius: 8px;
   background: var(--bgColor-default);
-  box-shadow: var(--shadow-floating, 0 12px 32px rgb(0 0 0 / 24%));
+  box-shadow: var(--oops-shadow-float);
 }
 .providerIconToolbar { display: flex; align-items: center; gap: 8px; padding-bottom: 10px; }
 .providerIconToolbar strong { flex: 0 0 auto; font-size: 13px; }
@@ -337,8 +337,8 @@
 }
 
 .capabilityButton:hover { border-color: var(--borderColor-default); color: var(--fgColor-default); }
-.capabilityActiveTool { border-color: #b8dcff; color: #0969da; background: #eef7ff; }
-.capabilityActiveVision { border-color: #b7e4c7; color: #1a7f37; background: #effaf2; }
+.capabilityActiveTool { border-color: color-mix(in srgb, var(--fgColor-info) 42%, var(--borderColor-default)); color: var(--fgColor-info); background: color-mix(in srgb, var(--fgColor-info) 10%, var(--bgColor-default)); }
+.capabilityActiveVision { border-color: color-mix(in srgb, var(--fgColor-success) 42%, var(--borderColor-default)); color: var(--fgColor-success); background: var(--bgColor-success-muted); }
 .modelSwitch { margin-left: 5px; padding-left: 12px; border-left: 1px solid var(--borderColor-muted); }
 
 .emptyState {
@@ -430,11 +430,11 @@
   background: var(--bgColor-default);
   text-align: left;
   cursor: pointer;
-  box-shadow: 0 1px 2px rgb(15 23 42 / 4%);
-  transition: border-color 140ms ease, box-shadow 140ms ease, transform 140ms ease;
+  box-shadow: var(--oops-shadow-sm);
+  transition: border-color var(--oops-transition-fast), box-shadow var(--oops-transition-fast);
 }
 
-.stageCard:hover { border-color: color-mix(in srgb, var(--fgColor-default) 45%, var(--borderColor-default)); box-shadow: 0 6px 20px rgb(15 23 42 / 7%); transform: translateY(-1px); }
+.stageCard:hover { border-color: color-mix(in srgb, var(--fgColor-default) 45%, var(--borderColor-default)); box-shadow: var(--oops-shadow-md); }
 .stageCardInvalid { border-color: color-mix(in srgb, var(--fgColor-danger) 45%, var(--borderColor-default)); }
 .stageHeader { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .stageTitleLine { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 680; }

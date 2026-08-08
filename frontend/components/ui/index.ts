@@ -3,6 +3,7 @@ export * from "./ErrorBanner";
 export * from "./LoadingStates";
 export * from "./OptionsList";
 export * from "./MantineNotifications";
+export * from "./GlobalErrorMonitor";
 export * from "./RenameDialog";
 export * from "./primitives";
 export * from "./icons";

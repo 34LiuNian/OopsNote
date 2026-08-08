@@ -4,6 +4,8 @@ import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { Download, Eye, GripVertical, MoreHorizontal, Plus, Trash2, X } from "lucide-react";
 import { Box, Button, FormControl, Spinner, Text, TextInput } from "@/components/ui/primitives";
+import { ErrorBanner } from "@/components/ui/ErrorBanner";
+import { notify } from "@/lib/notify";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { ProblemCard } from "@/components/ProblemCard";
 import { compilePaperDraft, getPaper, listPaperCandidates, updatePaper } from "@/features/papers";
@@ -100,7 +102,10 @@ export default function PaperEditorPage() {
           setPaper((current) => current ? { ...current, title: nextPaper.title, updated_at: nextPaper.updated_at } : nextPaper);
           setSaveState("saved");
         })
-        .catch(() => setSaveState("error"));
+        .catch((reason) => {
+          setSaveState("error");
+          notify.error({ title: "试卷标题保存失败", description: reason instanceof Error ? reason.message : "保存失败" });
+        });
     }, 600);
     return () => window.clearTimeout(timer);
   }, [draftId, paper, title]);
@@ -231,7 +236,14 @@ export default function PaperEditorPage() {
   }
 
   if (loading) return <Box sx={{ p: 6, textAlign: "center" }}><Spinner /></Box>;
-  if (!paper) return <Text sx={{ color: "danger.fg" }}>{error || "试卷不存在"}</Text>;
+  if (!paper) {
+    return (
+      <Box sx={{ p: 6, textAlign: "center" }}>
+        <ErrorBanner message={error || "试卷不存在"} title="加载试卷失败" />
+        <Text sx={{ color: "fg.muted" }}>试卷当前不可用。</Text>
+      </Box>
+    );
+  }
 
   return (
     <Box sx={{ display: "flex", flexDirection: "column", gap: 3 }}>
@@ -271,8 +283,8 @@ export default function PaperEditorPage() {
           {saveState === "saving" ? "正在保存…" : saveState === "error" ? "保存失败" : "已自动保存"}
         </span>
       </Box>
-      {error ? <Text sx={{ color: "danger.fg" }}>{error}</Text> : null}
-      {previewError ? <Text sx={{ color: "danger.fg" }}>{previewError}</Text> : null}
+      <ErrorBanner message={error} title="试卷操作失败" />
+      <ErrorBanner message={previewError} title="试卷编译失败" />
 
       {previewUrl ? (
         <section className={styles.previewPanel}>
@@ -375,7 +387,12 @@ export default function PaperEditorPage() {
                     showTitle={false}
                     fontSize={2}
                   />
-                ) : <Text sx={{ color: "danger.fg" }}>原题已不存在，请替换或移除此题。</Text>}
+                ) : (
+                  <>
+                    <ErrorBanner message="原题已不存在，请替换或移除此题。" title="试卷内容异常" />
+                    <Text sx={{ color: "danger.fg" }}>原题已不存在，请替换或移除此题。</Text>
+                  </>
+                )}
               </div>
             </article>
           ))}

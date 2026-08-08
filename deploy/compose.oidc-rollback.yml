@@ -1,0 +1,16 @@
+services:
+  frontend:
+    build:
+      args:
+        NEXT_PUBLIC_AUTH_MODE: oidc
+    environment:
+      NEXT_PUBLIC_AUTH_MODE: oidc
+
+  backend:
+    environment:
+      OOPSNOTE_AUTH_MODE: oidc
+      OOPSNOTE_AUTH_ISSUER: https://auth.alan-ztr.eu.org
+      OOPSNOTE_AUTH_AUDIENCE: abd3d0b3-46f3-4aaa-994c-1c9258c74c1e
+      OOPSNOTE_AUTH_JWKS_URL: http://pocket-id:1411/.well-known/jwks.json
+      OOPSNOTE_ADMIN_SUBJECTS: 5cf94ffe-c14b-4c32-9092-7ff8ab947579
+

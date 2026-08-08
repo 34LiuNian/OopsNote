@@ -14,7 +14,8 @@ description: "Execute one managed OopsNote problem pipeline: OCR, solve, indepen
 ## Shared OopsMark v1 contract
 
 - 提交一个完整 `Problem` JSON：`content_format="oopsmark-v1"`、`subject`、`question_type`、`problem_text`、`options`、`answer`、`short_answer`、`explanation`、`difficulty`、`has_diagram`、`knowledge_points`、`error_hypothesis`。
-- 行内数学用 `$...$`，必要多行数学才用 `$$...$$`；真实小问依题面用独立 `（1）`、`（2）` 段落，单问和解题步骤不得伪造小问或使用 Markdown `1.`/`2.`。
+- 顶层题号是 `question_no`/`printed_question_no` 元数据，不是正文：`problem_text` 开头不得出现 `第 N 题`、`N.`、`N、` 等题号前缀，也不得根据任务顺序、页码或模型猜测补题号；OCR 看见的印刷题号只写入对应元数据。真实小问才依题面保留独立 `（1）`、`（2）` 段落，单问和解题步骤不得伪造小问或使用 Markdown `1.`/`2.`。
+- 行内数学用 `$...$`，必要多行数学才用 `$$...$$`；`answer`、`short_answer`、`explanation` 同样不得添加顶层题号，解析中的小问编号必须与题面一致。
 - 选项只存正文，数组顺序派生 A/B/C/D，公式选项也带 `$...$`；普通表格用 GFM，化学式/方程式在数学环境用 `\ce{...}`。
 - 不输出 `array`、`tabular`、`tblr`、`enumerate`、`chemfig`、`tikzpicture`、文档级或危险 TeX 命令。
 

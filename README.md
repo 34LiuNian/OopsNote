@@ -1,3 +1,6 @@
+<!-- Authentication UI bundles Gloock Regular under OFL-1.1. Its full text is
+at frontend/public/fonts/Gloock-OFL.txt; see THIRD-PARTY-NOTICES.md. -->
+
 <div align="center">
 
 <picture>
@@ -68,7 +71,8 @@ npm --prefix frontend run lint
 API 与前端：
 
 ```powershell
-.\.venv\Scripts\python.exe -m uvicorn oopsnote.api.main:app --reload
+$env:OOPSNOTE_AUTH_MODE='better-auth'
+.\.venv\Scripts\python.exe -m uvicorn oopsnote.api.main:app --env-file frontend/.env.local --reload
 npm --prefix frontend install
 npm --prefix frontend run dev
 ```
