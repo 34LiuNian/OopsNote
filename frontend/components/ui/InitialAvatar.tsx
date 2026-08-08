@@ -21,8 +21,8 @@ export function InitialAvatar({
       src={image || null}
       alt=""
       size={size}
-      radius="xl"
-      styles={{ root: { background: "#ffffff", color: "#000000", border: "1px solid var(--borderColor-default)", fontFamily: "Gloock, Georgia, serif", fontSize, fontWeight: 400 } }}
+      radius="50%"
+      styles={{ root: { background: "var(--bgColor-muted)", color: "var(--fgColor-default)", border: "1px solid var(--borderColor-default)", fontSize, fontWeight: 600 } }}
     >
       {value}
     </Avatar>

@@ -32,7 +32,7 @@ from oopsnote.api.auth import (
     authenticate_request,
     internal_identity_config_from_env,
 )
-from oopsnote.api.errors import category_for_error_code, error_detail, scope_for_path
+from oopsnote.api.errors import ApiErrorCategory, category_for_error_code, error_detail, scope_for_path
 from oopsnote.api.routes import account, admin, ai_settings, batch, catalog, latex, papers, study, tasks
 from oopsnote.api.context import (
     RequestContext,
@@ -51,6 +51,7 @@ from oopsnote.core import (
     BatchSessionStore,
     BatchProcessJobStore,
     BatchSessionUpdateRequest,
+    DiagramStatus,
     Problem,
     PaperDraftStore,
     ProblemMergeStore,
@@ -536,6 +537,15 @@ def _asset_view(record: TaskRecord) -> Optional[dict[str, Any]]:
     }
 
 
+def _diagram_requires_human_review(item: Any) -> bool:
+    if not item.last_error_code and not item.needs_review:
+        return False
+    return category_for_error_code(
+        item.last_error_code,
+        needs_review=item.needs_review,
+    ) == ApiErrorCategory.HUMAN_REVIEW
+
+
 def _problem_view(task: TaskRecord, problem: Problem) -> dict[str, Any]:
     stores = _active_stores()
     asset_store = stores.asset_store if stores else ASSET_STORE
@@ -560,16 +570,29 @@ def _problem_view(task: TaskRecord, problem: Problem) -> dict[str, Any]:
             diagram_svg = asset_store.resolve(selected.svg_path).read_text(encoding="utf-8")
         except (FileNotFoundError, OSError, UnicodeError, ValueError):
             diagram_svg = None
-    diagram_items = [
-        {
-            **item.model_dump(mode="json"),
-            "error_category": (
-                category_for_error_code(item.last_error_code, needs_review=item.needs_review).value
-                if item.last_error_code or item.needs_review else None
-            ),
-        }
-        for item in task.diagram_items
-    ]
+    def diagram_category(item: Any) -> ApiErrorCategory | None:
+        if item is None:
+            return None
+        if not item.last_error_code and not item.needs_review:
+            return None
+        return category_for_error_code(item.last_error_code, needs_review=item.needs_review)
+
+    def diagram_requires_review(item: Any) -> bool:
+        return _diagram_requires_human_review(item)
+
+    diagram_items = []
+    for item in task.diagram_items:
+        category = diagram_category(item)
+        item_view = item.model_dump(mode="json")
+        # Older runs persisted every technical failure as NEEDS_REVIEW. Derive
+        # the public state from the authoritative error category until those
+        # records are naturally rewritten by a retry or manual action.
+        if item_view["status"] == DiagramStatus.NEEDS_REVIEW.value and not diagram_requires_review(item):
+            item_view["status"] = DiagramStatus.FAILED.value
+        item_view["needs_review"] = diagram_requires_review(item)
+        item_view["error_category"] = category.value if category else None
+        diagram_items.append(item_view)
+    selected_diagram_category = diagram_category(diagram)
     return {
         "problem_id": problem.id,
         "question_no": task.effective_question_no(),
@@ -598,13 +621,17 @@ def _problem_view(task: TaskRecord, problem: Problem) -> dict[str, Any]:
         "diagram_image_tone": diagram.image_tone if diagram else "auto",
         "diagram_position": diagram.position if diagram else "right",
         "diagram_scale_percent": diagram.scale_percent if diagram else 100,
-        "diagram_render_status": diagram.status.value if diagram else None,
+        "diagram_render_status": (
+            DiagramStatus.FAILED.value
+            if diagram and diagram.status == DiagramStatus.NEEDS_REVIEW and not diagram_requires_review(diagram)
+            else diagram.status.value if diagram else None
+        ),
         "diagram_error": diagram.last_error if diagram else None,
         "diagram_error_category": (
-            category_for_error_code(diagram.last_error_code, needs_review=diagram.needs_review).value
-            if diagram and (diagram.last_error_code or diagram.needs_review) else None
+            selected_diagram_category.value
+            if selected_diagram_category else None
         ),
-        "diagram_needs_review": diagram.needs_review if diagram else False,
+        "diagram_needs_review": diagram_requires_review(diagram) if diagram else False,
         "diagram_items": diagram_items,
         "knowledge_tags": problem.knowledge_points,
         "error_tags": problem.error_hypothesis,
@@ -698,7 +725,7 @@ def _task_view(record: TaskRecord) -> dict[str, Any]:
             category_for_error_code(record.last_error_code).value
             if record.last_error_code else None
         ),
-        "diagram_needs_review": any(item.needs_review for item in record.diagram_items),
+        "diagram_needs_review": any(_diagram_requires_human_review(item) for item in record.diagram_items),
         "revision_count": record.revision_count,
         "last_revised_at": (
             record.last_revised_at.isoformat() if record.last_revised_at else None
@@ -739,7 +766,7 @@ def _task_summary(record: TaskRecord) -> dict[str, Any]:
             category_for_error_code(record.last_error_code).value
             if record.last_error_code else None
         ),
-        "diagram_needs_review": any(item.needs_review for item in record.diagram_items),
+        "diagram_needs_review": any(_diagram_requires_human_review(item) for item in record.diagram_items),
         "created_at": record.created_at.isoformat(),
         "updated_at": record.updated_at.isoformat(),
         "subject": record.subject,

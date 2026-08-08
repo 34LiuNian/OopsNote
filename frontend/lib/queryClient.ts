@@ -1,10 +1,24 @@
-import { QueryClient } from '@tanstack/react-query';
+import { MutationCache, QueryCache, QueryClient } from '@tanstack/react-query';
+import { notify } from "./notify";
+
+function reportQueryFailure(error: unknown, fallback: string): void {
+  notify.error({
+    title: "数据请求失败",
+    description: error instanceof Error && error.message ? error.message : fallback,
+  });
+}
 
 /**
  * React Query 客户端配置
  * 提供全局的查询缓存、重试策略、超时等设置
  */
 export const queryClient = new QueryClient({
+  queryCache: new QueryCache({
+    onError: (error) => reportQueryFailure(error, "页面数据加载失败，请重试。"),
+  }),
+  mutationCache: new MutationCache({
+    onError: (error) => reportQueryFailure(error, "数据更新失败，请重试。"),
+  }),
   defaultOptions: {
     queries: {
       // 不自动重试，由组件自己处理错误

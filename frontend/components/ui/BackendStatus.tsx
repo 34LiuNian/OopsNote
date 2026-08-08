@@ -70,10 +70,10 @@ export function BackendStatus() {
 
   const dotColor =
     status === "connected"
-      ? "var(--fgColor-success, #2da44e)"
+      ? "var(--fgColor-success)"
       : status === "disconnected"
-        ? "var(--fgColor-danger, #cf222e)"
-        : "var(--fgColor-muted, #8c959f)";
+        ? "var(--fgColor-danger)"
+        : "var(--fgColor-muted)";
 
   return (
     <Tooltip text={label} direction="sw">
@@ -85,7 +85,7 @@ export function BackendStatus() {
           cursor: "default",
           px: 2,
           py: 1,
-          borderRadius: "999px",
+          borderRadius: "var(--oops-radius-full)",
           fontSize: "12px",
           color: "fg.muted",
           transition: "all var(--oops-transition-fast)",
@@ -98,7 +98,6 @@ export function BackendStatus() {
             height: 8,
             borderRadius: "50%",
             backgroundColor: dotColor,
-            boxShadow: status === "connected" ? `0 0 6px ${dotColor}` : "none",
             transition: "all var(--oops-transition-normal)",
           }}
         />

@@ -2,6 +2,16 @@
     "version": "2.0.0",
     "tasks": [
         {
+            "label": "OopsNote: LaTeX Renderer",
+            "type": "shell",
+            "command": "${workspaceFolder}\\.venv\\Scripts\\python.exe -m uvicorn app:app --env-file .env.local --host 127.0.0.1 --port 8091",
+            "options": {
+                "cwd": "${workspaceFolder}\\deploy\\latex-renderer"
+            },
+            "isBackground": true,
+            "problemMatcher": []
+        },
+        {
             "label": "OopsNote: Backend Dev Server",
             "type": "shell",
             "command": "${workspaceFolder}\\.venv\\Scripts\\python.exe -m uvicorn oopsnote.api.main:app --env-file frontend/.env.local --reload --host 127.0.0.1 --port 8000",
@@ -28,6 +38,7 @@
         {
             "label": "OopsNote: Full Stack Dev Servers",
             "dependsOn": [
+                "OopsNote: LaTeX Renderer",
                 "OopsNote: Backend Dev Server",
                 "OopsNote: Frontend Dev Server"
             ],

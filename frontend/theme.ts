@@ -1,16 +1,16 @@
 import { createTheme, type MantineThemeOverride } from "@mantine/core";
 
 const graphite = [
-  "#fafafa",
-  "#f4f4f5",
-  "#e4e4e7",
-  "#d4d4d8",
-  "#a1a1aa",
-  "#71717a",
-  "#52525b",
-  "#3f3f46",
-  "#27272a",
-  "#18181b",
+  "var(--oops-graphite-0)",
+  "var(--oops-graphite-1)",
+  "var(--oops-graphite-2)",
+  "var(--oops-graphite-3)",
+  "var(--oops-graphite-4)",
+  "var(--oops-graphite-5)",
+  "var(--oops-graphite-6)",
+  "var(--oops-graphite-7)",
+  "var(--oops-graphite-8)",
+  "var(--oops-graphite-9)",
 ] as const;
 
 export const oopsTheme: MantineThemeOverride = createTheme({
@@ -25,25 +25,25 @@ export const oopsTheme: MantineThemeOverride = createTheme({
   },
   defaultRadius: "md",
   radius: {
-    xs: "4px",
-    sm: "6px",
-    md: "8px",
-    lg: "12px",
-    xl: "16px",
+    xs: "var(--oops-radius-xs)",
+    sm: "var(--oops-radius-sm)",
+    md: "var(--oops-radius-md)",
+    lg: "var(--oops-radius-lg)",
+    xl: "var(--oops-radius-shell)",
   },
   spacing: {
-    xs: "4px",
-    sm: "8px",
-    md: "12px",
-    lg: "16px",
-    xl: "24px",
+    xs: "var(--oops-space-1)",
+    sm: "var(--oops-space-2)",
+    md: "var(--oops-space-3)",
+    lg: "var(--oops-space-4)",
+    xl: "var(--oops-space-5)",
   },
   shadows: {
-    xs: "0 1px 2px rgb(15 23 42 / 0.04)",
-    sm: "0 1px 3px rgb(15 23 42 / 0.07)",
-    md: "0 8px 24px rgb(15 23 42 / 0.08)",
-    lg: "0 16px 40px rgb(15 23 42 / 0.12)",
-    xl: "0 24px 64px rgb(15 23 42 / 0.16)",
+    xs: "var(--oops-shadow-sm)",
+    sm: "var(--oops-shadow-sm)",
+    md: "var(--oops-shadow-md)",
+    lg: "var(--oops-shadow-lg)",
+    xl: "var(--oops-shadow-float)",
   },
   components: {
     Button: {

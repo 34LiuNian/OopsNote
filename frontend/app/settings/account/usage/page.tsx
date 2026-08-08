@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Activity, Gauge } from "lucide-react";
 import { AccountSettingsNav } from "@/components/account/AccountSettingsNav";
 import { PageHeader } from "@/components/layout/PageHeader";
+import { ErrorBanner } from "@/components/ui/ErrorBanner";
 import styles from "../account.module.css";
 
 type Quota = {
@@ -33,7 +34,8 @@ export default function AccountUsagePage() {
       <AccountSettingsNav />
       <section className={styles.panel}>
         <div className={styles.panelHeading}><Gauge size={22} aria-hidden="true" /><div><h2>用量与额度</h2><p>额度按成功完成的 AI 任务计算，每日自动重置。</p></div></div>
-        {error ? <p className={styles.state}>{error}</p> : quota ? (
+        <ErrorBanner message={error} title="加载额度失败" />
+        {error ? <p className={styles.state}>额度信息暂时不可用。</p> : quota ? (
           <div className={styles.usageGrid}>
             <div><span>今日剩余</span><strong>{remaining}</strong></div>
             <div><span>今日已用</span><strong>{quota.used_units}</strong></div>

@@ -460,6 +460,7 @@ export default function AiChannelsPage() {
                 onSync={() => void syncModels()}
               />}
               <ErrorBanner message={errorMessage} />
+              <ErrorBanner message={credentialError} title="凭据操作失败" />
             </div>
           </>
         )}

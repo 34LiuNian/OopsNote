@@ -60,7 +60,7 @@ def category_for_error_code(
         return ApiErrorCategory.TIKZ_COMPILE
     if normalized in _MODEL_CODES:
         return ApiErrorCategory.MODEL_REQUEST
-    if needs_review or normalized in _REVIEW_CODES:
+    if normalized in _REVIEW_CODES or (needs_review and not normalized):
         return ApiErrorCategory.HUMAN_REVIEW
     if normalized in {
         "task_not_found",

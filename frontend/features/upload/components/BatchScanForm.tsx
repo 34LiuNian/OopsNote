@@ -126,7 +126,6 @@ export function BatchScanForm() {
   const [deleteTarget, setDeleteTarget] = useState<BatchSession | null>(null);
   const [isDeletingBatch, setIsDeletingBatch] = useState(false);
 
-  selectionsRef.current = selections;
   const excludedPageSet = useMemo(() => new Set(excludedPageIndices), [excludedPageIndices]);
   const activePages = useMemo(() => pages.filter((page) => !excludedPageSet.has(page.pageIndex)), [excludedPageSet, pages]);
   const metrics = useMemo(() => buildPageMetrics(activePages, crop, columnLayout), [activePages, columnLayout, crop]);
@@ -142,12 +141,25 @@ export function BatchScanForm() {
     excludedPageIndices,
     selections,
   ), [columnLayout, crop, cropConfirmed, excludedPageIndices, pages.length, selections]);
-  visiblePageIndexRef.current = visiblePageIndex;
-  currentContentSnapshotRef.current = contentSnapshot;
+  useEffect(() => {
+    selectionsRef.current = selections;
+    visiblePageIndexRef.current = visiblePageIndex;
+    currentContentSnapshotRef.current = contentSnapshot;
+  }, [contentSnapshot, selections, visiblePageIndex]);
+
+  const loadSavedSessions = useCallback(async () => {
+    try {
+      return await listBatchSessions();
+    } catch (reason) {
+      notify.error({ title: "批量扫描记录加载失败", description: reason instanceof Error ? reason.message : "无法读取已保存记录" });
+      return null;
+    }
+  }, []);
 
   const refreshSavedSessions = useCallback(async () => {
-    try { setSavedSessions(await listBatchSessions()); } catch { /* landing remains usable */ }
-  }, []);
+    const sessions = await loadSavedSessions();
+    if (sessions) setSavedSessions(sessions);
+  }, [loadSavedSessions]);
 
   const openRenameSession = useCallback((session: BatchSession) => {
     setRenameTarget(session);
@@ -182,9 +194,17 @@ export function BatchScanForm() {
     }
   }, [refreshSavedSessions, renameTarget, renameValue]);
 
-  useEffect(() => { void refreshSavedSessions(); }, [refreshSavedSessions]);
-
   useEffect(() => {
+    let cancelled = false;
+    void loadSavedSessions().then((sessions) => {
+      if (!cancelled && sessions) setSavedSessions(sessions);
+    });
+    return () => { cancelled = true; };
+  }, [loadSavedSessions]);
+
+  // `inverted` is interactive state, so it must follow theme changes through an effect.
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setInverted(resolvedTheme === "dark");
   }, [resolvedTheme]);
 
@@ -250,7 +270,7 @@ export function BatchScanForm() {
     } finally {
       setIsDeletingBatch(false);
     }
-  }, [clearWorkspace, currentSession?.file_hash, deleteTarget, refreshSavedSessions]);
+  }, [clearWorkspace, currentSession, deleteTarget, refreshSavedSessions]);
 
   useEffect(() => () => clearWorkspace(), [clearWorkspace]);
 
@@ -436,6 +456,7 @@ export function BatchScanForm() {
     }
   }, [openWorkspace]);
 
+  // Restoring a URL session intentionally hydrates several local state fields.
   useEffect(() => {
     const fileHash = searchParams.get("session");
     if (!fileHash || restoredQueryRef.current || pages.length || !savedSessions.length) return;
@@ -443,6 +464,7 @@ export function BatchScanForm() {
     if (!session) return;
     restoredQueryRef.current = true;
     const requestedPage = Number(searchParams.get("page"));
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void resumeSession(session, Number.isFinite(requestedPage) ? requestedPage : undefined);
   }, [pages.length, resumeSession, savedSessions, searchParams]);
 
@@ -713,9 +735,11 @@ export function BatchScanForm() {
       applyServerSession(result.session, true);
       setSaveState("saved");
     } catch (reason) {
+      const message = reason instanceof Error ? reason.message : "重试失败";
       setSelections((current) => current.map((item) => item.id === selection.id
-        ? { ...item, status: "failed", error: reason instanceof Error ? reason.message : "重试失败" }
+        ? { ...item, status: "failed", error: message }
         : item));
+      notify.error({ title: "批量题目重试失败", description: message });
     }
   }, [applyServerSession, currentSession]);
 
@@ -736,8 +760,8 @@ export function BatchScanForm() {
     selectionsRef.current = next;
     try {
       await persistSession(next);
-    } catch {
-      // Keep the local marker visible; autosave retry will persist it later.
+    } catch (reason) {
+      notify.error({ title: "审核标记保存失败", description: reason instanceof Error ? reason.message : "本地标记尚未保存" });
     }
   }, [persistSession]);
 

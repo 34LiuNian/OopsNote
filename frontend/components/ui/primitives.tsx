@@ -20,8 +20,26 @@ import React, { forwardRef, useEffect, useMemo } from "react";
 export type SxProps = Record<string, unknown> | undefined;
 
 const breakpoints = ["544px", "768px", "1024px", "1280px"];
-const spacing = [0, 4, 8, 16, 24, 32, 40, 48, 64];
-const fontSizes = ["12px", "14px", "16px", "20px", "24px", "32px", "40px"];
+const spacing = [
+  "var(--oops-space-0)",
+  "var(--oops-space-1)",
+  "var(--oops-space-2)",
+  "var(--oops-space-4)",
+  "var(--oops-space-5)",
+  "var(--oops-space-6)",
+  "var(--oops-space-7)",
+  "var(--oops-space-8)",
+  "var(--oops-space-9)",
+];
+const fontSizes = [
+  "var(--oops-text-xs)",
+  "var(--oops-text-sm)",
+  "var(--oops-text-md)",
+  "var(--oops-text-lg)",
+  "var(--oops-text-xl)",
+  "var(--oops-text-2xl)",
+  "var(--oops-text-3xl)",
+];
 
 const tokenMap: Record<string, string> = {
   "fg.default": "var(--fgColor-default)",

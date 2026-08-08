@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { RDKitModule } from "@rdkit/rdkit";
 import { Box, Text } from "@/components/ui/primitives";
+import { ErrorBanner } from "@/components/ui/ErrorBanner";
 import { loadDerivedSvg, storeDerivedSvg } from "@/lib/derived-svg-cache";
 import { sanitizeSvgMarkup, SvgMarkup } from "./SvgMarkup";
 
@@ -107,6 +108,7 @@ export function MoleculeRenderer({ code }: { code: string }) {
   if (error) {
     return (
       <Box sx={{ p: 2, border: "1px solid", borderColor: "danger.emphasis", borderRadius: 1, bg: "danger.subtle" }}>
+        <ErrorBanner message={error} title="分子结构渲染失败" />
         <Text sx={{ color: "danger.fg", fontSize: 1 }}>{error}</Text>
         <Box as="pre" sx={{ mt: 2, mb: 0, whiteSpace: "pre-wrap", fontFamily: "mono", fontSize: 0 }}>
           {source}

@@ -11,6 +11,7 @@ import { useAiRuntimeSettings } from "@/hooks/useSettings";
 import { fetchJson } from "@/lib/api";
 import { isAdminUser } from "@/lib/auth";
 import { queryKeys } from "@/lib/queryClient";
+import { notify } from "@/lib/notify";
 
 export default function SettingsPage() {
   const { user, loading: authLoading } = useAuth();
@@ -36,7 +37,9 @@ export default function SettingsPage() {
       setDraft(null);
       setMessage("已保存，重启 OopsNote 后生效");
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "保存失败");
+      const description = error instanceof Error ? error.message : "保存失败";
+      setMessage("");
+      notify.error({ title: "运行设置保存失败", description });
     } finally { setSaving(false); }
   }
 

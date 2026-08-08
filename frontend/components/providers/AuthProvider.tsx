@@ -3,6 +3,7 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import { authClient } from "@/lib/better-auth-client";
+import { notify } from "@/lib/notify";
 import {
   beginSignin,
   beginSignout,
@@ -74,6 +75,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const message = reason instanceof Error ? reason.message : "Unable to start OIDC sign-in";
       console.error("Unable to start OIDC sign-in", reason);
       setError(message);
+      notify.error({ title: "无法开始登录", description: message });
       setLoading(false);
     });
   }, [authenticated, betterAuthEnabled, isCallback, pathname]);
@@ -82,6 +84,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (betterAuthEnabled || isLocalAuthMode() || !authenticated || user) return;
     void refreshCurrentUser().then(setUser).catch((reason: unknown) => {
       console.warn("Unable to load the current OIDC user", reason);
+      notify.error({ title: "用户信息加载失败", description: reason instanceof Error ? reason.message : "无法读取当前用户信息" });
     });
   }, [authenticated, betterAuthEnabled, user]);
 

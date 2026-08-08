@@ -5,8 +5,10 @@ import json
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
 from oopsnote.ai.backends.langchain import LangChainRunner
-from oopsnote.ai.diagram_renderer import TikzRenderBundle
+from oopsnote.ai.diagram_renderer import TikzRenderBundle, TikzRenderClient, TikzRenderError
 from oopsnote.ai.dispatcher import ManagedTaskDispatcher
 from oopsnote.ai.providers import ProviderCapabilities, ProviderProfile
 from oopsnote.core import (
@@ -24,6 +26,7 @@ from oopsnote.core import (
     TaskStatus,
     TaskStore,
 )
+from oopsnote.api import main
 
 
 _PNG = base64.b64decode(
@@ -136,6 +139,23 @@ def _drain_quantums(runner, runs, task_id: str, run_id: str) -> None:
     raise AssertionError("diagram run did not reach a terminal state")
 
 
+def test_technical_diagram_failure_is_not_human_review(tmp_path: Path):
+    runner, tasks, runs, task_id, item_id, run_id, _, _ = _runner(tmp_path, [])
+
+    runner._fail_diagram(task_id, run_id, "'str' object has no attribute 'choices'", "runner_error")
+
+    task = tasks.get(task_id)
+    item = next(value for value in task.diagram_items if value.id == item_id)
+    assert item.status == DiagramStatus.FAILED
+    assert item.needs_review is False
+    assert runs.get(run_id).error_code == "runner_error"
+
+    problem_view = main._problem_view(task, task.problem)
+    assert problem_view["diagram_needs_review"] is False
+    assert problem_view["diagram_error_category"] == "internal"
+    assert problem_view["diagram_items"][0]["status"] == "failed"
+
+
 def test_review_outputs_the_next_candidate_and_retains_both_versions(tmp_path: Path):
     runner, tasks, runs, task_id, item_id, run_id, model, renderer = _runner(
         tmp_path,
@@ -213,6 +233,20 @@ def test_missing_provider_model_is_a_deterministic_configuration_error():
     )
 
     assert LangChainRunner._error_code(error) == "provider_model_unavailable"
+
+
+def test_missing_renderer_configuration_is_not_retryable(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.delenv("OOPSNOTE_LATEX_RENDERER_URL", raising=False)
+    renderer = TikzRenderClient(AssetStore(tmp_path / "assets"))
+
+    with pytest.raises(TikzRenderError) as caught:
+        renderer.render(r"\begin{tikzpicture}\draw (0,0)--(1,0);\end{tikzpicture}")
+
+    assert caught.value.code == "renderer_unavailable"
+    assert caught.value.retryable is False
 
 
 def test_candidate_limit_never_creates_a_fifth_candidate(tmp_path: Path):

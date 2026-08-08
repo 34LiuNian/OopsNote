@@ -12,6 +12,7 @@ import { useAuthenticatedAssetUrl } from "@/hooks/useAuthenticatedAssetUrl";
 import type { DiagramCandidate, DiagramImageTone, DiagramItem, NormalizedRect, TagDimensionStyle } from "../types/api";
 import { cancelProblemDiagram, continueProblemDiagram, overrideProblem, rebuildProblemDiagram, reconstructProblemDiagram, selectProblemDiagramCandidate } from "../features/tasks";
 import { TagPicker } from "./TagPicker";
+import { ErrorBanner } from "./ui/ErrorBanner";
 import { SvgMarkup } from "./renderers/SvgMarkup";
 import { renderTikz } from "./renderers/TikzRenderer";
 import { FigureCropper, FULL_IMAGE_CROP } from "./image-crop/FigureCropper";
@@ -637,7 +638,10 @@ export function ProblemEditPanel({ taskId, taskAssetPath, problem, tagStyles, on
                     sx={{ fontFamily: "mono", fontSize: 0, resize: "vertical" }}
                   />
                   {viewedCandidate.hard_errors.length ? (
-                    <Text sx={{ color: "danger.fg", fontSize: 0 }}>硬错误：{viewedCandidate.hard_errors.join("；")}</Text>
+                    <>
+                      <ErrorBanner message={viewedCandidate.hard_errors.join("；")} title="题图候选存在硬错误" />
+                      <Text sx={{ color: "danger.fg", fontSize: 0 }}>硬错误：{viewedCandidate.hard_errors.join("；")}</Text>
+                    </>
                   ) : null}
                   {viewedCandidate.soft_differences.length ? (
                     <Text sx={{ color: "fg.muted", fontSize: 0 }}>已接受软差异：{viewedCandidate.soft_differences.join("；")}</Text>

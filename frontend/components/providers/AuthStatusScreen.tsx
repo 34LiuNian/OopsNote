@@ -4,6 +4,8 @@ import { CircleAlert, LoaderCircle, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/primitives";
 import { AuthenticationShell } from "@/components/auth/AuthenticationShell";
 import styles from "@/components/auth/AuthenticationShell.module.css";
+import { useEffect } from "react";
+import { notify } from "@/lib/notify";
 
 type AuthStatusScreenProps = {
   phase: "signin" | "callback";
@@ -11,6 +13,10 @@ type AuthStatusScreenProps = {
 };
 
 export function AuthStatusScreen({ phase, error }: AuthStatusScreenProps) {
+  useEffect(() => {
+    if (error) notify.error({ title: "登录失败", description: error });
+  }, [error]);
+
   const isError = Boolean(error);
   const title = isError
     ? "登录未完成"

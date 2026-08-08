@@ -1,6 +1,7 @@
 "use client";
 
 import { Box, Text } from "@/components/ui/primitives";
+import { ErrorBanner } from "@/components/ui/ErrorBanner";
 import { useTheme } from "@/components/providers/ThemeProvider";
 import { loadDerivedSvg, storeDerivedSvg } from "@/lib/derived-svg-cache";
 import { useEffect, useId, useState } from "react";
@@ -73,6 +74,7 @@ export function Mermaid({ code }: { code: string }) {
   if (error) {
     return (
       <Box>
+        <ErrorBanner message={error} title="流程图渲染失败" />
         <Text sx={{ color: "danger.fg", fontSize: 1 }}>流程图渲染失败：{error}</Text>
       </Box>
     );

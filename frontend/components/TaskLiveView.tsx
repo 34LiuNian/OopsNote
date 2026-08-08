@@ -95,6 +95,7 @@ export function TaskLiveView({ taskId }: { taskId: string }) {
     onStatusMessage: setStatusMessage,
   });
   const viewData = data;
+  const streamErrorMessage = streamError instanceof Error ? streamError.message : streamError ?? "";
   const screenshotUrl = useAuthenticatedAssetUrl(viewData?.task.trace?.screenshot_path);
 
   const cancelTask = useCallback(async () => {
@@ -189,13 +190,14 @@ export function TaskLiveView({ taskId }: { taskId: string }) {
         status={viewData?.task?.status}
         progressLines={streamProgress}
       />
+      <ErrorBanner message={streamErrorMessage} title="加载任务失败" />
 
       {/* Task header card */}
       <Box
         className="oops-card"
         sx={{ p: isCompleted ? 3 : 4, position: "relative", overflow: "hidden" }}
       >
-        {/* Subtle gradient accent bar at top */}
+        {/* Status is semantic; the bar must not introduce a local palette. */}
         <Box
           sx={{
             position: "absolute",
@@ -204,10 +206,10 @@ export function TaskLiveView({ taskId }: { taskId: string }) {
             right: 0,
             height: "3px",
             background: viewData?.task?.status === "completed"
-              ? "linear-gradient(90deg, var(--fgColor-success, #2da44e), var(--fgColor-done, #8250df))"
+              ? "var(--fgColor-success)"
               : viewData?.task?.status === "failed"
-                ? "linear-gradient(90deg, var(--fgColor-danger, #cf222e), var(--fgColor-attention, #bf8700))"
-                : "linear-gradient(90deg, var(--fgColor-accent, #0969da), var(--fgColor-done, #8250df))",
+                ? "var(--fgColor-danger)"
+                : "var(--fgColor-info)",
             borderRadius: "var(--oops-radius-md) var(--oops-radius-md) 0 0",
           }}
         />

@@ -239,11 +239,7 @@ export async function completeSignin(urlString: string): Promise<string> {
     expires_at: Date.now() + Math.max(60, token.expires_in || 300) * 1000,
   });
   window.sessionStorage.removeItem(STATE_KEY);
-  try {
-    await refreshCurrentUser();
-  } catch (error) {
-    console.warn("OIDC sign-in succeeded but userinfo could not be loaded", error);
-  }
+  await refreshCurrentUser();
   return stored.returnTo || "/";
 }
 

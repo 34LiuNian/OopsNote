@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Box, Text } from "@/components/ui/primitives";
+import { ErrorBanner } from "@/components/ui/ErrorBanner";
 
 const BLOCKED_ELEMENTS = "script,foreignObject,iframe,object,embed,link,meta,audio,video";
 const UNSAFE_CSS = /(?:expression\s*\(|javascript:|vbscript:|data:text\/html|-moz-binding)/i;
@@ -120,7 +121,10 @@ export function SvgMarkup({
   }
 
   if (!currentMarkup) {
-    return <Text sx={{ color: "danger.fg", fontSize: 1 }}>SVG 内容无效，无法显示。</Text>;
+    return <>
+      <ErrorBanner message="SVG 内容无效，无法显示。" title="SVG 渲染失败" />
+      <Text sx={{ color: "danger.fg", fontSize: 1 }}>SVG 内容无效，无法显示。</Text>
+    </>;
   }
 
   return (

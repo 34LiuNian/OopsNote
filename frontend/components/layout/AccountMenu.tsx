@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useAuth } from "@/components/providers";
 import { InitialAvatar } from "@/components/ui/InitialAvatar";
+import { notify } from "@/lib/notify";
 
 type QuotaSummary = {
   daily_success_limit: number;
@@ -21,11 +22,11 @@ export function AccountMenu() {
   async function loadQuota() {
     try {
       const response = await fetch("/api/backend/me/quota", { cache: "no-store" });
-      if (!response.ok) return;
+      if (!response.ok) throw new Error("无法读取账户额度");
       const payload = await response.json() as { quota?: QuotaSummary };
       setQuota(payload.quota || null);
-    } catch {
-      // Keep the account menu usable when the optional quota projection is unavailable.
+    } catch (reason) {
+      notify.error({ title: "账户额度加载失败", description: reason instanceof Error ? reason.message : "额度服务暂时不可用" });
     }
   }
 

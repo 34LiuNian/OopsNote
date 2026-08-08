@@ -406,8 +406,8 @@ class LangChainRunner(ManagedAiRunner):
             self.task_store.update_diagram_item(
                 task_id,
                 item.id,
-                status=DiagramStatus.NEEDS_REVIEW,
-                needs_review=True,
+                status=DiagramStatus.FAILED,
+                needs_review=False,
                 last_error=str(error),
                 last_error_code="diagram_admission_failed",
             )
@@ -420,9 +420,9 @@ class LangChainRunner(ManagedAiRunner):
                     task_id,
                     run.diagram_item_id,
                     expected_active_run_id=run_id,
-                    status=DiagramStatus.NEEDS_REVIEW,
+                    status=DiagramStatus.FAILED,
                     active_run_id=None,
-                    needs_review=True,
+                    needs_review=False,
                     last_error=message,
                     last_error_code=error_code,
                 )
