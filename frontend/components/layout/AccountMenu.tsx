@@ -1,11 +1,11 @@
 "use client";
 
-import { Menu } from "@mantine/core";
 import { Gauge, LogOut, UserRound } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useAuth } from "@/components/providers";
 import { InitialAvatar } from "@/components/ui/InitialAvatar";
+import { Button, Menu } from "@/components/ui/primitives";
 import { notify } from "@/lib/notify";
 
 type QuotaSummary = {
@@ -18,6 +18,9 @@ export function AccountMenu() {
   const router = useRouter();
   const displayName = user?.displayName ?? "登录";
   const [quota, setQuota] = useState<QuotaSummary | null>(null);
+  const AccountVisual = () => user
+    ? <InitialAvatar name={displayName} image={user.picture} size={28} />
+    : <UserRound size={16} />;
 
   async function loadQuota() {
     try {
@@ -33,10 +36,9 @@ export function AccountMenu() {
   return (
     <Menu position="bottom-end" offset={8} shadow="md" width={224} withinPortal onOpen={() => void loadQuota()}>
       <Menu.Target>
-        <button type="button" className="oops-account-trigger" aria-label="账户菜单">
-          {user ? <InitialAvatar name={displayName} image={user.picture} size={28} /> : <UserRound size={16} />}
+        <Button type="button" variant="default" className="oops-account-trigger" aria-label="账户菜单" leadingVisual={AccountVisual}>
           <span className="oops-account-trigger__name">{displayName}</span>
-        </button>
+        </Button>
       </Menu.Target>
       <Menu.Dropdown>
         <div className="oops-account-menu__identity">

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Image from "next/image";
-import { Box, Button, FormControl, IconButton, Spinner, Text, TextInput, Textarea } from "@/components/ui/primitives";
+import { Box, Button, FormControl, IconButton, NativeInput, Spinner, Text, TextInput, Textarea } from "@/components/ui/primitives";
 import { PlusIcon, TrashIcon } from "@/components/ui/icons";
 import { Check, CircleStop, RefreshCw, Sparkles, WandSparkles } from "lucide-react";
 import { optionLabel } from "@/lib/content/options";
@@ -696,7 +696,7 @@ export function ProblemEditPanel({ taskId, taskAssetPath, problem, tagStyles, on
                 </Button>
                 {diagramScalePercent != null ? (
                   <>
-                    <input
+                    <NativeInput
                       aria-label="图形大小百分比"
                       type="range"
                       min="50"

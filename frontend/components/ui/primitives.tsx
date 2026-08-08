@@ -2,12 +2,20 @@
 
 import {
   ActionIcon,
-  Alert,
+  Alert as MantineAlert,
+  Avatar as MantineAvatar,
   Badge,
   Button as MantineButton,
   Checkbox as MantineCheckbox,
+  Collapse as MantineCollapse,
+  Drawer as MantineDrawer,
+  Group as MantineGroup,
   Loader,
+  Menu as MantineMenu,
+  Modal as MantineModal,
+  PasswordInput as MantinePasswordInput,
   Select as MantineSelect,
+  Stack as MantineStack,
   Switch,
   Text as MantineText,
   Textarea as MantineTextarea,
@@ -16,8 +24,21 @@ import {
   Tooltip as MantineTooltip,
 } from "@mantine/core";
 import React, { forwardRef, useEffect, useMemo } from "react";
+export { useReducedMotion } from "@mantine/hooks";
+export { modals } from "@mantine/modals";
 
-export type SxProps = Record<string, unknown> | undefined;
+type ResponsiveSxValue<T> = T | readonly (T | undefined)[];
+type SxSpaceAlias = "bg" | "m" | "mt" | "mr" | "mb" | "ml" | "mx" | "my" | "p" | "pt" | "pr" | "pb" | "pl" | "px" | "py";
+type SxNestedSelector = `&${string}` | `:${string}` | `@media ${string}` | `@keyframes ${string}` | `${number}%` | "from" | "to" | "input" | "textarea" | "button" | "svg";
+
+/** @deprecated Use semantic props, component variants, or feature geometry classes. */
+export type SxProps = {
+  [property in keyof React.CSSProperties]?: ResponsiveSxValue<React.CSSProperties[property]>;
+} & {
+  [property in SxSpaceAlias]?: ResponsiveSxValue<string | number>;
+} & {
+  [selector in SxNestedSelector]?: SxProps;
+} | undefined;
 
 const breakpoints = ["544px", "768px", "1024px", "1280px"];
 const spacing = [
@@ -148,17 +169,17 @@ function selectorFor(parent: string, key: string): string {
   return `.${parent} ${key}`;
 }
 
-function rulesFor(sx: Record<string, unknown>, selector: string, media?: string): string {
+function rulesFor(sx: Exclude<SxProps, undefined>, selector: string, media?: string): string {
   const declarations: string[] = [];
   const nested: string[] = [];
   for (const [property, rawValue] of Object.entries(sx)) {
     if (rawValue === undefined || rawValue === null) continue;
     if (property.startsWith("@media")) {
-      nested.push(`${property}{${rulesFor(rawValue as Record<string, unknown>, selector)}}`);
+      nested.push(`${property}{${rulesFor(rawValue as Exclude<SxProps, undefined>, selector)}}`);
       continue;
     }
     if (property.startsWith("&") || property.startsWith(":" ) || property === "input" || property === "textarea" || property === "button" || property === "svg") {
-      nested.push(rulesFor(rawValue as Record<string, unknown>, selectorFor(selector.slice(1), property)));
+      nested.push(rulesFor(rawValue as Exclude<SxProps, undefined>, selectorFor(selector.slice(1), property)));
       continue;
     }
     if (Array.isArray(rawValue)) {
@@ -172,7 +193,7 @@ function rulesFor(sx: Record<string, unknown>, selector: string, media?: string)
       continue;
     }
     if (typeof rawValue === "object") {
-      nested.push(rulesFor(rawValue as Record<string, unknown>, selectorFor(selector.slice(1), property)));
+      nested.push(rulesFor(rawValue as Exclude<SxProps, undefined>, selectorFor(selector.slice(1), property)));
       continue;
     }
     declarations.push(`${cssProperty(property)}:${cssValue(property, rawValue)};`);
@@ -298,6 +319,9 @@ type SelectCompatProps = {
   disabled?: boolean;
   form?: string;
   id?: string;
+  label?: React.ReactNode;
+  description?: React.ReactNode;
+  error?: React.ReactNode;
   name?: string;
   onBlur?: React.FocusEventHandler<HTMLInputElement>;
   onFocus?: React.FocusEventHandler<HTMLInputElement>;
@@ -394,7 +418,7 @@ export function Tooltip({ text, direction, children, ...props }: TooltipCompatPr
 
 type FlashProps = React.HTMLAttributes<HTMLDivElement> & { variant?: string; color?: string };
 export function Flash({ variant = "default", color, ...props }: FlashProps) {
-  return <Alert color={color ?? (variant === "danger" ? "red" : variant === "success" ? "green" : "teal")} {...props as any} />;
+  return <MantineAlert color={color ?? (variant === "danger" ? "red" : variant === "success" ? "green" : "teal")} {...props as any} />;
 }
 
 export const Octicon = ({ icon: Icon, size = 16, ...props }: { icon: React.ElementType; size?: number; sx?: SxProps }) => <Icon size={size} {...props} />;
@@ -403,3 +427,35 @@ const NavListComponent = ({ children, className, sx, ...props }: BoxProps) => <B
 const NavListItem = ({ children, className, sx, as, ...props }: BoxProps & { href?: string; "aria-current"?: string }) => <Box as={as ?? "a"} className={["oops-nav-item", className].filter(Boolean).join(" ")} sx={sx} {...props}>{children}</Box>;
 const NavListLeadingVisual = ({ children }: { children: React.ReactNode }) => <span className="oops-nav-leading">{children}</span>;
 export const NavList = Object.assign(NavListComponent, { Item: NavListItem, LeadingVisual: NavListLeadingVisual });
+
+// Mantine remains an implementation detail of the Oops UI facade. These aliases
+// are intentionally exported from this module so feature code has one import boundary.
+export const Avatar = MantineAvatar;
+export const Collapse = MantineCollapse;
+export const Drawer = MantineDrawer;
+export const Group = MantineGroup;
+export const Menu = MantineMenu;
+export const Modal = MantineModal;
+export const PasswordInput = MantinePasswordInput;
+export const Stack = MantineStack;
+export const Dialog = MantineModal;
+export const Alert = MantineAlert;
+
+export function Surface({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
+  return <div className={["oops-surface", className].filter(Boolean).join(" ")} {...props} />;
+}
+
+type NativeInputProps = React.InputHTMLAttributes<HTMLInputElement> & { className?: string };
+export const NativeInput = forwardRef<HTMLInputElement, NativeInputProps>(function NativeInput({ className, ...props }, ref) {
+  return <input ref={ref} className={["oops-native-input", className].filter(Boolean).join(" ")} {...props} />;
+});
+
+type NativeSelectProps = React.SelectHTMLAttributes<HTMLSelectElement> & { className?: string };
+export const NativeSelect = forwardRef<HTMLSelectElement, NativeSelectProps>(function NativeSelect({ className, ...props }, ref) {
+  return <select ref={ref} className={["oops-native-select", className].filter(Boolean).join(" ")} {...props} />;
+});
+
+type GeometryButtonProps = React.ButtonHTMLAttributes<HTMLButtonElement> & { className?: string };
+export const GeometryButton = forwardRef<HTMLButtonElement, GeometryButtonProps>(function GeometryButton({ className, ...props }, ref) {
+  return <button ref={ref} className={["oops-geometry-button", className].filter(Boolean).join(" ")} {...props} />;
+});

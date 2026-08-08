@@ -3,7 +3,7 @@
 import { FormEvent, useEffect, useState } from "react";
 import { KeyRound, LoaderCircle, LogIn, UserRound } from "lucide-react";
 import Link from "next/link";
-import { Button } from "@/components/ui/primitives";
+import { Button, PasswordInput, TextInput } from "@/components/ui/primitives";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
 import { AuthenticationShell } from "@/components/auth/AuthenticationShell";
 import styles from "@/components/auth/AuthenticationShell.module.css";
@@ -53,20 +53,26 @@ export default function LoginPage() {
     <AuthenticationShell title="登录 OopsNote" description="进入你的独立题库。">
       <ErrorBanner message={error ?? ""} title="登录失败" />
       <form className={styles.form} onSubmit={submit}>
-        <label className={styles.field}>
-          用户名或邮箱
-          <div className={styles.input}>
-            <UserRound size={18} aria-hidden="true" />
-            <input type="text" autoComplete="username" value={identifier} onChange={(event) => setIdentifier(event.target.value)} required />
-          </div>
-        </label>
-        <label className={styles.field}>
-          密码
-          <div className={styles.input}>
-            <KeyRound size={18} aria-hidden="true" />
-            <input type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} minLength={12} required />
-          </div>
-        </label>
+        <TextInput
+          className={styles.input}
+          label="用户名或邮箱"
+          leadingVisual={UserRound}
+          type="text"
+          autoComplete="username"
+          value={identifier}
+          onChange={(event) => setIdentifier(event.target.value)}
+          required
+        />
+        <PasswordInput
+          className={styles.input}
+          label="密码"
+          leftSection={<KeyRound size={18} aria-hidden="true" />}
+          autoComplete="current-password"
+          value={password}
+          onChange={(event) => setPassword(event.target.value)}
+          minLength={12}
+          required
+        />
         <div className={styles.footer}>
           {registrationOpen ? <Link className={styles.back} href="/register">创建账号</Link> : <span />}
           <Button type="submit" variant="primary" leadingVisual={submitting ? LoaderCircle : LogIn} disabled={submitting}>

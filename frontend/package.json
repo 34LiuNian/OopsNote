@@ -8,7 +8,7 @@
     "start": "next start",
     "lint": "eslint app components features hooks lib types --ext .ts,.tsx",
     "typecheck": "tsc --noEmit",
-    "design:check": "node scripts/check-design-system.mjs",
+    "design:check": "node scripts/check-design-system.mjs && node scripts/check-ui-boundaries.mjs",
     "errors:check": "node scripts/check-error-notifications.mjs",
     "test:unit": "node --test features/settings/modelOptions.test.mjs lib/notificationPolicy.test.mjs",
     "test:e2e": "playwright test",

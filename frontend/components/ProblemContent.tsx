@@ -2,14 +2,13 @@
 
 import { useLayoutEffect, useRef, useState } from "react";
 import { Box } from "@/components/ui/primitives";
-import { Button, Spinner } from "@/components/ui/primitives";
-import { Text } from "@/components/ui/primitives";
 import { NativeImage } from "@/components/ui/NativeImage";
 import { useAuthenticatedAssetUrl } from "@/hooks/useAuthenticatedAssetUrl";
 import { MarkdownRenderer } from "./renderers/MarkdownRenderer";
 import { SvgMarkup } from "./renderers/SvgMarkup";
 import { TikzRenderer } from "./renderers/TikzRenderer";
 import { OptionsList } from "./ui/OptionsList";
+import { ProblemRenderStatus } from "./ProblemRenderStatus";
 import type { ContentFormat, DiagramImageTone } from "@/types/api";
 
 type ProblemOption = {
@@ -150,36 +149,14 @@ export function ProblemContent({
           </Box>
         ) : null}
       </Box>
-      {diagramDetected ? (
-        <Box sx={{ mb: 2 }}>
-          {(diagramRenderStatus === "failed" || diagramNeedsReview) && (
-            <Box sx={{ mt: 2, p: 2, border: "1px solid", borderColor: "attention.emphasis", borderRadius: 1, bg: "attention.subtle" }}>
-              <Text sx={{ color: "attention.fg", fontSize: 1 }}>
-                图形重建失败，建议人工介入。
-              </Text>
-              {diagramError ? (
-                <Text sx={{ display: "block", mt: 1, color: "fg.muted", fontSize: 0, whiteSpace: "pre-wrap" }}>
-                  {diagramError}
-                </Text>
-              ) : null}
-              {onRetryDiagram ? (
-                <Box sx={{ mt: 2 }}>
-                  <Button size="small" variant="default" onClick={onRetryDiagram} disabled={isRetryingDiagram}>
-                    {isRetryingDiagram ? (
-                      <>
-                        <Spinner size="small" sx={{ mr: 1 }} />
-                        重试渲染中...
-                      </>
-                    ) : (
-                      "重试图形渲染"
-                    )}
-                  </Button>
-                </Box>
-              ) : null}
-            </Box>
-          )}
-        </Box>
-      ) : null}
+      <ProblemRenderStatus
+        detected={diagramDetected}
+        status={diagramRenderStatus}
+        error={diagramError}
+        needsReview={diagramNeedsReview}
+        retrying={isRetryingDiagram}
+        onRetry={onRetryDiagram}
+      />
     </Box>
   );
 }

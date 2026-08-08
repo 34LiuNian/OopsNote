@@ -6,4 +6,5 @@ export * from "./MantineNotifications";
 export * from "./GlobalErrorMonitor";
 export * from "./RenameDialog";
 export * from "./primitives";
+export * from "./DesignSystemMatrix";
 export * from "./icons";

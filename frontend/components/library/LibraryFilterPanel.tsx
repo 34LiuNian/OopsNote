@@ -4,6 +4,7 @@ import {
   Box,
   Button,
   FormControl,
+  IconButton,
   Select,
   Text,
   TextInput,
@@ -66,9 +67,7 @@ export function LibraryFilterPanel({
             <Box className="oops-badge oops-badge-muted">{activeCount}</Box>
           ) : null}
         </Box>
-        <button type="button" onClick={onClose} aria-label="收起题库筛选">
-          <SidebarCollapseIcon size={17} strokeWidth={1.9} />
-        </button>
+        <IconButton type="button" icon={SidebarCollapseIcon} onClick={onClose} aria-label="收起题库筛选" />
       </Box>
 
       <Box className="library-filter-panel__body">

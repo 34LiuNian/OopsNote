@@ -1,10 +1,20 @@
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync, statSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const read = (file) => readFileSync(resolve(root, file), "utf8");
 const failures = [];
+
+function collectSourceFiles(directory) {
+  const files = [];
+  for (const entry of readdirSync(directory)) {
+    const absolute = resolve(directory, entry);
+    if (statSync(absolute).isDirectory()) files.push(...collectSourceFiles(absolute));
+    else if (/\.(tsx?|jsx?)$/.test(entry)) files.push(absolute);
+  }
+  return files;
+}
 
 const notifySource = read("lib/notify.ts");
 const policySource = read("lib/notificationPolicy.ts");
@@ -24,6 +34,17 @@ if (notificationLimit < 6) failures.push("notification host must keep enough per
 for (const file of ["app/login/page.tsx", "app/register/page.tsx"]) {
   const source = read(file);
   if (/role=["']alert["']/.test(source) || /styles\.error/.test(source)) failures.push(`${file} duplicates the persistent error notification with a page-level red banner`);
+}
+
+for (const directory of ["app", "components", "features", "hooks", "lib"]) {
+  for (const absolute of collectSourceFiles(resolve(root, directory))) {
+    const relativeFile = absolute.slice(root.length + 1).replaceAll("\\", "/");
+    if (relativeFile.startsWith("components/ui/")) continue;
+    const source = readFileSync(absolute, "utf8");
+    if (/role\s*=\s*["']alert["']/.test(source)) {
+      failures.push(`${relativeFile} renders a business-level alert DOM; use ErrorBanner or a field error prop so the global notification remains authoritative`);
+    }
+  }
 }
 
 const silentCatchAllowlist = new Set([

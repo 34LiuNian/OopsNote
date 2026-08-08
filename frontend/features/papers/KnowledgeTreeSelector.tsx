@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { ArrowLeft, ChevronDown, ChevronRight } from "lucide-react";
-import { IconButton, Select } from "@/components/ui/primitives";
+import { Button, IconButton, NativeInput, Select } from "@/components/ui/primitives";
 import type { KnowledgeTreeNode } from "../../types/api";
 import styles from "../../app/papers/paperWorkflow.module.css";
 
@@ -71,16 +71,17 @@ function TreeNodeRow({
     <li className={styles.treeItem}>
       <div className={styles.treeRow} style={{ paddingLeft: `${Math.max(0, node.depth - 1) * 14}px` }}>
         {hasChildren ? (
-          <button
+          <Button
+            variant="invisible"
             type="button"
             className={styles.treeExpand}
             onClick={() => setExpanded((value) => !value)}
             aria-label={open ? `收起${node.title}` : `展开${node.title}`}
           >
             {open ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
-          </button>
+          </Button>
         ) : <span className={styles.treeSpacer} />}
-        <input
+        <NativeInput
           type="checkbox"
           checked={selectionState.checked}
           ref={(element) => {
@@ -89,13 +90,14 @@ function TreeNodeRow({
           onChange={() => onToggle(node)}
           aria-label={`选择${node.title}`}
         />
-        <button
+        <Button
+          variant="invisible"
           type="button"
           className={`${styles.treeLabel}${selectionState.checked || selectionState.indeterminate ? ` ${styles.treeLabelSelected}` : ""}`}
           onClick={() => onToggle(node)}
         >
           {node.title}
-        </button>
+        </Button>
       </div>
       {hasChildren && open ? (
         <ul className={styles.treeList}>
@@ -167,7 +169,7 @@ export function KnowledgeTreeSelector({
         <span>章节</span>
         <span className={styles.treeTabActive}>知识点</span>
       </div>
-      <input
+      <NativeInput
         className={styles.treeSearch}
         value={query}
         onChange={(event) => setQuery(event.target.value)}

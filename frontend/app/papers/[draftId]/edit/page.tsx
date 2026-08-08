@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { Download, Eye, GripVertical, MoreHorizontal, Plus, Trash2, X } from "lucide-react";
-import { Box, Button, FormControl, Spinner, Text, TextInput } from "@/components/ui/primitives";
+import { Box, Button, Checkbox, FormControl, IconButton, NativeInput, NativeSelect, Spinner, Text, TextInput } from "@/components/ui/primitives";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
 import { notify } from "@/lib/notify";
 import { PageHeader } from "@/components/layout/PageHeader";
@@ -294,14 +294,13 @@ export default function PaperEditorPage() {
               <a className={styles.previewDownload} href={previewUrl} download={`${paper.title || "试卷"}.pdf`}>
                 <Download size={15} /> 下载 PDF
               </a>
-              <button
+              <IconButton
+                icon={X}
                 type="button"
                 className={styles.previewClose}
                 aria-label="关闭正式预览"
                 onClick={clearFormalPreview}
-              >
-                <X size={17} />
-              </button>
+              />
             </div>
           </div>
           <iframe title="试卷 PDF 正式预览" src={previewUrl} className={styles.previewFrame} />
@@ -325,14 +324,14 @@ export default function PaperEditorPage() {
               onDragOver={(event) => event.preventDefault()}
               onDrop={() => dropOn(item.id)}
             >
-              <button type="button" className={styles.dragHandle} aria-label={`拖动第${index + 1}题`}><GripVertical size={17} /></button>
+              <IconButton icon={GripVertical} type="button" className={styles.dragHandle} aria-label={`拖动第${index + 1}题`} />
               <div>
                 <div className={styles.itemToolbar}>
                   <strong>{index + 1}. {item.question_type}</strong>
                   <span className={styles.coefficient}>{difficultyLabel(item.difficulty_coefficient)}</span>
                   <label>
                     <span className={styles.coefficient}>分值</span>{" "}
-                    <input
+                    <NativeInput
                       className={styles.pointsInput}
                       type="number"
                       min={0}
@@ -346,7 +345,7 @@ export default function PaperEditorPage() {
                   </label>
                   <label>
                     <span className={styles.coefficient}>答题空间</span>{" "}
-                    <select
+                    <NativeSelect
                       className={styles.pointsInput}
                       value={item.answer_space}
                       onChange={(event) => void saveItems(paper.items.map((candidate) => (
@@ -356,7 +355,7 @@ export default function PaperEditorPage() {
                       <option value="compact">紧凑</option>
                       <option value="standard">标准</option>
                       <option value="large">宽裕</option>
-                    </select>
+                    </NativeSelect>
                   </label>
                   <div className={styles.itemToolbarActions}>
                     <Button size="small" onClick={() => router.push(`/tasks/${item.task_id}`)}>编辑原题</Button>
@@ -408,12 +407,12 @@ export default function PaperEditorPage() {
               candidateLoading ? <Box sx={{ p: 3, textAlign: "center" }}><Spinner size="small" /></Box> : (
                 <div className={styles.candidateList}>
                   {availableCandidates.map((candidate) => (
-                    <button type="button" className={styles.candidate} key={candidate.problem_id} onClick={() => chooseCandidate(candidate)}>
+                    <Button type="button" variant="invisible" className={styles.candidate} key={candidate.problem_id} onClick={() => chooseCandidate(candidate)}>
                       <div className={styles.candidateMeta}>
                         {candidate.question_type || "题目"} · {difficultyLabel(candidate.difficulty_coefficient)}
                       </div>
                       <div className={styles.candidateText}>{candidate.problem_text || "（无题干）"}</div>
-                    </button>
+                    </Button>
                   ))}
                   {!availableCandidates.length ? <Text sx={{ color: "fg.muted" }}>没有更多符合范围的题目。</Text> : null}
                 </div>
@@ -424,18 +423,15 @@ export default function PaperEditorPage() {
                   <strong>正式导出</strong>
                   <label>
                     <span>副标题</span>
-                    <input value={subtitle} onChange={(event) => {
+                    <NativeInput value={subtitle} onChange={(event) => {
                       clearFormalPreview();
                       setSubtitle(event.target.value);
                     }} placeholder="可选" />
                   </label>
-                  <label className={styles.answerToggle}>
-                    <input type="checkbox" checked={showAnswers} onChange={(event) => {
+                  <Checkbox className={styles.answerToggle} label="包含答案与解析" checked={showAnswers} onChange={(event) => {
                       clearFormalPreview();
                       setShowAnswers(event.target.checked);
                     }} />
-                    <span>包含答案与解析</span>
-                  </label>
                   <Button
                     size="small"
                     leadingVisual={Eye}

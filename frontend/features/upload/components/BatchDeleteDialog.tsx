@@ -2,8 +2,7 @@
 
 import { Trash2 } from "lucide-react";
 import React from "react";
-import { Button, Checkbox, Text } from "@/components/ui/primitives";
-import { Group, Modal, Stack } from "@mantine/core";
+import { Button, Checkbox, Group, Modal, Stack, Text } from "@/components/ui/primitives";
 import type { BatchDeleteSelection } from "../api";
 
 type Props = {

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Box, Button, Text } from "@/components/ui/primitives";
+import { Box, Button, NativeInput, Text } from "@/components/ui/primitives";
 import { FolderOpenIcon, ImageIcon, UploadIcon } from "@/components/ui/icons";
 
 type UploadQueueProps = {
@@ -76,7 +76,7 @@ export function UploadQueue({
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
     >
-      <input
+      <NativeInput
         ref={singleInputRef}
         type="file"
         accept="image/*"
@@ -84,7 +84,7 @@ export function UploadQueue({
         onChange={onSinglePicked}
         style={{ display: 'none' }}
       />
-      <input
+      <NativeInput
         ref={folderInputRef}
         type="file"
         multiple
@@ -109,15 +109,15 @@ export function UploadQueue({
       <Box className="capture-dropzone__footer">
         {files.length > 1 ? (
           <Box className="capture-file-navigation">
-            <button type="button" onClick={() => onIndexChange(Math.max(0, index - 1))} disabled={isLoading || index === 0}>上一张</button>
+            <Button type="button" variant="invisible" onClick={() => onIndexChange(Math.max(0, index - 1))} disabled={isLoading || index === 0}>上一张</Button>
             <Text>{index + 1} / {files.length}</Text>
-            <button type="button" onClick={() => onIndexChange(Math.min(files.length - 1, index + 1))} disabled={isLoading || index === files.length - 1}>下一张</button>
+            <Button type="button" variant="invisible" onClick={() => onIndexChange(Math.min(files.length - 1, index + 1))} disabled={isLoading || index === files.length - 1}>下一张</Button>
           </Box>
         ) : files.length > 0 ? (
           <Box className="oops-badge oops-badge-muted">待处理 {remainingCount} / {files.length}</Box>
         ) : <span />}
         <label className="capture-auto-recognize">
-          <input
+          <NativeInput
             className="capture-auto-recognize__input"
             type="checkbox"
           checked={autoRecognize}

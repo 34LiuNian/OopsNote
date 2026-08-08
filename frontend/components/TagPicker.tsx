@@ -1,7 +1,7 @@
 "use client";
 
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Box, Text } from "@/components/ui/primitives";
+import { Box, NativeInput, Text } from "@/components/ui/primitives";
 import { TagChip } from "@/components/tags/TagChip";
 import { TagSuggestionList } from "@/components/tags/TagSuggestionList";
 import type { TagDimension, TagDimensionStyle, TagItem } from "@/types/api";
@@ -150,7 +150,7 @@ export const TagPicker = memo(function TagPicker({
               onRemove={() => removeTag(tag)}
             />
           ))}
-          <input
+          <NativeInput
             ref={inputRef}
             className="tag-picker__input"
             aria-label={`${title}标签输入`}

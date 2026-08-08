@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import { Cable } from "lucide-react";
+import { Button, NativeInput } from "@/components/ui/primitives";
 import styles from "./aiSettings.module.css";
 
 type ProviderMarkMeta = { label: string; icon?: string; fallback: string };
@@ -89,7 +90,7 @@ export function ProviderIconPicker({
     <div className={styles.providerIconPopover} role="dialog" aria-label="选择供应商图标">
       <div className={styles.providerIconToolbar}>
         <strong>选择图标</strong>
-        <input
+        <NativeInput
           className={styles.providerIconSearch}
           value={query}
           placeholder="搜索图标"
@@ -97,10 +98,11 @@ export function ProviderIconPicker({
           onChange={(event) => setQuery(event.currentTarget.value)}
           autoFocus
         />
-        <button type="button" className={styles.providerIconClose} aria-label="关闭图标选择" onClick={onClose}>×</button>
+        <Button type="button" variant="invisible" className={styles.providerIconClose} aria-label="关闭图标选择" onClick={onClose}>×</Button>
       </div>
       <div className={styles.providerIconGrid} role="radiogroup" aria-label="供应商图标素材库">
-      <button
+      <Button
+        variant="invisible"
         type="button"
         className={`${styles.providerIconOption}${value === null ? ` ${styles.providerIconOptionSelected}` : ""}`}
         role="radio"
@@ -110,9 +112,10 @@ export function ProviderIconPicker({
         onClick={() => { onChange(null); onClose(); }}
       >
         <ProviderMark provider={provider} size={30} />
-      </button>
+      </Button>
       {visibleIcons.map((item) => (
-        <button
+        <Button
+          variant="invisible"
           type="button"
           key={item.id}
           className={`${styles.providerIconOption}${value === item.id ? ` ${styles.providerIconOptionSelected}` : ""}`}
@@ -123,7 +126,7 @@ export function ProviderIconPicker({
           onClick={() => { onChange(item.id); onClose(); }}
         >
           <ProviderMark provider={provider} icon={item.id} size={30} />
-        </button>
+        </Button>
       ))}
       </div>
       {!visibleIcons.length && <span className={styles.providerIconEmpty}>没有匹配的图标</span>}

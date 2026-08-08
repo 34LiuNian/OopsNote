@@ -1,7 +1,6 @@
 import { useMemo, useState } from "react";
-import { Drawer } from "@mantine/core";
 import { Check, Eye, Search } from "lucide-react";
-import { TextInput } from "@/components/ui/primitives";
+import { Button, Drawer, TextInput } from "@/components/ui/primitives";
 import {
   findPolicyModel,
   policyModelUnavailableReason,
@@ -40,7 +39,8 @@ export function PolicyStageCard({
 
   return (
     <div className={styles.stageWrap}>
-      <button
+      <Button
+        variant="default"
         type="button"
         className={`${styles.stageCard}${unavailableReason ? ` ${styles.stageCardInvalid}` : ""}`}
         onClick={onClick}
@@ -67,7 +67,7 @@ export function PolicyStageCard({
           </span>
           <span>{selected ? "更换模型" : "选择模型"}</span>
         </span>
-      </button>
+      </Button>
     </div>
   );
 }
@@ -127,7 +127,8 @@ export function ModelPickerDrawer({
           {models.map((model) => {
             const selected = selection.channel_id === channel.id && selection.model_id === model.id;
             return (
-              <button
+              <Button
+                variant="default"
                 key={model.id}
                 type="button"
                 className={`${styles.pickerOption}${selected ? ` ${styles.pickerOptionSelected}` : ""}`}
@@ -138,7 +139,7 @@ export function ModelPickerDrawer({
                   <span className={styles.pickerReason}>{model.source} · {definition.capabilityLabel}</span>
                 </span>
                 {selected ? <Check size={17} /> : null}
-              </button>
+              </Button>
             );
           })}
         </section>

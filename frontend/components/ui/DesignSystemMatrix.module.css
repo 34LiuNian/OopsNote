@@ -1,0 +1,18 @@
+.matrix {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: var(--oops-space-6) var(--oops-space-4);
+}
+
+.surface {
+  padding: var(--oops-space-5);
+  border: var(--oops-border-width) solid var(--borderColor-default);
+  border-radius: var(--oops-radius-md);
+  background: var(--bgColor-default);
+}
+
+@media (max-width: 544px) {
+  .matrix {
+    padding: var(--oops-space-4) var(--oops-space-3);
+  }
+}

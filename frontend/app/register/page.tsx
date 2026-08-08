@@ -5,7 +5,7 @@ import { AtSign, KeyRound, LoaderCircle, Mail, Ticket, UserPlus } from "lucide-r
 import Link from "next/link";
 import { AuthenticationShell } from "@/components/auth/AuthenticationShell";
 import styles from "@/components/auth/AuthenticationShell.module.css";
-import { Button } from "@/components/ui/primitives";
+import { Button, PasswordInput, TextInput } from "@/components/ui/primitives";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
 import { authClient } from "@/lib/better-auth-client";
 
@@ -78,10 +78,10 @@ export default function RegisterPage() {
         <div className={styles.footer}><Link className={styles.back} href="/login">返回登录</Link></div>
       ) : (
         <form className={styles.form} onSubmit={submit}>
-          <label className={styles.field}>用户名<div className={styles.input}><AtSign size={18} aria-hidden="true" /><input type="text" autoComplete="username" minLength={3} maxLength={32} pattern="[A-Za-z0-9_.]+" value={username} onChange={(event) => setUsername(event.target.value)} required /></div><span className={styles.hint}>3–32 位，可使用字母、数字、下划线和点。</span></label>
-          <label className={styles.field}>邮箱<div className={styles.input}><Mail size={18} aria-hidden="true" /><input type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} required /></div></label>
-          <label className={styles.field}>密码<div className={styles.input}><KeyRound size={18} aria-hidden="true" /><input type="password" autoComplete="new-password" minLength={12} maxLength={128} value={password} onChange={(event) => setPassword(event.target.value)} required /></div><span className={styles.hint}>至少 12 个字符。</span></label>
-          <label className={styles.field}>邀请码{!invitationRequired && <span className={styles.optional}>可选</span>}<div className={styles.input}><Ticket size={18} aria-hidden="true" /><input type="text" autoComplete="one-time-code" value={invitationCode} onChange={(event) => setInvitationCode(event.target.value)} required={invitationRequired} /></div></label>
+          <TextInput className={styles.input} label="用户名" leadingVisual={AtSign} type="text" autoComplete="username" minLength={3} maxLength={32} pattern="[A-Za-z0-9_.]+" value={username} onChange={(event) => setUsername(event.target.value)} required description="3–32 位，可使用字母、数字、下划线和点。" />
+          <TextInput className={styles.input} label="邮箱" leadingVisual={Mail} type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} required />
+          <PasswordInput className={styles.input} label="密码" leftSection={<KeyRound size={18} aria-hidden="true" />} autoComplete="new-password" minLength={12} maxLength={128} value={password} onChange={(event) => setPassword(event.target.value)} required description="至少 12 个字符。" />
+          <TextInput className={styles.input} label={<>邀请码{!invitationRequired && <span className={styles.optional}>可选</span>}</>} leadingVisual={Ticket} type="text" autoComplete="one-time-code" value={invitationCode} onChange={(event) => setInvitationCode(event.target.value)} required={invitationRequired} />
           <div className={styles.footer}><Link className={styles.back} href="/login">返回登录</Link><Button type="submit" variant="primary" leadingVisual={submitting ? LoaderCircle : UserPlus} disabled={submitting}>{submitting ? "正在创建账号" : "注册"}</Button></div>
         </form>
       )}

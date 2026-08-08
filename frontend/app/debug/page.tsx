@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Box, Button, Heading, Text, Textarea } from "@/components/ui/primitives";
+import { DesignSystemMatrix } from "@/components/ui/DesignSystemMatrix";
 import { RenameDialog } from "@/components/ui/RenameDialog";
 import { MarkdownRenderer } from "../../components/renderers/MarkdownRenderer";
 import { ProblemContent } from "../../components/ProblemContent";
@@ -104,6 +105,7 @@ export default function DebugPage() {
 
   return (
     <Box sx={{ display: "flex", flexDirection: "column", gap: 4 }}>
+      <DesignSystemMatrix />
       <Box>
         <Text sx={{ fontSize: 0, color: "fg.muted", textTransform: "uppercase" }}>Debug</Text>
         <Heading as="h2" sx={{ fontSize: 3 }}>Debug 页面</Heading>

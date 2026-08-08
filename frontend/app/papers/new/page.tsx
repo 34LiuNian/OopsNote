@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { useRouter } from "next/navigation";
-import { Box, Button, FormControl, Spinner, Text, TextInput } from "@/components/ui/primitives";
+import { Box, Button, FormControl, NativeInput, Spinner, Text, TextInput } from "@/components/ui/primitives";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
 import { DEFAULT_SUBJECT, SUBJECT_OPTIONS } from "@/config/subjects";
 import { getKnowledgeTree } from "@/features/tags/api";
@@ -227,7 +227,7 @@ export default function NewPaperPage() {
                 {selectedItems.length ? selectedItems.map((node) => (
                   <span className={styles.chip} key={node.id}>
                     {node.title}
-                    <button type="button" onClick={() => toggleNode(node)} aria-label={`移除${node.title}`}>×</button>
+                    <Button type="button" variant="invisible" onClick={() => toggleNode(node)} aria-label={`移除${node.title}`}>×</Button>
                   </span>
                 )) : <span className={styles.emptySelection}>未限定知识点时，将从该学科全部题目中选择。</span>}
               </div>
@@ -271,7 +271,7 @@ export default function NewPaperPage() {
                   } as CSSProperties}
                 >
                   <div className={styles.distributionTrack} aria-hidden="true" />
-                  <input
+                  <NativeInput
                     className={`${styles.distributionRange} ${styles.distributionRangeLower}`}
                     type="range"
                     min={0}
@@ -280,7 +280,7 @@ export default function NewPaperPage() {
                     onChange={(event) => moveDifficultyBoundary("easy", Number(event.target.value))}
                     aria-label="调整容易题占比"
                   />
-                  <input
+                  <NativeInput
                     className={`${styles.distributionRange} ${styles.distributionRangeUpper}`}
                     type="range"
                     min={0}
@@ -308,15 +308,16 @@ export default function NewPaperPage() {
                     <label className={styles.countRow} key={type}>
                       <span>{type}</span>
                       <span className={styles.countStepper}>
-                        <button
+                        <Button
+                          variant="invisible"
                           type="button"
                           onClick={() => adjustQuestionCount(type, -1)}
                           disabled={counts[type] <= 0}
                           aria-label={`减少${type}`}
                         >
                           −
-                        </button>
-                        <input
+                        </Button>
+                        <NativeInput
                           type="number"
                           min={0}
                           max={100}
@@ -327,14 +328,15 @@ export default function NewPaperPage() {
                           }))}
                           aria-label={`${type}数量`}
                         />
-                        <button
+                        <Button
+                          variant="invisible"
                           type="button"
                           onClick={() => adjustQuestionCount(type, 1)}
                           disabled={counts[type] >= 100}
                           aria-label={`增加${type}`}
                         >
                           +
-                        </button>
+                        </Button>
                       </span>
                     </label>
                   ))}

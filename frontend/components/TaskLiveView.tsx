@@ -3,11 +3,11 @@
 import Image from "next/image";
 import { useCallback, useState } from "react";
 import Link from "next/link";
-import { Modal } from "@mantine/core";
 import {
   Box,
   Button,
   Heading,
+  Modal,
   Text,
   Spinner,
 } from "@/components/ui/primitives";

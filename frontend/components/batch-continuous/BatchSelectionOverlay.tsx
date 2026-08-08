@@ -8,6 +8,7 @@ import {
   splitSelectionAcrossPages,
 } from "./batchContinuousGeometry";
 import type { DocumentPoint, PageMetric, ResizeHandle, SelectionModel } from "./batchContinuousTypes";
+import { GeometryButton } from "@/components/ui/primitives";
 
 const HANDLES: ResizeHandle[] = ["nw", "n", "ne", "e", "se", "s", "sw", "w"];
 const COMPACT_HANDLE_THRESHOLD = 64;
@@ -153,7 +154,7 @@ export function BatchSelectionOverlay({
         const compactWidth = rect.right - rect.left < COMPACT_HANDLE_THRESHOLD;
         const compactHeight = rect.bottom - rect.top < COMPACT_HANDLE_THRESHOLD;
         return (
-          <button
+          <GeometryButton
             type="button"
             key={selection.id}
             className={`batch-selection is-${selection.status}${active ? " is-active" : ""}${compactWidth ? " is-compact-width" : ""}${compactHeight ? " is-compact-height" : ""}`}
@@ -171,7 +172,7 @@ export function BatchSelectionOverlay({
             {active && selection.status === "pending" && HANDLES.map((handle) => (
               <span key={handle} className={`batch-selection-handle is-${handle}`} onPointerDown={(event) => startResize(event, selection, handle)} />
             ))}
-          </button>
+          </GeometryButton>
         );
       })}
       {draftRect && (

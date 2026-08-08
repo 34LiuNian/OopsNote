@@ -1,5 +1,5 @@
-import { modals } from "@mantine/modals";
 import type { ReactNode } from "react";
+import { modals } from "@/components/ui/primitives";
 import { formatApiError } from "@/lib/errorFormatter";
 import { notify } from "@/lib/notify";
 

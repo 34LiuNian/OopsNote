@@ -1,10 +1,9 @@
 "use client";
 
 import { useDeferredValue, useMemo, useState } from "react";
-import { PasswordInput } from "@mantine/core";
 import { CircleCheck, CircleX, Copy, PlugZap, Save, ShieldAlert, Trash2 } from "lucide-react";
 import { useAuth } from "@/components/providers/AuthProvider";
-import { Box, Button, FormControl, Heading, IconButton, Select, Spinner, Text, TextInput, Tooltip } from "@/components/ui/primitives";
+import { Box, Button, FormControl, Heading, IconButton, PasswordInput, Select, Spinner, Text, TextInput, Tooltip } from "@/components/ui/primitives";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
 import { isAdminUser } from "@/lib/auth";
 import { notify } from "@/lib/notify";
@@ -360,7 +359,8 @@ export default function AiChannelsPage() {
             <header className={styles.detailHeader}>
               <div className={styles.detailIdentity}>
                 <div className={styles.detailIconAnchor}>
-                  <button
+                  <Button
+                    variant="invisible"
                     type="button"
                     className={styles.detailIconButton}
                     aria-label="更换供应商图标"
@@ -368,7 +368,7 @@ export default function AiChannelsPage() {
                     onClick={() => setIconPickerOpen((open) => !open)}
                   >
                     <ProviderMark provider={activeDraft.provider} icon={activeDraft.icon} size={46} />
-                  </button>
+                  </Button>
                   <ProviderIconPicker
                     open={iconPickerOpen}
                     provider={activeDraft.provider}
@@ -426,9 +426,9 @@ export default function AiChannelsPage() {
                         onFocus={(event) => { if (!secretRevealed && !secretDirty && selected?.has_secret) event.currentTarget.select(); }}
                         onChange={(event) => changeSecret(event.currentTarget.value)}
                         onVisibilityChange={changeSecretVisibility}
+                        error={credentialError || undefined}
                       />
                     </div>
-                    {credentialError && <div className={styles.formError} role="alert">{credentialError}</div>}
                   </div>
                 </div>
                 {selected && <div className={styles.formRow}>

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
-import { Box, Text } from "@/components/ui/primitives";
+import { Box, Button, Text } from "@/components/ui/primitives";
 import {
   SidebarCollapseIcon,
   SidebarExpandIcon,
@@ -108,7 +108,8 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     >
       <Box className={`oops-app-shell${sidebarCollapsed ? " is-sidebar-collapsed" : ""}${secondaryView === "context" ? " is-secondary-open" : " is-secondary-closed"}`}>
         <Box as="header" className="oops-titlebar">
-          <button
+          <Button
+            variant="default"
             className="oops-titlebar__brand-toggle"
             type="button"
             onClick={togglePrimarySidebar}
@@ -124,11 +125,13 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
               </span>
             </span>
             <Text>OopsNote</Text>
-          </button>
+          </Button>
           <Text className="oops-titlebar__mobile-brand">OopsNote</Text>
-          <Box sx={{ display: "flex", alignItems: "center", gap: 3 }}>
+          <Box className="oops-titlebar__actions">
+            <Box sx={{ display: "flex", alignItems: "center", gap: 3 }}>
             <BackendStatus />
             <AccountMenu />
+            </Box>
           </Box>
         </Box>
 
@@ -146,7 +149,8 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                   className={`oops-secondary-sidebar__view oops-secondary-sidebar__view--context${secondaryView === "context" ? " is-active" : ""}`}
                 />
               </aside>
-              <button
+              <Button
+                variant="invisible"
                 type="button"
                 className={`oops-secondary-sidebar__backdrop${mobileSecondaryOpen ? " is-visible" : ""}`}
                 aria-label="关闭题库筛选"
