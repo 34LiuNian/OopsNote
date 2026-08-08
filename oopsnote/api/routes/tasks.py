@@ -43,8 +43,9 @@ class DiagramCandidateRequest(BaseModel):
 
 def _diagram_runner(*, task_id: str | None = None, item_id: str | None = None):
     api = _api()
-    runner = api.LANGCHAIN_RUNNER
-    if runner is None:
+    try:
+        runner = api._runner_for(api._configured_backend())
+    except (KeyError, RuntimeError, ValueError):
         raise api_error(
             503,
             code="diagram_runner_unavailable",
