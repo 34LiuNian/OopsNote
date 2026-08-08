@@ -64,6 +64,13 @@ def test_search_rejects_invalid_since_query_at_http_boundary():
     assert response.status_code == 422
 
 
+def test_problem_created_at_normalizes_legacy_naive_timestamp():
+    problem = Problem(created_at="2026-08-07T12:00:00")
+
+    assert problem.created_at.tzinfo is not None
+    assert problem.created_at.utcoffset().total_seconds() == 0
+
+
 def test_run_view_exposes_evidence_index_without_model_output():
     run = TaskRun(
         task_id="task-1",
