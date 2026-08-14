@@ -8,21 +8,21 @@ import queue
 import subprocess
 import threading
 import time
-from contextlib import contextmanager, nullcontext
+from collections.abc import Callable
+from contextlib import contextmanager, nullcontext, suppress
 from pathlib import Path
-from typing import Any, Callable, Optional
+from typing import Any
 
 from oopsnote.ai.managed import ManagedAiRunner
 from oopsnote.ai.process_metrics import process_working_set_bytes
-from oopsnote.ai.skills import load_skill_pack, skill_pack_version
 from oopsnote.ai.rpc import (
     PiRuntimeAdapter,
     RpcRuntimeAdapter,
     RpcWorkerState,
     RustPiRuntimeAdapter,
 )
+from oopsnote.ai.skills import load_skill_pack, skill_pack_version
 from oopsnote.core import RunStatus, StateConflict, TaskStage, TaskStatus
-
 
 _RPC_LOG_TEXT_LIMIT = 4_000
 _RPC_LIFECYCLE_EVENTS = {
@@ -47,7 +47,7 @@ def _truncate_rpc_text(value: Any) -> str:
     return text[:_RPC_LOG_TEXT_LIMIT] + "...[truncated]"
 
 
-def _compact_rpc_event(event: dict[str, Any]) -> Optional[dict[str, Any]]:
+def _compact_rpc_event(event: dict[str, Any]) -> dict[str, Any] | None:
     """Keep diagnostic RPC metadata without persisting streamed prompt content."""
     event_type = event.get("type")
     if event_type == "response":
@@ -113,8 +113,8 @@ class PiRpcBackend:
     def __init__(
         self,
         project_root: Path,
-        model: Optional[str] = None,
-        runtime: Optional[str] = None,
+        model: str | None = None,
+        runtime: str | None = None,
     ) -> None:
         self.project_root = project_root
         runtime_kind = (runtime or os.getenv("OOPSNOTE_RPC_RUNTIME", "pi")).lower()
@@ -167,10 +167,7 @@ class PiRpcRunner(ManagedAiRunner):
         self.prompt_version = skill_pack_version(self._skill_pack)
         self._execution_slots = threading.BoundedSemaphore(self.max_concurrent_tasks)
         self._mcp_cache_lock_path = (
-            self.project_root
-            / "storage"
-            / "runs"
-            / self.backend.runtime.startup_lock_name
+            self.project_root / "storage" / "runs" / self.backend.runtime.startup_lock_name
         )
         self._workers = [
             RpcWorkerState(worker_id=f"{self.backend.runtime_kind}-{index + 1}")
@@ -279,7 +276,7 @@ class PiRpcRunner(ManagedAiRunner):
                 handle.close()
 
     @staticmethod
-    def _read_stream(stream: Any, output: queue.Queue[Optional[str]]) -> None:
+    def _read_stream(stream: Any, output: queue.Queue[str | None]) -> None:
         try:
             for line in iter(stream.readline, ""):
                 output.put(line)
@@ -292,9 +289,7 @@ class PiRpcRunner(ManagedAiRunner):
             raise RuntimeError("RPC worker state is not leased to this thread")
         return worker
 
-    def _worker_for_process(
-        self, process: subprocess.Popen[str]
-    ) -> Optional[RpcWorkerState]:
+    def _worker_for_process(self, process: subprocess.Popen[str]) -> RpcWorkerState | None:
         with self._worker_map_lock:
             return self._workers_by_process.get(id(process))
 
@@ -339,7 +334,7 @@ class PiRpcRunner(ManagedAiRunner):
             self._workers_by_process[id(process)] = worker
         return process
 
-    def _live_worker(self) -> Optional[subprocess.Popen[str]]:
+    def _live_worker(self) -> subprocess.Popen[str] | None:
         worker = self._current_worker()
         process = worker.process
         if process is not None and process.poll() is None:
@@ -386,12 +381,12 @@ class PiRpcRunner(ManagedAiRunner):
     def _decode_event(self, line: str, rpc_log: Any) -> dict[str, Any]:
         try:
             event = json.loads(line)
-        except json.JSONDecodeError:
+        except json.JSONDecodeError as error:
             _write_rpc_record(
                 rpc_log,
                 {"type": "invalid_json", "preview": _truncate_rpc_text(line.rstrip())},
             )
-            raise RpcProtocolError("Pi RPC emitted invalid JSON")
+            raise RpcProtocolError("Pi RPC emitted invalid JSON") from error
         if not isinstance(event, dict):
             _write_rpc_record(
                 rpc_log,
@@ -407,7 +402,7 @@ class PiRpcRunner(ManagedAiRunner):
         self,
         process: subprocess.Popen[str],
         rpc_log: Any,
-    ) -> Optional[dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         worker = self._current_worker()
         try:
             line = worker.stdout.get(timeout=self.poll_seconds)
@@ -463,9 +458,7 @@ class PiRpcRunner(ManagedAiRunner):
         # Upstream Pi's MCP adapter has a shared metadata cache. Rust workers
         # use the application-owned bridge and start independently.
         startup_context = (
-            self._mcp_cache_lock()
-            if self.backend.runtime.serialize_startup
-            else nullcontext()
+            self._mcp_cache_lock() if self.backend.runtime.serialize_startup else nullcontext()
         )
         with startup_context:
             process = self._live_worker() or self._start_worker(task_id, run_id)
@@ -479,9 +472,9 @@ class PiRpcRunner(ManagedAiRunner):
     def _run_in_slot(self, task_id: str, run_id: str) -> None:
         log_path = self.run_store.base_dir / f"{run_id}.log"
         rpc_path = self.run_store.base_dir / f"{run_id}.rpc.jsonl"
-        process: Optional[subprocess.Popen[str]] = None
+        process: subprocess.Popen[str] | None = None
         control = None
-        peak_memory_bytes: Optional[int] = None
+        peak_memory_bytes: int | None = None
         started = time.monotonic()
         last_heartbeat = started
 
@@ -496,9 +489,7 @@ class PiRpcRunner(ManagedAiRunner):
                     rpc_log_path=f"runs/{rpc_path.name}",
                 )
                 try:
-                    process = self._worker_with_clean_session(
-                        task_id, run_id, rpc_log, started
-                    )
+                    process = self._worker_with_clean_session(task_id, run_id, rpc_log, started)
                 except Exception as error:
                     stderr_tail = self._drain_stderr(stderr_log, wait_seconds=1.0)
                     if stderr_tail:
@@ -540,8 +531,8 @@ class PiRpcRunner(ManagedAiRunner):
                 stats_saved = False
                 stats_id = f"stats-{run_id}-{turn}"
                 terminal_abort_sent = False
-                terminal_cleanup_deadline: Optional[float] = None
-                rpc_error: Optional[tuple[str, str]] = None
+                terminal_cleanup_deadline: float | None = None
+                rpc_error: tuple[str, str] | None = None
                 while process.poll() is None:
                     current_memory = process_working_set_bytes(process.pid)
                     if current_memory is not None:
@@ -569,10 +560,7 @@ class PiRpcRunner(ManagedAiRunner):
                     if event is None:
                         break
                     if event:
-                        if (
-                            not stats_requested
-                            and self.backend.is_settled_event(event)
-                        ):
+                        if not stats_requested and self.backend.is_settled_event(event):
                             settled = True
                             self._send(
                                 process,
@@ -643,18 +631,11 @@ class PiRpcRunner(ManagedAiRunner):
                         elif event.get("type") in _RPC_ERROR_EVENTS:
                             rpc_error = (
                                 str(event.get("code") or "rpc_error"),
-                                str(
-                                    event.get("message")
-                                    or event.get("error")
-                                    or "Pi RPC error"
-                                ),
+                                str(event.get("message") or event.get("error") or "Pi RPC error"),
                             )
                             self._invalidate_worker(process)
                             break
-                        elif (
-                            not terminal_abort_sent
-                            and event.get("type") == "tool_execution_end"
-                        ):
+                        elif not terminal_abort_sent and event.get("type") == "tool_execution_end":
                             observed_task = self.task_store.get(task_id)
                             if observed_task.status in {
                                 TaskStatus.COMPLETED,
@@ -713,11 +694,7 @@ class PiRpcRunner(ManagedAiRunner):
             if process is not None:
                 self._invalidate_worker(process)
             self._save_stats(run_id, {})
-            rpc_error = (
-                None
-                if exit_code not in (0, None)
-                else ("rpc_protocol_error", str(error))
-            )
+            rpc_error = None if exit_code not in (0, None) else ("rpc_protocol_error", str(error))
             self._complete_after_task(
                 task_id,
                 run_id,
@@ -732,13 +709,11 @@ class PiRpcRunner(ManagedAiRunner):
             self._fail_start(task_id, run_id, str(error), "runner_error")
         finally:
             if peak_memory_bytes is not None:
-                try:
+                with suppress(KeyError):
                     self.run_store.update(
                         run_id,
                         peak_memory_bytes=peak_memory_bytes,
                     )
-                except KeyError:
-                    pass
             if control is not None:
                 self._clear_control(task_id, control)
 
@@ -746,10 +721,8 @@ class PiRpcRunner(ManagedAiRunner):
         with self._lock:
             process = self._processes.get(task_id)
         if process and process.poll() is None and process.stdin:
-            try:
+            with suppress(BrokenPipeError, OSError):
                 self._send(process, None, {"type": "abort"})
-            except (BrokenPipeError, OSError):
-                pass
         # A pooled RPC worker stays alive; the protocol aborts only this run.
         # Terminal state still goes through the shared lifecycle helper.
         self._mark_cancelled(task_id)
@@ -765,7 +738,7 @@ class PiRpcRunner(ManagedAiRunner):
     def _send(
         self,
         process: subprocess.Popen[str],
-        rpc_log: Optional[Any],
+        rpc_log: Any | None,
         payload: dict[str, Any],
     ) -> None:
         line = json.dumps(payload, ensure_ascii=False)
@@ -865,8 +838,7 @@ class PiRpcRunner(ManagedAiRunner):
     ) -> None:
         tokens = data.get("tokens") or {}
         token_total = sum(
-            int(tokens.get(name) or 0)
-            for name in ("input", "output", "cacheRead", "cacheWrite")
+            int(tokens.get(name) or 0) for name in ("input", "output", "cacheRead", "cacheWrite")
         )
         reported_cost = data.get("cost")
         if reported_cost == 0 and token_total > 0:
@@ -875,7 +847,7 @@ class PiRpcRunner(ManagedAiRunner):
             reported_cost = None
         run = self.run_store.get(run_id)
 
-        def cumulative(field: str, observed: Any) -> Optional[int]:
+        def cumulative(field: str, observed: Any) -> int | None:
             if observed is None:
                 return None
             if run.stats_sessions and getattr(run, field) is None:
@@ -906,9 +878,9 @@ class PiRpcRunner(ManagedAiRunner):
         code: str,
         message: str,
         *,
-        exit_code: Optional[int] = None,
+        exit_code: int | None = None,
     ) -> None:
-        try:
+        with suppress(KeyError, StateConflict):
             self.task_store.transition(
                 task_id,
                 expected_statuses={TaskStatus.PROCESSING},
@@ -918,8 +890,6 @@ class PiRpcRunner(ManagedAiRunner):
                 last_error=message,
                 last_error_code=code,
             )
-        except (KeyError, StateConflict):
-            pass
         self.run_store.finish(
             run_id,
             status,
@@ -936,10 +906,10 @@ class PiRpcRunner(ManagedAiRunner):
         self,
         task_id: str,
         run_id: str,
-        exit_code: Optional[int],
+        exit_code: int | None,
         log_path: Path,
         settled: bool,
-        rpc_error: Optional[tuple[str, str]],
+        rpc_error: tuple[str, str] | None,
     ) -> None:
         task = self.task_store.get(task_id)
         if task.status == TaskStatus.CANCELLED:

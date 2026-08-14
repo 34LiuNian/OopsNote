@@ -1,17 +1,21 @@
 # Installed by 1Panel Caddy on the production host. Caddy owns all public
 # listeners and automatically obtains the origin certificates for these names.
+# 域名通过环境变量注入，启动 Caddy 前设置（见 deploy/README.md「反向代理」）：
+#   OOPSNOTE_DOMAIN      生产前端 -> 127.0.0.1:13000
+#   OOPSNOTE_DEV_DOMAIN  开发前端 -> 127.0.0.1:13001
+#   OOPSNOTE_AUTH_DOMAIN 认证入口 -> 127.0.0.1:14110
 
-oopsnote.alan-ztr.eu.org {
+{$OOPSNOTE_DOMAIN} {
     encode zstd gzip
     reverse_proxy 127.0.0.1:13000
 }
 
-dev-oopsnote.alan-ztr.eu.org {
+{$OOPSNOTE_DEV_DOMAIN} {
     encode zstd gzip
     reverse_proxy 127.0.0.1:13001
 }
 
-auth.alan-ztr.eu.org {
+{$OOPSNOTE_AUTH_DOMAIN} {
     encode zstd gzip
     reverse_proxy 127.0.0.1:14110
 }

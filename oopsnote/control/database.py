@@ -5,11 +5,10 @@ from __future__ import annotations
 import re
 import sqlite3
 import threading
+from collections.abc import Iterator
 from contextlib import contextmanager
 from importlib import resources
 from pathlib import Path
-from typing import Iterator
-
 
 _MIGRATION_NAME = re.compile(r"^(?P<version>0*[1-9][0-9]*)_[a-z0-9_]+\.sql$")
 _MIGRATION_LOCKS: dict[Path, threading.RLock] = {}

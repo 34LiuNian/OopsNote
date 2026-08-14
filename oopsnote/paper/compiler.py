@@ -9,10 +9,10 @@ import shutil
 import subprocess
 import tempfile
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
-from enum import Enum
+from enum import StrEnum
 from pathlib import Path
-from typing import Callable
 
 import httpx
 
@@ -21,7 +21,7 @@ from oopsnote.content import ContentExportError, to_latex
 from .document import PaperDiagram, PaperDocument, PaperDocumentItem
 
 
-class PaperCompileFailure(str, Enum):
+class PaperCompileFailure(StrEnum):
     INVALID_CONTENT = "invalid-content"
     MISSING_ASSET = "missing-asset"
     UNSUPPORTED_ASSET = "unsupported-asset"
@@ -117,8 +117,7 @@ class _BundleBuilder:
     @property
     def files(self) -> tuple[PaperBundleFile, ...]:
         return tuple(
-            PaperBundleFile(path, content)
-            for path, content in sorted(self._files.items())
+            PaperBundleFile(path, content) for path, content in sorted(self._files.items())
         )
 
     def _register_path(self, path: Path, *, label: str) -> str:
@@ -243,7 +242,11 @@ def _question_latex(item: PaperDocumentItem, bundle: _BundleBuilder, *, show_ans
                 r"\end{minipage}",
             ]
         )
-        parts.extend([figure, r"\hfill", text] if item.diagram.position == "left" else [text, r"\hfill", figure])
+        parts.extend(
+            [figure, r"\hfill", text]
+            if item.diagram.position == "left"
+            else [text, r"\hfill", figure]
+        )
 
     if show_answers:
         parts.append(
@@ -373,8 +376,16 @@ def compile_paper_pdf(
                     code=PaperCompileFailure.MISSING_ENGINE,
                 ) from error
             except subprocess.TimeoutExpired as error:
-                stdout = error.stdout.decode("utf-8", "replace") if isinstance(error.stdout, bytes) else error.stdout or ""
-                stderr = error.stderr.decode("utf-8", "replace") if isinstance(error.stderr, bytes) else error.stderr or ""
+                stdout = (
+                    error.stdout.decode("utf-8", "replace")
+                    if isinstance(error.stdout, bytes)
+                    else error.stdout or ""
+                )
+                stderr = (
+                    error.stderr.decode("utf-8", "replace")
+                    if isinstance(error.stderr, bytes)
+                    else error.stderr or ""
+                )
                 logs.append(f"--- pass {pass_number} ---\n{stdout}\n{stderr}")
                 raise PaperCompileError(
                     "XeLaTeX compilation timed out after 120 seconds",

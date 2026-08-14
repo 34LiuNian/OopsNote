@@ -3,22 +3,23 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import secrets
 import socket
 import threading
 import time
-from datetime import datetime, timedelta, timezone
-from typing import Any, Optional
+from datetime import UTC, datetime, timedelta
+from typing import Any
 
 import uvicorn
 
-from oopsnote.mcp.restricted import create_restricted_mcp
-from oopsnote.mcp.context import McpCapability, McpStores, activate_capability, reset_capability
 from oopsnote.core import WorkspaceId, WorkspaceStores
+from oopsnote.mcp.context import McpCapability, McpStores, activate_capability, reset_capability
+from oopsnote.mcp.restricted import create_restricted_mcp
 
 
 class _CapabilityAuthApp:
-    def __init__(self, app: Any, runtime: "SharedMcpHttpRuntime") -> None:
+    def __init__(self, app: Any, runtime: SharedMcpHttpRuntime) -> None:
         self.app = app
         self.runtime = runtime
 
@@ -27,7 +28,11 @@ class _CapabilityAuthApp:
             headers = dict(scope.get("headers") or [])
             raw = headers.get(b"authorization", b"")
             prefix = b"Bearer "
-            token = raw[len(prefix):].decode("ascii", errors="ignore") if raw.startswith(prefix) else ""
+            token = (
+                raw[len(prefix) :].decode("ascii", errors="ignore")
+                if raw.startswith(prefix)
+                else ""
+            )
             try:
                 capability = self.runtime.capability_for_token(token)
             except KeyError:
@@ -55,11 +60,11 @@ class SharedMcpHttpRuntime:
 
     def __init__(self) -> None:
         self._lock = threading.Lock()
-        self._server: Optional[uvicorn.Server] = None
-        self._thread: Optional[threading.Thread] = None
-        self._socket: Optional[socket.socket] = None
-        self._url: Optional[str] = None
-        self._token: Optional[str] = None
+        self._server: uvicorn.Server | None = None
+        self._thread: threading.Thread | None = None
+        self._socket: socket.socket | None = None
+        self._url: str | None = None
+        self._token: str | None = None
         self._tokens: dict[str, McpCapability | None] = {}
         self._workspace_tokens: dict[WorkspaceId, str] = {}
 
@@ -144,7 +149,7 @@ class SharedMcpHttpRuntime:
                         asset_store=stores.asset_store,
                         run_store=stores.run_store,
                     ),
-                    expires_at=datetime.now(timezone.utc) + timedelta(seconds=max(60, ttl_seconds)),
+                    expires_at=datetime.now(UTC) + timedelta(seconds=max(60, ttl_seconds)),
                 )
             return {"OOPSNOTE_MCP_URL": self._url, "OOPSNOTE_MCP_TOKEN": token}
 
@@ -176,10 +181,8 @@ class SharedMcpHttpRuntime:
         if thread is not None:
             thread.join(timeout=5)
         if listener is not None:
-            try:
+            with contextlib.suppress(OSError):
                 listener.close()
-            except OSError:
-                pass
 
 
 __all__ = ["SharedMcpHttpRuntime"]

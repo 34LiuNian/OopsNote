@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import threading
 from dataclasses import dataclass
-from pathlib import Path
 
 from oopsnote.catalog import KNOWLEDGE_TAGS_PATH, KNOWLEDGE_TREES_PATH
 

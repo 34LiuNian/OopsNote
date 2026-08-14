@@ -2,14 +2,14 @@
 
 from __future__ import annotations
 
-import os
-import logging
 import base64
 import hashlib
 import hmac
 import json
+import logging
+import os
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from functools import lru_cache
 from typing import Any
 from uuid import UUID
@@ -18,7 +18,6 @@ import jwt
 from fastapi import Request
 
 from oopsnote.core import Principal, UserRole
-
 
 logger = logging.getLogger(__name__)
 
@@ -147,7 +146,7 @@ def authenticate_internal_request(
     if method != request.method.upper() or path != request.url.path:
         raise AuthenticationError("Internal identity does not match this request")
 
-    current_time = now if now is not None else int(datetime.now(timezone.utc).timestamp())
+    current_time = now if now is not None else int(datetime.now(UTC).timestamp())
     age = current_time - issued_at
     if age > config.max_age_seconds or age < -config.max_future_skew_seconds:
         raise AuthenticationError("Internal identity has expired")
@@ -188,7 +187,9 @@ def authenticate_request(request: Request, config: AuthConfig) -> AuthenticatedU
         )
     except jwt.PyJWKClientConnectionError as error:
         logger.error("OIDC JWKS retrieval failed from %s: %s", config.jwks_url, error)
-        raise AuthenticationError("Authentication service is temporarily unavailable", status_code=503) from error
+        raise AuthenticationError(
+            "Authentication service is temporarily unavailable", status_code=503
+        ) from error
     except jwt.PyJWKClientError as error:
         raise AuthenticationError(f"Invalid token: {error}") from error
     except jwt.InvalidTokenError as error:
@@ -238,13 +239,23 @@ def require_admin_request(request: Request) -> AuthenticatedUser | Principal | N
     if not config.enabled:
         host = (request.client.host if request.client else "").strip().lower()
         if host not in {"127.0.0.1", "::1", "localhost", "testclient"}:
-            raise AuthenticationError("Administrator access requires OIDC outside loopback", status_code=403)
+            raise AuthenticationError(
+                "Administrator access requires OIDC outside loopback", status_code=403
+            )
         return None
     user = getattr(request.state, "auth", None)
     if not isinstance(user, AuthenticatedUser):
         raise AuthenticationError("Missing authenticated user")
-    subjects = {value.strip() for value in os.getenv("OOPSNOTE_ADMIN_SUBJECTS", "").split(",") if value.strip()}
-    roles = {value.strip() for value in os.getenv("OOPSNOTE_ADMIN_ROLES", "admin").split(",") if value.strip()}
+    subjects = {
+        value.strip()
+        for value in os.getenv("OOPSNOTE_ADMIN_SUBJECTS", "").split(",")
+        if value.strip()
+    }
+    roles = {
+        value.strip()
+        for value in os.getenv("OOPSNOTE_ADMIN_ROLES", "admin").split(",")
+        if value.strip()
+    }
     if user.subject in subjects or _claim_values(user.claims).intersection(roles):
         return user
     raise AuthenticationError("Administrator role is required", status_code=403)

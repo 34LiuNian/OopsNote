@@ -15,16 +15,14 @@ from fastapi.testclient import TestClient
 from starlette.requests import Request
 
 from oopsnote.api import main
-from oopsnote.api.routes import catalog
 from oopsnote.api.auth import (
     AuthenticationError,
     InternalIdentityConfig,
     authenticate_internal_request,
 )
-from oopsnote.core import Principal, UserRole
+from oopsnote.api.routes import catalog
 from oopsnote.control import ControlDatabase, WorkspaceRegistry
-from oopsnote.core import WorkspaceStoreFactory
-
+from oopsnote.core import Principal, UserRole, WorkspaceStoreFactory
 
 SECRET = b"test-only-bff-secret-that-is-at-least-32-bytes"
 
@@ -54,12 +52,16 @@ def _signed_identity(**overrides: object) -> tuple[dict[str, object], str, str]:
         "path": "/tasks",
         **overrides,
     }
-    encoded = base64.urlsafe_b64encode(
-        json.dumps(payload, separators=(",", ":")).encode("utf-8")
-    ).rstrip(b"=").decode("ascii")
-    signature = base64.urlsafe_b64encode(
-        hmac.new(SECRET, encoded.encode("ascii"), hashlib.sha256).digest()
-    ).rstrip(b"=").decode("ascii")
+    encoded = (
+        base64.urlsafe_b64encode(json.dumps(payload, separators=(",", ":")).encode("utf-8"))
+        .rstrip(b"=")
+        .decode("ascii")
+    )
+    signature = (
+        base64.urlsafe_b64encode(hmac.new(SECRET, encoded.encode("ascii"), hashlib.sha256).digest())
+        .rstrip(b"=")
+        .decode("ascii")
+    )
     return payload, encoded, signature
 
 
@@ -83,7 +85,7 @@ def test_valid_identity_binds_user_role_method_path_and_time():
 def test_identity_rejects_replayed_request_shape_or_expired_timestamp(method, path, now):
     _payload, encoded, signature = _signed_identity()
 
-    with pytest.raises(AuthenticationError, match="(match|expired)"):
+    with pytest.raises(AuthenticationError, match=r"(match|expired)"):
         authenticate_internal_request(
             _request(method, path, encoded, signature),
             InternalIdentityConfig(SECRET),
@@ -146,12 +148,15 @@ def test_better_auth_app_startup_rejects_short_bff_secret():
         "OOPSNOTE_BFF_HMAC_SECRET": "too-short",
     }
 
-    with patch.dict("os.environ", environment, clear=False), pytest.raises(
-        RuntimeError,
-        match="at least 32 bytes",
+    with (
+        patch.dict("os.environ", environment, clear=False),
+        pytest.raises(
+            RuntimeError,
+            match="at least 32 bytes",
+        ),
+        TestClient(main.app),
     ):
-        with TestClient(main.app):
-            pass
+        pass
 
 
 def test_better_auth_requests_use_the_authenticated_user_workspace(monkeypatch, tmp_path):
@@ -344,16 +349,20 @@ def test_global_tag_dimension_settings_require_an_administrator(monkeypatch, tmp
                 method="PUT",
                 path="/settings/tag-dimensions",
             )
-            responses.append(client.put(
-                "/settings/tag-dimensions",
-                headers={"x-oopsnote-identity": encoded, "x-oopsnote-signature": signature},
-                json={"dimensions": {}},
-            ))
+            responses.append(
+                client.put(
+                    "/settings/tag-dimensions",
+                    headers={"x-oopsnote-identity": encoded, "x-oopsnote-signature": signature},
+                    json={"dimensions": {}},
+                )
+            )
 
     assert [response.status_code for response in responses] == [403, 200]
 
 
-def test_better_auth_admin_can_manage_quota_without_entering_member_workspace(monkeypatch, tmp_path):
+def test_better_auth_admin_can_manage_quota_without_entering_member_workspace(
+    monkeypatch, tmp_path
+):
     registry = WorkspaceRegistry(
         ControlDatabase(tmp_path / "control" / "app.sqlite"),
         tmp_path / "storage",
@@ -400,12 +409,15 @@ def test_better_auth_admin_can_manage_quota_without_entering_member_workspace(mo
         "daily_success_limit": 8,
         "max_concurrent_runs": 2,
     }
-    assert registry.require(Principal("auth-member", UserRole.USER)).root != registry.require(
-        Principal("auth-admin", UserRole.ADMIN)
-    ).root
+    assert (
+        registry.require(Principal("auth-member", UserRole.USER)).root
+        != registry.require(Principal("auth-admin", UserRole.ADMIN)).root
+    )
 
 
-def test_better_auth_self_provision_applies_invitation_quota_only_to_the_signed_user(monkeypatch, tmp_path):
+def test_better_auth_self_provision_applies_invitation_quota_only_to_the_signed_user(
+    monkeypatch, tmp_path
+):
     registry = WorkspaceRegistry(
         ControlDatabase(tmp_path / "control" / "app.sqlite"),
         tmp_path / "storage",

@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 from fastapi import HTTPException
 
 
-class ApiErrorCategory(str, Enum):
+class ApiErrorCategory(StrEnum):
     REQUEST = "request"
     MODEL_REQUEST = "model_request"
     TIKZ_COMPILE = "tikz_compile"
@@ -16,36 +16,42 @@ class ApiErrorCategory(str, Enum):
     INTERNAL = "internal"
 
 
-_MODEL_CODES = frozenset({
-    "connection_error",
-    "network_error",
-    "ocr_network_error",
-    "ocr_provider_unavailable",
-    "ocr_rate_limit",
-    "ocr_timeout",
-    "provider_authorization",
-    "provider_model_unavailable",
-    "provider_rate_limit",
-    "provider_unavailable",
-    "rate_limit",
-    "rate_limit_exceeded",
-    "service_unavailable",
-    "model_output_invalid",
-    "diagram_runner_unavailable",
-})
-_TIKZ_CODES = frozenset({
-    "invalid_tikz_source",
-    "renderer_contract_error",
-    "renderer_failed",
-    "renderer_timeout",
-    "renderer_unavailable",
-})
-_REVIEW_CODES = frozenset({
-    "diagram_candidate_limit",
-    "ocr_unreadable",
-    "ocr_incomplete",
-    "ocr_multiple_questions",
-})
+_MODEL_CODES = frozenset(
+    {
+        "connection_error",
+        "network_error",
+        "ocr_network_error",
+        "ocr_provider_unavailable",
+        "ocr_rate_limit",
+        "ocr_timeout",
+        "provider_authorization",
+        "provider_model_unavailable",
+        "provider_rate_limit",
+        "provider_unavailable",
+        "rate_limit",
+        "rate_limit_exceeded",
+        "service_unavailable",
+        "model_output_invalid",
+        "diagram_runner_unavailable",
+    }
+)
+_TIKZ_CODES = frozenset(
+    {
+        "invalid_tikz_source",
+        "renderer_contract_error",
+        "renderer_failed",
+        "renderer_timeout",
+        "renderer_unavailable",
+    }
+)
+_REVIEW_CODES = frozenset(
+    {
+        "diagram_candidate_limit",
+        "ocr_unreadable",
+        "ocr_incomplete",
+        "ocr_multiple_questions",
+    }
+)
 
 
 def category_for_error_code(

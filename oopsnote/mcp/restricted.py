@@ -2,14 +2,13 @@
 
 from __future__ import annotations
 
-from typing import Annotated, Literal, Optional
+from typing import Annotated, Literal
 
 from mcp.server.fastmcp import FastMCP
 from pydantic import Field
 
 from oopsnote.core import TagDimension, subjects_match
-from oopsnote.mcp import server
-from oopsnote.mcp import ocr
+from oopsnote.mcp import ocr, server
 from oopsnote.mcp.tool_registry import AI_TOOL_NAMES, MANAGED_TOOL_DEFINITIONS
 
 
@@ -23,7 +22,7 @@ def _require_verifier_context(task_id: str, run_id: str):
     return task
 
 
-def _managed_subject(task, subject: Optional[str]) -> str:
+def _managed_subject(task, subject: str | None) -> str:
     requested = (subject or "").strip()
     if task.subject not in {"", "auto"}:
         if requested and not subjects_match(requested, task.subject):
@@ -40,11 +39,9 @@ def managed_list_tags(
     dimension: Literal["knowledge", "error", "meta", "custom"],
     task_id: str,
     run_id: str,
-    subject: Optional[str] = None,
-    scope: Optional[str] = "core",
-    branch_ids: Optional[
-        Annotated[list[str], Field(min_length=1, max_length=6)]
-    ] = None,
+    subject: str | None = None,
+    scope: str | None = "core",
+    branch_ids: Annotated[list[str], Field(min_length=1, max_length=6)] | None = None,
 ):
     """List tags for one active run and remember its selected knowledge branches."""
 
@@ -109,7 +106,7 @@ def managed_list_tags(
     return result
 
 
-def _existing_error_equivalent(value: str, subject: str) -> Optional[str]:
+def _existing_error_equivalent(value: str, subject: str) -> str | None:
     normalized = value.strip().casefold()
     for item in server._stores().tag_store.search(
         dimension=TagDimension.ERROR,
@@ -129,8 +126,8 @@ def managed_create_tag(
     value: str,
     task_id: str,
     run_id: str,
-    aliases: Optional[list[str]] = None,
-    subject: Optional[str] = None,
+    aliases: list[str] | None = None,
+    subject: str | None = None,
 ):
     """Create only an error tag for one active managed run."""
 
@@ -227,9 +224,9 @@ if __name__ == "__main__":
 
 
 __all__ = [
+    "AI_TOOL_NAMES",
     "create_restricted_mcp",
     "managed_create_tag",
-    "managed_ocr_image",
     "managed_list_tags",
-    "AI_TOOL_NAMES",
+    "managed_ocr_image",
 ]

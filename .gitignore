@@ -17,8 +17,11 @@ oopsnote/storage/
 
 # Server-only Pocket ID runtime secrets and state
 /deploy/pocket-id/pocket-id.env
-/deploy/pocket-id/secrets/
-/deploy/oopsnote/secrets/
+/deploy/pocket-id/secrets/*
+!/deploy/pocket-id/secrets/*.example
+/deploy/oopsnote/secrets/*
+!/deploy/oopsnote/secrets/*.example
+!/deploy/oopsnote/secrets/README.md
 
 # Temp files
 /_tmp/
@@ -93,3 +96,10 @@ venv/
 # Local Codex and renderer configuration
 /.codex/
 /deploy/latex-renderer/.env.local
+
+# Local Compose environment (template: .env.example)
+/.env
+
+# uv cache
+/.uv-cache/
+/.uv-cache-*/

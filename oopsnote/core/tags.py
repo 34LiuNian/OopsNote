@@ -5,11 +5,11 @@ from __future__ import annotations
 import json
 import threading
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 from oopsnote.catalog import KNOWLEDGE_TAGS_PATH, KNOWLEDGE_TREES_PATH
 
-from .models import TagCreateRequest, TagDimension, TagItem
+from .models import TagDimension, TagItem
 from .subjects import canonical_subject
 
 
@@ -26,17 +26,17 @@ class TagStore:
 
     def __init__(
         self,
-        user_path: Optional[Path] = None,
-        builtin_path: Optional[Path] = None,
-        tree_path: Optional[Path] = None,
+        user_path: Path | None = None,
+        builtin_path: Path | None = None,
+        tree_path: Path | None = None,
     ) -> None:
         base = Path(__file__).resolve().parents[1] / "storage" / "settings"
         base.mkdir(parents=True, exist_ok=True)
         self.user_path = user_path or base / "tags_user.json"
         self.builtin_path = builtin_path or KNOWLEDGE_TAGS_PATH
         self.tree_path = tree_path or KNOWLEDGE_TREES_PATH
-        self._builtin_cache: Optional[list[TagItem]] = None
-        self._tree_cache: Optional[dict[str, Any]] = None
+        self._builtin_cache: list[TagItem] | None = None
+        self._tree_cache: dict[str, Any] | None = None
 
     # ── 加载 ──────────────────────────────────────────
 
@@ -77,7 +77,7 @@ class TagStore:
         builtin = self._load_builtin()
         user = self._load_user()
         # User tags override a builtin with the same dimension, subject, and value.
-        seen: set[tuple[TagDimension, Optional[str], str]] = set()
+        seen: set[tuple[TagDimension, str | None, str]] = set()
         result: list[TagItem] = []
         for item in user + builtin:
             key = (item.dimension, canonical_subject(item.subject), item.value.casefold())
@@ -96,12 +96,12 @@ class TagStore:
 
     def search(
         self,
-        dimension: Optional[TagDimension] = None,
-        query: Optional[str] = None,
-        limit: Optional[int] = 50,
+        dimension: TagDimension | None = None,
+        query: str | None = None,
+        limit: int | None = 50,
         *,
-        subject: Optional[str] = None,
-        scope: Optional[str] = None,
+        subject: str | None = None,
+        scope: str | None = None,
     ) -> list[TagItem]:
         """搜索标签（按 value 或 alias 匹配）。"""
         q = (query or "").strip().casefold()
@@ -111,21 +111,22 @@ class TagStore:
         if subject:
             requested_subject = canonical_subject(subject)
             items = [
-                t for t in items
+                t
+                for t in items
                 if canonical_subject(t.subject) == requested_subject
                 or (t.subject is None and t.dimension != TagDimension.KNOWLEDGE)
             ]
         if scope:
             items = [
-                t for t in items
-                if t.source == "user" or scope == t.scope or scope in t.scopes
+                t for t in items if t.source == "user" or scope == t.scope or scope in t.scopes
             ]
         if q:
             items = [
-                t for t in items
-                if q in t.value.casefold()
-                or any(q in a.casefold() for a in t.aliases)
+                t
+                for t in items
+                if q in t.value.casefold() or any(q in a.casefold() for a in t.aliases)
             ]
+
         def rank(item: TagItem) -> tuple[int, int, int, str]:
             if not q:
                 match_rank = 0
@@ -158,14 +159,14 @@ class TagStore:
             items = unique
         if limit is None:
             return items
-        return items[:max(1, limit)]
+        return items[: max(1, limit)]
 
     def ai_values(
         self,
         dimension: TagDimension,
         *,
-        subject: Optional[str] = None,
-        scope: Optional[str] = None,
+        subject: str | None = None,
+        scope: str | None = None,
     ) -> list[str]:
         """Return all compact values for a non-knowledge AI tag dimension."""
 
@@ -188,7 +189,7 @@ class TagStore:
         return tree["root"]
 
     @staticmethod
-    def _leaf_nodes(node: dict[str, Any], scope: Optional[str]) -> list[dict[str, Any]]:
+    def _leaf_nodes(node: dict[str, Any], scope: str | None) -> list[dict[str, Any]]:
         if node.get("is_leaf"):
             return [node] if not scope or node.get("scope") == scope else []
         leaves: list[dict[str, Any]] = []
@@ -200,7 +201,7 @@ class TagStore:
         self,
         subject: str,
         *,
-        scope: Optional[str] = "core",
+        scope: str | None = "core",
     ) -> list[dict[str, Any]]:
         """Return compact level-one groups and selectable level-two branches."""
 
@@ -224,7 +225,7 @@ class TagStore:
         subject: str,
         branch_ids: list[str],
         *,
-        scope: Optional[str] = "core",
+        scope: str | None = "core",
     ) -> list[str]:
         """Return leaf values below one to six selected level-two branches."""
 
@@ -258,7 +259,7 @@ class TagStore:
         root = self._knowledge_subject_root(subject)
         return {str(node["title"]) for node in self._leaf_nodes(root, scope=None)}
 
-    def knowledge_tree(self, subject: Optional[str] = None) -> dict[str, Any]:
+    def knowledge_tree(self, subject: str | None = None) -> dict[str, Any]:
         """Return the cleaned tracked knowledge tree, optionally for one subject."""
 
         if self._tree_cache is not None:
@@ -283,8 +284,8 @@ class TagStore:
         self,
         dimension: TagDimension,
         value: str,
-        aliases: Optional[list[str]] = None,
-        subject: Optional[str] = None,
+        aliases: list[str] | None = None,
+        subject: str | None = None,
     ) -> TagItem:
         """创建或更新标签。已存在则合并 aliases。"""
         value = value.strip()
@@ -310,6 +311,7 @@ class TagStore:
                     return item
             # 新建
             from uuid import uuid4
+
             new_item = TagItem(
                 id=uuid4().hex,
                 dimension=dimension,
@@ -333,7 +335,7 @@ class TagStore:
                 return True
         return False
 
-    def get_by_id(self, tag_id: str) -> Optional[TagItem]:
+    def get_by_id(self, tag_id: str) -> TagItem | None:
         for item in self._all_items():
             if item.id == tag_id:
                 return item

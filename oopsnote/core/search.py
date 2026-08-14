@@ -6,7 +6,6 @@
 from __future__ import annotations
 
 import re
-from typing import Optional
 
 from .models import Problem, SearchQuery, TaskRecord
 
@@ -27,7 +26,7 @@ class Searcher:
 
         # 按时间倒序
         results.sort(key=lambda p: p.created_at, reverse=True)
-        return results[:max(1, query.limit)]
+        return results[: max(1, query.limit)]
 
     @staticmethod
     def _match(p: Problem, q: SearchQuery) -> bool:
@@ -43,9 +42,10 @@ class Searcher:
                 return False
 
         # error_type
-        if q.error_type:
-            if q.error_type.casefold() not in {e.casefold() for e in p.error_hypothesis}:
-                return False
+        if q.error_type and q.error_type.casefold() not in {
+            e.casefold() for e in p.error_hypothesis
+        }:
+            return False
 
         # since
         if q.since:

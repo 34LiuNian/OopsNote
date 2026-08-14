@@ -26,9 +26,21 @@ from oopsnote.ai.providers import (
     collect_unreferenced_channel_secrets,
     profile_for_channel_model,
 )
-from oopsnote.ai.secrets import EncryptedFileSecretStore, MemorySecretStore, SecretStoreCorruptionError
+from oopsnote.ai.secrets import (
+    EncryptedFileSecretStore,
+    MemorySecretStore,
+    SecretStoreCorruptionError,
+)
+from oopsnote.core import (
+    AppSettingsStore,
+    RunStatus,
+    RunStore,
+    TaskCreateRequest,
+    TaskStage,
+    TaskStatus,
+    TaskStore,
+)
 from oopsnote.mcp import ocr
-from oopsnote.core import AppSettingsStore, RunStatus, RunStore, TaskCreateRequest, TaskStage, TaskStatus, TaskStore
 from oopsnote.mcp.contracts import load_tool_contract
 
 
@@ -70,12 +82,14 @@ class FakeProviderFactory:
         parameter_overrides=None,
     ):
         del profile
-        return model.bind_tools(langchain_tool_schemas(
-            tool_names,
-            constants=constants,
-            required_arguments=required_arguments,
-            parameter_overrides=parameter_overrides,
-        ))
+        return model.bind_tools(
+            langchain_tool_schemas(
+                tool_names,
+                constants=constants,
+                required_arguments=required_arguments,
+                parameter_overrides=parameter_overrides,
+            )
+        )
 
 
 class ReturningToolClient:
@@ -84,7 +98,9 @@ class ReturningToolClient:
         return {"ok": True}
 
 
-def model_response(round_number: int, *, tool: str | None = None, input_tokens: int = 0, output_tokens: int = 0):
+def model_response(
+    round_number: int, *, tool: str | None = None, input_tokens: int = 0, output_tokens: int = 0
+):
     calls = [] if tool is None else [{"name": tool, "args": {}, "id": f"call-{round_number}"}]
     return SimpleNamespace(
         tool_calls=calls,
@@ -102,18 +118,32 @@ def langchain_runner_fixture(tmp_path, model, tool_client=None, *, timeout_secon
     vault = MemorySecretStore()
     reference = vault.put("provider-secret")
     channel = ProviderChannel(
-        id="primary", version=1, display_name="Primary", provider="deepseek",
-        base_url="https://provider.example", credential_ref=reference,
-        models=(ChannelModel(
-            id="model", source="DeepSeek", enabled=True,
-            capability=ProviderCapabilities(tool_calling=True, vision=True),
-        ),),
+        id="primary",
+        version=1,
+        display_name="Primary",
+        provider="deepseek",
+        base_url="https://provider.example",
+        credential_ref=reference,
+        models=(
+            ChannelModel(
+                id="model",
+                source="DeepSeek",
+                enabled=True,
+                capability=ProviderCapabilities(tool_calling=True, vision=True),
+            ),
+        ),
     )
     settings.upsert_provider_channel(channel)
     selection = StageModelSelection(channel_id=channel.id, model_id="model")
-    settings.set_langchain_model_policy(LangChainModelPolicy(
-        version=1, vision=selection, agent=selection, review=selection, diagram=selection,
-    ))
+    settings.set_langchain_model_policy(
+        LangChainModelPolicy(
+            version=1,
+            vision=selection,
+            agent=selection,
+            review=selection,
+            diagram=selection,
+        )
+    )
     factory = FakeProviderFactory(model, vault)
     runner = LangChainRunner(
         project_root=Path(__file__).resolve().parents[1],
@@ -169,11 +199,17 @@ def test_provider_profile_public_view_never_exposes_credential_reference():
         ("google", True),
     ],
 )
-def test_vision_ocr_model_uses_native_json_mode_only_when_supported(monkeypatch, provider, expects_json_mode):
+def test_vision_ocr_model_uses_native_json_mode_only_when_supported(
+    monkeypatch, provider, expects_json_mode
+):
     vault = MemorySecretStore()
     profile = ProviderProfile(
-        id="vision", version=1, provider=provider, model="vision-model",
-        base_url="https://provider.example/v1", credential_ref=vault.put("secret"),
+        id="vision",
+        version=1,
+        provider=provider,
+        model="vision-model",
+        base_url="https://provider.example/v1",
+        credential_ref=vault.put("secret"),
     )
     calls = []
 
@@ -189,11 +225,13 @@ def test_vision_ocr_model_uses_native_json_mode_only_when_supported(monkeypatch,
 
     if expects_json_mode:
         assert result == "json-mode-model"
-        assert calls == [(
-            {"response_mime_type": "application/json", "temperature": 0}
-            if provider == "google"
-            else {"response_format": {"type": "json_object"}, "temperature": 0}
-        )]
+        assert calls == [
+            (
+                {"response_mime_type": "application/json", "temperature": 0}
+                if provider == "google"
+                else {"response_format": {"type": "json_object"}, "temperature": 0}
+            )
+        ]
     else:
         assert isinstance(result, FakeModel)
         assert calls == []
@@ -203,12 +241,20 @@ def test_provider_api_reports_unavailable_vault_instead_of_missing_secrets(monke
     from oopsnote.api import main
 
     settings = AppSettingsStore(tmp_path / "settings.json")
-    settings.upsert_provider_channel(ProviderChannel(
-        id="primary", version=1, display_name="Primary", provider="deepseek",
-        base_url="https://provider.example/v1", credential_ref="missing-ref",
-    ))
+    settings.upsert_provider_channel(
+        ProviderChannel(
+            id="primary",
+            version=1,
+            display_name="Primary",
+            provider="deepseek",
+            base_url="https://provider.example/v1",
+            credential_ref="missing-ref",
+        )
+    )
     monkeypatch.setattr(main, "APP_SETTINGS_STORE", settings)
-    monkeypatch.setattr(main, "get_secret_store", lambda: (_ for _ in ()).throw(RuntimeError("unavailable")))
+    monkeypatch.setattr(
+        main, "get_secret_store", lambda: (_ for _ in ()).throw(RuntimeError("unavailable"))
+    )
 
     response = TestClient(main.app).get("/settings/ai/channels")
 
@@ -220,10 +266,16 @@ def test_provider_api_reports_unreadable_vault_instead_of_crashing(monkeypatch, 
     from oopsnote.api import main
 
     settings = AppSettingsStore(tmp_path / "settings.json")
-    settings.upsert_provider_channel(ProviderChannel(
-        id="primary", version=1, display_name="Primary", provider="deepseek",
-        base_url="https://provider.example/v1", credential_ref="unreadable-ref",
-    ))
+    settings.upsert_provider_channel(
+        ProviderChannel(
+            id="primary",
+            version=1,
+            display_name="Primary",
+            provider="deepseek",
+            base_url="https://provider.example/v1",
+            credential_ref="unreadable-ref",
+        )
+    )
 
     class UnreadableVault:
         def has(self, _reference):
@@ -250,7 +302,10 @@ def test_channel_connectivity_check_returns_redacted_provider_evidence(monkeypat
     settings = AppSettingsStore(tmp_path / "settings.json")
     vault = MemorySecretStore()
     configured = ProviderChannel(
-        id="primary", version=1, display_name="Primary", provider="deepseek",
+        id="primary",
+        version=1,
+        display_name="Primary",
+        provider="deepseek",
         credential_ref=vault.put("secret"),
         models=(ChannelModel(id="model", source="DeepSeek", enabled=True),),
     )
@@ -258,11 +313,16 @@ def test_channel_connectivity_check_returns_redacted_provider_evidence(monkeypat
     monkeypatch.setattr(main, "APP_SETTINGS_STORE", settings)
     monkeypatch.setattr(main, "get_secret_store", lambda: vault)
     validation = ProviderValidationResult(
-        success=True, provider="deepseek", model="model", latency_ms=12,
+        success=True,
+        provider="deepseek",
+        model="model",
+        latency_ms=12,
         message="Connection validated",
     )
 
-    with patch("oopsnote.api.routes.ai_settings.ProviderClientFactory.check", return_value=validation) as check:
+    with patch(
+        "oopsnote.api.routes.ai_settings.ProviderClientFactory.check", return_value=validation
+    ) as check:
         response = TestClient(main.app).post(
             "/settings/ai/channels/primary/check",
             json={"model_id": "model"},
@@ -281,13 +341,19 @@ def test_channel_reorder_route_requires_one_complete_order(monkeypatch, tmp_path
 
     settings = AppSettingsStore(tmp_path / "settings.json")
     vault = MemorySecretStore()
-    settings.upsert_provider_channel(ProviderChannel(id="first", version=1, display_name="First", provider="deepseek"))
-    settings.upsert_provider_channel(ProviderChannel(id="second", version=1, display_name="Second", provider="deepseek"))
+    settings.upsert_provider_channel(
+        ProviderChannel(id="first", version=1, display_name="First", provider="deepseek")
+    )
+    settings.upsert_provider_channel(
+        ProviderChannel(id="second", version=1, display_name="Second", provider="deepseek")
+    )
     monkeypatch.setattr(main, "APP_SETTINGS_STORE", settings)
     monkeypatch.setattr(main, "get_secret_store", lambda: vault)
     client = TestClient(main.app)
 
-    response = client.patch("/settings/ai/channels/order", json={"channel_ids": ["second", "first"]})
+    response = client.patch(
+        "/settings/ai/channels/order", json={"channel_ids": ["second", "first"]}
+    )
     invalid = client.patch("/settings/ai/channels/order", json={"channel_ids": ["second"]})
 
     assert response.status_code == 200
@@ -303,33 +369,55 @@ def test_model_policy_selects_the_vision_stage(monkeypatch, tmp_path):
     vault = MemorySecretStore()
     reference = vault.put("ocr-secret")
     channel = ProviderChannel(
-        id="ocr", version=1, display_name="OCR", provider="openai-compatible",
-        base_url="https://ocr.example/v1", credential_ref=reference,
+        id="ocr",
+        version=1,
+        display_name="OCR",
+        provider="openai-compatible",
+        base_url="https://ocr.example/v1",
+        credential_ref=reference,
         models=(
-            ChannelModel(id="vision-model", source="OCR", enabled=True, capability=ProviderCapabilities(vision=True)),
-            ChannelModel(id="agent-model", source="OCR", enabled=True, capability=ProviderCapabilities(tool_calling=True)),
+            ChannelModel(
+                id="vision-model",
+                source="OCR",
+                enabled=True,
+                capability=ProviderCapabilities(vision=True),
+            ),
+            ChannelModel(
+                id="agent-model",
+                source="OCR",
+                enabled=True,
+                capability=ProviderCapabilities(tool_calling=True),
+            ),
         ),
     )
     settings.upsert_provider_channel(channel)
     monkeypatch.setattr(main, "APP_SETTINGS_STORE", settings)
     monkeypatch.setattr(main, "get_secret_store", lambda: vault)
 
-    incomplete = TestClient(main.app).put("/settings/ai/policy", json={
-        "vision": {"channel_id": "ocr", "model_id": "vision-model"},
-        "agent": {"channel_id": "ocr", "model_id": "agent-model"},
-        "review": {"channel_id": "ocr", "model_id": "agent-model"},
-    })
+    incomplete = TestClient(main.app).put(
+        "/settings/ai/policy",
+        json={
+            "vision": {"channel_id": "ocr", "model_id": "vision-model"},
+            "agent": {"channel_id": "ocr", "model_id": "agent-model"},
+            "review": {"channel_id": "ocr", "model_id": "agent-model"},
+        },
+    )
     assert incomplete.status_code == 422
 
-    response = TestClient(main.app).put("/settings/ai/policy", json={
-        "vision": {"channel_id": "ocr", "model_id": "vision-model"},
-        "agent": {"channel_id": "ocr", "model_id": "agent-model"},
-        "review": {"channel_id": "ocr", "model_id": "agent-model"},
-        "diagram": {"channel_id": "ocr", "model_id": "vision-model"},
-    })
+    response = TestClient(main.app).put(
+        "/settings/ai/policy",
+        json={
+            "vision": {"channel_id": "ocr", "model_id": "vision-model"},
+            "agent": {"channel_id": "ocr", "model_id": "agent-model"},
+            "review": {"channel_id": "ocr", "model_id": "agent-model"},
+            "diagram": {"channel_id": "ocr", "model_id": "vision-model"},
+        },
+    )
 
     assert response.status_code == 200
-    assert settings.langchain_model_policy().vision == StageModelSelection(channel_id="ocr", model_id="vision-model")
+    assert settings.langchain_model_policy().vision == StageModelSelection(
+        channel_id="ocr", model_id="vision-model"
+    )
 
     disabled = TestClient(main.app).patch(
         "/settings/ai/channels/ocr/models/vision-model",
@@ -339,7 +427,9 @@ def test_model_policy_selects_the_vision_stage(monkeypatch, tmp_path):
     assert disabled.status_code == 200
     assert "policy_cleared" not in disabled.json()
     assert settings.langchain_model_policy() is not None
-    assert settings.langchain_model_policy().agent == StageModelSelection(channel_id="ocr", model_id="agent-model")
+    assert settings.langchain_model_policy().agent == StageModelSelection(
+        channel_id="ocr", model_id="agent-model"
+    )
 
 
 def test_provider_rotation_commits_a_validated_new_nonsecret_version(monkeypatch, tmp_path):
@@ -349,18 +439,32 @@ def test_provider_rotation_commits_a_validated_new_nonsecret_version(monkeypatch
     vault = MemorySecretStore()
     old_reference = vault.put("old-secret")
     old = ProviderChannel(
-        id="primary", version=3, display_name="Primary", provider="deepseek",
-        base_url="https://old.example/v1", credential_ref=old_reference,
-        models=(ChannelModel(id="old-model", source="DeepSeek", enabled=True, capability=ProviderCapabilities(tool_calling=True)),),
+        id="primary",
+        version=3,
+        display_name="Primary",
+        provider="deepseek",
+        base_url="https://old.example/v1",
+        credential_ref=old_reference,
+        models=(
+            ChannelModel(
+                id="old-model",
+                source="DeepSeek",
+                enabled=True,
+                capability=ProviderCapabilities(tool_calling=True),
+            ),
+        ),
     )
     settings.upsert_provider_channel(old)
     monkeypatch.setattr(main, "APP_SETTINGS_STORE", settings)
     monkeypatch.setattr(main, "RUN_STORE", RunStore(tmp_path / "storage" / "runs"))
     monkeypatch.setattr(main, "get_secret_store", lambda: vault)
 
-    with patch("oopsnote.api.routes.ai_settings.ProviderClientFactory.discover_models", return_value=[
-        ChannelModel(id="old-model", source="DeepSeek"),
-    ]):
+    with patch(
+        "oopsnote.api.routes.ai_settings.ProviderClientFactory.discover_models",
+        return_value=[
+            ChannelModel(id="old-model", source="DeepSeek"),
+        ],
+    ):
         response = TestClient(main.app).post(
             "/settings/ai/channels/primary/credential",
             json={"secret": "new-secret"},
@@ -398,13 +502,15 @@ def test_admin_can_reveal_one_channel_credential_without_cache_headers(monkeypat
     settings = AppSettingsStore(tmp_path / "settings.json")
     vault = MemorySecretStore()
     reference = vault.put("stored-secret")
-    settings.upsert_provider_channel(ProviderChannel(
-        id="primary",
-        version=1,
-        display_name="Primary",
-        provider="deepseek",
-        credential_ref=reference,
-    ))
+    settings.upsert_provider_channel(
+        ProviderChannel(
+            id="primary",
+            version=1,
+            display_name="Primary",
+            provider="deepseek",
+            credential_ref=reference,
+        )
+    )
     monkeypatch.setattr(main, "APP_SETTINGS_STORE", settings)
     monkeypatch.setattr(main, "RUN_STORE", RunStore(tmp_path / "storage" / "runs"))
     monkeypatch.setattr(main, "get_secret_store", lambda: vault)
@@ -422,12 +528,14 @@ def test_revealing_a_missing_channel_credential_is_explicit(monkeypatch, tmp_pat
     from oopsnote.api import main
 
     settings = AppSettingsStore(tmp_path / "settings.json")
-    settings.upsert_provider_channel(ProviderChannel(
-        id="primary",
-        version=1,
-        display_name="Primary",
-        provider="deepseek",
-    ))
+    settings.upsert_provider_channel(
+        ProviderChannel(
+            id="primary",
+            version=1,
+            display_name="Primary",
+            provider="deepseek",
+        )
+    )
     monkeypatch.setattr(main, "APP_SETTINGS_STORE", settings)
     monkeypatch.setattr(main, "RUN_STORE", RunStore(tmp_path / "storage" / "runs"))
     monkeypatch.setattr(main, "get_secret_store", MemorySecretStore)
@@ -444,24 +552,46 @@ def test_rotating_a_channel_does_not_change_the_global_policy(monkeypatch, tmp_p
     settings = AppSettingsStore(tmp_path / "settings.json")
     vault = MemorySecretStore()
     active = ProviderChannel(
-        id="active", version=1, display_name="Active", provider="deepseek",
-        base_url="https://active.example/v1", credential_ref=vault.put("active-secret"),
-        models=(ChannelModel(id="active-model", source="DeepSeek", enabled=True, capability=ProviderCapabilities(tool_calling=True, vision=True)),),
+        id="active",
+        version=1,
+        display_name="Active",
+        provider="deepseek",
+        base_url="https://active.example/v1",
+        credential_ref=vault.put("active-secret"),
+        models=(
+            ChannelModel(
+                id="active-model",
+                source="DeepSeek",
+                enabled=True,
+                capability=ProviderCapabilities(tool_calling=True, vision=True),
+            ),
+        ),
     )
     inactive = ProviderChannel(
-        id="inactive", version=1, display_name="Inactive", provider="deepseek",
-        base_url="https://inactive.example/v1", credential_ref=vault.put("old-secret"),
+        id="inactive",
+        version=1,
+        display_name="Inactive",
+        provider="deepseek",
+        base_url="https://inactive.example/v1",
+        credential_ref=vault.put("old-secret"),
         models=(ChannelModel(id="old-model", source="DeepSeek"),),
     )
     settings.upsert_provider_channel(active)
     settings.upsert_provider_channel(inactive)
     selection = StageModelSelection(channel_id="active", model_id="active-model")
-    settings.set_langchain_model_policy(LangChainModelPolicy(version=1, vision=selection, agent=selection, review=selection, diagram=selection))
+    settings.set_langchain_model_policy(
+        LangChainModelPolicy(
+            version=1, vision=selection, agent=selection, review=selection, diagram=selection
+        )
+    )
     monkeypatch.setattr(main, "APP_SETTINGS_STORE", settings)
     monkeypatch.setattr(main, "RUN_STORE", RunStore(tmp_path / "storage" / "runs"))
     monkeypatch.setattr(main, "get_secret_store", lambda: vault)
 
-    with patch("oopsnote.api.routes.ai_settings.ProviderClientFactory.discover_models", return_value=[ChannelModel(id="old-model", source="DeepSeek")]):
+    with patch(
+        "oopsnote.api.routes.ai_settings.ProviderClientFactory.discover_models",
+        return_value=[ChannelModel(id="old-model", source="DeepSeek")],
+    ):
         response = TestClient(main.app).post(
             "/settings/ai/channels/inactive/credential",
             json={"secret": "new-secret"},
@@ -480,8 +610,12 @@ def test_failed_provider_validation_keeps_previous_profile_and_secret(monkeypatc
     vault = MemorySecretStore()
     old_reference = vault.put("old-secret")
     channel = ProviderChannel(
-        id="primary", version=2, display_name="Primary", provider="deepseek",
-        base_url="https://provider.example/v1", credential_ref=old_reference,
+        id="primary",
+        version=2,
+        display_name="Primary",
+        provider="deepseek",
+        base_url="https://provider.example/v1",
+        credential_ref=old_reference,
     )
     settings.upsert_provider_channel(channel)
     monkeypatch.setattr(main, "APP_SETTINGS_STORE", settings)
@@ -495,7 +629,10 @@ def test_failed_provider_validation_keeps_previous_profile_and_secret(monkeypatc
         message="Provider connection validation failed",
     )
 
-    with patch("oopsnote.api.routes.ai_settings.ProviderClientFactory.discover_models", side_effect=ProviderConnectionError(validation)):
+    with patch(
+        "oopsnote.api.routes.ai_settings.ProviderClientFactory.discover_models",
+        side_effect=ProviderConnectionError(validation),
+    ):
         response = TestClient(main.app).post(
             "/settings/ai/channels/primary/credential",
             json={"secret": "invalid-secret"},
@@ -543,13 +680,18 @@ def test_legacy_model_and_ocr_import_create_channels_without_persisting_secrets(
     auth = tmp_path / "auth.json"
     auth.write_text(json.dumps({"deepseek": {"key": "model-secret"}}), encoding="utf-8")
     extensions = tmp_path / "extensions.json"
-    extensions.write_text(json.dumps({
-        "ocr_image": {
-            "dashscope_api_key": "ocr-secret",
-            "model": "vision-model",
-            "endpoint": "https://ocr.example/v1",
-        }
-    }), encoding="utf-8")
+    extensions.write_text(
+        json.dumps(
+            {
+                "ocr_image": {
+                    "dashscope_api_key": "ocr-secret",
+                    "model": "vision-model",
+                    "endpoint": "https://ocr.example/v1",
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
     settings = AppSettingsStore(tmp_path / "settings.json")
     vault = MemorySecretStore()
 
@@ -575,7 +717,9 @@ def test_legacy_model_and_ocr_import_create_channels_without_persisting_secrets(
     assert vault.get(model_channel.credential_ref) == "model-secret"
     assert vault.get(ocr_channel.credential_ref) == "ocr-secret"
     assert settings.provider_channels() == [model_channel, ocr_channel]
-    assert all(not item.enabled for channel in settings.provider_channels() for item in channel.models)
+    assert all(
+        not item.enabled for channel in settings.provider_channels() for item in channel.models
+    )
 
 
 def test_reference_collection_waits_for_active_runs_then_deletes_old_secret(tmp_path):
@@ -583,8 +727,12 @@ def test_reference_collection_waits_for_active_runs_then_deletes_old_secret(tmp_
     old_reference = vault.put("old")
     current_reference = vault.put("current")
     profile = ProviderProfile(
-        id="primary", version=2, provider="deepseek", model="m",
-        base_url="https://provider.example", credential_ref=current_reference,
+        id="primary",
+        version=2,
+        provider="deepseek",
+        model="m",
+        base_url="https://provider.example",
+        credential_ref=current_reference,
     )
     task_store = TaskStore(tmp_path / "storage")
     run_store = RunStore(tmp_path / "storage" / "runs")
@@ -611,7 +759,9 @@ def test_langchain_tools_are_derived_from_the_canonical_mcp_contract():
     schemas = langchain_tool_schemas()
 
     assert [item["function"]["name"] for item in schemas] == [item["name"] for item in contract]
-    assert [item["function"]["parameters"] for item in schemas] == [item["parameters"] for item in contract]
+    assert [item["function"]["parameters"] for item in schemas] == [
+        item["parameters"] for item in contract
+    ]
 
 
 def test_contract_dispatcher_only_accepts_canonical_tool_names():
@@ -662,16 +812,20 @@ def test_contract_dispatcher_rejects_stale_phase_call_before_mcp_execution():
         ["mcp__oopsnote_pipeline_list_tags"],
         constants={"mcp__oopsnote_pipeline_list_tags": {"dimension": "error"}},
     )
-    result = asyncio.run(dispatcher.call_many(
-        [{
-            "name": "mcp__oopsnote_pipeline_list_tags",
-            "args": {"dimension": "knowledge"},
-            "id": "stale-call",
-        }],
-        allowed_parameters={
-            schema["function"]["name"]: schema["function"]["parameters"],
-        },
-    ))
+    result = asyncio.run(
+        dispatcher.call_many(
+            [
+                {
+                    "name": "mcp__oopsnote_pipeline_list_tags",
+                    "args": {"dimension": "knowledge"},
+                    "id": "stale-call",
+                }
+            ],
+            allowed_parameters={
+                schema["function"]["name"]: schema["function"]["parameters"],
+            },
+        )
+    )
 
     assert isinstance(result[0], ValueError)
     assert "current pipeline transition" in str(result[0])
@@ -691,24 +845,33 @@ def test_contract_dispatcher_binds_authoritative_phase_arguments():
     [schema] = langchain_tool_schemas([name], constants=constants)
     dispatcher = ContractBoundToolDispatcher(Client(), task_id="active-task", run_id="active-run")
 
-    result = asyncio.run(dispatcher.call_many(
-        [{
-            "name": name,
-            "args": {"dimension": "error", "subject": "math"},
-            "id": "call-1",
-        }],
-        allowed_parameters={name: schema["function"]["parameters"]},
-        fixed_arguments=constants,
-    ))
+    result = asyncio.run(
+        dispatcher.call_many(
+            [
+                {
+                    "name": name,
+                    "args": {"dimension": "error", "subject": "math"},
+                    "id": "call-1",
+                }
+            ],
+            allowed_parameters={name: schema["function"]["parameters"]},
+            fixed_arguments=constants,
+        )
+    )
 
     assert result == [{"ok": True}]
-    assert calls == [("list_tags", {
-        "dimension": "knowledge",
-        "subject": "数学",
-        "scope": "core",
-        "task_id": "active-task",
-        "run_id": "active-run",
-    })]
+    assert calls == [
+        (
+            "list_tags",
+            {
+                "dimension": "knowledge",
+                "subject": "数学",
+                "scope": "core",
+                "task_id": "active-task",
+                "run_id": "active-run",
+            },
+        )
+    ]
 
 
 def test_contract_dispatcher_preserves_terminal_write_barriers():
@@ -752,7 +915,11 @@ def test_contract_dispatcher_uses_canonical_barriers_for_all_state_writes():
     dispatcher = ContractBoundToolDispatcher(Client(), task_id="t", run_id="r")
     calls = [
         {"name": "mcp__oopsnote_pipeline_get_task", "args": {}, "id": "1"},
-        {"name": "mcp__oopsnote_pipeline_create_tag", "args": {"dimension": "error", "value": "x"}, "id": "2"},
+        {
+            "name": "mcp__oopsnote_pipeline_create_tag",
+            "args": {"dimension": "error", "value": "x"},
+            "id": "2",
+        },
         {"name": "mcp__oopsnote_pipeline_list_tags", "args": {"dimension": "error"}, "id": "3"},
     ]
 
@@ -770,7 +937,11 @@ def test_ocr_vault_configuration_does_not_fall_back_to_legacy_file(monkeypatch):
 
     try:
         config = ocr._load_ocr_config()
-        assert config == {"dashscope_api_key": "vault-only-secret", "model": "vision", "endpoint": "https://ocr.example/v1"}
+        assert config == {
+            "dashscope_api_key": "vault-only-secret",
+            "model": "vision",
+            "endpoint": "https://ocr.example/v1",
+        }
     finally:
         ocr.clear_ocr_vault()
 
@@ -792,15 +963,37 @@ def test_stage_snapshot_is_durable_when_channel_rotates(tmp_path):
     task_store = TaskStore(tmp_path / "storage")
     run_store = RunStore(tmp_path / "storage" / "runs")
     first = ProviderChannel(
-        id="p", version=1, display_name="P", provider="deepseek",
-        base_url="https://provider.example", credential_ref="old-ref",
-        models=(ChannelModel(id="old", source="DeepSeek", enabled=True, capability=ProviderCapabilities(tool_calling=True, vision=True)),),
+        id="p",
+        version=1,
+        display_name="P",
+        provider="deepseek",
+        base_url="https://provider.example",
+        credential_ref="old-ref",
+        models=(
+            ChannelModel(
+                id="old",
+                source="DeepSeek",
+                enabled=True,
+                capability=ProviderCapabilities(tool_calling=True, vision=True),
+            ),
+        ),
     )
     settings.upsert_provider_channel(first)
     task = task_store.create(TaskCreateRequest(subject="math"))
     profile = profile_for_channel_model(first, "old")
-    run = run_store.create(task.id, backend="langchain", provider_profile_snapshot={"policy_version": 1, "vision": profile.model_dump(mode="json"), "agent": profile.model_dump(mode="json"), "review": profile.model_dump(mode="json")})
-    settings.upsert_provider_channel(first.model_copy(update={"version": 2, "credential_ref": "new-ref"}))
+    run = run_store.create(
+        task.id,
+        backend="langchain",
+        provider_profile_snapshot={
+            "policy_version": 1,
+            "vision": profile.model_dump(mode="json"),
+            "agent": profile.model_dump(mode="json"),
+            "review": profile.model_dump(mode="json"),
+        },
+    )
+    settings.upsert_provider_channel(
+        first.model_copy(update={"version": 2, "credential_ref": "new-ref"})
+    )
 
     assert run_store.get(run.id).provider_profile_snapshot["agent"]["credential_ref"] == "old-ref"
     assert settings.provider_channels()[0].credential_ref == "new-ref"
@@ -808,15 +1001,30 @@ def test_stage_snapshot_is_durable_when_channel_rotates(tmp_path):
 
 def test_global_stage_policy_is_frozen_at_run_admission(tmp_path):
     model = ScriptedModel([model_response(1)])
-    runner, task_store, run_store, vault, _ = langchain_runner_fixture(tmp_path, model)
+    runner, task_store, _run_store, vault, _ = langchain_runner_fixture(tmp_path, model)
     selected = ProviderChannel(
-        id="selected", version=4, display_name="Selected", provider="openai-compatible",
-        base_url="https://selected.example/v1", credential_ref=vault.put("selected-secret"),
-        models=(ChannelModel(id="selected-model", source="Selected", enabled=True, capability=ProviderCapabilities(tool_calling=True, vision=True)),),
+        id="selected",
+        version=4,
+        display_name="Selected",
+        provider="openai-compatible",
+        base_url="https://selected.example/v1",
+        credential_ref=vault.put("selected-secret"),
+        models=(
+            ChannelModel(
+                id="selected-model",
+                source="Selected",
+                enabled=True,
+                capability=ProviderCapabilities(tool_calling=True, vision=True),
+            ),
+        ),
     )
     runner.settings_store.upsert_provider_channel(selected)
     selection = StageModelSelection(channel_id="selected", model_id="selected-model")
-    runner.settings_store.set_langchain_model_policy(LangChainModelPolicy(version=2, vision=selection, agent=selection, review=selection, diagram=selection))
+    runner.settings_store.set_langchain_model_policy(
+        LangChainModelPolicy(
+            version=2, vision=selection, agent=selection, review=selection, diagram=selection
+        )
+    )
     task = task_store.create(TaskCreateRequest(subject="math"))
 
     run = runner.enqueue(task.id)
@@ -834,7 +1042,10 @@ def test_provider_channel_used_by_active_run_cannot_be_deleted(monkeypatch, tmp_
     settings = AppSettingsStore(tmp_path / "settings.json")
     vault = MemorySecretStore()
     channel = ProviderChannel(
-        id="active", version=1, display_name="Active", provider="deepseek",
+        id="active",
+        version=1,
+        display_name="Active",
+        provider="deepseek",
         credential_ref=vault.put("secret"),
     )
     settings.upsert_provider_channel(channel)
@@ -844,7 +1055,9 @@ def test_provider_channel_used_by_active_run_cannot_be_deleted(monkeypatch, tmp_
     run_store.create(
         task.id,
         backend="langchain",
-        provider_profile_snapshot={"agent": {"channel_id": channel.id, "credential_ref": channel.credential_ref}},
+        provider_profile_snapshot={
+            "agent": {"channel_id": channel.id, "credential_ref": channel.credential_ref}
+        },
     )
     monkeypatch.setattr(main, "APP_SETTINGS_STORE", settings)
     monkeypatch.setattr(main, "TASK_STORE", task_store)
@@ -866,13 +1079,28 @@ def test_fresh_retry_keeps_failed_run_profile_snapshot(tmp_path):
     task_store = TaskStore(tmp_path / "storage")
     run_store = RunStore(tmp_path / "storage" / "runs")
     old = ProviderChannel(
-        id="p", version=1, display_name="P", provider="deepseek",
-        base_url="https://provider.example", credential_ref="old-ref",
-        models=(ChannelModel(id="old", source="DeepSeek", enabled=True, capability=ProviderCapabilities(tool_calling=True, vision=True)),),
+        id="p",
+        version=1,
+        display_name="P",
+        provider="deepseek",
+        base_url="https://provider.example",
+        credential_ref="old-ref",
+        models=(
+            ChannelModel(
+                id="old",
+                source="DeepSeek",
+                enabled=True,
+                capability=ProviderCapabilities(tool_calling=True, vision=True),
+            ),
+        ),
     )
     settings.upsert_provider_channel(old)
     selection = StageModelSelection(channel_id="p", model_id="old")
-    settings.set_langchain_model_policy(LangChainModelPolicy(version=1, vision=selection, agent=selection, review=selection, diagram=selection))
+    settings.set_langchain_model_policy(
+        LangChainModelPolicy(
+            version=1, vision=selection, agent=selection, review=selection, diagram=selection
+        )
+    )
     runner = LangChainRunner(
         project_root=Path(__file__).resolve().parents[1],
         task_store=task_store,
@@ -897,7 +1125,9 @@ def test_fresh_retry_keeps_failed_run_profile_snapshot(tmp_path):
     )
     run_store.finish(failed.id, RunStatus.FAILED)
     task_store.mark_status(task.id, TaskStatus.FAILED, "transient")
-    settings.upsert_provider_channel(old.model_copy(update={"version": 2, "credential_ref": "new-ref"}))
+    settings.upsert_provider_channel(
+        old.model_copy(update={"version": 2, "credential_ref": "new-ref"})
+    )
 
     retry = runner.enqueue(task.id, retry_of=run_store.get(failed.id))
 
@@ -916,8 +1146,12 @@ def test_provider_factory_leaves_run_timeout_to_managed_lifecycle(monkeypatch):
     vault = MemorySecretStore()
     reference = vault.put("secret")
     profile = ProviderProfile(
-        id="p", version=1, provider="openai-compatible", model="m",
-        base_url="https://provider.example", credential_ref=reference,
+        id="p",
+        version=1,
+        provider="openai-compatible",
+        model="m",
+        base_url="https://provider.example",
+        credential_ref=reference,
     )
 
     ProviderClientFactory(vault).create_chat_model(profile)
@@ -942,8 +1176,12 @@ def test_google_provider_uses_the_selected_channel_base_url(monkeypatch):
     )
     vault = MemorySecretStore()
     profile = ProviderProfile(
-        id="google", version=1, provider="google", model="gemini-3.6-flash",
-        base_url="https://gateway.example/v1beta", credential_ref=vault.put("secret"),
+        id="google",
+        version=1,
+        provider="google",
+        model="gemini-3.6-flash",
+        base_url="https://gateway.example/v1beta",
+        credential_ref=vault.put("secret"),
     )
 
     ProviderClientFactory(vault).create_chat_model(profile)
@@ -970,7 +1208,10 @@ def test_provider_factory_configures_dashscope_non_thinking_tool_loop(monkeypatc
     vault = MemorySecretStore()
     reference = vault.put("secret")
     profile = ProviderProfile(
-        id="p", version=1, provider="openai", model="qwen3.7-flash",
+        id="p",
+        version=1,
+        provider="openai",
+        model="qwen3.7-flash",
         base_url="https://llm-b36ftbhf6tqtv374.cn-beijing.maas.aliyuncs.com/compatible-mode/v1",
         credential_ref=reference,
     )
@@ -998,8 +1239,12 @@ def test_provider_factory_configures_deepseek_non_thinking_tool_loop(monkeypatch
     monkeypatch.setitem(sys.modules, "langchain_deepseek", SimpleNamespace(ChatDeepSeek=ChatModel))
     vault = MemorySecretStore()
     profile = ProviderProfile(
-        id="p", version=1, provider="deepseek", model="deepseek-v4-flash",
-        base_url="https://api.deepseek.com/v1", credential_ref=vault.put("secret"),
+        id="p",
+        version=1,
+        provider="deepseek",
+        model="deepseek-v4-flash",
+        base_url="https://api.deepseek.com/v1",
+        credential_ref=vault.put("secret"),
     )
 
     factory = ProviderClientFactory(vault)
@@ -1022,8 +1267,12 @@ def test_deepseek_profile_on_custom_gateway_uses_openai_compatible_adapter(monke
     monkeypatch.setitem(sys.modules, "langchain_openai", SimpleNamespace(ChatOpenAI=ChatModel))
     vault = MemorySecretStore()
     profile = ProviderProfile(
-        id="gateway", version=1, provider="deepseek", model="gemini-3.6-flash",
-        base_url="https://modelflare.dev", credential_ref=vault.put("secret"),
+        id="gateway",
+        version=1,
+        provider="deepseek",
+        model="gemini-3.6-flash",
+        base_url="https://modelflare.dev",
+        credential_ref=vault.put("secret"),
     )
 
     ProviderClientFactory(vault).create_chat_model(profile)
@@ -1038,7 +1287,7 @@ def test_langchain_places_immutable_rules_in_system_message(tmp_path):
     from langchain_core.messages import HumanMessage, SystemMessage
 
     model = ScriptedModel([model_response(1)])
-    runner, task_store, run_store, vault, profile = langchain_runner_fixture(tmp_path, model)
+    runner, task_store, _run_store, vault, profile = langchain_runner_fixture(tmp_path, model)
     task = task_store.create(TaskCreateRequest(subject="math", metadata={"notes": "untrusted"}))
     run = runner.enqueue(task.id)
     ocr.configure_ocr_vault(vault, profile.credential_ref, model="ocr")
@@ -1062,7 +1311,9 @@ def test_langchain_phase_tool_sets_are_disjoint_from_illegal_capabilities():
     assert "mcp__oopsnote_pipeline_ocr_image" not in LangChainRunner._REVIEW_TOOL_NAMES
     assert "ocr_image" not in LangChainRunner._REVIEW_TOOL_NAMES
     assert "mcp__oopsnote_pipeline_finalize_task" in LangChainRunner._REVIEW_TOOL_NAMES
-    assert "mcp__oopsnote_pipeline_submit_solution_candidate" not in LangChainRunner._REVIEW_TOOL_NAMES
+    assert (
+        "mcp__oopsnote_pipeline_submit_solution_candidate" not in LangChainRunner._REVIEW_TOOL_NAMES
+    )
 
 
 def test_langchain_tag_selection_advances_to_error_catalog_without_branch_metadata():
@@ -1072,14 +1323,18 @@ def test_langchain_tag_selection_advances_to_error_catalog_without_branch_metada
     task = SimpleNamespace(
         stage=TaskStage.TAGGING,
         subject="math",
-        metadata={"_managed_tag_selection": {
-            "run_id": "run-1",
-            "subject": "math",
-            "scope": "core",
-            "branch_ids": ["algebra"],
-        }},
+        metadata={
+            "_managed_tag_selection": {
+                "run_id": "run-1",
+                "subject": "math",
+                "scope": "core",
+                "branch_ids": ["algebra"],
+            }
+        },
     )
-    run = SimpleNamespace(id="run-1", solution_candidate=SimpleNamespace(problem=SimpleNamespace(subject="math")))
+    run = SimpleNamespace(
+        id="run-1", solution_candidate=SimpleNamespace(problem=SimpleNamespace(subject="math"))
+    )
 
     names, constants, required, overrides = runner._tool_binding_for(
         task=task,
@@ -1101,12 +1356,16 @@ def test_langchain_tool_schema_restrictions_are_derived_without_mutating_contrac
         [tool_name],
         constants={tool_name: {"dimension": "knowledge", "subject": "math"}},
         required_arguments={tool_name: ("branch_ids",)},
-        parameter_overrides={tool_name: {"branch_ids": {
-            "items": {"type": "string", "enum": ["algebra"]},
-            "minItems": 1,
-            "maxItems": 1,
-            "type": "array",
-        }}},
+        parameter_overrides={
+            tool_name: {
+                "branch_ids": {
+                    "items": {"type": "string", "enum": ["algebra"]},
+                    "minItems": 1,
+                    "maxItems": 1,
+                    "type": "array",
+                }
+            }
+        },
     )
     parameters = schema["function"]["parameters"]
 
@@ -1123,7 +1382,11 @@ def test_tool_call_summary_redacts_content_and_keeps_repeat_fingerprint():
 
     call = {
         "name": "mcp__oopsnote_pipeline_list_tags",
-        "args": {"dimension": "knowledge", "branch_ids": ["algebra"], "message": "untrusted content"},
+        "args": {
+            "dimension": "knowledge",
+            "branch_ids": ["algebra"],
+            "message": "untrusted content",
+        },
     }
     summary = LangChainRunner._tool_call_summary(call)
 
@@ -1145,14 +1408,18 @@ def test_tool_result_summary_does_not_persist_error_content():
 
 
 def test_langchain_no_tool_event_does_not_persist_model_content(tmp_path):
-    model = ScriptedModel([SimpleNamespace(
-        tool_calls=[],
-        invalid_tool_calls=[],
-        content="model text must not be persisted",
-        usage_metadata={},
-        response_metadata={"finish_reason": "stop"},
-        additional_kwargs={},
-    )])
+    model = ScriptedModel(
+        [
+            SimpleNamespace(
+                tool_calls=[],
+                invalid_tool_calls=[],
+                content="model text must not be persisted",
+                usage_metadata={},
+                response_metadata={"finish_reason": "stop"},
+                additional_kwargs={},
+            )
+        ]
+    )
     runner, task_store, run_store, vault, profile = langchain_runner_fixture(tmp_path, model)
     task = task_store.create(TaskCreateRequest(subject="math"))
     run = runner.enqueue(task.id)
@@ -1170,7 +1437,13 @@ def test_langchain_no_tool_event_does_not_persist_model_content(tmp_path):
 def test_langchain_invalid_tool_call_has_bounded_in_run_recovery(tmp_path):
     invalid = SimpleNamespace(
         tool_calls=[],
-        invalid_tool_calls=[{"name": "mcp__oopsnote_pipeline_submit_solution_candidate", "args": "", "error": "truncated"}],
+        invalid_tool_calls=[
+            {
+                "name": "mcp__oopsnote_pipeline_submit_solution_candidate",
+                "args": "",
+                "error": "truncated",
+            }
+        ],
         content="",
         usage_metadata={},
         response_metadata={"finish_reason": "length"},
@@ -1218,7 +1491,9 @@ def test_langchain_invalid_tool_calls_are_acknowledged_before_next_model_request
         ocr.clear_ocr_vault()
 
     second_request = model.messages[1]
-    assert [message.tool_call_id for message in second_request if hasattr(message, "tool_call_id")] == [
+    assert [
+        message.tool_call_id for message in second_request if hasattr(message, "tool_call_id")
+    ] == [
         "bad-1",
         "bad-2",
     ]
@@ -1229,15 +1504,21 @@ def test_langchain_invalid_tool_calls_are_acknowledged_before_next_model_request
 def test_langchain_truncated_tool_call_is_removed_even_when_ids_are_complete(tmp_path):
     invalid = SimpleNamespace(
         tool_calls=[],
-        invalid_tool_calls=[{"id": "bad-1", "name": "candidate", "args": "{", "error": "truncated"}],
+        invalid_tool_calls=[
+            {"id": "bad-1", "name": "candidate", "args": "{", "error": "truncated"}
+        ],
         content="",
         usage_metadata={},
         response_metadata={"finish_reason": "length"},
-        additional_kwargs={"tool_calls": [{
-            "id": "bad-1",
-            "type": "function",
-            "function": {"name": "candidate", "arguments": "{"},
-        }]},
+        additional_kwargs={
+            "tool_calls": [
+                {
+                    "id": "bad-1",
+                    "type": "function",
+                    "function": {"name": "candidate", "arguments": "{"},
+                }
+            ]
+        },
     )
     model = ScriptedModel([invalid])
     runner, task_store, run_store, vault, profile = langchain_runner_fixture(tmp_path, model)
@@ -1262,10 +1543,14 @@ def test_langchain_invalid_tool_call_without_id_is_removed_from_history(tmp_path
         content="",
         usage_metadata={},
         response_metadata={"finish_reason": "tool_calls"},
-        additional_kwargs={"tool_calls": [{
-            "type": "function",
-            "function": {"name": "candidate", "arguments": "{"},
-        }]},
+        additional_kwargs={
+            "tool_calls": [
+                {
+                    "type": "function",
+                    "function": {"name": "candidate", "arguments": "{"},
+                }
+            ]
+        },
     )
     model = ScriptedModel([invalid])
     runner, task_store, run_store, vault, profile = langchain_runner_fixture(tmp_path, model)
@@ -1348,15 +1633,21 @@ def test_langchain_timeout_covers_inflight_tool_call(tmp_path):
             started.set()
             await asyncio.Event().wait()
 
-    model = ScriptedModel([SimpleNamespace(
-        tool_calls=[{
-            "name": "mcp__oopsnote_pipeline_report_task_stage",
-            "args": {"stage": "ocr"},
-            "id": "call-1",
-        }],
-        usage_metadata={},
-        response_metadata={},
-    )])
+    model = ScriptedModel(
+        [
+            SimpleNamespace(
+                tool_calls=[
+                    {
+                        "name": "mcp__oopsnote_pipeline_report_task_stage",
+                        "args": {"stage": "ocr"},
+                        "id": "call-1",
+                    }
+                ],
+                usage_metadata={},
+                response_metadata={},
+            )
+        ]
+    )
     runner, task_store, run_store, vault, profile = langchain_runner_fixture(
         tmp_path, model, BlockingToolClient(), timeout_seconds=1
     )
@@ -1374,7 +1665,9 @@ def test_langchain_timeout_covers_inflight_tool_call(tmp_path):
 
 
 @pytest.mark.parametrize("phase", ["model", "tool"])
-def test_langchain_cancel_stops_active_async_work_without_overwriting_terminal_state(tmp_path, phase):
+def test_langchain_cancel_stops_active_async_work_without_overwriting_terminal_state(
+    tmp_path, phase
+):
     started = threading.Event()
 
     class BlockingModel(ScriptedModel):
@@ -1414,7 +1707,13 @@ def test_langchain_cancel_stops_active_async_work_without_overwriting_terminal_s
 
 @pytest.mark.parametrize(
     ("status", "expected"),
-    [(401, "provider_authorization"), (403, "provider_authorization"), (429, "rate_limit"), (503, "provider_unavailable"), (404, "runner_error")],
+    [
+        (401, "provider_authorization"),
+        (403, "provider_authorization"),
+        (429, "rate_limit"),
+        (503, "provider_unavailable"),
+        (404, "runner_error"),
+    ],
 )
 def test_langchain_provider_status_classification(status, expected):
     from oopsnote.ai.backends.langchain import LangChainRunner
@@ -1428,7 +1727,9 @@ def test_langchain_event_writer_redacts_credentials(tmp_path):
     from oopsnote.ai.backends.langchain import LangChainRunner
 
     path = tmp_path / "events.jsonl"
-    LangChainRunner._event(path, "run_started", {"model": "m", "credential_ref": "opaque", "secret": "never-log"})
+    LangChainRunner._event(
+        path, "run_started", {"model": "m", "credential_ref": "opaque", "secret": "never-log"}
+    )
 
     rendered = path.read_text(encoding="utf-8")
     assert "credential_ref" not in rendered

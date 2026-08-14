@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Any, ClassVar, Optional
+from typing import Any, ClassVar
 from uuid import uuid4
 
 from oopsnote.mcp.tool_registry import AI_TOOL_NAMES
@@ -21,7 +22,7 @@ class RpcRuntimeAdapter(ABC):
     default_command: ClassVar[str]
     serialize_startup: ClassVar[bool] = False
 
-    def __init__(self, project_root: Path, model: Optional[str] = None) -> None:
+    def __init__(self, project_root: Path, model: str | None = None) -> None:
         self.project_root = project_root
         self.config_dir = project_root / self.config_dir_name
         self.config = self._load_config()
@@ -32,14 +33,11 @@ class RpcRuntimeAdapter(ABC):
             or not all(isinstance(part, str) and part for part in command)
         ):
             raise ValueError(
-                f"{self.config_dir_name}/runtime.json command must be a "
-                "non-empty string array"
+                f"{self.config_dir_name}/runtime.json command must be a non-empty string array"
             )
         self.command = command
         self.model = (
-            model
-            or self.config.get("model")
-            or os.getenv("OOPSNOTE_AI_MODEL", "deepseek-v4-flash")
+            model or self.config.get("model") or os.getenv("OOPSNOTE_AI_MODEL", "deepseek-v4-flash")
         )
         self.provider = self.config.get("provider") or os.getenv(
             "OOPSNOTE_PI_PROVIDER",
@@ -61,9 +59,7 @@ class RpcRuntimeAdapter(ABC):
                 f"Invalid {self.display_name} runtime config: {self.runtime_path}"
             ) from error
         if not isinstance(data, dict):
-            raise ValueError(
-                f"{self.config_dir_name}/runtime.json must contain a JSON object"
-            )
+            raise ValueError(f"{self.config_dir_name}/runtime.json must contain a JSON object")
         return data
 
     def build_command(self, task_id: str, run_id: str) -> list[str]:
@@ -96,7 +92,7 @@ class RpcRuntimeAdapter(ABC):
         """Return runtime-specific environment overrides for a child process."""
         return {}
 
-    def cleanup(self) -> None:
+    def cleanup(self) -> None:  # noqa: B027 - deliberate no-op default; only PiRuntimeAdapter overrides
         """Remove runtime-owned ephemeral configuration."""
 
     @abstractmethod
@@ -118,9 +114,9 @@ class PiRuntimeAdapter(RpcRuntimeAdapter):
     default_command = "pi"
     serialize_startup = True
 
-    def __init__(self, project_root: Path, model: Optional[str] = None) -> None:
+    def __init__(self, project_root: Path, model: str | None = None) -> None:
         super().__init__(project_root, model=model)
-        self._managed_mcp_config_path: Optional[Path] = None
+        self._managed_mcp_config_path: Path | None = None
 
     def restricted_cli_args(self) -> list[str]:
         return ["--no-builtin-tools", "--no-extensions"]
@@ -161,17 +157,15 @@ class PiRuntimeAdapter(RpcRuntimeAdapter):
         )
 
     @property
-    def managed_mcp_config_path(self) -> Optional[Path]:
+    def managed_mcp_config_path(self) -> Path | None:
         return self._managed_mcp_config_path
 
     def cleanup(self) -> None:
         path = self._managed_mcp_config_path
         self._managed_mcp_config_path = None
         if path is not None:
-            try:
+            with contextlib.suppress(OSError):
                 path.unlink(missing_ok=True)
-            except OSError:
-                pass
 
     def is_settled_event(self, event: dict[str, Any]) -> bool:
         return event.get("type") == "agent_settled"
@@ -185,10 +179,10 @@ class RustPiRuntimeAdapter(RpcRuntimeAdapter):
     config_dir_name = ".pi-rust"
     default_command = ".pi-rust/bin/pi.exe"
 
-    def __init__(self, project_root: Path, model: Optional[str] = None) -> None:
+    def __init__(self, project_root: Path, model: str | None = None) -> None:
         super().__init__(project_root, model=model)
-        self._mcp_url: Optional[str] = None
-        self._mcp_token: Optional[str] = None
+        self._mcp_url: str | None = None
+        self._mcp_token: str | None = None
 
     def restricted_cli_args(self) -> list[str]:
         return [
@@ -225,15 +219,9 @@ class RustPiRuntimeAdapter(RpcRuntimeAdapter):
     def build_environment(self) -> dict[str, str]:
         configured_agent = self.config.get("agent_dir")
         configured_sessions = self.config.get("sessions_dir")
-        agent_dir = (
-            Path(str(configured_agent))
-            if configured_agent
-            else self.config_dir / "agent"
-        )
+        agent_dir = Path(str(configured_agent)) if configured_agent else self.config_dir / "agent"
         sessions_dir = (
-            Path(str(configured_sessions))
-            if configured_sessions
-            else self.config_dir / "sessions"
+            Path(str(configured_sessions)) if configured_sessions else self.config_dir / "sessions"
         )
         if not agent_dir.is_absolute():
             agent_dir = self.project_root / agent_dir

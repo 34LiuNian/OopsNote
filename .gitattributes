@@ -1,0 +1,29 @@
+# 统一文本规范化：文本文件 checkout/commit 均为 LF
+* text=auto eol=lf
+
+# Windows 批处理保持 CRLF
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# 脚本与源码固定 LF（跨平台一致）
+*.sh text eol=lf
+*.py text eol=lf
+*.ts text eol=lf
+*.tsx text eol=lf
+*.ps1 text eol=lf
+
+# 二进制资源不参与行尾/差异转换
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.pdf binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.otf binary
+*.sqlite binary
+*.xlsx binary
+*.pptx binary

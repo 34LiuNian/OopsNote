@@ -16,14 +16,16 @@ def test_batch_renderer_crops_and_stacks_image_parts(tmp_path):
     path = tmp_path / "source.png"
     source.save(path)
     source.close()
-    segment = BatchSegment.model_validate({
-        "id": "selection",
-        "parts": [
-            {"page_index": 0, "x": 0, "y": 0, "width": 0.5, "height": 0.5, "order": 0},
-            {"page_index": 0, "x": 0.5, "y": 0.5, "width": 0.5, "height": 0.5, "order": 1},
-        ],
-        "question_no": 1,
-    })
+    segment = BatchSegment.model_validate(
+        {
+            "id": "selection",
+            "parts": [
+                {"page_index": 0, "x": 0, "y": 0, "width": 0.5, "height": 0.5, "order": 0},
+                {"page_index": 0, "x": 0.5, "y": 0.5, "width": 0.5, "height": 0.5, "order": 1},
+            ],
+            "question_no": 1,
+        }
+    )
 
     with BatchSourceRenderer(path, "image/png") as renderer:
         payload = renderer.render_segment(segment, BatchCropRect())
@@ -43,13 +45,23 @@ def test_batch_renderer_uses_pdf_scale_and_uniform_crop(tmp_path):
     page.draw_rect(pymupdf.Rect(25, 20, 75, 60), color=(1, 0, 0), fill=(1, 0, 0))
     document.save(path)
     document.close()
-    segment = BatchSegment.model_validate({
-        "id": "selection",
-        "parts": [
-            {"page_index": 0, "column_index": 1, "x": 0, "y": 0, "width": 1, "height": 1, "order": 0},
-        ],
-        "question_no": 1,
-    })
+    segment = BatchSegment.model_validate(
+        {
+            "id": "selection",
+            "parts": [
+                {
+                    "page_index": 0,
+                    "column_index": 1,
+                    "x": 0,
+                    "y": 0,
+                    "width": 1,
+                    "height": 1,
+                    "order": 0,
+                },
+            ],
+            "question_no": 1,
+        }
+    )
 
     with BatchSourceRenderer(path, "application/pdf") as renderer:
         payload = renderer.render_segment(
@@ -73,14 +85,16 @@ def test_batch_renderer_stacks_cross_page_parts_by_explicit_document_order(tmp_p
     second.draw_rect(second.rect, color=(0, 0, 1), fill=(0, 0, 1))
     document.save(path)
     document.close()
-    segment = BatchSegment.model_validate({
-        "id": "cross-page",
-        "parts": [
-            {"page_index": 1, "x": 0, "y": 0, "width": 1, "height": 1, "order": 1},
-            {"page_index": 0, "x": 0, "y": 0, "width": 1, "height": 1, "order": 0},
-        ],
-        "question_no": 1,
-    })
+    segment = BatchSegment.model_validate(
+        {
+            "id": "cross-page",
+            "parts": [
+                {"page_index": 1, "x": 0, "y": 0, "width": 1, "height": 1, "order": 1},
+                {"page_index": 0, "x": 0, "y": 0, "width": 1, "height": 1, "order": 0},
+            ],
+            "question_no": 1,
+        }
+    )
 
     with BatchSourceRenderer(path, "application/pdf") as renderer:
         payload = renderer.render_segment(segment, BatchCropRect())

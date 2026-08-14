@@ -27,6 +27,7 @@ PROFILE_DIR = Path.home() / "AppData" / "Local" / "hermes" / "profiles" / PROFIL
 
 # ── 检查 hermes 是否可用 ───────────────────────────
 
+
 def check_hermes() -> bool:
     try:
         subprocess.run([HERMES, "--version"], capture_output=True, check=True)
@@ -37,19 +38,22 @@ def check_hermes() -> bool:
 
 # ── 检测 profile ──────────────────────────────────
 
+
 def profile_exists() -> bool:
     return (PROFILE_DIR / "SOUL.md").exists()
 
 
 # ── 创建 profile ──────────────────────────────────
 
+
 def create_profile():
-    print(f"创建 oopsnote profile ...")
+    print("创建 oopsnote profile ...")
     subprocess.run([HERMES, "profile", "create", PROFILE_NAME], check=True)
     print("  完成。")
 
 
 # ── 写 SOUL.md ────────────────────────────────────
+
 
 def write_soul():
     soul_content = """你是 OopsNote，一个 AI 错题管理助手。你的用户是一名中国高中学生（2024级2班）。
@@ -84,10 +88,11 @@ def write_soul():
 """
     soul_path = PROFILE_DIR / "SOUL.md"
     soul_path.write_text(soul_content, encoding="utf-8")
-    print(f"  写入 SOUL.md")
+    print("  写入 SOUL.md")
 
 
 # ── 同步 skills ────────────────────────────────────
+
 
 def sync_skills():
     """从仓库 skills/ 目录复制到 profile skills/ 目录。"""
@@ -119,6 +124,7 @@ def sync_skills():
 
 
 # ── 配置 MCP ───────────────────────────────────────
+
 
 def config_mcp():
     """Register full interactive and restricted Web pipeline MCP servers."""
@@ -164,6 +170,7 @@ def config_mcp():
 
 
 # ── 主流程 ─────────────────────────────────────────
+
 
 def main():
     print("=" * 50)

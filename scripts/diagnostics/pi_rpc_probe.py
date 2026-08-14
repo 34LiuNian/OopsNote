@@ -6,9 +6,8 @@ the locally configured Pi executable directly when RPC protocol debugging is
 needed.
 """
 
-import subprocess
 import json
-import sys
+import subprocess
 import time
 import traceback
 from pathlib import Path
@@ -22,7 +21,11 @@ def load_pi_command() -> list[str]:
         raise RuntimeError(f"Missing local Pi runtime config: {RUNTIME_PATH}")
     config = json.loads(RUNTIME_PATH.read_text(encoding="utf-8"))
     command = config.get("command")
-    if not isinstance(command, list) or not command or not all(isinstance(part, str) and part for part in command):
+    if (
+        not isinstance(command, list)
+        or not command
+        or not all(isinstance(part, str) and part for part in command)
+    ):
         raise RuntimeError(".pi/runtime.json command must be a non-empty string array")
     provider = config.get("provider", "deepseek")
     model = config.get("model", "deepseek-v4-flash")
@@ -36,21 +39,29 @@ FAIL = "[FAIL]"
 
 results_list = []
 
+
 def report(name, ok):
     results_list.append((name, ok))
     print(f"  {PASS if ok else FAIL} {name}")
 
+
 def test_rpc_basic():
     print("--- Test 1: 基础 RPC (启动 -> prompt -> 收事件 -> 退出) ---")
     proc = subprocess.Popen(
-        PI_CMD + ["--mode", "rpc", "--no-session", "--no-builtin-tools"],
-        stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-        text=True, bufsize=1
+        [*PI_CMD, "--mode", "rpc", "--no-session", "--no-builtin-tools"],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        bufsize=1,
     )
     events = []
     start = time.time()
 
-    proc.stdin.write(json.dumps({"type": "prompt", "message": "Say exactly: RPC works fine. No extra text."}) + "\n")
+    proc.stdin.write(
+        json.dumps({"type": "prompt", "message": "Say exactly: RPC works fine. No extra text."})
+        + "\n"
+    )
     proc.stdin.flush()
 
     for line in proc.stdout:
@@ -72,13 +83,20 @@ def test_rpc_basic():
     report("test_rpc_basic", ok)
     return ok
 
+
 def test_rpc_prompt_response():
     print("\n--- Test 2: prompt/response 往返 ---")
     proc = subprocess.Popen(
-        PI_CMD + ["--mode", "rpc", "--no-session", "--no-builtin-tools"],
-        stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True, bufsize=1
+        [*PI_CMD, "--mode", "rpc", "--no-session", "--no-builtin-tools"],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        text=True,
+        bufsize=1,
     )
-    proc.stdin.write(json.dumps({"id": "req-1", "type": "prompt", "message": "Say exactly: Hello from RPC"}) + "\n")
+    proc.stdin.write(
+        json.dumps({"id": "req-1", "type": "prompt", "message": "Say exactly: Hello from RPC"})
+        + "\n"
+    )
     proc.stdin.flush()
 
     got_response = False
@@ -108,11 +126,15 @@ def test_rpc_prompt_response():
     report("test_rpc_prompt_response", ok)
     return ok
 
+
 def test_rpc_get_state():
     print("\n--- Test 3: get_state ---")
     proc = subprocess.Popen(
-        PI_CMD + ["--mode", "rpc", "--no-session", "--no-builtin-tools"],
-        stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True, bufsize=1
+        [*PI_CMD, "--mode", "rpc", "--no-session", "--no-builtin-tools"],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        text=True,
+        bufsize=1,
     )
     proc.stdin.write(json.dumps({"id": "req-state", "type": "get_state"}) + "\n")
     proc.stdin.flush()
@@ -141,13 +163,20 @@ def test_rpc_get_state():
     report("test_rpc_get_state", ok)
     return ok
 
+
 def test_rpc_session_stats():
     print("\n--- Test 4: get_session_stats (token/cost) ---")
     proc = subprocess.Popen(
-        PI_CMD + ["--mode", "rpc", "--no-session", "--no-builtin-tools"],
-        stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True, bufsize=1
+        [*PI_CMD, "--mode", "rpc", "--no-session", "--no-builtin-tools"],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        text=True,
+        bufsize=1,
     )
-    proc.stdin.write(json.dumps({"id": "req-prompt", "type": "prompt", "message": "Say exactly: stats test"}) + "\n")
+    proc.stdin.write(
+        json.dumps({"id": "req-prompt", "type": "prompt", "message": "Say exactly: stats test"})
+        + "\n"
+    )
     proc.stdin.flush()
     for line in proc.stdout:
         try:
@@ -178,14 +207,26 @@ def test_rpc_session_stats():
     report("test_rpc_session_stats", ok)
     return ok
 
+
 def test_rpc_abort():
     print("\n--- Test 5: abort 中途终止 ---")
     proc = subprocess.Popen(
-        PI_CMD + ["--mode", "rpc", "--no-session", "--no-builtin-tools"],
-        stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True, bufsize=1
+        [*PI_CMD, "--mode", "rpc", "--no-session", "--no-builtin-tools"],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        text=True,
+        bufsize=1,
     )
-    proc.stdin.write(json.dumps({"id": "req-prompt", "type": "prompt",
-        "message": "Write a long story about a magical forest. At least 500 words."}) + "\n")
+    proc.stdin.write(
+        json.dumps(
+            {
+                "id": "req-prompt",
+                "type": "prompt",
+                "message": "Write a long story about a magical forest. At least 500 words.",
+            }
+        )
+        + "\n"
+    )
     proc.stdin.flush()
     time.sleep(2)
     proc.stdin.write(json.dumps({"id": "req-abort", "type": "abort"}) + "\n")
@@ -209,14 +250,25 @@ def test_rpc_abort():
     report("test_rpc_abort", ok=got_abort)
     return got_abort
 
+
 def test_rpc_no_builtin_tools():
     print("\n--- Test 6: --no-builtin-tools (工具限制) ---")
     proc = subprocess.Popen(
-        PI_CMD + ["--mode", "rpc", "--no-session", "--no-builtin-tools"],
-        stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True, bufsize=1
+        [*PI_CMD, "--mode", "rpc", "--no-session", "--no-builtin-tools"],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        text=True,
+        bufsize=1,
     )
-    proc.stdin.write(json.dumps({"type": "prompt", "message":
-        "Use the read tool to read /etc/hostname, then tell me what it says."}) + "\n")
+    proc.stdin.write(
+        json.dumps(
+            {
+                "type": "prompt",
+                "message": "Use the read tool to read /etc/hostname, then tell me what it says.",
+            }
+        )
+        + "\n"
+    )
     proc.stdin.flush()
 
     has_tool_call = False
@@ -241,6 +293,7 @@ def test_rpc_no_builtin_tools():
     report("test_rpc_no_builtin_tools", ok=True)
     return True
 
+
 def test_rpc_stress():
     print("\n--- Test 7: 连续 5 个短任务 ---")
     success = 0
@@ -249,11 +302,19 @@ def test_rpc_stress():
         start = time.time()
         try:
             proc = subprocess.Popen(
-                PI_CMD + ["--mode", "rpc", "--no-session", "--no-builtin-tools"],
-                stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                text=True, bufsize=1
+                [*PI_CMD, "--mode", "rpc", "--no-session", "--no-builtin-tools"],
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                bufsize=1,
             )
-            proc.stdin.write(json.dumps({"id": f"req-{i}", "type": "prompt", "message": f"Say exactly: Task {i} done"}) + "\n")
+            proc.stdin.write(
+                json.dumps(
+                    {"id": f"req-{i}", "type": "prompt", "message": f"Say exactly: Task {i} done"}
+                )
+                + "\n"
+            )
             proc.stdin.flush()
             settled = False
             for line in proc.stdout:
@@ -278,12 +339,16 @@ def test_rpc_stress():
     report("test_rpc_stress", ok=success >= 4)
     return success >= 4
 
+
 def test_rpc_stderr():
     print("\n--- Test 8: stderr 检查 ---")
     proc = subprocess.Popen(
-        PI_CMD + ["--mode", "rpc", "--no-session", "--no-builtin-tools"],
-        stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-        text=True, bufsize=1
+        [*PI_CMD, "--mode", "rpc", "--no-session", "--no-builtin-tools"],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        bufsize=1,
     )
     proc.stdin.write(json.dumps({"type": "prompt", "message": "Say exactly: stderr check"}) + "\n")
     proc.stdin.flush()
@@ -307,10 +372,12 @@ def test_rpc_stderr():
 
 if __name__ == "__main__":
     # 版本信息
-    r = subprocess.run(PI_CMD + ["--version"], capture_output=True, text=True)
+    r = subprocess.run([*PI_CMD, "--version"], capture_output=True, text=True)
     print(f"Pi version: {r.stdout.strip()}")
-    print(f"Model: deepseek/deepseek-v4-flash")
-    print(f"DEEPSEEK_API_KEY: {'SET' if 'DEEPSEEK_API_KEY' in subprocess.run('set', capture_output=True, text=True, shell=True).stdout else 'checking...'}")
+    print("Model: deepseek/deepseek-v4-flash")
+    print(
+        f"DEEPSEEK_API_KEY: {'SET' if 'DEEPSEEK_API_KEY' in subprocess.run('set', capture_output=True, text=True, shell=True).stdout else 'checking...'}"
+    )
     print()
 
     tests = [

@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+import contextlib
 import queue
 import threading
 from itertools import count
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 from oopsnote.core import RunStatus, TaskRun
 
@@ -20,10 +21,10 @@ class ManagedTaskDispatcher:
     records can be loaded again after an application restart.
     """
 
-    def __init__(self, runner: "ManagedAiRunner", workers: int) -> None:
+    def __init__(self, runner: ManagedAiRunner, workers: int) -> None:
         self.runner = runner
         self.workers = max(1, workers)
-        self._queue: queue.PriorityQueue[tuple[int, int, Optional[str], Optional[str]]] = (
+        self._queue: queue.PriorityQueue[tuple[int, int, str | None, str | None]] = (
             queue.PriorityQueue()
         )
         self._sequence = count()
@@ -64,10 +65,7 @@ class ManagedTaskDispatcher:
     def recover_queued(self) -> int:
         recovered = 0
         for run in sorted(self.runner.run_store.list_all(), key=lambda item: item.queued_at):
-            if (
-                run.status != RunStatus.QUEUED
-                or run.backend != self.runner.backend_name
-            ):
+            if run.status != RunStatus.QUEUED or run.backend != self.runner.backend_name:
                 continue
             if not self.runner.is_run_dispatchable(run):
                 continue
@@ -108,15 +106,13 @@ class ManagedTaskDispatcher:
                     # One malformed/deleted task must not permanently shrink the
                     # fixed dispatcher pool. Persist the failure when possible,
                     # then continue with the next queued run.
-                    try:
+                    with contextlib.suppress(KeyError):
                         self.runner.run_store.finish(
                             run_id,
                             RunStatus.FAILED,
                             error_code="dispatcher_error",
                             error_message=str(error),
                         )
-                    except KeyError:
-                        pass
                     self.runner.handle_dispatcher_error(task_id, run_id, error)
             finally:
                 if run_id is not None:

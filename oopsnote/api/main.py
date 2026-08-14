@@ -6,20 +6,20 @@ stores, managed runners, DTO presentation helpers, and application assembly.
 
 from __future__ import annotations
 
-import os
 import logging
+import os
 import sys
 import threading
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import FileResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, JSONResponse
 
 from oopsnote.ai import HermesRunner, LangChainRunner, PiRpcBackend, PiRpcRunner
 from oopsnote.ai.langchain_tools import McpHttpToolClient
@@ -32,28 +32,42 @@ from oopsnote.api.auth import (
     authenticate_request,
     internal_identity_config_from_env,
 )
-from oopsnote.api.errors import ApiErrorCategory, category_for_error_code, error_detail, scope_for_path
-from oopsnote.api.routes import account, admin, ai_settings, batch, catalog, latex, papers, study, tasks
 from oopsnote.api.context import (
     RequestContext,
     activate_request_context,
     current_request_context,
     reset_request_context,
 )
+from oopsnote.api.errors import (
+    ApiErrorCategory,
+    category_for_error_code,
+    error_detail,
+    scope_for_path,
+)
+from oopsnote.api.routes import (
+    account,
+    admin,
+    ai_settings,
+    batch,
+    catalog,
+    latex,
+    papers,
+    study,
+    tasks,
+)
 from oopsnote.api.schemas import TagInput, TagRenameInput, UploadRequest
 from oopsnote.catalog import KNOWLEDGE_TAGS_PATH, KNOWLEDGE_TREES_PATH
 from oopsnote.content import option_label
-from oopsnote.paper import difficulty_review_reason
+from oopsnote.control import ControlDatabase, WorkspaceRegistry
 from oopsnote.core import (
-    AssetStore,
     AppSettingsStore,
+    AssetStore,
+    BatchProcessJobStore,
     BatchSessionRecord,
     BatchSessionStore,
-    BatchProcessJobStore,
-    BatchSessionUpdateRequest,
     DiagramStatus,
-    Problem,
     PaperDraftStore,
+    Problem,
     ProblemMergeStore,
     RunStore,
     TagStore,
@@ -64,15 +78,15 @@ from oopsnote.core import (
     WorkspaceStoreFactory,
     WorkspaceStores,
 )
-from oopsnote.control import ControlDatabase, WorkspaceRegistry
-from oopsnote.mcp.http_runtime import SharedMcpHttpRuntime
 from oopsnote.mcp.context import current_capability
+from oopsnote.mcp.http_runtime import SharedMcpHttpRuntime
 from oopsnote.mcp.ocr import (
     clear_ocr_run_model_resolver,
     clear_ocr_vault,
     close_ocr_client,
     configure_ocr_run_model_resolver,
 )
+from oopsnote.paper import difficulty_review_reason
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 logger = logging.getLogger(__name__)
@@ -92,9 +106,7 @@ TAG_STORE = TagStore(
     tree_path=KNOWLEDGE_TREES_PATH,
 )
 ASSET_STORE = AssetStore(base_dir=STORAGE_DIR / "assets")
-BATCH_SESSION_STORE = BatchSessionStore(
-    STORAGE_DIR / "settings" / "batch_sessions.json"
-)
+BATCH_SESSION_STORE = BatchSessionStore(STORAGE_DIR / "settings" / "batch_sessions.json")
 BATCH_PROCESS_JOB_STORE = BatchProcessJobStore(STORAGE_DIR / "batch_jobs")
 APP_SETTINGS_STORE = AppSettingsStore(STORAGE_DIR / "settings" / "app_settings.json")
 RUN_STORE = RunStore(STORAGE_DIR / "runs")
@@ -135,6 +147,8 @@ def request_api():
             return getattr(module, name)
 
     return ScopedApi()
+
+
 MCP_HTTP_RUNTIME = SharedMcpHttpRuntime()
 _SUPPORTED_AI_BACKENDS = frozenset({"hermes", "langchain", "pi"})
 _DEFAULT_AI_BACKEND = os.getenv("OOPSNOTE_AI_BACKEND", "langchain").strip().lower()
@@ -187,9 +201,14 @@ def _new_pi_runner(
         project_root=PROJECT_ROOT,
         task_store=stores.task_store if stores else TASK_STORE,
         run_store=stores.run_store if stores else RUN_STORE,
-        max_concurrent_tasks=int(APP_SETTINGS_STORE.get().get("pi_concurrency", os.getenv(
-            "OOPSNOTE_RPC_MAX_WORKERS", os.getenv("OOPSNOTE_PI_MAX_CONCURRENT_TASKS", "3")
-        ))),
+        max_concurrent_tasks=int(
+            APP_SETTINGS_STORE.get().get(
+                "pi_concurrency",
+                os.getenv(
+                    "OOPSNOTE_RPC_MAX_WORKERS", os.getenv("OOPSNOTE_PI_MAX_CONCURRENT_TASKS", "3")
+                ),
+            )
+        ),
         **_runner_settings(),
     )
     if stores is not None and workspace_id is not None:
@@ -364,15 +383,17 @@ def _batch_submitted_selection_views(file_hash: str) -> list[dict[str, Any]]:
         parts = snapshot.get("parts")
         if not isinstance(parts, list) or not parts:
             continue
-        views.append({
-            "id": str(snapshot.get("segment_id") or f"task:{task.id}"),
-            "task_id": task.id,
-            "question_no": snapshot.get("question_no"),
-            "status": task.status.value,
-            "parts": parts,
-            "crop_rect": snapshot.get("crop_rect"),
-            "column_layout": snapshot.get("column_layout"),
-        })
+        views.append(
+            {
+                "id": str(snapshot.get("segment_id") or f"task:{task.id}"),
+                "task_id": task.id,
+                "question_no": snapshot.get("question_no"),
+                "status": task.status.value,
+                "parts": parts,
+                "crop_rect": snapshot.get("crop_rect"),
+                "column_layout": snapshot.get("column_layout"),
+            }
+        )
     views.sort(key=lambda item: (item.get("question_no") or 0, item["task_id"]))
     return views
 
@@ -394,7 +415,9 @@ def _sync_batch_source_references(file_hash: str, filename: str) -> None:
         next_metadata = {
             **metadata,
             "source": source,
-            "source_page": page_index + 1 if isinstance(page_index, int) and page_index >= 0 else None,
+            "source_page": page_index + 1
+            if isinstance(page_index, int) and page_index >= 0
+            else None,
             "trace": next_trace,
         }
         next_problem = task.problem
@@ -425,14 +448,12 @@ def _trace_view(trace: Any) -> Any:
             available = True
     current = {**trace, "batch_session_available": available}
     if file_hash and available:
-        try:
+        with suppress(KeyError):
             current["source_file_name"] = batch_session_store.get(file_hash).filename
-        except KeyError:
-            pass
     return current
 
 
-def _problem_source(task: TaskRecord, problem: Problem) -> Optional[str]:
+def _problem_source(task: TaskRecord, problem: Problem) -> str | None:
     metadata = task.metadata
     trace = metadata.get("trace")
     if isinstance(trace, dict) and trace.get("kind") == "batch_segment":
@@ -489,7 +510,11 @@ def _sync_batch_session_tasks_locked(record: BatchSessionRecord) -> BatchSession
             task_review_reason = task.metadata.get("intake_review_reason")
             if task_review_reason not in BATCH_REVIEW_REASONS:
                 task_review_reason = None
-            if segment.status == "needs_review" and segment.review_reason and not segment.review_resolved:
+            if (
+                segment.status == "needs_review"
+                and segment.review_reason
+                and not segment.review_resolved
+            ):
                 status = "needs_review"
                 review_reason = segment.review_reason
                 review_previous_status = segment.review_previous_status or task_status
@@ -498,7 +523,11 @@ def _sync_batch_session_tasks_locked(record: BatchSessionRecord) -> BatchSession
                 review_reason = task_review_reason
                 review_previous_status = task_status
             else:
-                status = "failed" if task_status == "pending" and segment.status == "failed" else task_status
+                status = (
+                    "failed"
+                    if task_status == "pending" and segment.status == "failed"
+                    else task_status
+                )
                 review_reason = None
                 review_previous_status = None
             next_segment = segment.model_copy(
@@ -510,7 +539,9 @@ def _sync_batch_session_tasks_locked(record: BatchSessionRecord) -> BatchSession
                     "error": (
                         task.last_error
                         if task.status in {TaskStatus.FAILED, TaskStatus.CANCELLED}
-                        else segment.error if status == "failed" else None
+                        else segment.error
+                        if status == "failed"
+                        else None
                     ),
                 }
             )
@@ -521,7 +552,7 @@ def _sync_batch_session_tasks_locked(record: BatchSessionRecord) -> BatchSession
     return record.model_copy(update={"segments": segments})
 
 
-def _asset_view(record: TaskRecord) -> Optional[dict[str, Any]]:
+def _asset_view(record: TaskRecord) -> dict[str, Any] | None:
     if not record.asset_path:
         return None
     filename = Path(record.asset_path).name
@@ -540,10 +571,13 @@ def _asset_view(record: TaskRecord) -> Optional[dict[str, Any]]:
 def _diagram_requires_human_review(item: Any) -> bool:
     if not item.last_error_code and not item.needs_review:
         return False
-    return category_for_error_code(
-        item.last_error_code,
-        needs_review=item.needs_review,
-    ) == ApiErrorCategory.HUMAN_REVIEW
+    return (
+        category_for_error_code(
+            item.last_error_code,
+            needs_review=item.needs_review,
+        )
+        == ApiErrorCategory.HUMAN_REVIEW
+    )
 
 
 def _problem_view(task: TaskRecord, problem: Problem) -> dict[str, Any]:
@@ -554,15 +588,22 @@ def _problem_view(task: TaskRecord, problem: Problem) -> dict[str, Any]:
     diagram = task.diagram_items[0] if task.diagram_items else None
     selected = (
         next(
-            (candidate for candidate in diagram.candidates if candidate.id == diagram.selected_candidate_id),
+            (
+                candidate
+                for candidate in diagram.candidates
+                if candidate.id == diagram.selected_candidate_id
+            ),
             None,
         )
-        if diagram else None
+        if diagram
+        else None
     )
     diagram_kind = (
-        "tikz" if diagram and diagram.status.value == "ready_tikz" else
-        "image" if diagram and diagram.status.value == "ready_image" else
-        None
+        "tikz"
+        if diagram and diagram.status.value == "ready_tikz"
+        else "image"
+        if diagram and diagram.status.value == "ready_image"
+        else None
     )
     diagram_svg = None
     if selected and selected.svg_path:
@@ -570,6 +611,7 @@ def _problem_view(task: TaskRecord, problem: Problem) -> dict[str, Any]:
             diagram_svg = asset_store.resolve(selected.svg_path).read_text(encoding="utf-8")
         except (FileNotFoundError, OSError, UnicodeError, ValueError):
             diagram_svg = None
+
     def diagram_category(item: Any) -> ApiErrorCategory | None:
         if item is None:
             return None
@@ -587,7 +629,9 @@ def _problem_view(task: TaskRecord, problem: Problem) -> dict[str, Any]:
         # Older runs persisted every technical failure as NEEDS_REVIEW. Derive
         # the public state from the authoritative error category until those
         # records are naturally rewritten by a retry or manual action.
-        if item_view["status"] == DiagramStatus.NEEDS_REVIEW.value and not diagram_requires_review(item):
+        if item_view["status"] == DiagramStatus.NEEDS_REVIEW.value and not diagram_requires_review(
+            item
+        ):
             item_view["status"] = DiagramStatus.FAILED.value
         item_view["needs_review"] = diagram_requires_review(item)
         item_view["error_category"] = category.value if category else None
@@ -613,23 +657,30 @@ def _problem_view(task: TaskRecord, problem: Problem) -> dict[str, Any]:
         "has_diagram": problem.has_diagram,
         "diagram_detected": bool(diagram or problem.has_diagram),
         "diagram_kind": diagram_kind,
-        "diagram_tikz_source": selected.tikz_source if selected and diagram_kind == "tikz" else None,
+        "diagram_tikz_source": selected.tikz_source
+        if selected and diagram_kind == "tikz"
+        else None,
         "diagram_svg": diagram_svg if diagram_kind == "tikz" else None,
         "diagram_svg_path": selected.svg_path if selected and diagram_kind == "tikz" else None,
         "diagram_image_path": diagram.fallback_image_path if diagram else None,
-        "diagram_image_crop": diagram.source_region.model_dump() if diagram and diagram.source_region else None,
+        "diagram_image_crop": diagram.source_region.model_dump()
+        if diagram and diagram.source_region
+        else None,
         "diagram_image_tone": diagram.image_tone if diagram else "auto",
         "diagram_position": diagram.position if diagram else "right",
         "diagram_scale_percent": diagram.scale_percent if diagram else 100,
         "diagram_render_status": (
             DiagramStatus.FAILED.value
-            if diagram and diagram.status == DiagramStatus.NEEDS_REVIEW and not diagram_requires_review(diagram)
-            else diagram.status.value if diagram else None
+            if diagram
+            and diagram.status == DiagramStatus.NEEDS_REVIEW
+            and not diagram_requires_review(diagram)
+            else diagram.status.value
+            if diagram
+            else None
         ),
         "diagram_error": diagram.last_error if diagram else None,
         "diagram_error_category": (
-            selected_diagram_category.value
-            if selected_diagram_category else None
+            selected_diagram_category.value if selected_diagram_category else None
         ),
         "diagram_needs_review": diagram_requires_review(diagram) if diagram else False,
         "diagram_items": diagram_items,
@@ -702,7 +753,8 @@ def _task_view(record: TaskRecord) -> dict[str, Any]:
     problem = record.problem
     run = run_store.latest_for_task(record.id)
     diagram_runs = [
-        candidate for candidate in run_store.list_for_task(record.id)
+        candidate
+        for candidate in run_store.list_for_task(record.id)
         if candidate.purpose.value == "diagram"
     ]
     merged_into = None
@@ -710,7 +762,11 @@ def _task_view(record: TaskRecord) -> dict[str, Any]:
         canonical_problem_id = merge_store.canonical_for(problem.id)
         if canonical_problem_id != problem.id:
             target = next(
-                (task for task in task_store.list_all() if task.problem and task.problem.id == canonical_problem_id),
+                (
+                    task
+                    for task in task_store.list_all()
+                    if task.problem and task.problem.id == canonical_problem_id
+                ),
                 None,
             )
             if target:
@@ -723,13 +779,14 @@ def _task_view(record: TaskRecord) -> dict[str, Any]:
         "active_run_id": record.active_run_id,
         "error_category": (
             category_for_error_code(record.last_error_code).value
-            if record.last_error_code else None
+            if record.last_error_code
+            else None
         ),
-        "diagram_needs_review": any(_diagram_requires_human_review(item) for item in record.diagram_items),
+        "diagram_needs_review": any(
+            _diagram_requires_human_review(item) for item in record.diagram_items
+        ),
         "revision_count": record.revision_count,
-        "last_revised_at": (
-            record.last_revised_at.isoformat() if record.last_revised_at else None
-        ),
+        "last_revised_at": (record.last_revised_at.isoformat() if record.last_revised_at else None),
         "run": _run_view(run) if run else None,
         "diagram_runs": [
             _run_view(candidate)
@@ -746,11 +803,15 @@ def _task_view(record: TaskRecord) -> dict[str, Any]:
             "answer": problem.answer,
             "short_answer": problem.short_answer,
             "explanation": problem.explanation,
-        } if problem else None,
+        }
+        if problem
+        else None,
         "tag": {
             "problem_id": problem.id,
             "knowledge_points": problem.knowledge_points,
-        } if problem else None,
+        }
+        if problem
+        else None,
         "merged_into": merged_into,
     }
 
@@ -764,9 +825,12 @@ def _task_summary(record: TaskRecord) -> dict[str, Any]:
         "active_run_id": record.active_run_id,
         "error_category": (
             category_for_error_code(record.last_error_code).value
-            if record.last_error_code else None
+            if record.last_error_code
+            else None
         ),
-        "diagram_needs_review": any(_diagram_requires_human_review(item) for item in record.diagram_items),
+        "diagram_needs_review": any(
+            _diagram_requires_human_review(item) for item in record.diagram_items
+        ),
         "created_at": record.created_at.isoformat(),
         "updated_at": record.updated_at.isoformat(),
         "subject": record.subject,
@@ -776,7 +840,6 @@ def _task_summary(record: TaskRecord) -> dict[str, Any]:
 
 
 def _problem_summary(task: TaskRecord, problem: Problem) -> dict[str, Any]:
-    metadata = task.metadata
     view = _problem_view(task, problem)
     return {
         **view,
@@ -797,8 +860,8 @@ def _runner_for(backend: str):
         return WORKSPACE_RUNNER_POOL.get(context.workspace.workspace_id, context.stores, backend)
     try:
         return _RUNNERS[backend]
-    except KeyError:
-        raise HTTPException(status_code=422, detail=f"backend {backend} is not enabled")
+    except KeyError as error:
+        raise HTTPException(status_code=422, detail=f"backend {backend} is not enabled") from error
 
 
 def _configured_backend() -> str:
@@ -950,10 +1013,12 @@ def health() -> dict[str, Any]:
         **runner.dispatcher_status(),
     }
     if PI_RUNNER is not None and runner is PI_RUNNER:
-        ai_status.update({
-            "runtime": PI_RUNNER.backend.runtime_kind,
-            "runtime_version": PI_RUNNER.backend.runtime_version,
-        })
+        ai_status.update(
+            {
+                "runtime": PI_RUNNER.backend.runtime_kind,
+                "runtime_version": PI_RUNNER.backend.runtime_version,
+            }
+        )
     return {
         "status": "ok",
         "version": "0.3.0",
@@ -981,13 +1046,13 @@ app.include_router(study.router)
 
 
 __all__ = [
-    "ASSET_STORE",
     "APP_SETTINGS_STORE",
+    "ASSET_STORE",
     "BATCH_SESSION_STORE",
     "HERMES_RUNNER",
-    "PI_RUNNER",
     "LANGCHAIN_RUNNER",
     "PAPER_DRAFT_STORE",
+    "PI_RUNNER",
     "PROBLEM_MERGE_STORE",
     "RUN_STORE",
     "STORAGE_DIR",

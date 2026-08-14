@@ -14,9 +14,10 @@ import math
 import statistics
 import sys
 from collections import Counter, defaultdict
-from datetime import datetime, timezone
+from collections.abc import Iterable
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Iterable, Optional
+from typing import Any
 
 ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
@@ -25,12 +26,14 @@ if str(ROOT) not in sys.path:
 from oopsnote.core import RunStatus, RunStore, TaskRecord, TaskRun, TaskStore
 
 REPORT_ROOT = ROOT / "storage" / "pi-production-report"
-TERMINAL = frozenset({
-    RunStatus.COMPLETED,
-    RunStatus.FAILED,
-    RunStatus.CANCELLED,
-    RunStatus.TIMED_OUT,
-})
+TERMINAL = frozenset(
+    {
+        RunStatus.COMPLETED,
+        RunStatus.FAILED,
+        RunStatus.CANCELLED,
+        RunStatus.TIMED_OUT,
+    }
+)
 SYNTHETIC_SOURCES = ("pi-benchmark-", "pi-smoke-")
 
 
@@ -38,14 +41,14 @@ def _timestamp(run: TaskRun) -> datetime:
     return run.ended_at or run.heartbeat_at or run.queued_at
 
 
-def _nearest_rank(values: list[int]) -> Optional[int]:
+def _nearest_rank(values: list[int]) -> int | None:
     if not values:
         return None
     ordered = sorted(values)
     return ordered[math.ceil(len(ordered) * 0.95) - 1]
 
 
-def _coverage(values: Iterable[object | None], total: int) -> Optional[float]:
+def _coverage(values: Iterable[object | None], total: int) -> float | None:
     return sum(value is not None for value in values) / total if total else None
 
 
@@ -54,7 +57,7 @@ def build_report(
     runs: Iterable[TaskRun],
     *,
     runtime: str = "pi-rust",
-    prompt_version: Optional[str] = None,
+    prompt_version: str | None = None,
     include_synthetic: bool = False,
 ) -> dict[str, Any]:
     """Build a truthful cohort report from persisted task/run records."""
@@ -88,19 +91,21 @@ def build_report(
         ended_at = final.ended_at or final.heartbeat_at
         duration_ms = max(0, int((ended_at - first.queued_at).total_seconds() * 1000))
         task = tasks_by_id.get(task_id)
-        outcomes.append({
-            "task_id": task_id,
-            "final_run_id": final.id,
-            "status": final.status.value,
-            "queued_at": first.queued_at,
-            "ended_at": ended_at,
-            "duration_ms": duration_ms,
-            "attempt_count": len(attempts),
-            "retry_count": max(run.retry_count for run in attempts),
-            "peak_memory_bytes": final.peak_memory_bytes,
-            "cost": final.cost,
-            "revision_count": task.revision_count if task else None,
-        })
+        outcomes.append(
+            {
+                "task_id": task_id,
+                "final_run_id": final.id,
+                "status": final.status.value,
+                "queued_at": first.queued_at,
+                "ended_at": ended_at,
+                "duration_ms": duration_ms,
+                "attempt_count": len(attempts),
+                "retry_count": max(run.retry_count for run in attempts),
+                "peak_memory_bytes": final.peak_memory_bytes,
+                "cost": final.cost,
+                "revision_count": task.revision_count if task else None,
+            }
+        )
 
     outcomes.sort(key=lambda outcome: outcome["queued_at"])
     total = len(outcomes)
@@ -131,11 +136,9 @@ def build_report(
         "fault_injection_passed": None,
     }
     orphaned_by_status = Counter(run.status.value for run in orphaned_runs)
-    orphaned_by_result_code = Counter(
-        run.error_code or run.status.value for run in orphaned_runs
-    )
+    orphaned_by_result_code = Counter(run.error_code or run.status.value for run in orphaned_runs)
     return {
-        "generated_at": datetime.now(timezone.utc),
+        "generated_at": datetime.now(UTC),
         "filters": {
             "runtime": runtime,
             "prompt_version": prompt_version,
@@ -162,11 +165,11 @@ def build_report(
     }
 
 
-def _percent(value: Optional[float]) -> str:
+def _percent(value: float | None) -> str:
     return "--" if value is None else f"{value * 100:.1f}%"
 
 
-def _ms(value: Optional[int]) -> str:
+def _ms(value: int | None) -> str:
     return "--" if value is None else f"{value / 1000:.2f}s"
 
 
@@ -200,14 +203,16 @@ def markdown_report(report: dict[str, Any]) -> str:
     summary = "pass" if report["all_retirement_gates_pass"] else "not met"
     lines.append(f"| all retirement gates | {summary} |")
     if orphaned["count"]:
-        lines.extend([
-            "",
-            "Orphaned runs are retained as forensic attempt evidence and do not "
-            "contribute to task-level success or latency metrics.",
-            "",
-            "| orphaned result code | count |",
-            "| --- | ---: |",
-        ])
+        lines.extend(
+            [
+                "",
+                "Orphaned runs are retained as forensic attempt evidence and do not "
+                "contribute to task-level success or latency metrics.",
+                "",
+                "| orphaned result code | count |",
+                "| --- | ---: |",
+            ]
+        )
         for result_code, count in orphaned["by_result_code"].items():
             lines.append(f"| {result_code} | {count} |")
     return "\n".join(lines)

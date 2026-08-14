@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
+import contextlib
 import os
 import subprocess
 import time
-from pathlib import Path
-from typing import Optional
 
 from oopsnote.ai.managed import ManagedAiRunner
 from oopsnote.ai.process_metrics import process_working_set_bytes
@@ -58,9 +57,9 @@ class HermesRunner(ManagedAiRunner):
 
     def run(self, task_id: str, run_id: str) -> None:
         log_path = self.run_store.base_dir / f"{run_id}.log"
-        process: Optional[subprocess.Popen[bytes]] = None
+        process: subprocess.Popen[bytes] | None = None
         control = None
-        peak_memory_bytes: Optional[int] = None
+        peak_memory_bytes: int | None = None
         started = time.monotonic()
         last_heartbeat = started
         try:
@@ -95,7 +94,7 @@ class HermesRunner(ManagedAiRunner):
                     if time.monotonic() - started >= self.timeout_seconds:
                         control.cancel()
                         message = f"Hermes exceeded {self.timeout_seconds}s timeout"
-                        try:
+                        with contextlib.suppress(StateConflict):
                             self.task_store.transition(
                                 task_id,
                                 expected_statuses={TaskStatus.PROCESSING},
@@ -105,8 +104,6 @@ class HermesRunner(ManagedAiRunner):
                                 last_error=message,
                                 last_error_code="process_timeout",
                             )
-                        except StateConflict:
-                            pass
                         self.run_store.finish(
                             run_id,
                             RunStatus.TIMED_OUT,
@@ -152,7 +149,7 @@ class HermesRunner(ManagedAiRunner):
                 )
             elif exit_code != 0:
                 message = f"Hermes exited with code {exit_code}; see {log_path}"
-                try:
+                with contextlib.suppress(StateConflict):
                     self.task_store.transition(
                         task_id,
                         expected_statuses={TaskStatus.PROCESSING},
@@ -162,8 +159,6 @@ class HermesRunner(ManagedAiRunner):
                         last_error=message,
                         last_error_code="process_exit",
                     )
-                except StateConflict:
-                    pass
                 self.run_store.finish(
                     run_id,
                     RunStatus.FAILED,
@@ -177,7 +172,7 @@ class HermesRunner(ManagedAiRunner):
                 )
             elif task.status != TaskStatus.COMPLETED:
                 message = "Hermes exited without finalizing the task"
-                try:
+                with contextlib.suppress(StateConflict):
                     self.task_store.transition(
                         task_id,
                         expected_statuses={TaskStatus.PROCESSING},
@@ -187,8 +182,6 @@ class HermesRunner(ManagedAiRunner):
                         last_error=message,
                         last_error_code="not_finalized",
                     )
-                except StateConflict:
-                    pass
                 self.run_store.finish(
                     run_id,
                     RunStatus.FAILED,
@@ -217,10 +210,8 @@ class HermesRunner(ManagedAiRunner):
             self._fail_start(task_id, run_id, str(error), "runner_error")
         finally:
             if peak_memory_bytes is not None:
-                try:
+                with contextlib.suppress(KeyError):
                     self.run_store.update(run_id, peak_memory_bytes=peak_memory_bytes)
-                except KeyError:
-                    pass
             if control is not None:
                 self._clear_control(task_id, control)
 

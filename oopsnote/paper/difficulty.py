@@ -4,10 +4,9 @@ from __future__ import annotations
 
 import random
 import re
-from typing import Iterable, Optional
+from collections.abc import Iterable
 
 from oopsnote.core import PaperDraftCreateRequest, PaperDraftItem, TaskRecord, subjects_match
-
 
 QUESTION_TYPE_ORDER = {
     "单选题": 0,
@@ -22,12 +21,13 @@ DIFFICULTY_BOUNDS = {
     "hard": (0.8, 1.0),
 }
 
-def _question_number(task: TaskRecord) -> Optional[int]:
+
+def _question_number(task: TaskRecord) -> int | None:
     match = re.search(r"\d+", task.effective_question_no() or "")
     return int(match.group()) if match else None
 
 
-def _source_key(task: TaskRecord) -> Optional[str]:
+def _source_key(task: TaskRecord) -> str | None:
     trace = task.metadata.get("trace")
     if isinstance(trace, dict) and trace.get("source_file_hash"):
         return f"batch:{trace['source_file_hash']}"
@@ -41,7 +41,7 @@ def subject_matches(candidate: str, requested: str) -> bool:
     return subjects_match(candidate, requested)
 
 
-def difficulty_review_reason(task: TaskRecord) -> Optional[str]:
+def difficulty_review_reason(task: TaskRecord) -> str | None:
     """Explain why a task needs manual difficulty classification, if any."""
 
     if task.difficulty_coefficient_override is not None:
@@ -78,7 +78,7 @@ def infer_difficulty_coefficients(tasks: Iterable[TaskRecord]) -> dict[str, floa
     return coefficients
 
 
-def difficulty_band(coefficient: Optional[float]) -> Optional[str]:
+def difficulty_band(coefficient: float | None) -> str | None:
     if coefficient is None:
         return None
     if coefficient <= DIFFICULTY_BOUNDS["easy"][1]:
@@ -100,7 +100,7 @@ def _allocate(total: int, distribution: dict[str, int]) -> dict[str, int]:
     order = sorted(range(len(bands)), key=lambda index: raw[index] - allocated[index], reverse=True)
     for index in order[:remainder]:
         allocated[index] += 1
-    return dict(zip(bands, allocated))
+    return dict(zip(bands, allocated, strict=True))
 
 
 def _candidate_tasks(
@@ -125,7 +125,7 @@ def select_paper_items(
     tasks: Iterable[TaskRecord],
     payload: PaperDraftCreateRequest,
     *,
-    random_source: Optional[random.Random] = None,
+    random_source: random.Random | None = None,
 ) -> list[PaperDraftItem]:
     """Select only candidates that satisfy the requested type and difficulty slots."""
 
@@ -139,16 +139,20 @@ def select_paper_items(
     rng = random_source or random.SystemRandom()
     selected: list[PaperDraftItem] = []
 
-    for question_type in sorted(payload.requested_counts, key=lambda value: QUESTION_TYPE_ORDER.get(value, 99)):
+    for question_type in sorted(
+        payload.requested_counts, key=lambda value: QUESTION_TYPE_ORDER.get(value, 99)
+    ):
         requested = max(0, payload.requested_counts.get(question_type, 0))
         allocation = _allocate(requested, payload.difficulty_distribution)
         type_candidates = [
-            task for task in candidates
+            task
+            for task in candidates
             if task.problem and task.problem.question_type.value == question_type
         ]
         for band in ("easy", "medium", "hard"):
             band_candidates = [
-                task for task in type_candidates
+                task
+                for task in type_candidates
                 if difficulty_band(coefficients.get(task.id)) == band
             ]
             rng.shuffle(band_candidates)
@@ -176,7 +180,7 @@ def candidate_tasks(
     *,
     subject: str,
     knowledge_tags: list[str],
-) -> list[tuple[TaskRecord, Optional[float]]]:
+) -> list[tuple[TaskRecord, float | None]]:
     task_list = list(tasks)
     coefficients = infer_difficulty_coefficients(task_list)
     candidates = _candidate_tasks(task_list, subject=subject, knowledge_tags=knowledge_tags)

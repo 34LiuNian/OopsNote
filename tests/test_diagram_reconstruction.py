@@ -11,6 +11,7 @@ from oopsnote.ai.backends.langchain import LangChainRunner
 from oopsnote.ai.diagram_renderer import TikzRenderBundle, TikzRenderClient, TikzRenderError
 from oopsnote.ai.dispatcher import ManagedTaskDispatcher
 from oopsnote.ai.providers import ProviderCapabilities, ProviderProfile
+from oopsnote.api import main
 from oopsnote.core import (
     AppSettingsStore,
     AssetStore,
@@ -26,8 +27,6 @@ from oopsnote.core import (
     TaskStatus,
     TaskStore,
 )
-from oopsnote.api import main
-
 
 _PNG = base64.b64decode(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
@@ -68,7 +67,9 @@ class _Renderer:
         self.calls += 1
         key = f"fake-{self.calls:02d}"
         return TikzRenderBundle(
-            svg_path=self.assets.save_bytes(b"<svg xmlns='http://www.w3.org/2000/svg'/>", "diagram.svg", key),
+            svg_path=self.assets.save_bytes(
+                b"<svg xmlns='http://www.w3.org/2000/svg'/>", "diagram.svg", key
+            ),
             pdf_path=self.assets.save_bytes(b"%PDF-1.4\n%%EOF\n", "diagram.pdf", key),
             png_path=self.assets.save_bytes(_PNG, "diagram.png", key),
             renderer_profile_version="test-v1",
@@ -211,12 +212,16 @@ def test_model_boundary_normalizes_equivalent_provider_json_shapes(tmp_path: Pat
 
 def test_model_boundary_normalizes_pixel_region_only_for_keep_image():
     result = LangChainRunner._parse_diagram_result(
-        SimpleNamespace(content=json.dumps({
-            "decision": "keep_image",
-            "source_region": {"x": 40, "y": 30, "width": 420, "height": 280},
-            "hard_errors": [],
-            "soft_differences": [],
-        })),
+        SimpleNamespace(
+            content=json.dumps(
+                {
+                    "decision": "keep_image",
+                    "source_region": {"x": 40, "y": 30, "width": 420, "height": 280},
+                    "hard_errors": [],
+                    "soft_differences": [],
+                }
+            )
+        ),
         source_dimensions=(738, 440),
     )
 
@@ -254,7 +259,11 @@ def test_candidate_limit_never_creates_a_fifth_candidate(tmp_path: Path):
         tmp_path,
         [
             {"decision": "revise", "tikz_source": "\\draw (0,0)--(1,0);", "hard_errors": []},
-            {"decision": "revise", "tikz_source": "\\draw (0,0)--(2,0);", "hard_errors": ["wrong label"]},
+            {
+                "decision": "revise",
+                "tikz_source": "\\draw (0,0)--(2,0);",
+                "hard_errors": ["wrong label"],
+            },
         ],
     )
     runs.update(run_id, diagram_max_candidates=1)
@@ -272,17 +281,19 @@ def test_candidate_limit_never_creates_a_fifth_candidate(tmp_path: Path):
 def test_legacy_singular_metadata_migrates_to_one_authoritative_item():
     from oopsnote.core import TaskRecord
 
-    task = TaskRecord.model_validate({
-        "id": "legacy",
-        "asset_path": "/assets/source.png",
-        "metadata": {
-            "diagram_detected": True,
-            "diagram_kind": "tikz",
-            "diagram_tikz_source": "\\draw (0,0)--(1,0);",
-            "diagram_svg": "<svg/>",
-            "source": "exam",
-        },
-    })
+    task = TaskRecord.model_validate(
+        {
+            "id": "legacy",
+            "asset_path": "/assets/source.png",
+            "metadata": {
+                "diagram_detected": True,
+                "diagram_kind": "tikz",
+                "diagram_tikz_source": "\\draw (0,0)--(1,0);",
+                "diagram_svg": "<svg/>",
+                "source": "exam",
+            },
+        }
+    )
 
     assert len(task.diagram_items) == 1
     assert task.diagram_items[0].status == DiagramStatus.NEEDS_REVIEW

@@ -8,7 +8,6 @@ from pathlib import Path
 
 from oopsnote.ai.secrets import EncryptedFileSecretStore
 
-
 ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_KEY_PATH = ROOT / "deploy" / "oopsnote" / "secrets" / "credential_store_key"
 

@@ -112,10 +112,18 @@ def _add_problem(
 
 def test_difficulty_uses_explicit_section_question_count(tmp_path):
     store = TaskStore(tmp_path / "tasks")
-    choice_1 = _add_problem(store, question_no=1, question_type=QuestionType.SINGLE_CHOICE, section_question_count=2)
-    choice_2 = _add_problem(store, question_no=2, question_type=QuestionType.SINGLE_CHOICE, section_question_count=2)
-    fill_3 = _add_problem(store, question_no=3, question_type=QuestionType.FILL_BLANK, section_question_count=4)
-    fill_4 = _add_problem(store, question_no=4, question_type=QuestionType.FILL_BLANK, section_question_count=4)
+    choice_1 = _add_problem(
+        store, question_no=1, question_type=QuestionType.SINGLE_CHOICE, section_question_count=2
+    )
+    choice_2 = _add_problem(
+        store, question_no=2, question_type=QuestionType.SINGLE_CHOICE, section_question_count=2
+    )
+    fill_3 = _add_problem(
+        store, question_no=3, question_type=QuestionType.FILL_BLANK, section_question_count=4
+    )
+    fill_4 = _add_problem(
+        store, question_no=4, question_type=QuestionType.FILL_BLANK, section_question_count=4
+    )
     unknown = _add_problem(
         store,
         question_no=None,
@@ -158,7 +166,10 @@ def test_difficulty_does_not_guess_section_size_from_partial_import(tmp_path):
     assert missing_total.id not in coefficients
     assert invalid_total.id not in coefficients
     assert difficulty_review_reason(store.get(missing_total.id)) == "missing_section_question_count"
-    assert difficulty_review_reason(store.get(invalid_total.id)) == "question_no_exceeds_section_question_count"
+    assert (
+        difficulty_review_reason(store.get(invalid_total.id))
+        == "question_no_exceeds_section_question_count"
+    )
     assert difficulty_review_reason(store.get(imported.id)) is None
 
 
@@ -380,7 +391,9 @@ def test_paper_bundle_copies_managed_diagram_as_content_addressed_asset(tmp_path
 
     bundle = build_paper_bundle(
         document,
-        asset_path_resolver=lambda logical: image if logical == "/assets/figure.png" else tmp_path / "missing",
+        asset_path_resolver=lambda logical: (
+            image if logical == "/assets/figure.png" else tmp_path / "missing"
+        ),
     )
 
     assert len(bundle.files) == 1
@@ -410,21 +423,29 @@ def test_paper_uses_selected_same_source_pdf_instead_of_recompiling_tikz(tmp_pat
     task = TaskRecord(
         id="task-tikz",
         problem=problem,
-        diagram_items=[DiagramItem(
-            status=DiagramStatus.READY_TIKZ,
-            selected_candidate_id=candidate.id,
-            candidates=[candidate],
-        )],
+        diagram_items=[
+            DiagramItem(
+                status=DiagramStatus.READY_TIKZ,
+                selected_candidate_id=candidate.id,
+                candidates=[candidate],
+            )
+        ],
     )
-    draft = PaperDraft(items=[PaperDraftItem(
-        task_id=task.id,
-        problem_id=problem.id,
-        question_type="解答题",
-    )])
+    draft = PaperDraft(
+        items=[
+            PaperDraftItem(
+                task_id=task.id,
+                problem_id=problem.id,
+                question_type="解答题",
+            )
+        ]
+    )
 
     bundle = build_paper_bundle(
         build_paper_document(draft, {task.id: task}),
-        asset_path_resolver=lambda logical: pdf if logical == "/assets/diagram.pdf" else tmp_path / "missing",
+        asset_path_resolver=lambda logical: (
+            pdf if logical == "/assets/diagram.pdf" else tmp_path / "missing"
+        ),
     )
 
     assert len(bundle.files) == 1

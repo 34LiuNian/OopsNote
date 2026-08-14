@@ -2,22 +2,23 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 from oopsnote.core import (
+    AssetStore,
     BatchProcessJob,
+    BatchProcessJobStore,
     BatchProcessSegmentState,
     BatchSessionRecord,
+    BatchSessionStore,
     BatchSessionUpdateRequest,
     BatchSourceRenderer,
-    AssetStore,
-    BatchProcessJobStore,
-    BatchSessionStore,
     TaskCreateRequest,
-    TaskStore,
     TaskStatus,
+    TaskStore,
 )
 
 
@@ -133,11 +134,7 @@ def _bootstrap_tasks(
     job: BatchProcessJob,
 ) -> dict[str, Any]:
     """Use persisted links normally; scan tasks only to recover an interrupted legacy write."""
-    task_ids = {
-        segment.id: segment.task_id
-        for segment in record.segments
-        if segment.task_id
-    }
+    task_ids = {segment.id: segment.task_id for segment in record.segments if segment.task_id}
     task_ids.update({state.segment_id: state.task_id for state in job.segments if state.task_id})
     tasks: dict[str, Any] = {}
     missing_ids: set[str] = set()
@@ -175,7 +172,9 @@ def process_batch_session(
         try:
             record = context.session_store.get(file_hash)
         except KeyError as error:
-            raise BatchProcessError(404, "batch_session_not_found", "Batch session not found") from error
+            raise BatchProcessError(
+                404, "batch_session_not_found", "Batch session not found"
+            ) from error
         if record.revision != expected_revision:
             raise BatchProcessError(
                 409,
@@ -280,14 +279,16 @@ def process_batch_session(
                 review_resolved=False,
                 error=error,
             )
-            review_items.append({
-                "segment_id": segment.id,
-                "question_no": segment.question_no,
-                "task_id": None,
-                "run_id": None,
-                "status": "needs_review",
-                "error": error,
-            })
+            review_items.append(
+                {
+                    "segment_id": segment.id,
+                    "question_no": segment.question_no,
+                    "task_id": None,
+                    "run_id": None,
+                    "status": "needs_review",
+                    "error": error,
+                }
+            )
         pending = [segment for segment in record.segments if segment.status == "pending"]
         if not pending:
             return {
@@ -311,11 +312,13 @@ def process_batch_session(
             if segment.id not in known
         ]
         job = context.job_store.save(
-            job.model_copy(update={
-                "backend": backend,
-                "status": "running",
-                "segments": [*job.segments, *new_states],
-            })
+            job.model_copy(
+                update={
+                    "backend": backend,
+                    "status": "running",
+                    "segments": [*job.segments, *new_states],
+                }
+            )
         )
         tasks = _bootstrap_tasks(context, record, job)
         needs_render = [segment for segment in pending if segment.id not in tasks]
@@ -337,7 +340,9 @@ def process_batch_session(
                 for segment in pending:
                     task = tasks.get(segment.id)
                     if task is None:
-                        job = _replace_job_segment(context, job, segment.id, status="rendering", error=None)
+                        job = _replace_job_segment(
+                            context, job, segment.id, status="rendering", error=None
+                        )
                         image = renderer.render_segment(segment, record.crop_rect)
                         stable_name = (
                             f"batch-{record.file_hash}-{segment.id}-q{segment.question_no}"
@@ -391,7 +396,9 @@ def process_batch_session(
                         status = "completed"
                     elif task.status in {TaskStatus.FAILED, TaskStatus.CANCELLED} or error_message:
                         status = "failed"
-                        error_message = error_message or task.last_error or "Task could not be queued"
+                        error_message = (
+                            error_message or task.last_error or "Task could not be queued"
+                        )
                         failed_count += 1
                     else:
                         status = "processing"
@@ -412,14 +419,16 @@ def process_batch_session(
                         status=status,
                         error=error_message,
                     )
-                    items.append({
-                        "segment_id": segment.id,
-                        "question_no": segment.question_no,
-                        "task_id": task.id,
-                        "run_id": run_id,
-                        "status": status,
-                        "error": error_message,
-                    })
+                    items.append(
+                        {
+                            "segment_id": segment.id,
+                            "question_no": segment.question_no,
+                            "task_id": task.id,
+                            "run_id": run_id,
+                            "status": status,
+                            "error": error_message,
+                        }
+                    )
         except (FileNotFoundError, OSError, RuntimeError, ValueError) as error:
             context.job_store.save(job.model_copy(update={"status": "failed"}))
             raise BatchProcessError(

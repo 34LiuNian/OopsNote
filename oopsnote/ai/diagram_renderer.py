@@ -32,7 +32,8 @@ class TikzRenderClient:
     def __init__(self, asset_store: AssetStore, renderer_url: str | None = None) -> None:
         self.asset_store = asset_store
         self.renderer_url = (
-            renderer_url if renderer_url is not None
+            renderer_url
+            if renderer_url is not None
             else os.getenv("OOPSNOTE_LATEX_RENDERER_URL", "")
         ).rstrip("/")
 
@@ -60,12 +61,16 @@ class TikzRenderClient:
                 timeout=95,
             )
         except httpx.TimeoutException as error:
-            raise TikzRenderError("renderer_timeout", "TikZ rendering timed out", retryable=True) from error
+            raise TikzRenderError(
+                "renderer_timeout", "TikZ rendering timed out", retryable=True
+            ) from error
         except httpx.TransportError as error:
             raise TikzRenderError("renderer_unavailable", str(error), retryable=True) from error
         if response.status_code != 200:
             code = "renderer_failed" if response.status_code < 500 else "renderer_unavailable"
-            raise TikzRenderError(code, response.text[-12_000:], retryable=response.status_code >= 500)
+            raise TikzRenderError(
+                code, response.text[-12_000:], retryable=response.status_code >= 500
+            )
         try:
             payload = response.json()
             profile = str(payload["renderer_profile_version"])
@@ -74,8 +79,10 @@ class TikzRenderClient:
                 for extension in ("svg", "pdf", "png")
             }
         except (KeyError, TypeError, ValueError) as error:
-            raise TikzRenderError("renderer_contract_error", "Renderer returned an invalid bundle") from error
-        identity = hashlib.sha256(f"{profile}\0{source}".encode("utf-8")).hexdigest()[:32]
+            raise TikzRenderError(
+                "renderer_contract_error", "Renderer returned an invalid bundle"
+            ) from error
+        identity = hashlib.sha256(f"{profile}\0{source}".encode()).hexdigest()[:32]
         return TikzRenderBundle(
             svg_path=self.asset_store.save_bytes(assets["svg"], "diagram.svg", f"tikz-{identity}"),
             pdf_path=self.asset_store.save_bytes(assets["pdf"], "diagram.pdf", f"tikz-{identity}"),

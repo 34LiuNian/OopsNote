@@ -6,7 +6,7 @@ import os
 import queue
 import sys
 import threading
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -15,8 +15,8 @@ from oopsnote.ai import HermesRunner, PiRpcBackend, PiRpcRunner
 from oopsnote.ai import runner as runner_module
 from oopsnote.ai.backends import pi_rpc as pi_rpc_module
 from oopsnote.ai.backends.pi_rpc import RpcProtocolError
-from oopsnote.ai.skills import ACTIVE_AI_SKILLS
 from oopsnote.ai.rpc.probe import probe_new_session
+from oopsnote.ai.skills import ACTIVE_AI_SKILLS
 from oopsnote.core import (
     ContentFormat,
     Problem,
@@ -121,7 +121,7 @@ def test_recover_stale_run_and_legacy_task(tmp_path):
     runner, task_store, run_store = make_runner(tmp_path, stale_seconds=60)
     task = task_store.create(TaskCreateRequest(subject="math"))
     run = runner.enqueue(task.id)
-    old = datetime.now(timezone.utc) - timedelta(hours=1)
+    old = datetime.now(UTC) - timedelta(hours=1)
     run_store.update(run.id, status=RunStatus.RUNNING, heartbeat_at=old)
 
     legacy = task_store.create(TaskCreateRequest(subject="physics"))
@@ -172,7 +172,7 @@ def test_recover_stale_run_preserves_completed_task(tmp_path):
     runner, task_store, run_store = make_runner(tmp_path, stale_seconds=60)
     task = task_store.create(TaskCreateRequest(subject="math"))
     run = runner.enqueue(task.id)
-    old = datetime.now(timezone.utc) - timedelta(hours=1)
+    old = datetime.now(UTC) - timedelta(hours=1)
     run_store.update(run.id, status=RunStatus.RUNNING, heartbeat_at=old)
     task_store.update(
         task.id,
@@ -185,7 +185,9 @@ def test_recover_stale_run_preserves_completed_task(tmp_path):
     assert task_store.get(task.id).status == TaskStatus.COMPLETED
 
 
-@pytest.mark.parametrize("terminal_status", [TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.CANCELLED])
+@pytest.mark.parametrize(
+    "terminal_status", [TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.CANCELLED]
+)
 def test_cancel_is_idempotent_for_terminal_tasks(tmp_path, terminal_status):
     runner, task_store, _run_store = make_runner(tmp_path)
     task = task_store.create(TaskCreateRequest(subject="math"))
@@ -202,7 +204,7 @@ def test_recover_stale_run_cannot_overwrite_newer_run_ownership(tmp_path):
     runner, task_store, run_store = make_runner(tmp_path, stale_seconds=60)
     task = task_store.create(TaskCreateRequest(subject="math"))
     stale_run = runner.enqueue(task.id)
-    old = datetime.now(timezone.utc) - timedelta(hours=1)
+    old = datetime.now(UTC) - timedelta(hours=1)
     run_store.update(stale_run.id, status=RunStatus.RUNNING, heartbeat_at=old)
 
     current_run = run_store.create(task.id, backend=runner.backend_name)
@@ -241,7 +243,7 @@ def test_stale_recovery_preserves_a_classified_task_failure(tmp_path):
     runner, task_store, run_store = make_runner(tmp_path, stale_seconds=60)
     task = task_store.create(TaskCreateRequest(subject="math"))
     run = runner.enqueue(task.id)
-    old = datetime.now(timezone.utc) - timedelta(hours=1)
+    old = datetime.now(UTC) - timedelta(hours=1)
     run_store.update(run.id, status=RunStatus.RUNNING, heartbeat_at=old)
     task_store.transition(
         task.id,
@@ -386,60 +388,72 @@ class SettlingRpcProcess:
         self.commands.append(payload)
         command = payload["type"]
         if command == "new_session":
-            self.stdout.emit({
-                "type": "response",
-                "id": payload["id"],
-                "command": command,
-                "success": True,
-                "data": {"cancelled": False},
-            })
+            self.stdout.emit(
+                {
+                    "type": "response",
+                    "id": payload["id"],
+                    "command": command,
+                    "success": True,
+                    "data": {"cancelled": False},
+                }
+            )
         elif command == "prompt":
             self.on_prompt(payload)
-            self.stdout.emit({
-                "type": "response",
-                "id": payload["id"],
-                "command": command,
-                "success": True,
-            })
-            self.stdout.emit({
-                "type": "message_update",
-                "message": {"content": "must-not-be-persisted"},
-            })
+            self.stdout.emit(
+                {
+                    "type": "response",
+                    "id": payload["id"],
+                    "command": command,
+                    "success": True,
+                }
+            )
+            self.stdout.emit(
+                {
+                    "type": "message_update",
+                    "message": {"content": "must-not-be-persisted"},
+                }
+            )
             if self.terminal_tool_event:
-                self.stdout.emit({
-                    "type": "tool_execution_end",
-                    "toolName": (
-                        "ocr_image"
-                        if self.terminal_tool_error
-                        else "mcp__oopsnote_pipeline_finalize_task"
-                    ),
-                    "toolCallId": "finalize-call",
-                    "isError": self.terminal_tool_error,
-                })
+                self.stdout.emit(
+                    {
+                        "type": "tool_execution_end",
+                        "toolName": (
+                            "ocr_image"
+                            if self.terminal_tool_error
+                            else "mcp__oopsnote_pipeline_finalize_task"
+                        ),
+                        "toolCallId": "finalize-call",
+                        "isError": self.terminal_tool_error,
+                    }
+                )
             if self.settle_prompt:
                 self.stdout.emit({"type": self.settle_event})
         elif command == "get_session_stats":
-            self.stdout.emit({
-                "type": "response",
-                "id": payload["id"],
-                "command": command,
-                "success": True,
-                "data": {
-                    "tokens": {
-                        "input": 12,
-                        "output": 8,
-                        "cacheRead": 3,
-                        "cacheWrite": 1,
+            self.stdout.emit(
+                {
+                    "type": "response",
+                    "id": payload["id"],
+                    "command": command,
+                    "success": True,
+                    "data": {
+                        "tokens": {
+                            "input": 12,
+                            "output": 8,
+                            "cacheRead": 3,
+                            "cacheWrite": 1,
+                        },
+                        "cost": self.cost,
                     },
-                    "cost": self.cost,
-                },
-            })
+                }
+            )
         elif command == "abort":
-            self.stdout.emit({
-                "type": "response",
-                "command": command,
-                "success": True,
-            })
+            self.stdout.emit(
+                {
+                    "type": "response",
+                    "command": command,
+                    "success": True,
+                }
+            )
             if self.settle_abort:
                 for _ in range(self.settle_repetitions):
                     self.stdout.emit({"type": self.settle_event})
@@ -695,7 +709,7 @@ def test_pi_rpc_runner_reuses_process_with_clean_session_per_task(tmp_path, monk
     )
     tasks = [task_store.create(TaskCreateRequest(subject="math")) for _ in range(2)]
     runs = [runner.enqueue(task.id) for task in tasks]
-    tasks_by_run = {run.id: task for task, run in zip(tasks, runs)}
+    tasks_by_run = {run.id: task for task, run in zip(tasks, runs, strict=True)}
     spawned = []
 
     def finish_prompt(payload):
@@ -709,7 +723,7 @@ def test_pi_rpc_runner_reuses_process_with_clean_session_per_task(tmp_path, monk
         return process
 
     monkeypatch.setattr(runner_module.subprocess, "Popen", fake_popen)
-    for task, run in zip(tasks, runs):
+    for task, run in zip(tasks, runs, strict=True):
         runner.run(task.id, run.id)
 
     assert len(spawned) == 1
@@ -1029,16 +1043,12 @@ def test_pi_rpc_cancel_aborts_task_without_killing_shared_worker(tmp_path, monke
         poll_seconds=0.05,
     )
     prompt_started = threading.Event()
-    process = SettlingRpcProcess(
-        lambda _payload: prompt_started.set(), settle_prompt=False
-    )
+    process = SettlingRpcProcess(lambda _payload: prompt_started.set(), settle_prompt=False)
     monkeypatch.setattr(runner_module.subprocess, "Popen", lambda *_args, **_kwargs: process)
 
     cancelled_task = task_store.create(TaskCreateRequest(subject="math"))
     cancelled_run = runner.enqueue(cancelled_task.id)
-    worker_thread = threading.Thread(
-        target=runner.run, args=(cancelled_task.id, cancelled_run.id)
-    )
+    worker_thread = threading.Thread(target=runner.run, args=(cancelled_task.id, cancelled_run.id))
     worker_thread.start()
     assert prompt_started.wait(timeout=1)
     runner.cancel(cancelled_task.id)
@@ -1091,9 +1101,7 @@ def test_pi_runner_single_worker_skips_cancelled_queue_item(
     active_thread = threading.Thread(target=runner.run, args=(tasks[0].id, runs[0].id))
     active_thread.start()
     assert entered_one.wait(timeout=1)
-    queued_thread = threading.Thread(
-        target=runner.run, args=(tasks[1].id, runs[1].id)
-    )
+    queued_thread = threading.Thread(target=runner.run, args=(tasks[1].id, runs[1].id))
     queued_thread.start()
     runner.cancel(tasks[1].id)
     assert len(entered) == 1
@@ -1135,7 +1143,7 @@ def test_pi_runner_pool_executes_on_distinct_workers(tmp_path, monkeypatch):
     monkeypatch.setattr(runner, "_run_in_slot", block_in_slot)
     threads = [
         threading.Thread(target=runner.run, args=(task.id, run.id))
-        for task, run in zip(tasks, runs)
+        for task, run in zip(tasks, runs, strict=True)
     ]
     for thread in threads:
         thread.start()
@@ -1244,7 +1252,9 @@ def test_pi_retries_only_retryable_failures_in_new_run(tmp_path, monkeypatch):
     task = task_store.create(TaskCreateRequest(subject="math"))
     first = runner.enqueue(task.id)
     task_store.mark_status(task.id, TaskStatus.FAILED, "network unavailable")
-    run_store.finish(first.id, RunStatus.FAILED, error_code="network_error", error_message="network unavailable")
+    run_store.finish(
+        first.id, RunStatus.FAILED, error_code="network_error", error_message="network unavailable"
+    )
     run_store.update(first.id, retryable=True)
     captured = []
     monkeypatch.setattr(runner, "run", lambda task_id, run_id: captured.append((task_id, run_id)))

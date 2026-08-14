@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import sqlite3
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
 
@@ -56,7 +56,7 @@ class QuotaService:
             raise ValueError("idempotency_key must not be empty")
         if units < 1:
             raise ValueError("units must be positive")
-        timestamp = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
+        timestamp = (now or datetime.now(UTC)).astimezone(UTC)
         usage_day = timestamp.date().isoformat()
         namespaced_key = f"{workspace}:{idempotency_key.strip()}"
         requested_run_id = run_id or str(uuid4())
@@ -159,7 +159,7 @@ class QuotaService:
     ) -> str:
         """Atomically claim one execution slot for a persisted queued run."""
         workspace = WorkspaceId.parse(workspace_id)
-        timestamp = (now or datetime.now(timezone.utc)).astimezone(timezone.utc).isoformat()
+        timestamp = (now or datetime.now(UTC)).astimezone(UTC).isoformat()
         self.database.migrate()
         with self.database.connection() as connection:
             connection.execute("BEGIN IMMEDIATE")
@@ -234,7 +234,7 @@ class QuotaService:
         workspace = WorkspaceId.parse(workspace_id)
         if status not in {"completed", "failed", "cancelled", "timed_out"}:
             raise ValueError("status must be a terminal run status")
-        timestamp = (now or datetime.now(timezone.utc)).astimezone(timezone.utc).isoformat()
+        timestamp = (now or datetime.now(UTC)).astimezone(UTC).isoformat()
         reservation_state = "consumed" if status == "completed" else "released"
 
         self.database.migrate()
@@ -281,7 +281,7 @@ class QuotaService:
     ) -> RunAdmission:
         """Reopen a released reservation for a transient retry exactly once."""
         workspace = WorkspaceId.parse(workspace_id)
-        timestamp = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
+        timestamp = (now or datetime.now(UTC)).astimezone(UTC)
         self.database.migrate()
         with self.database.connection() as connection:
             connection.execute("BEGIN IMMEDIATE")
@@ -300,7 +300,9 @@ class QuotaService:
                 if previous is None or previous["workspace_id"] != str(workspace):
                     raise QuotaError("retry_not_found", "Retry source run is not in this workspace")
                 if previous["state"] != "released":
-                    raise QuotaError("retry_not_eligible", "Only released reservations can be retried")
+                    raise QuotaError(
+                        "retry_not_eligible", "Only released reservations can be retried"
+                    )
                 if previous["task_id"] != task_id or previous["purpose"] != purpose.value:
                     raise QuotaError("retry_not_eligible", "Retry must preserve task and purpose")
                 policy = connection.execute(

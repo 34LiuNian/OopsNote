@@ -22,7 +22,6 @@ from oopsnote.ai.rpc.probe import probe_new_session
 from oopsnote.mcp.contracts import AI_TOOL_NAMES
 from oopsnote.mcp.http_runtime import SharedMcpHttpRuntime
 
-
 ROOT = Path(__file__).resolve().parents[2]
 REQUIRED_PIPELINE_TOOLS = set(AI_TOOL_NAMES)
 
@@ -74,9 +73,7 @@ def check_rpc_startup() -> bool:
         backend.runtime.configure_child_environment(mcp_environment)
         managed_config_path = backend.runtime.managed_mcp_config_path
         managed_config = json.loads(managed_config_path.read_text(encoding="utf-8"))
-        configured = set(
-            managed_config["mcpServers"]["oopsnote_pipeline"]["directTools"]
-        )
+        configured = set(managed_config["mcpServers"]["oopsnote_pipeline"]["directTools"])
         surface_valid = check(
             configured == REQUIRED_PIPELINE_TOOLS,
             "ephemeral upstream MCP whitelist matches expected tools",
@@ -92,8 +89,7 @@ def check_rpc_startup() -> bool:
         detail = "" if result.success else result.failure_detail
         return surface_valid and check(
             result.success,
-            "upstream Pi restricted MCP startup"
-            + (f": {detail}" if detail else ""),
+            "upstream Pi restricted MCP startup" + (f": {detail}" if detail else ""),
         )
     except (OSError, ValueError, subprocess.TimeoutExpired) as error:
         return check(False, f"upstream Pi restricted MCP startup: {error}")
@@ -110,19 +106,35 @@ def main() -> int:
         try:
             runtime = json.loads(runtime_path.read_text(encoding="utf-8"))
             configured = runtime.get("command") if isinstance(runtime, dict) else None
-            if isinstance(configured, list) and configured and all(isinstance(part, str) and part for part in configured):
+            if (
+                isinstance(configured, list)
+                and configured
+                and all(isinstance(part, str) and part for part in configured)
+            ):
                 command_parts = configured
             else:
                 raise ValueError("command must be a non-empty string array")
         except (OSError, ValueError, json.JSONDecodeError) as error:
             print(f"[missing] read .pi/runtime.json: {error}")
             return 1
-    executable = shutil.which(command_parts[0]) if Path(command_parts[0]).name == command_parts[0] else command_parts[0]
+    executable = (
+        shutil.which(command_parts[0])
+        if Path(command_parts[0]).name == command_parts[0]
+        else command_parts[0]
+    )
     valid = check(bool(executable), f"Pi command: {' '.join(command_parts)}")
     if executable:
         try:
-            result = subprocess.run([executable, *command_parts[1:], "--version"], capture_output=True, text=True, timeout=15)
-            valid &= check(result.returncode == 0, f"Pi version: {result.stdout.strip() or result.stderr.strip()}")
+            result = subprocess.run(
+                [executable, *command_parts[1:], "--version"],
+                capture_output=True,
+                text=True,
+                timeout=15,
+            )
+            valid &= check(
+                result.returncode == 0,
+                f"Pi version: {result.stdout.strip() or result.stderr.strip()}",
+            )
         except (OSError, subprocess.TimeoutExpired) as error:
             valid &= check(False, f"Pi version check: {error}")
     package_path = ROOT / ".pi" / "package.json"
@@ -135,7 +147,10 @@ def main() -> int:
     )
     try:
         package = json.loads(package_path.read_text(encoding="utf-8"))
-        valid &= check(package.get("dependencies", {}).get("pi-mcp-adapter") == "2.11.0", "pi-mcp-adapter pinned to 2.11.0")
+        valid &= check(
+            package.get("dependencies", {}).get("pi-mcp-adapter") == "2.11.0",
+            "pi-mcp-adapter pinned to 2.11.0",
+        )
     except (OSError, json.JSONDecodeError):
         valid &= check(False, "read .pi/package.json")
     try:
@@ -157,8 +172,12 @@ def main() -> int:
         except (OSError, json.JSONDecodeError):
             valid &= check(False, "read .pi/extensions.json")
     else:
-        valid &= check(False, ".pi/extensions.json (create manually from .pi/extensions.json.example)")
-    valid &= check(bool(ext_cfg.get("dashscope_api_key")), "DashScope OCR key (.pi/extensions.json)")
+        valid &= check(
+            False, ".pi/extensions.json (create manually from .pi/extensions.json.example)"
+        )
+    valid &= check(
+        bool(ext_cfg.get("dashscope_api_key")), "DashScope OCR key (.pi/extensions.json)"
+    )
     valid &= check(bool(ext_cfg.get("model")), "OCR model (.pi/extensions.json)")
     pi_auth = Path.home() / ".pi" / "agent" / "auth.json"
     if pi_auth.exists():

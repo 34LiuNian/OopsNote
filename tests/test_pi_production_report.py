@@ -1,13 +1,13 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from oopsnote.core import RunStatus, TaskRecord, TaskRun
 from scripts.benchmarks.pi_production_report import build_report, markdown_report
 
 
 def test_report_counts_one_final_outcome_per_task_and_preserves_unknown_metrics():
-    started = datetime(2026, 7, 1, tzinfo=timezone.utc)
+    started = datetime(2026, 7, 1, tzinfo=UTC)
     task = TaskRecord(id="task-1", revision_count=0)
     retried = TaskRun(
         id="run-1",
@@ -43,7 +43,7 @@ def test_report_counts_one_final_outcome_per_task_and_preserves_unknown_metrics(
 
 
 def test_report_never_converts_historic_unknowns_to_zero():
-    started = datetime(2026, 7, 1, tzinfo=timezone.utc)
+    started = datetime(2026, 7, 1, tzinfo=UTC)
     task = TaskRecord(id="task-1")
     run = TaskRun(
         id="run-1",
@@ -63,7 +63,7 @@ def test_report_never_converts_historic_unknowns_to_zero():
 
 
 def test_report_keeps_orphaned_runs_out_of_task_metrics_but_preserves_evidence():
-    started = datetime(2026, 7, 1, tzinfo=timezone.utc)
+    started = datetime(2026, 7, 1, tzinfo=UTC)
     orphaned = TaskRun(
         id="orphaned-run",
         task_id="deleted-task",

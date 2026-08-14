@@ -6,14 +6,11 @@
 
 from __future__ import annotations
 
-from datetime import datetime
 from pathlib import Path
-from typing import Optional
 from uuid import uuid4
 
 from oopsnote.content import option_label
 from oopsnote.core import Problem
-
 
 # ── 学科与目录映射 ─────────────────────────────────
 
@@ -34,7 +31,8 @@ def subject_dir(subject: str) -> str:
 
 # ── 文件名生成 ──────────────────────────────────────
 
-def problem_filename(problem: Problem, idx: Optional[int] = None) -> str:
+
+def problem_filename(problem: Problem, idx: int | None = None) -> str:
     """生成日期-序号.md 文件名。
 
     Problem.id → 取前 6 位作为序号。
@@ -47,6 +45,7 @@ def problem_filename(problem: Problem, idx: Optional[int] = None) -> str:
 
 # ── .md 内容生成 ────────────────────────────────────
 
+
 def render_problem(problem: Problem, diagram_paths: tuple[str, ...] = ()) -> str:
     """将单道 Problem 渲染为 Obsidian .md 内容。"""
     lines: list[str] = []
@@ -56,7 +55,7 @@ def render_problem(problem: Problem, diagram_paths: tuple[str, ...] = ()) -> str
     lines.append("oopsnote_managed: true")
     lines.append(f"problem_id: {problem.id}")
     if problem.source:
-        lines.append(f"source: \"{problem.source}\"")
+        lines.append(f'source: "{problem.source}"')
     if problem.source_page is not None:
         lines.append(f"source_page: {problem.source_page}")
     date_str = problem.created_at.strftime("%Y-%m-%d")
@@ -114,10 +113,11 @@ def render_problem(problem: Problem, diagram_paths: tuple[str, ...] = ()) -> str
 
 # ── 写入文件 ────────────────────────────────────────
 
+
 def write_problem(
     problem: Problem,
     vault_root: Path,
-    subject: Optional[str] = None,
+    subject: str | None = None,
 ) -> Path:
     """将 Problem 写入 vault 目录，返回写入路径。"""
     subj = subject or problem.subject
@@ -133,10 +133,11 @@ def write_problem(
 
 # ── Tag 索引文件 ────────────────────────────────────
 
+
 def render_tag_index(
     tag_name: str,
     problem_refs: list[tuple[str, str]],  # [(display_name_or_filename, problem_text_preview)]
-    aliases: Optional[list[str]] = None,
+    aliases: list[str] | None = None,
 ) -> str:
     """渲染标签索引页（如 二次函数.md）。"""
     lines: list[str] = []
@@ -170,7 +171,7 @@ def write_tag_index(
     problem_refs: list[tuple[str, str]],
     vault_root: Path,
     subject_dir_name: str,
-    aliases: Optional[list[str]] = None,
+    aliases: list[str] | None = None,
 ) -> Path:
     """将标签索引写入 vault 目录。"""
     path = tag_index_path(tag_name, vault_root, subject_dir_name)

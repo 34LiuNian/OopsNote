@@ -26,6 +26,8 @@ from scripts.benchmarks.pi_math_cases import (
 
 ASSET_ROOT = ROOT / "storage" / "assets"
 REPORT_ROOT = ROOT / "storage" / "pi-benchmark"
+
+
 def find_asset(pattern: str) -> Path:
     matches = sorted(ASSET_ROOT.glob(pattern))
     if len(matches) != 1:
@@ -72,7 +74,9 @@ def markdown_table(rows: list[dict[str, object]]) -> str:
     ]
     for row in rows:
         stages = row["stages"]
-        token_pair = f"{row['input_tokens'] or 0}/{row['output_tokens'] or 0}/{row.get('cache_tokens') or 0}"
+        token_pair = (
+            f"{row['input_tokens'] or 0}/{row['output_tokens'] or 0}/{row.get('cache_tokens') or 0}"
+        )
         cost = "--" if row["cost"] is None else f"{row['cost']:.6f}"
         lines.append(
             f"| {row['case']} | {row['expected']} | {row['answer'] or '--'} | {row['status']} | "
@@ -85,7 +89,9 @@ def markdown_table(rows: list[dict[str, object]]) -> str:
 def summary_table(rows: list[dict[str, object]]) -> str:
     durations = [int(row["duration_ms"]) for row in rows if row.get("duration_ms") is not None]
     sorted_durations = sorted(durations)
-    p95 = sorted_durations[math.ceil(len(sorted_durations) * 0.95) - 1] if sorted_durations else None
+    p95 = (
+        sorted_durations[math.ceil(len(sorted_durations) * 0.95) - 1] if sorted_durations else None
+    )
     stage_averages: dict[str, str] = {}
     for stage in ("ocr", "solving", "verifying", "tagging"):
         values = [
@@ -132,7 +138,7 @@ def main() -> int:
     storage = ROOT / "storage"
     task_store = TaskStore(storage)
     run_store = RunStore(storage / "runs")
-    assets = AssetStore(ASSET_ROOT)
+    _assets = AssetStore(ASSET_ROOT)
     runner = PiRpcRunner(
         backend=backend,
         project_root=ROOT,
@@ -145,14 +151,16 @@ def main() -> int:
     try:
         for case in MATH_BENCHMARK_CASES:
             source = find_asset(case.asset_glob)
-            task = task_store.create(TaskCreateRequest(
-                subject="math",
-                asset_path=f"/assets/{source.name}",
-                metadata={
-                    "source": f"pi-benchmark-{case.name}",
-                    "expected_answer": case.expected_answer,
-                },
-            ))
+            task = task_store.create(
+                TaskCreateRequest(
+                    subject="math",
+                    asset_path=f"/assets/{source.name}",
+                    metadata={
+                        "source": f"pi-benchmark-{case.name}",
+                        "expected_answer": case.expected_answer,
+                    },
+                )
+            )
             run = runner.enqueue(task.id)
             started = time.monotonic()
             runner.run(task.id, run.id)
@@ -160,21 +168,23 @@ def main() -> int:
             stored_run = run_store.get(run.id)
             stored_task = task_store.get(task.id)
             answer = stored_task.problem.answer.strip() if stored_task.problem else ""
-            rows.append({
-                "case": case.name,
-                "task_id": task.id,
-                "run_id": run.id,
-                "expected": case.expected_answer,
-                "answer": answer,
-                "status": stored_run.status.value,
-                "duration_ms": stored_run.duration_ms or elapsed_ms,
-                "stages": stage_durations(stored_run),
-                "input_tokens": stored_run.input_tokens,
-                "output_tokens": stored_run.output_tokens,
-                "cache_tokens": stored_run.cache_tokens,
-                "cost": stored_run.cost,
-                "rpc_log": stored_run.rpc_log_path,
-            })
+            rows.append(
+                {
+                    "case": case.name,
+                    "task_id": task.id,
+                    "run_id": run.id,
+                    "expected": case.expected_answer,
+                    "answer": answer,
+                    "status": stored_run.status.value,
+                    "duration_ms": stored_run.duration_ms or elapsed_ms,
+                    "stages": stage_durations(stored_run),
+                    "input_tokens": stored_run.input_tokens,
+                    "output_tokens": stored_run.output_tokens,
+                    "cache_tokens": stored_run.cache_tokens,
+                    "cost": stored_run.cost,
+                    "rpc_log": stored_run.rpc_log_path,
+                }
+            )
     finally:
         runner.shutdown()
         mcp_runtime.shutdown()
@@ -189,13 +199,19 @@ def main() -> int:
     print(report)
     REPORT_ROOT.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-    (REPORT_ROOT / f"{stamp}.json").write_text(json.dumps(rows, ensure_ascii=False, indent=2), encoding="utf-8")
+    (REPORT_ROOT / f"{stamp}.json").write_text(
+        json.dumps(rows, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
     (REPORT_ROOT / f"{stamp}.md").write_text(report + "\n", encoding="utf-8")
-    return 0 if all(
-        row["status"] == "completed"
-        and benchmark_answers_match(str(row["answer"]), str(row["expected"]))
-        for row in rows
-    ) else 1
+    return (
+        0
+        if all(
+            row["status"] == "completed"
+            and benchmark_answers_match(str(row["answer"]), str(row["expected"]))
+            for row in rows
+        )
+        else 1
+    )
 
 
 if __name__ == "__main__":

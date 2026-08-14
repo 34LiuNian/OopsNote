@@ -2,8 +2,18 @@ from __future__ import annotations
 
 import json
 
-from oopsnote.core import AssetStore, DiagramCandidate, DiagramItem, DiagramStatus, Problem, TagStore, TaskCreateRequest, TaskStatus, TaskStore
-from oopsnote.obsidian.syncer import MANAGED_MARKER, ObsidianSyncQueue, ObsidianSyncer
+from oopsnote.core import (
+    AssetStore,
+    DiagramCandidate,
+    DiagramItem,
+    DiagramStatus,
+    Problem,
+    TagStore,
+    TaskCreateRequest,
+    TaskStatus,
+    TaskStore,
+)
+from oopsnote.obsidian.syncer import MANAGED_MARKER, ObsidianSyncer, ObsidianSyncQueue
 from oopsnote.obsidian.writer import problem_filename, subject_dir
 
 
@@ -28,9 +38,7 @@ def test_incremental_sync_does_not_rewrite_existing_problem_note(tmp_path):
     syncer = ObsidianSyncer(store, tmp_path / "vaults", tags)
     first = _problem(store, "first")
     syncer.sync_for_subject("math")
-    first_path = (
-        tmp_path / "vaults" / subject_dir("math") / "problems" / problem_filename(first)
-    )
+    first_path = tmp_path / "vaults" / subject_dir("math") / "problems" / problem_filename(first)
     first_path.write_text(first_path.read_text(encoding="utf-8") + "\nLOCAL EDIT", encoding="utf-8")
 
     second = _problem(store, "second")
@@ -81,7 +89,9 @@ def test_sync_embeds_the_selected_cached_svg_and_tracks_it_as_managed(tmp_path):
     syncer = ObsidianSyncer(store, tmp_path / "vaults")
     problem = _problem(store, "diagram problem")
     task = next(item for item in store.list_all() if item.problem and item.problem.id == problem.id)
-    svg_path = assets.save_bytes(b"<svg xmlns='http://www.w3.org/2000/svg'/>", "diagram.svg", "diagram")
+    svg_path = assets.save_bytes(
+        b"<svg xmlns='http://www.w3.org/2000/svg'/>", "diagram.svg", "diagram"
+    )
     candidate = DiagramCandidate(
         ordinal=1,
         tikz_source="\\draw (0,0)--(1,0);",
@@ -90,12 +100,17 @@ def test_sync_embeds_the_selected_cached_svg_and_tracks_it_as_managed(tmp_path):
         png_path=assets.save_bytes(b"png", "diagram.png", "diagram"),
         decision="accept",
     )
-    store.update(task.id, diagram_items=[DiagramItem(
-        source_asset_path=task.asset_path,
-        status=DiagramStatus.READY_TIKZ,
-        selected_candidate_id=candidate.id,
-        candidates=[candidate],
-    )])
+    store.update(
+        task.id,
+        diagram_items=[
+            DiagramItem(
+                source_asset_path=task.asset_path,
+                status=DiagramStatus.READY_TIKZ,
+                selected_candidate_id=candidate.id,
+                candidates=[candidate],
+            )
+        ],
+    )
 
     syncer.sync_for_subject("math")
 
@@ -116,12 +131,14 @@ def test_v1_manifest_never_authorizes_overwriting_an_unverified_local_edit(tmp_p
     manifest_path = subject_root / ".oopsnote-managed.json"
     v2 = json.loads(manifest_path.read_text(encoding="utf-8"))
     manifest_path.write_text(
-        json.dumps({
-            "version": 1,
-            "subject": v2["subject"],
-            "problem_files": v2["problem_files"],
-            "index_files": v2["index_files"],
-        }),
+        json.dumps(
+            {
+                "version": 1,
+                "subject": v2["subject"],
+                "problem_files": v2["problem_files"],
+                "index_files": v2["index_files"],
+            }
+        ),
         encoding="utf-8",
     )
     path = subject_root / "problems" / problem_filename(problem)
@@ -141,7 +158,9 @@ def test_sync_preserves_locally_edited_index(tmp_path):
     problem = _problem(store, "original")
     syncer.sync_for_subject("math")
     index_path = tmp_path / "vaults" / subject_dir("math") / "indexes" / "函数.md"
-    index_path.write_text(index_path.read_text(encoding="utf-8") + "\nLOCAL INDEX EDIT", encoding="utf-8")
+    index_path.write_text(
+        index_path.read_text(encoding="utf-8") + "\nLOCAL INDEX EDIT", encoding="utf-8"
+    )
     task = next(item for item in store.list_all() if item.problem and item.problem.id == problem.id)
     store.update(task.id, problem=problem.model_copy(update={"problem_text": "core update"}))
 
@@ -185,9 +204,9 @@ def test_sync_queue_coalesces_same_subject_without_losing_problems(tmp_path):
 
     syncer.sync_problems([problem for problem, _ in pending.values()])
     problem_dir = tmp_path / "vaults" / subject_dir("math") / "problems"
-    assert {
-        problem_filename(problem) for problem in problems
-    } <= {path.name for path in problem_dir.glob("*.md")}
+    assert {problem_filename(problem) for problem in problems} <= {
+        path.name for path in problem_dir.glob("*.md")
+    }
 
 
 def test_sync_status_update_is_bound_to_the_completed_problem(tmp_path):

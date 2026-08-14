@@ -1,0 +1,28 @@
+# OopsNote Python 风格与静态检查配置
+# 用法：uv run ruff check . / uv run ruff format .
+
+line-length = 100
+target-version = "py311"
+
+exclude = [
+    ".pytest_cache",
+    ".pytest-tmp*",
+]
+
+[lint]
+select = ["E4", "E7", "E9", "F", "B", "I", "UP", "SIM", "RUF"]
+ignore = [
+    # FastAPI 依赖注入惯用法：Depends(...) 等调用出现在默认参数中
+    "B008",
+    # 中文文档/提示语与数学公式内容中刻意保留的宽字符与符号
+    # （如 ×、μ、‑ 等；强行替换会破坏面向用户的文案与测试夹具）
+    "RUF001",
+    "RUF002",
+    "RUF003",
+]
+
+[lint.per-file-ignores]
+# __init__ 允许 re-export（F401）与有序/延迟导入（E402、I001）
+"__init__.py" = ["E402", "F401", "I001"]
+# scripts/ 是独立入口脚本，先插 sys.path 再导入 oopsnote 是既定引导方式
+"scripts/**/*.py" = ["E402"]

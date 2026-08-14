@@ -2,9 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Optional
-
-
 SUBJECT_ALIASES: dict[str, frozenset[str]] = {
     "math": frozenset({"math", "数学"}),
     "physics": frozenset({"physics", "物理"}),
@@ -20,7 +17,7 @@ _CANONICAL_BY_ALIAS = {
 }
 
 
-def canonical_subject(subject: Optional[str]) -> Optional[str]:
+def canonical_subject(subject: str | None) -> str | None:
     """Return the stable subject key while preserving unknown subject values."""
 
     if subject is None:

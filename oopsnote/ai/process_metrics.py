@@ -6,10 +6,9 @@ import ctypes
 import os
 from ctypes import wintypes
 from pathlib import Path
-from typing import Optional
 
 
-def _windows_working_set_bytes(pid: int) -> Optional[int]:
+def _windows_working_set_bytes(pid: int) -> int | None:
     class ProcessMemoryCounters(ctypes.Structure):
         _fields_ = [
             ("cb", wintypes.DWORD),
@@ -52,11 +51,15 @@ def _windows_working_set_bytes(pid: int) -> Optional[int]:
         close_handle(handle)
 
 
-def _linux_working_set_bytes(pid: int) -> Optional[int]:
+def _linux_working_set_bytes(pid: int) -> int | None:
     try:
-        lines = (Path("/proc") / str(pid) / "status").read_text(
-            encoding="utf-8",
-        ).splitlines()
+        lines = (
+            (Path("/proc") / str(pid) / "status")
+            .read_text(
+                encoding="utf-8",
+            )
+            .splitlines()
+        )
     except OSError:
         return None
     for line in lines:
@@ -67,7 +70,7 @@ def _linux_working_set_bytes(pid: int) -> Optional[int]:
     return None
 
 
-def process_working_set_bytes(pid: int) -> Optional[int]:
+def process_working_set_bytes(pid: int) -> int | None:
     """Return current resident memory, or None when the platform cannot sample it."""
 
     if pid <= 0:

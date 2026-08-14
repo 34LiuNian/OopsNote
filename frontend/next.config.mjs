@@ -1,5 +1,15 @@
 import withSerwistInit from "@serwist/next";
 
+// next.config 不保证已加载 .env 文件，这里显式读取本地 .env.local（缺省或
+// Node < 20.12 时优雅降级为 loopback-only）。经反代域名做本地开发时在
+// frontend/.env.local 设置 OOPSNOTE_DEV_ALLOWED_ORIGIN。
+try {
+  process.loadEnvFile(new URL("./.env.local", import.meta.url));
+} catch {
+  // 没有 .env.local 或运行时不支持 loadEnvFile：仅允许 loopback。
+}
+const extraDevOrigin = process.env.OOPSNOTE_DEV_ALLOWED_ORIGIN;
+
 const withSerwist = withSerwistInit({
   swSrc: "app/sw.ts",
   swDest: "public/sw.js",
@@ -11,7 +21,7 @@ const withSerwist = withSerwistInit({
 const nextConfig = {
   reactStrictMode: true,
   distDir: process.env.NEXT_DIST_DIR || '.next',
-  allowedDevOrigins: ['127.0.0.1', 'localhost', 'dev-oopsnote.alan-ztr.eu.org'],
+  allowedDevOrigins: ['127.0.0.1', 'localhost', ...(extraDevOrigin ? [extraDevOrigin] : [])],
   // Enable standalone output for production deployment
   output: 'standalone',
   serverExternalPackages: ['better-sqlite3'],

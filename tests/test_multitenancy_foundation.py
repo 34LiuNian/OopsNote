@@ -2,18 +2,17 @@
 
 from __future__ import annotations
 
+import asyncio
 import sqlite3
 import threading
-import asyncio
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
 from oopsnote.ai.dispatcher import ManagedTaskDispatcher
-from oopsnote.ai.work_items import ManagedWorkItem
 from oopsnote.ai.langchain_tools import McpHttpToolClient
+from oopsnote.ai.work_items import ManagedWorkItem
 from oopsnote.api.context import RequestContext, activate_request_context, reset_request_context
-from oopsnote.mcp.context import McpCapability, McpStores, activate_capability, reset_capability
 from oopsnote.control import (
     ControlDatabase,
     ControlDatabaseError,
@@ -32,6 +31,7 @@ from oopsnote.core import (
     WorkspaceId,
     WorkspaceStoreFactory,
 )
+from oopsnote.mcp.context import McpCapability, McpStores, activate_capability, reset_capability
 
 
 def _registry(tmp_path) -> WorkspaceRegistry:
@@ -52,9 +52,7 @@ def test_control_migrations_are_ordered_idempotent_and_enable_sqlite_guards(tmp_
         assert connection.execute("PRAGMA foreign_keys").fetchone()[0] == 1
         tables = {
             row[0]
-            for row in connection.execute(
-                "SELECT name FROM sqlite_master WHERE type = 'table'"
-            )
+            for row in connection.execute("SELECT name FROM sqlite_master WHERE type = 'table'")
         }
     assert {
         "schema_migrations",
@@ -125,10 +123,13 @@ def test_registry_concurrently_creates_only_one_mapping(tmp_path):
     assert all(not thread.is_alive() for thread in threads)
     assert len(set(workspace_ids)) == 1
     with registry.database.connection() as connection:
-        assert connection.execute(
-            "SELECT COUNT(*) FROM workspaces WHERE auth_user_id = ?",
-            (principal.user_id,),
-        ).fetchone()[0] == 1
+        assert (
+            connection.execute(
+                "SELECT COUNT(*) FROM workspaces WHERE auth_user_id = ?",
+                (principal.user_id,),
+            ).fetchone()[0]
+            == 1
+        )
 
 
 def test_registry_provisions_and_reports_member_quota_without_exposing_content(tmp_path):
@@ -147,7 +148,7 @@ def test_registry_provisions_and_reports_member_quota_without_exposing_content(t
         "max_concurrent_runs": 2,
         "active_runs": 0,
         "used_units": 0,
-        "usage_day_utc": datetime.now(timezone.utc).date().isoformat(),
+        "usage_day_utc": datetime.now(UTC).date().isoformat(),
     }
     assert registry.quota_summary("auth-missing") is None
     updated = registry.update_quota("auth-member", daily_success_limit=9)
@@ -280,9 +281,7 @@ def test_quota_admission_is_atomic_idempotent_and_settles_terminal_runs(tmp_path
     assert service.start_run(workspace, queued.run_id) == "running"
     assert service.settle_run(workspace, queued.run_id, status="completed") == "completed"
     with registry.database.connection() as connection:
-        states = connection.execute(
-            "SELECT state FROM usage_reservations ORDER BY id"
-        ).fetchall()
+        states = connection.execute("SELECT state FROM usage_reservations ORDER BY id").fetchall()
     assert {row[0] for row in states} == {"released", "consumed"}
 
 
@@ -304,7 +303,7 @@ def test_mcp_capability_cannot_resolve_another_workspace_task(tmp_path):
             asset_store=second.asset_store,
             run_store=second.run_store,
         ),
-        expires_at=datetime.now(timezone.utc) + timedelta(minutes=5),
+        expires_at=datetime.now(UTC) + timedelta(minutes=5),
     )
     token = activate_capability(capability)
     try:
@@ -334,12 +333,14 @@ def test_mcp_runtime_issues_distinct_workspace_tokens(tmp_path):
             factory.for_context(second_context),
         )
         assert first["OOPSNOTE_MCP_TOKEN"] != second["OOPSNOTE_MCP_TOKEN"]
-        assert runtime.capability_for_token(
-            first["OOPSNOTE_MCP_TOKEN"]
-        ).workspace_id == first_context.workspace_id
-        assert runtime.capability_for_token(
-            second["OOPSNOTE_MCP_TOKEN"]
-        ).workspace_id == second_context.workspace_id
+        assert (
+            runtime.capability_for_token(first["OOPSNOTE_MCP_TOKEN"]).workspace_id
+            == first_context.workspace_id
+        )
+        assert (
+            runtime.capability_for_token(second["OOPSNOTE_MCP_TOKEN"]).workspace_id
+            == second_context.workspace_id
+        )
     finally:
         runtime.shutdown()
 
@@ -373,14 +374,10 @@ def test_mcp_http_token_enforces_workspace_store_selection(tmp_path):
             second_env["OOPSNOTE_MCP_URL"],
             second_env["OOPSNOTE_MCP_TOKEN"],
         )
-        result = asyncio.run(
-            first_client.call("get_task", {"task_id": task.id, "run_id": run.id})
-        )
+        result = asyncio.run(first_client.call("get_task", {"task_id": task.id, "run_id": run.id}))
         assert result["isError"] is False
         with pytest.raises(RuntimeError):
-            asyncio.run(
-                second_client.call("get_task", {"task_id": task.id, "run_id": run.id})
-            )
+            asyncio.run(second_client.call("get_task", {"task_id": task.id, "run_id": run.id}))
     finally:
         runtime.shutdown()
 
@@ -486,7 +483,9 @@ def test_workspace_retry_reuses_one_reservation_and_consumes_it_once(tmp_path):
     assert control_runs[1]["retry_of"] == first.id
 
 
-def test_retry_rechecks_concurrency_when_execution_starts_and_preserves_the_original_operation(tmp_path):
+def test_retry_rechecks_concurrency_when_execution_starts_and_preserves_the_original_operation(
+    tmp_path,
+):
     registry = _registry(tmp_path)
     context = registry.get_or_create(Principal("auth-retry-guards", UserRole.USER))
     service = QuotaService(registry.database)
@@ -533,8 +532,8 @@ def test_retry_moves_released_usage_to_the_retry_day_and_rechecks_daily_limit(tm
     registry = _registry(tmp_path)
     context = registry.get_or_create(Principal("auth-retry-day", UserRole.USER))
     service = QuotaService(registry.database)
-    day_one = datetime(2026, 8, 6, 23, 59, tzinfo=timezone.utc)
-    day_two = datetime(2026, 8, 7, 0, 1, tzinfo=timezone.utc)
+    day_one = datetime(2026, 8, 6, 23, 59, tzinfo=UTC)
+    day_two = datetime(2026, 8, 7, 0, 1, tzinfo=UTC)
     first = service.admit_run(
         context.workspace_id,
         task_id="task-1",

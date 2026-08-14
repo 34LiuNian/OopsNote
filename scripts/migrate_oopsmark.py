@@ -11,7 +11,6 @@ from typing import Any
 from oopsnote.content import prepare_legacy_problem
 from oopsnote.core import ContentFormat, Problem, TaskStore
 
-
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -43,11 +42,13 @@ def migrate_storage(storage: Path, *, apply: bool = False) -> dict[str, Any]:
         }
         if apply and candidate.ready:
             try:
-                migrated = Problem.model_validate({
-                    **problem.model_dump(mode="python"),
-                    **candidate.fields,
-                    "content_format": ContentFormat.OOPSMARK_V1,
-                })
+                migrated = Problem.model_validate(
+                    {
+                        **problem.model_dump(mode="python"),
+                        **candidate.fields,
+                        "content_format": ContentFormat.OOPSMARK_V1,
+                    }
+                )
                 store.update(task.id, problem=migrated)
                 entry["status"] = "migrated"
             except (OSError, RuntimeError, ValueError) as error:
@@ -68,8 +69,14 @@ def migrate_storage(storage: Path, *, apply: bool = False) -> dict[str, Any]:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--storage", type=Path, default=ROOT / "storage")
-    parser.add_argument("--apply", action="store_true", help="Apply only candidates that pass OopsMark v1 validation")
-    parser.add_argument("--report", type=Path, help="Write the JSON report to this path as well as stdout")
+    parser.add_argument(
+        "--apply",
+        action="store_true",
+        help="Apply only candidates that pass OopsMark v1 validation",
+    )
+    parser.add_argument(
+        "--report", type=Path, help="Write the JSON report to this path as well as stdout"
+    )
     args = parser.parse_args(argv)
     report = migrate_storage(args.storage, apply=args.apply)
     serialized = json.dumps(report, ensure_ascii=False, indent=2)

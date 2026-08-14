@@ -3,17 +3,18 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any
 from uuid import NAMESPACE_URL, uuid5
 
 from fastapi import APIRouter, HTTPException, Query, Request
 
-from oopsnote.api.schemas import TagInput, TagRenameInput
 from oopsnote.api.auth import AuthenticationError, require_admin_request
+from oopsnote.api.schemas import TagInput, TagRenameInput
 from oopsnote.core import Problem, Searcher, SearchQuery, TagDimension, TagItem
 from oopsnote.obsidian.syncer import ObsidianSyncer
 
 router = APIRouter()
+
 
 def _api():
     from oopsnote.api import main
@@ -68,8 +69,8 @@ def _tag_reference_counts() -> dict[tuple[TagDimension, str], int]:
 
 
 def _source_tag_items(
-    query: Optional[str],
-    subject: Optional[str],
+    query: str | None,
+    subject: str | None,
     limit: int,
 ) -> list[TagItem]:
     """Project document-level sources from tasks; page location lives in source_page/trace."""
@@ -94,7 +95,9 @@ def _source_tag_items(
             ref_count=count,
             source="derived",
         )
-        for value, count in sorted(counts.items(), key=lambda item: (-item[1], item[0].casefold()))[:limit]
+        for value, count in sorted(counts.items(), key=lambda item: (-item[1], item[0].casefold()))[
+            :limit
+        ]
     ]
 
 
@@ -111,16 +114,33 @@ def _replace_tag_references(
         metadata = dict(task.metadata)
         next_problem = problem
         changed_fields = 0
-        if problem and dimension == TagDimension.KNOWLEDGE and old_value in problem.knowledge_points:
-            values = [new_value if value == old_value else value for value in problem.knowledge_points]
-            next_problem = problem.model_copy(update={"knowledge_points": list(dict.fromkeys(values))})
+        if (
+            problem
+            and dimension == TagDimension.KNOWLEDGE
+            and old_value in problem.knowledge_points
+        ):
+            values = [
+                new_value if value == old_value else value for value in problem.knowledge_points
+            ]
+            next_problem = problem.model_copy(
+                update={"knowledge_points": list(dict.fromkeys(values))}
+            )
             changed_fields += 1
         elif problem and dimension == TagDimension.ERROR and old_value in problem.error_hypothesis:
-            values = [new_value if value == old_value else value for value in problem.error_hypothesis]
-            next_problem = problem.model_copy(update={"error_hypothesis": list(dict.fromkeys(values))})
+            values = [
+                new_value if value == old_value else value for value in problem.error_hypothesis
+            ]
+            next_problem = problem.model_copy(
+                update={"error_hypothesis": list(dict.fromkeys(values))}
+            )
             changed_fields += 1
-        elif dimension == TagDimension.CUSTOM and old_value in list(metadata.get("user_tags") or []):
-            values = [new_value if value == old_value else value for value in metadata.get("user_tags", [])]
+        elif dimension == TagDimension.CUSTOM and old_value in list(
+            metadata.get("user_tags") or []
+        ):
+            values = [
+                new_value if value == old_value else value
+                for value in metadata.get("user_tags", [])
+            ]
             metadata["user_tags"] = list(dict.fromkeys(values))
             changed_fields += 1
         elif dimension == TagDimension.META:
@@ -136,24 +156,25 @@ def _replace_tag_references(
             fields_modified += changed_fields
     return tasks_modified, fields_modified
 
-def _parse_iso(value: Optional[str]) -> Optional[datetime]:
+
+def _parse_iso(value: str | None) -> datetime | None:
     if not value:
         return None
     try:
         return datetime.fromisoformat(value)
-    except ValueError:
-        raise HTTPException(status_code=422, detail="Invalid ISO datetime")
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail="Invalid ISO datetime") from error
 
 
 @router.get("/problems")
 def list_problems(
-    subject: Optional[str] = None,
-    source: Optional[list[str]] = Query(default=None),
-    knowledge_tag: Optional[list[str]] = Query(default=None),
-    error_tag: Optional[list[str]] = Query(default=None),
-    user_tag: Optional[list[str]] = Query(default=None),
-    created_after: Optional[str] = None,
-    created_before: Optional[str] = None,
+    subject: str | None = None,
+    source: list[str] | None = Query(default=None),
+    knowledge_tag: list[str] | None = Query(default=None),
+    error_tag: list[str] | None = Query(default=None),
+    user_tag: list[str] | None = Query(default=None),
+    created_after: str | None = None,
+    created_before: str | None = None,
 ) -> dict[str, list[dict[str, Any]]]:
     api = _api()
     after = _parse_iso(created_after)
@@ -168,9 +189,7 @@ def list_problems(
             continue
         if source and item["source"] not in source:
             continue
-        if knowledge_tag and not set(knowledge_tag).issubset(
-            item["knowledge_tags"]
-        ):
+        if knowledge_tag and not set(knowledge_tag).issubset(item["knowledge_tags"]):
             continue
         if error_tag and not set(error_tag).issubset(item["error_tags"]):
             continue
@@ -188,18 +207,16 @@ def list_problems(
 
 @router.get("/search")
 def search(
-    tags: Optional[str] = Query(default=None),
-    subject: Optional[str] = None,
-    since: Optional[datetime] = None,
-    error_type: Optional[str] = None,
-    regex: Optional[str] = None,
+    tags: str | None = Query(default=None),
+    subject: str | None = None,
+    since: datetime | None = None,
+    error_type: str | None = None,
+    regex: str | None = None,
     limit: int = Query(default=50, ge=1, le=500),
 ) -> dict[str, list[Problem]]:
     api = _api()
     query = SearchQuery(
-        tags=[tag.strip() for tag in tags.split(",") if tag.strip()]
-        if tags
-        else [],
+        tags=[tag.strip() for tag in tags.split(",") if tag.strip()] if tags else [],
         subject=subject,
         since=since,
         error_type=error_type,
@@ -211,10 +228,10 @@ def search(
 
 @router.get("/tags")
 def list_tags(
-    dimension: Optional[TagDimension] = None,
-    query: Optional[str] = None,
-    subject: Optional[str] = None,
-    scope: Optional[str] = None,
+    dimension: TagDimension | None = None,
+    query: str | None = None,
+    subject: str | None = None,
+    scope: str | None = None,
     limit: int = Query(default=100, ge=1, le=500),
 ) -> dict[str, list[dict[str, Any]]]:
     api = _api()
@@ -242,7 +259,7 @@ def list_tags(
 
 
 @router.get("/tags/tree")
-def get_knowledge_tree(subject: Optional[str] = None) -> dict[str, Any]:
+def get_knowledge_tree(subject: str | None = None) -> dict[str, Any]:
     return _api().TAG_STORE.knowledge_tree(subject)
 
 
@@ -327,12 +344,7 @@ def merge_tags(source_id: str, payload: dict[str, str]) -> dict[str, Any]:
     api = _api()
     source = api.TAG_STORE.get_by_id(source_id)
     target = api.TAG_STORE.get_by_id(payload.get("target_id", ""))
-    if (
-        not source
-        or source.source != "user"
-        or not target
-        or source.dimension != target.dimension
-    ):
+    if not source or source.source != "user" or not target or source.dimension != target.dimension:
         raise HTTPException(
             status_code=404,
             detail="Compatible source and target tags are required",
@@ -357,7 +369,7 @@ def merge_tags(source_id: str, payload: dict[str, str]) -> dict[str, Any]:
 
 
 @router.post("/sync")
-def sync(subject: Optional[str] = None) -> dict[str, str]:
+def sync(subject: str | None = None) -> dict[str, str]:
     api = _api()
     syncer = ObsidianSyncer(
         task_store=api.TASK_STORE,

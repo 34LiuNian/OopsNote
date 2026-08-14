@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 
@@ -57,11 +57,13 @@ def advance_to_finalizing(
     try:
         server.RUN_STORE.get(run_id)
     except KeyError:
-        server.RUN_STORE._write(TaskRun(
-            id=run_id,
-            task_id=task_id,
-            status=RunStatus.RUNNING,
-        ))
+        server.RUN_STORE._write(
+            TaskRun(
+                id=run_id,
+                task_id=task_id,
+                status=RunStatus.RUNNING,
+            )
+        )
     server.report_task_stage(task_id, "ocr", run_id=run_id)
     server.report_task_stage(task_id, "solving", run_id=run_id)
     server.submit_solution_candidate(
@@ -112,11 +114,13 @@ def test_solver_candidate_requires_a_runner_started_verifier_session(tmp_path, m
     task_store = configure_stores(tmp_path, monkeypatch)
     task = task_store.create(TaskCreateRequest(subject="math"))
     task_store.update(task.id, status=TaskStatus.PROCESSING, active_run_id="run-1")
-    server.RUN_STORE._write(TaskRun(
-        id="run-1",
-        task_id=task.id,
-        status=RunStatus.RUNNING,
-    ))
+    server.RUN_STORE._write(
+        TaskRun(
+            id="run-1",
+            task_id=task.id,
+            status=RunStatus.RUNNING,
+        )
+    )
     server.report_task_stage(task.id, "ocr", run_id="run-1")
     server.report_task_stage(task.id, "solving", run_id="run-1")
     server.submit_solution_candidate(
@@ -164,19 +168,23 @@ def test_task_run_cannot_deserialize_verification_without_a_candidate():
     with pytest.raises(ValueError, match="requires a solution_candidate"):
         TaskRun(
             task_id="task-1",
-            verification_started_at=datetime.now(timezone.utc),
+            verification_started_at=datetime.now(UTC),
         )
 
 
-def test_solution_candidate_is_single_write_and_never_updates_the_task_problem(tmp_path, monkeypatch):
+def test_solution_candidate_is_single_write_and_never_updates_the_task_problem(
+    tmp_path, monkeypatch
+):
     task_store = configure_stores(tmp_path, monkeypatch)
     task = task_store.create(TaskCreateRequest(subject="math"))
     task_store.update(task.id, status=TaskStatus.PROCESSING, active_run_id="run-1")
-    server.RUN_STORE._write(TaskRun(
-        id="run-1",
-        task_id=task.id,
-        status=RunStatus.RUNNING,
-    ))
+    server.RUN_STORE._write(
+        TaskRun(
+            id="run-1",
+            task_id=task.id,
+            status=RunStatus.RUNNING,
+        )
+    )
     server.report_task_stage(task.id, "ocr", run_id="run-1")
     server.report_task_stage(task.id, "solving", run_id="run-1")
     payload = json.dumps(valid_problem(), ensure_ascii=False)
@@ -303,10 +311,12 @@ def test_finalize_sync_message_cannot_overwrite_newer_run(tmp_path, monkeypatch)
 
 def test_finalize_enforces_subject_and_enriches_trusted_source(tmp_path, monkeypatch):
     task_store = configure_stores(tmp_path, monkeypatch)
-    task = task_store.create(TaskCreateRequest(
-        subject="math",
-        metadata={"source": "卷一.pdf", "source_page": 2},
-    ))
+    task = task_store.create(
+        TaskCreateRequest(
+            subject="math",
+            metadata={"source": "卷一.pdf", "source_page": 2},
+        )
+    )
     task_store.update(task.id, status=TaskStatus.PROCESSING, active_run_id="run-1")
     advance_to_finalizing(task.id)
 
@@ -434,10 +444,12 @@ def test_finalize_allows_no_error_for_unanswered_question(tmp_path, monkeypatch)
 
 def test_finalize_preserves_user_provided_error_for_unanswered_question(tmp_path, monkeypatch):
     task_store = configure_stores(tmp_path, monkeypatch)
-    task = task_store.create(TaskCreateRequest(
-        subject="math",
-        metadata={"error_tags": ["计算失误"]},
-    ))
+    task = task_store.create(
+        TaskCreateRequest(
+            subject="math",
+            metadata={"error_tags": ["计算失误"]},
+        )
+    )
     task_store.update(task.id, status=TaskStatus.PROCESSING, active_run_id="run-1")
     server.create_tag("error", "计算失误", subject="math")
     problem = valid_problem()
@@ -541,11 +553,7 @@ def test_ai_tag_tool_progressively_returns_branches_then_leaves(tmp_path, monkey
 
     catalog = server.list_tags(dimension="knowledge", subject="math")
     localized_catalog = server.list_tags(dimension="knowledge", subject="数学")
-    branch_ids = [
-        child["id"]
-        for group in catalog["items"]
-        for child in group["children"]
-    ]
+    branch_ids = [child["id"] for group in catalog["items"] for child in group["children"]]
     leaves = server.list_tags(
         dimension="knowledge",
         subject="math",
@@ -693,11 +701,7 @@ def test_managed_knowledge_tag_queries_persist_progress_and_cleanup(tmp_path, mo
         run_id="run-1",
         subject="math",
     )
-    branch_ids = [
-        child["id"]
-        for group in branches["items"]
-        for child in group["children"]
-    ]
+    branch_ids = [child["id"] for group in branches["items"] for child in group["children"]]
     persisted = task_store.get(task.id).metadata["_managed_knowledge_branches"]
     assert persisted["run_id"] == "run-1"
     assert persisted["branch_ids"] == branch_ids

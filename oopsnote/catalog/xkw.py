@@ -13,15 +13,13 @@ import json
 import re
 import unicodedata
 from collections import defaultdict
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 from urllib.parse import urlsplit
 from uuid import NAMESPACE_URL, uuid5
 
-
-TREE_URL_RE = re.compile(
-    r"/tree/(?P<kind>lk|c)_(?P<bank_id>\d+)(?:_(?P<edition_id>\d+))?\.json$"
-)
+TREE_URL_RE = re.compile(r"/tree/(?P<kind>lk|c)_(?P<bank_id>\d+)(?:_(?P<edition_id>\d+))?\.json$")
 SUBJECT_BY_BANK_ID = {
     11: "math",
     13: "physics",
@@ -227,9 +225,7 @@ def build_knowledge_tags(trees: Iterable[dict[str, Any]]) -> list[dict[str, Any]
         primary, primary_path = occurrences[0]
         paths = [list(path) for _, path in occurrences]
         path_aliases = list(dict.fromkeys("/".join(path) for path in paths))
-        scopes = list(
-            dict.fromkeys(node["scope"] for node, _ in occurrences)
-        )
+        scopes = list(dict.fromkeys(node["scope"] for node, _ in occurrences))
         item_id = uuid5(NAMESPACE_URL, f"oopsnote:xkw:{subject}:{key}").hex
         items.append(
             {

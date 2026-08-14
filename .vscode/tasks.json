@@ -2,7 +2,7 @@
     "version": "2.0.0",
     "tasks": [
         {
-            "label": "OopsNote: LaTeX Renderer",
+            "label": "OopsNote: LaTeX Renderer (Local)",
             "type": "shell",
             "command": "${workspaceFolder}\\.venv\\Scripts\\python.exe -m uvicorn app:app --env-file .env.local --host 127.0.0.1 --port 8091",
             "options": {
@@ -12,35 +12,122 @@
             "problemMatcher": []
         },
         {
-            "label": "OopsNote: Backend Dev Server",
+            "label": "OopsNote: Backend Dev Server (Local)",
             "type": "shell",
             "command": "${workspaceFolder}\\.venv\\Scripts\\python.exe -m uvicorn oopsnote.api.main:app --env-file frontend/.env.local --reload --host 127.0.0.1 --port 8000",
             "options": {
                 "cwd": "${workspaceFolder}",
                 "env": {
                     "PYTHONPATH": "${workspaceFolder}",
-                    "OOPSNOTE_AUTH_MODE": "better-auth"
+                    "OOPSNOTE_AUTH_MODE": "local",
+                    "OOPSNOTE_AI_BACKEND": "langchain",
+                    "OOPSNOTE_ENABLED_AI_BACKENDS": "langchain",
+                    "OOPSNOTE_LATEX_RENDERER_URL": "http://127.0.0.1:8091"
                 }
             },
             "isBackground": true,
             "problemMatcher": []
         },
         {
-            "label": "OopsNote: Frontend Dev Server",
+            "label": "OopsNote: Frontend Dev Server (Local)",
             "type": "shell",
-            "command": "npm run dev -- -p 3000",
+            "command": "fnm exec --using .nvmrc cmd /c npm run dev -- -p 3000",
             "options": {
-                "cwd": "${workspaceFolder}\\frontend"
+                "cwd": "${workspaceFolder}\\frontend",
+                "env": {
+                    "NEXT_PUBLIC_AUTH_MODE": "local",
+                    "NEXT_PUBLIC_BACKEND_URL": "http://127.0.0.1:8000",
+                    "OOPSNOTE_BACKEND_URL": "http://127.0.0.1:8000"
+                }
             },
             "isBackground": true,
             "problemMatcher": []
         },
         {
-            "label": "OopsNote: Full Stack Dev Servers",
+            "label": "OopsNote: Local Stack",
             "dependsOn": [
-                "OopsNote: LaTeX Renderer",
-                "OopsNote: Backend Dev Server",
-                "OopsNote: Frontend Dev Server"
+                "OopsNote: LaTeX Renderer (Local)",
+                "OopsNote: Backend Dev Server (Local)",
+                "OopsNote: Frontend Dev Server (Local)"
+            ],
+            "dependsOrder": "parallel",
+            "problemMatcher": []
+        },
+        {
+            "label": "OopsNote: Ruff Check",
+            "type": "shell",
+            "command": "${workspaceFolder}\\.venv\\Scripts\\python.exe -m ruff check .",
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "OopsNote: Ruff Format",
+            "type": "shell",
+            "command": "${workspaceFolder}\\.venv\\Scripts\\python.exe -m ruff format .",
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "OopsNote: Ruff Format Check",
+            "type": "shell",
+            "command": "${workspaceFolder}\\.venv\\Scripts\\python.exe -m ruff format --check .",
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "OopsNote: Python Tests",
+            "type": "shell",
+            "command": "${workspaceFolder}\\.venv\\Scripts\\python.exe -m pytest -q",
+            "options": {
+                "cwd": "${workspaceFolder}",
+                "env": {
+                    "PYTEST_ADDOPTS": "--basetemp=${workspaceFolder}\\.pytest-tmp"
+                }
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "OopsNote: Frontend Lint",
+            "type": "shell",
+            "command": "fnm exec --using .nvmrc cmd /c npm run lint",
+            "options": {
+                "cwd": "${workspaceFolder}\\frontend"
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "OopsNote: Frontend Typecheck",
+            "type": "shell",
+            "command": "fnm exec --using .nvmrc cmd /c npm run typecheck",
+            "options": {
+                "cwd": "${workspaceFolder}\\frontend"
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "OopsNote: Frontend Unit Tests",
+            "type": "shell",
+            "command": "fnm exec --using .nvmrc cmd /c npm run test:unit",
+            "options": {
+                "cwd": "${workspaceFolder}\\frontend"
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "OopsNote: Verify (Lint + Typecheck + Tests)",
+            "dependsOn": [
+                "OopsNote: Ruff Check",
+                "OopsNote: Ruff Format Check",
+                "OopsNote: Frontend Lint",
+                "OopsNote: Frontend Typecheck",
+                "OopsNote: Python Tests",
+                "OopsNote: Frontend Unit Tests"
             ],
             "dependsOrder": "parallel",
             "problemMatcher": []

@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from scripts.setup import setup_pi
 from oopsnote.ai.skills import ACTIVE_AI_SKILLS, load_skill_pack, skill_pack_version
+from oopsnote.mcp.contracts import AI_TOOL_NAMES
+from scripts.setup import setup_pi
 
 ACTIVE_PI_SKILLS = ACTIVE_AI_SKILLS
-from oopsnote.mcp.contracts import AI_TOOL_NAMES
 
 
 def test_sync_skills_mirrors_all_active_skill_directories(tmp_path, monkeypatch):
@@ -25,7 +25,9 @@ def test_sync_skills_mirrors_all_active_skill_directories(tmp_path, monkeypatch)
     changed.write_text("# updated solve skill\n", encoding="utf-8")
     assert not setup_pi.check_skills_synced()
     setup_pi.sync_skills()
-    assert (tmp_path / ".pi" / "skills" / "oopsnote-solve-problem" / "SKILL.md").read_text(encoding="utf-8") == "# updated solve skill\n"
+    assert (tmp_path / ".pi" / "skills" / "oopsnote-solve-problem" / "SKILL.md").read_text(
+        encoding="utf-8"
+    ) == "# updated solve skill\n"
 
 
 def test_load_skill_pack_requires_all_active_synced_skills(tmp_path):
@@ -57,7 +59,7 @@ def test_load_skill_pack_drops_frontmatter_and_empty_knowledge_skeleton(tmp_path
 
 
 def test_upstream_pi_uses_the_canonical_restricted_tool_surface():
-    assert setup_pi.REQUIRED_PIPELINE_TOOLS == set(AI_TOOL_NAMES)
+    assert set(AI_TOOL_NAMES) == setup_pi.REQUIRED_PIPELINE_TOOLS
     assert "ocr_image" in setup_pi.REQUIRED_PIPELINE_TOOLS
 
 

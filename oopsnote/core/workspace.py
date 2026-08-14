@@ -41,11 +41,11 @@ class WorkspaceId:
     value: UUID
 
     @classmethod
-    def new(cls) -> "WorkspaceId":
+    def new(cls) -> WorkspaceId:
         return cls(uuid4())
 
     @classmethod
-    def parse(cls, value: object) -> "WorkspaceId":
+    def parse(cls, value: object) -> WorkspaceId:
         if isinstance(value, cls):
             return value
         try:
@@ -70,7 +70,7 @@ class WorkspaceContext:
         cls,
         storage_root: Path,
         workspace_id: WorkspaceId,
-    ) -> "WorkspaceContext":
+    ) -> WorkspaceContext:
         parsed_id = WorkspaceId.parse(workspace_id)
         workspaces_root = (Path(storage_root) / "workspaces").resolve()
         workspaces_root.mkdir(parents=True, exist_ok=True)

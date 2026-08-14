@@ -11,11 +11,10 @@ from oopsnote.content import (
     parse_oopsmark,
     prepare_legacy_problem,
     to_latex,
-    validate_oopsmark,
     validate_answer_conclusion,
+    validate_oopsmark,
 )
 from oopsnote.core import ContentFormat, Problem
-
 
 GOLDEN_CONTENT = r"""## 化学与数据
 
@@ -83,13 +82,15 @@ def test_problem_validates_only_declared_oopsmark_content():
 
 
 def test_legacy_migration_prepares_only_content_that_satisfies_v1():
-    ready = prepare_legacy_problem({
-        "problem_text": "\n题目\n",
-        "options": ["A. x", r"B. \frac{1}{2}"],
-        "answer": "A",
-        "short_answer": "",
-        "explanation": "说明",
-    })
+    ready = prepare_legacy_problem(
+        {
+            "problem_text": "\n题目\n",
+            "options": ["A. x", r"B. \frac{1}{2}"],
+            "answer": "A",
+            "short_answer": "",
+            "explanation": "说明",
+        }
+    )
 
     assert ready.ready
     assert ready.fields["problem_text"] == "题目"
@@ -145,9 +146,7 @@ def test_option_text_is_marker_free(source, expected):
 
 
 def test_option_labels_are_derived_from_array_order():
-    assert [option_label(index) for index in (0, 1, 3, 25, 26)] == [
-        "A", "B", "D", "Z", "AA"
-    ]
+    assert [option_label(index) for index in (0, 1, 3, 25, 26)] == ["A", "B", "D", "Z", "AA"]
 
 
 def test_problem_normalizes_newlines_on_validation():
@@ -195,7 +194,9 @@ def test_single_choice_rejects_multiple_option_labels():
 
 
 def test_oopsmark_answer_conclusion_contract_is_explicit_and_non_mutating():
-    assert validate_answer_conclusion("由 $x+1=2$，所以 $x=1$。").code == "answer-contains-derivation"
+    assert (
+        validate_answer_conclusion("由 $x+1=2$，所以 $x=1$。").code == "answer-contains-derivation"
+    )
     assert validate_answer_conclusion("$x+1=2$\n\n$x=1$").code == "answer-derivation-layout"
     assert validate_answer_conclusion("（1）$x=1$\n\n（2）$y=2$") is None
 

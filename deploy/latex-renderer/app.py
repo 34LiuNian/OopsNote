@@ -31,7 +31,10 @@ def _serialized(function):
     def wrapped(*args, **kwargs):
         with _RENDER_LOCK:
             return function(*args, **kwargs)
+
     return wrapped
+
+
 _SAFE_ASSET = re.compile(r"^assets/[a-f0-9]{20}\.(?:png|jpe?g|pdf)$")
 _FORBIDDEN = re.compile(
     r"\\(?:documentclass|usepackage|input|include|write18|openout|read)\b|"
@@ -99,7 +102,10 @@ def _run_xelatex(
         "openout_any": "p",
     }
     command = [
-        "xelatex", "-interaction=nonstopmode", "-halt-on-error", "-file-line-error",
+        "xelatex",
+        "-interaction=nonstopmode",
+        "-halt-on-error",
+        "-file-line-error",
         "-no-shell-escape",
     ]
     if no_pdf:
@@ -109,8 +115,15 @@ def _run_xelatex(
     for _ in range(passes):
         try:
             result = subprocess.run(
-                command, cwd=directory, env=environment, capture_output=True, text=True,
-                encoding="utf-8", errors="replace", timeout=timeout, check=False,
+                command,
+                cwd=directory,
+                env=environment,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=timeout,
+                check=False,
             )
         except subprocess.TimeoutExpired as error:
             raise HTTPException(status_code=504, detail="XeLaTeX compilation timed out") from error
@@ -161,7 +174,9 @@ def render_paper(payload: PaperRequest) -> Response:
             try:
                 content = base64.b64decode(item.content_base64, validate=True)
             except (binascii.Error, ValueError) as error:
-                raise HTTPException(status_code=422, detail="Invalid paper asset encoding") from error
+                raise HTTPException(
+                    status_code=422, detail="Invalid paper asset encoding"
+                ) from error
             total_size += len(content)
             if total_size > 64 * 1024 * 1024:
                 raise HTTPException(status_code=413, detail="Paper assets exceed 64 MiB")
@@ -184,7 +199,9 @@ def _render_tikz_bundle(payload: TikzRequest) -> tuple[bytes, bytes, bytes]:
         source = "\\begin{tikzpicture}\n" + source + "\n\\end{tikzpicture}"
     with tempfile.TemporaryDirectory(prefix="oopsnote-tikz-", dir=_TEMP_ROOT) as temp_name:
         directory = Path(temp_name)
-        (directory / "diagram.tex").write_text(_TIKZ_PREAMBLE + source + "\n\\end{document}\n", encoding="utf-8")
+        (directory / "diagram.tex").write_text(
+            _TIKZ_PREAMBLE + source + "\n\\end{document}\n", encoding="utf-8"
+        )
         xdv, _ = _run_xelatex(
             directory,
             "diagram.tex",
@@ -223,8 +240,13 @@ def _render_tikz_bundle(payload: TikzRequest) -> tuple[bytes, bytes, bytes]:
                     f"--output={svg.name}",
                     pdf.name,
                 ],
-                cwd=directory, capture_output=True, text=True, encoding="utf-8", errors="replace",
-                timeout=30, check=False,
+                cwd=directory,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=30,
+                check=False,
             )
         except subprocess.TimeoutExpired as error:
             raise HTTPException(status_code=504, detail="dvisvgm conversion timed out") from error

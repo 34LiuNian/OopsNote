@@ -8,9 +8,9 @@ from __future__ import annotations
 
 import hashlib
 import re
-from datetime import datetime, timezone
-from enum import Enum
-from typing import Any, Literal, Optional
+from datetime import UTC, datetime
+from enum import StrEnum
+from typing import Any, Literal
 from uuid import uuid4
 
 from pydantic import BaseModel, Field, model_validator
@@ -21,10 +21,10 @@ from oopsnote.content import (
     validate_oopsmark,
 )
 
-
 # ── 枚举 ──────────────────────────────────────────────
 
-class TaskStatus(str, Enum):
+
+class TaskStatus(StrEnum):
     PENDING = "pending"
     PROCESSING = "processing"
     COMPLETED = "completed"
@@ -32,7 +32,7 @@ class TaskStatus(str, Enum):
     CANCELLED = "cancelled"
 
 
-class TaskStage(str, Enum):
+class TaskStage(StrEnum):
     QUEUED = "queued"
     STARTING = "starting"
     OCR = "ocr"
@@ -46,7 +46,7 @@ class TaskStage(str, Enum):
     DIAGRAM_REVIEWING = "diagram_reviewing"
 
 
-class RunStatus(str, Enum):
+class RunStatus(StrEnum):
     QUEUED = "queued"
     RUNNING = "running"
     COMPLETED = "completed"
@@ -55,40 +55,40 @@ class RunStatus(str, Enum):
     TIMED_OUT = "timed_out"
 
 
-class StageStatus(str, Enum):
+class StageStatus(StrEnum):
     RUNNING = "running"
     COMPLETED = "completed"
     FAILED = "failed"
     CANCELLED = "cancelled"
 
 
-class QuestionType(str, Enum):
+class QuestionType(StrEnum):
     SINGLE_CHOICE = "单选题"
     MULTI_CHOICE = "多选题"
     FILL_BLANK = "填空题"
     SHORT_ANSWER = "解答题"
 
 
-class TagDimension(str, Enum):
+class TagDimension(StrEnum):
     KNOWLEDGE = "knowledge"
     ERROR = "error"
     META = "meta"
     CUSTOM = "custom"
 
 
-class ContentFormat(str, Enum):
+class ContentFormat(StrEnum):
     """Versioned contract for rich problem content."""
 
     LEGACY_MARKDOWN_LATEX = "legacy-markdown-latex"
     OOPSMARK_V1 = "oopsmark-v1"
 
 
-class RunPurpose(str, Enum):
+class RunPurpose(StrEnum):
     PROBLEM = "problem"
     DIAGRAM = "diagram"
 
 
-class DiagramStatus(str, Enum):
+class DiagramStatus(StrEnum):
     DETECTED = "detected"
     QUEUED = "queued"
     GENERATING = "generating"
@@ -101,14 +101,14 @@ class DiagramStatus(str, Enum):
     CANCELLED = "cancelled"
 
 
-class DiagramRunMode(str, Enum):
+class DiagramRunMode(StrEnum):
     AUTO = "auto"
     CONTINUE = "continue"
     REBUILD = "rebuild"
     HUMAN = "human"
 
 
-class DiagramRunStep(str, Enum):
+class DiagramRunStep(StrEnum):
     GENERATE = "generate"
     RENDER = "render"
     REVIEW = "review"
@@ -123,7 +123,7 @@ class DiagramSourceRegion(BaseModel):
     height: float = Field(gt=0, le=1)
 
     @model_validator(mode="after")
-    def validate_bounds(self) -> "DiagramSourceRegion":
+    def validate_bounds(self) -> DiagramSourceRegion:
         if self.x + self.width > 1 or self.y + self.height > 1:
             raise ValueError("Diagram source region exceeds source bounds")
         return self
@@ -134,25 +134,25 @@ class DiagramCandidate(BaseModel):
 
     id: str = Field(default_factory=lambda: uuid4().hex)
     ordinal: int = Field(ge=1)
-    parent_candidate_id: Optional[str] = None
+    parent_candidate_id: str | None = None
     source_kind: Literal["ai", "human", "legacy"] = "ai"
     tikz_source: str = Field(min_length=1)
     source_sha256: str = ""
-    svg_path: Optional[str] = None
-    pdf_path: Optional[str] = None
-    png_path: Optional[str] = None
-    renderer_profile_version: Optional[str] = None
-    decision: Optional[Literal["accept", "revise", "keep_image"]] = None
+    svg_path: str | None = None
+    pdf_path: str | None = None
+    png_path: str | None = None
+    renderer_profile_version: str | None = None
+    decision: Literal["accept", "revise", "keep_image"] | None = None
     hard_errors: list[str] = Field(default_factory=list)
     soft_differences: list[str] = Field(default_factory=list)
-    review_reason: Optional[str] = None
-    provider: Optional[str] = None
-    model: Optional[str] = None
-    run_id: Optional[str] = None
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    review_reason: str | None = None
+    provider: str | None = None
+    model: str | None = None
+    run_id: str | None = None
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
     @model_validator(mode="after")
-    def populate_source_hash(self) -> "DiagramCandidate":
+    def populate_source_hash(self) -> DiagramCandidate:
         digest = hashlib.sha256(self.tikz_source.encode("utf-8")).hexdigest()
         if self.source_sha256 and self.source_sha256 != digest:
             raise ValueError("Diagram candidate source_sha256 does not match tikz_source")
@@ -165,24 +165,24 @@ class DiagramItem(BaseModel):
 
     id: str = Field(default_factory=lambda: uuid4().hex)
     ordinal: int = Field(default=0, ge=0)
-    source_asset_path: Optional[str] = None
-    source_region: Optional[DiagramSourceRegion] = None
-    fallback_image_path: Optional[str] = None
+    source_asset_path: str | None = None
+    source_region: DiagramSourceRegion | None = None
+    fallback_image_path: str | None = None
     image_tone: Literal["auto", "original"] = "auto"
     position: Literal["left", "right"] = "right"
     scale_percent: int = Field(default=100, ge=50, le=200)
     status: DiagramStatus = DiagramStatus.DETECTED
-    selected_candidate_id: Optional[str] = None
+    selected_candidate_id: str | None = None
     candidates: list[DiagramCandidate] = Field(default_factory=list)
-    active_run_id: Optional[str] = None
+    active_run_id: str | None = None
     needs_review: bool = False
-    last_error: Optional[str] = None
-    last_error_code: Optional[str] = None
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    last_error: str | None = None
+    last_error_code: str | None = None
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
     @model_validator(mode="after")
-    def validate_candidates(self) -> "DiagramItem":
+    def validate_candidates(self) -> DiagramItem:
         ids = [candidate.id for candidate in self.candidates]
         if len(ids) != len(set(ids)):
             raise ValueError("Diagram candidate ids must be unique")
@@ -196,35 +196,39 @@ class DiagramItem(BaseModel):
 
 # ── 题目 ──────────────────────────────────────────────
 
+
 class Problem(BaseModel):
     """一道题目。"""
 
     id: str = Field(default_factory=lambda: uuid4().hex)
-    subject: str = ""                           # 数学/物理/化学
+    subject: str = ""  # 数学/物理/化学
     question_type: QuestionType = QuestionType.SHORT_ANSWER
     content_format: ContentFormat = ContentFormat.LEGACY_MARKDOWN_LATEX
-    problem_text: str = ""                      # Versioned by content_format
+    problem_text: str = ""  # Versioned by content_format
     options: list[str] = Field(default_factory=list)  # 选择题选项
     answer: str = ""
     short_answer: str = ""
     explanation: str = ""
-    difficulty: Optional[str] = None
+    difficulty: str | None = None
     has_diagram: bool = False
     knowledge_points: list[str] = Field(default_factory=list)
     error_hypothesis: list[str] = Field(default_factory=list)
-    source: str = ""                            # 如 "2024-10 月考"
-    source_page: Optional[int] = None           # PDF 页码
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    source: str = ""  # 如 "2024-10 月考"
+    source_page: int | None = None  # PDF 页码
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
     @model_validator(mode="after")
-    def validate_versioned_content(self) -> "Problem":
+    def validate_versioned_content(self) -> Problem:
         if self.question_type == QuestionType.SINGLE_CHOICE and self.options:
             choice_answer = re.fullmatch(
                 r"\s*(?:答案(?:为|是)?[:：]?\s*)?([A-H](?:[\s,，、/;；]*[A-H])*)\s*",
                 self.answer,
                 flags=re.IGNORECASE,
             )
-            if choice_answer and len(re.findall(r"[A-H]", choice_answer.group(1), re.IGNORECASE)) > 1:
+            if (
+                choice_answer
+                and len(re.findall(r"[A-H]", choice_answer.group(1), re.IGNORECASE)) > 1
+            ):
                 raise ValueError("single-choice answer must contain exactly one option label")
         if self.content_format != ContentFormat.OOPSMARK_V1:
             return self
@@ -252,25 +256,26 @@ class Problem(BaseModel):
 
 # ── 任务 ──────────────────────────────────────────────
 
+
 class TaskCreateRequest(BaseModel):
     """前端/CLI/MCP 创建任务时的请求体。"""
 
     subject: str = ""
-    asset_base64: Optional[str] = None          # 图片 base64
-    asset_path: Optional[str] = None            # 本地 PDF/图片路径
+    asset_base64: str | None = None  # 图片 base64
+    asset_path: str | None = None  # 本地 PDF/图片路径
     tags: list[str] = Field(default_factory=list)
     metadata: dict[str, Any] = Field(default_factory=dict)
-    section_question_count: Optional[int] = Field(default=None, ge=1)
+    section_question_count: int | None = Field(default=None, ge=1)
 
 
 class OcrPrintedContext(BaseModel):
     """Printed identifiers observed by OCR, separate from user corrections."""
 
-    printed_question_no: Optional[int] = Field(default=None, ge=1, le=999)
-    printed_chapter: Optional[str] = Field(default=None, max_length=160)
+    printed_question_no: int | None = Field(default=None, ge=1, le=999)
+    printed_chapter: str | None = Field(default=None, max_length=160)
 
     @model_validator(mode="after")
-    def normalize_chapter(self) -> "OcrPrintedContext":
+    def normalize_chapter(self) -> OcrPrintedContext:
         if self.printed_chapter is not None:
             self.printed_chapter = self.printed_chapter.strip() or None
         return self
@@ -282,26 +287,26 @@ class TaskRecord(BaseModel):
     id: str = Field(default_factory=lambda: uuid4().hex)
     subject: str = ""
     status: TaskStatus = TaskStatus.PENDING
-    problem: Optional[Problem] = None
-    asset_path: Optional[str] = None
+    problem: Problem | None = None
+    asset_path: str | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
     diagram_items: list[DiagramItem] = Field(default_factory=list)
-    ocr_context: Optional[OcrPrintedContext] = None
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    last_error: Optional[str] = None
-    last_error_code: Optional[str] = None
-    revision_count: Optional[int] = Field(default=None, ge=0)
-    last_revised_at: Optional[datetime] = None
-    difficulty_coefficient_override: Optional[float] = Field(
+    ocr_context: OcrPrintedContext | None = None
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    last_error: str | None = None
+    last_error_code: str | None = None
+    revision_count: int | None = Field(default=None, ge=0)
+    last_revised_at: datetime | None = None
+    difficulty_coefficient_override: float | None = Field(
         default=None,
         ge=0,
         le=1,
     )
-    section_question_count: Optional[int] = Field(default=None, ge=1)
-    stage: Optional[TaskStage] = None
-    stage_message: Optional[str] = None
-    active_run_id: Optional[str] = None
+    section_question_count: int | None = Field(default=None, ge=1)
+    stage: TaskStage | None = None
+    stage_message: str | None = None
+    active_run_id: str | None = None
 
     @model_validator(mode="before")
     @classmethod
@@ -313,10 +318,18 @@ class TaskRecord(BaseModel):
         if not isinstance(metadata, dict) or not metadata.get("diagram_detected"):
             return value
         legacy_keys = {
-            "diagram_detected", "diagram_kind", "diagram_tikz_source", "diagram_svg",
-            "diagram_image_path", "diagram_image_crop", "diagram_image_tone",
-            "diagram_position", "diagram_scale_percent", "diagram_render_status",
-            "diagram_error", "diagram_needs_review",
+            "diagram_detected",
+            "diagram_kind",
+            "diagram_tikz_source",
+            "diagram_svg",
+            "diagram_image_path",
+            "diagram_image_crop",
+            "diagram_image_tone",
+            "diagram_position",
+            "diagram_scale_percent",
+            "diagram_render_status",
+            "diagram_error",
+            "diagram_needs_review",
         }
         clean_metadata = {key: item for key, item in metadata.items() if key not in legacy_keys}
         kind = metadata.get("diagram_kind")
@@ -326,17 +339,19 @@ class TaskRecord(BaseModel):
         if kind == "tikz" and source:
             digest = hashlib.sha256(source.encode("utf-8")).hexdigest()
             selected_candidate_id = f"legacy-{digest[:20]}"
-            candidates.append({
-                "id": selected_candidate_id,
-                "ordinal": 1,
-                "source_kind": "legacy",
-                "tikz_source": source,
-                "decision": "revise",
-                "review_reason": "Legacy TikZ requires same-source SVG/PDF/PNG rendering",
-            })
+            candidates.append(
+                {
+                    "id": selected_candidate_id,
+                    "ordinal": 1,
+                    "source_kind": "legacy",
+                    "tikz_source": source,
+                    "decision": "revise",
+                    "review_reason": "Legacy TikZ requires same-source SVG/PDF/PNG rendering",
+                }
+            )
         crop = metadata.get("diagram_image_crop")
         item_digest = hashlib.sha256(
-            f"{value.get('id', '')}\0{value.get('asset_path', '')}\0legacy-diagram-0".encode("utf-8")
+            f"{value.get('id', '')}\0{value.get('asset_path', '')}\0legacy-diagram-0".encode()
         ).hexdigest()[:20]
         item = {
             "id": f"legacy-item-{item_digest}",
@@ -348,21 +363,23 @@ class TaskRecord(BaseModel):
             "position": metadata.get("diagram_position") or "right",
             "scale_percent": metadata.get("diagram_scale_percent") or 100,
             "status": (
-                "needs_review" if selected_candidate_id else
-                "ready_image" if kind == "image" and metadata.get("diagram_image_path") else
-                "needs_review" if metadata.get("diagram_needs_review") else
-                "detected"
+                "needs_review"
+                if selected_candidate_id
+                else "ready_image"
+                if kind == "image" and metadata.get("diagram_image_path")
+                else "needs_review"
+                if metadata.get("diagram_needs_review")
+                else "detected"
             ),
             "selected_candidate_id": selected_candidate_id,
             "candidates": candidates,
             "needs_review": bool(metadata.get("diagram_needs_review") or selected_candidate_id),
-            "last_error": metadata.get("diagram_error") or (
-                "Legacy TikZ requires same-source rendering" if selected_candidate_id else None
-            ),
+            "last_error": metadata.get("diagram_error")
+            or ("Legacy TikZ requires same-source rendering" if selected_candidate_id else None),
         }
         return {**value, "metadata": clean_metadata, "diagram_items": [item]}
 
-    def effective_question_no(self) -> Optional[str]:
+    def effective_question_no(self) -> str | None:
         raw = self.metadata.get("question_no")
         if raw is None:
             raw = self.metadata.get("batch_question_no")
@@ -374,7 +391,7 @@ class TaskRecord(BaseModel):
         value = str(raw or "").strip()
         return value or None
 
-    def effective_chapter(self) -> Optional[str]:
+    def effective_chapter(self) -> str | None:
         for raw in (
             self.metadata.get("chapter"),
             self.metadata.get("source_chapter"),
@@ -391,11 +408,11 @@ class StageRun(BaseModel):
 
     stage: TaskStage
     status: StageStatus = StageStatus.RUNNING
-    started_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    ended_at: Optional[datetime] = None
-    message: Optional[str] = None
-    error_code: Optional[str] = None
-    latency_ms: Optional[int] = None
+    started_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    ended_at: datetime | None = None
+    message: str | None = None
+    error_code: str | None = None
+    latency_ms: int | None = None
 
 
 class RunArtifact(BaseModel):
@@ -405,7 +422,7 @@ class RunArtifact(BaseModel):
     kind: Literal["ocr", "solver_candidate", "verifier_submission"]
     raw_output: str
     parsed_output: dict[str, Any]
-    recorded_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    recorded_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
 class RunValidationError(BaseModel):
@@ -414,7 +431,7 @@ class RunValidationError(BaseModel):
     stage: TaskStage
     raw_output: str
     message: str
-    recorded_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    recorded_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
 class SolutionCandidate(BaseModel):
@@ -423,7 +440,7 @@ class SolutionCandidate(BaseModel):
     problem: Problem
     review_reason: Literal["", "unreadable", "incomplete", "multiple_questions", "other"] = ""
     student_response_status: Literal["answered", "unanswered", "unknown"] = "unknown"
-    submitted_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    submitted_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
 class TaskRun(BaseModel):
@@ -431,57 +448,57 @@ class TaskRun(BaseModel):
 
     id: str = Field(default_factory=lambda: uuid4().hex)
     task_id: str
-    workspace_id: Optional[str] = None
-    quota_reservation_id: Optional[str] = None
+    workspace_id: str | None = None
+    quota_reservation_id: str | None = None
     purpose: RunPurpose = RunPurpose.PROBLEM
     priority: int = Field(default=0, ge=0, le=100)
-    diagram_item_id: Optional[str] = None
-    diagram_mode: Optional[DiagramRunMode] = None
-    diagram_instruction: Optional[str] = Field(default=None, max_length=2000)
-    diagram_max_candidates: Optional[int] = Field(default=None, ge=1, le=8)
-    diagram_step: Optional[DiagramRunStep] = None
-    diagram_candidate_id: Optional[str] = None
+    diagram_item_id: str | None = None
+    diagram_mode: DiagramRunMode | None = None
+    diagram_instruction: str | None = Field(default=None, max_length=2000)
+    diagram_max_candidates: int | None = Field(default=None, ge=1, le=8)
+    diagram_step: DiagramRunStep | None = None
+    diagram_candidate_id: str | None = None
     attempt: int = 1
     status: RunStatus = RunStatus.QUEUED
     stage_runs: list[StageRun] = Field(default_factory=list)
-    pid: Optional[int] = None
-    exit_code: Optional[int] = None
-    log_path: Optional[str] = None
+    pid: int | None = None
+    exit_code: int | None = None
+    log_path: str | None = None
     backend: str = "pi"
-    runtime_kind: Optional[str] = None
-    runtime_version: Optional[str] = None
-    worker_id: Optional[str] = None
-    provider: Optional[str] = None
-    model: Optional[str] = None
+    runtime_kind: str | None = None
+    runtime_version: str | None = None
+    worker_id: str | None = None
+    provider: str | None = None
+    model: str | None = None
     # Immutable, non-secret provider metadata selected at admission.  The
     # credential reference is opaque; secret material never enters a TaskRun.
-    provider_profile_snapshot: Optional[dict[str, Any]] = None
-    input_tokens: Optional[int] = None
-    output_tokens: Optional[int] = None
-    cache_tokens: Optional[int] = None
-    cost: Optional[float] = None
+    provider_profile_snapshot: dict[str, Any] | None = None
+    input_tokens: int | None = None
+    output_tokens: int | None = None
+    cache_tokens: int | None = None
+    cost: float | None = None
     stats_sessions: int = Field(default=0, ge=0)
-    duration_ms: Optional[int] = None
-    peak_memory_bytes: Optional[int] = Field(default=None, ge=0)
-    rpc_log_path: Optional[str] = None
+    duration_ms: int | None = None
+    peak_memory_bytes: int | None = Field(default=None, ge=0)
+    rpc_log_path: str | None = None
     retry_count: int = 0
-    retry_of_run_id: Optional[str] = None
-    retry_root_run_id: Optional[str] = None
+    retry_of_run_id: str | None = None
+    retry_root_run_id: str | None = None
     retryable: bool = False
     prompt_version: str = "unversioned"
     artifacts: list[RunArtifact] = Field(default_factory=list, max_length=3)
     validation_errors: list[RunValidationError] = Field(default_factory=list)
-    solution_candidate: Optional[SolutionCandidate] = None
-    verification_started_at: Optional[datetime] = None
-    queued_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    started_at: Optional[datetime] = None
-    heartbeat_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    ended_at: Optional[datetime] = None
-    error_code: Optional[str] = None
-    error_message: Optional[str] = None
+    solution_candidate: SolutionCandidate | None = None
+    verification_started_at: datetime | None = None
+    queued_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    started_at: datetime | None = None
+    heartbeat_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    ended_at: datetime | None = None
+    error_code: str | None = None
+    error_message: str | None = None
 
     @model_validator(mode="after")
-    def require_candidate_before_verification(self) -> "TaskRun":
+    def require_candidate_before_verification(self) -> TaskRun:
         """Keep verification state impossible until solver output is durable."""
         if self.verification_started_at is not None and self.solution_candidate is None:
             raise ValueError("verification_started_at requires a solution_candidate")
@@ -494,6 +511,7 @@ class TaskRun(BaseModel):
 
 
 # ── 批量扫描会话 ────────────────────────────────────────
+
 
 class BatchSegmentContinuation(BaseModel):
     """同一道题在紧邻下一页中的延续裁剪区域。"""
@@ -514,7 +532,7 @@ class BatchCropRect(BaseModel):
     height: float = Field(default=1, gt=0, le=1)
 
     @model_validator(mode="after")
-    def validate_bounds(self) -> "BatchCropRect":
+    def validate_bounds(self) -> BatchCropRect:
         if self.x + self.width > 1 or self.y + self.height > 1:
             raise ValueError("Batch crop rectangle exceeds page bounds")
         return self
@@ -539,7 +557,7 @@ class BatchSegmentPart(BaseModel):
     order: int = Field(default=0, ge=0)
 
     @model_validator(mode="after")
-    def validate_bounds(self) -> "BatchSegmentPart":
+    def validate_bounds(self) -> BatchSegmentPart:
         if self.x + self.width > 1 or self.y + self.height > 1:
             raise ValueError("Batch segment part exceeds page bounds")
         return self
@@ -551,24 +569,20 @@ class BatchSegment(BaseModel):
     id: str = Field(default_factory=lambda: uuid4().hex)
     parts: list[BatchSegmentPart] = Field(default_factory=list)
     # Legacy fields remain readable while old sessions migrate to parts[].
-    page_index: Optional[int] = Field(default=None, ge=0)
-    x: Optional[float] = Field(default=None, ge=0, le=1)
-    y: Optional[float] = Field(default=None, ge=0, le=1)
-    width: Optional[float] = Field(default=None, gt=0, le=1)
-    height: Optional[float] = Field(default=None, gt=0, le=1)
-    continuation: Optional[BatchSegmentContinuation] = None
-    question_no: Optional[int] = Field(default=None, ge=1)
+    page_index: int | None = Field(default=None, ge=0)
+    x: float | None = Field(default=None, ge=0, le=1)
+    y: float | None = Field(default=None, ge=0, le=1)
+    width: float | None = Field(default=None, gt=0, le=1)
+    height: float | None = Field(default=None, gt=0, le=1)
+    continuation: BatchSegmentContinuation | None = None
+    question_no: int | None = Field(default=None, ge=1)
     status: Literal["pending", "processing", "completed", "failed", "needs_review"] = "pending"
-    review_reason: Optional[
-        Literal["unreadable", "incomplete", "multiple_questions", "other"]
-    ] = None
-    review_previous_status: Optional[
-        Literal["pending", "processing", "completed", "failed"]
-    ] = None
+    review_reason: Literal["unreadable", "incomplete", "multiple_questions", "other"] | None = None
+    review_previous_status: Literal["pending", "processing", "completed", "failed"] | None = None
     review_resolved: bool = False
-    task_id: Optional[str] = None
+    task_id: str | None = None
     problem_ids: list[str] = Field(default_factory=list)
-    error: Optional[str] = None
+    error: str | None = None
 
     @model_validator(mode="before")
     @classmethod
@@ -578,21 +592,23 @@ class BatchSegment(BaseModel):
         required = ("page_index", "x", "y", "width", "height")
         if not all(value.get(key) is not None for key in required):
             return value
-        parts = [{
-            "page_index": value["page_index"],
-            "x": value["x"],
-            "y": value["y"],
-            "width": value["width"],
-            "height": value["height"],
-            "order": 0,
-        }]
+        parts = [
+            {
+                "page_index": value["page_index"],
+                "x": value["x"],
+                "y": value["y"],
+                "width": value["width"],
+                "height": value["height"],
+                "order": 0,
+            }
+        ]
         continuation = value.get("continuation")
         if continuation:
             parts.append({**continuation, "order": 1})
         return {**value, "parts": parts}
 
     @model_validator(mode="after")
-    def validate_parts(self) -> "BatchSegment":
+    def validate_parts(self) -> BatchSegment:
         if not self.parts:
             raise ValueError("Batch segment requires at least one part")
         orders = sorted(part.order for part in self.parts)
@@ -618,13 +634,16 @@ class BatchSessionRecord(BaseModel):
     excluded_page_indices: list[int] = Field(default_factory=list)
     segments: list[BatchSegment] = Field(default_factory=list)
     revision: int = Field(default=0, ge=0)
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
     @model_validator(mode="after")
-    def validate_excluded_pages(self) -> "BatchSessionRecord":
+    def validate_excluded_pages(self) -> BatchSessionRecord:
         self.excluded_page_indices = sorted(set(self.excluded_page_indices))
-        if any(index < 0 or (self.page_count > 0 and index >= self.page_count) for index in self.excluded_page_indices):
+        if any(
+            index < 0 or (self.page_count > 0 and index >= self.page_count)
+            for index in self.excluded_page_indices
+        ):
             raise ValueError("Excluded page index is outside the source document")
         if self.page_count > 0 and len(self.excluded_page_indices) >= self.page_count:
             raise ValueError("Batch session must retain at least one page")
@@ -646,25 +665,25 @@ class BatchSessionRecord(BaseModel):
 
 
 class BatchSessionUpdateRequest(BaseModel):
-    asset_path: Optional[str] = None
-    filename: Optional[str] = Field(default=None, min_length=1, max_length=255)
-    mime_type: Optional[str] = None
-    page_count: Optional[int] = Field(default=None, ge=0)
-    subject: Optional[str] = None
-    notes: Optional[str] = None
-    active_page: Optional[int] = Field(default=None, ge=0)
-    crop_rect: Optional[BatchCropRect] = None
-    crop_confirmed: Optional[bool] = None
-    column_layout: Optional[BatchColumnLayout] = None
-    excluded_page_indices: Optional[list[int]] = None
-    segments: Optional[list[BatchSegment]] = None
+    asset_path: str | None = None
+    filename: str | None = Field(default=None, min_length=1, max_length=255)
+    mime_type: str | None = None
+    page_count: int | None = Field(default=None, ge=0)
+    subject: str | None = None
+    notes: str | None = None
+    active_page: int | None = Field(default=None, ge=0)
+    crop_rect: BatchCropRect | None = None
+    crop_confirmed: bool | None = None
+    column_layout: BatchColumnLayout | None = None
+    excluded_page_indices: list[int] | None = None
+    segments: list[BatchSegment] | None = None
 
 
 class BatchProcessSegmentState(BaseModel):
     """Durable checkpoint for one segment in a batch-processing command."""
 
     segment_id: str
-    question_no: Optional[int] = None
+    question_no: int | None = None
     status: Literal[
         "pending",
         "rendering",
@@ -674,10 +693,10 @@ class BatchProcessSegmentState(BaseModel):
         "completed",
         "failed",
     ] = "pending"
-    asset_path: Optional[str] = None
-    task_id: Optional[str] = None
-    run_id: Optional[str] = None
-    error: Optional[str] = None
+    asset_path: str | None = None
+    task_id: str | None = None
+    run_id: str | None = None
+    error: str | None = None
 
 
 class BatchProcessJob(BaseModel):
@@ -688,11 +707,12 @@ class BatchProcessJob(BaseModel):
     backend: str
     status: Literal["pending", "running", "submitted", "partial", "failed"] = "pending"
     segments: list[BatchProcessSegmentState] = Field(default_factory=list)
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
 # ── 标签 ──────────────────────────────────────────────
+
 
 class TagItem(BaseModel):
     """标签存储元数据。"""
@@ -701,26 +721,26 @@ class TagItem(BaseModel):
     dimension: TagDimension = TagDimension.KNOWLEDGE
     value: str
     aliases: list[str] = Field(default_factory=list)
-    subject: Optional[str] = None
-    chapter: Optional[str] = None
+    subject: str | None = None
+    chapter: str | None = None
     ref_count: int = 0
-    source: str = "user"                        # "builtin" | "user"
-    source_id: Optional[str] = None
+    source: str = "user"  # "builtin" | "user"
+    source_id: str | None = None
     source_ids: list[str] = Field(default_factory=list)
-    parent_id: Optional[str] = None
+    parent_id: str | None = None
     path: list[str] = Field(default_factory=list)
     paths: list[list[str]] = Field(default_factory=list)
-    depth: Optional[int] = None
-    scope: Optional[str] = None
+    depth: int | None = None
+    scope: str | None = None
     scopes: list[str] = Field(default_factory=list)
-    is_leaf: Optional[bool] = None
+    is_leaf: bool | None = None
 
 
 class TagCreateRequest(BaseModel):
     dimension: TagDimension
     value: str
     aliases: list[str] = Field(default_factory=list)
-    subject: Optional[str] = None
+    subject: str | None = None
 
 
 class TagsResponse(BaseModel):
@@ -729,6 +749,7 @@ class TagsResponse(BaseModel):
 
 # ── 试卷草稿 ──────────────────────────────────────────
 
+
 class PaperDraftItem(BaseModel):
     """A problem reference plus paper-local layout properties."""
 
@@ -736,8 +757,8 @@ class PaperDraftItem(BaseModel):
     task_id: str
     problem_id: str
     question_type: str
-    difficulty_coefficient: Optional[float] = Field(default=None, ge=0, le=1)
-    points: Optional[float] = Field(default=None, ge=0)
+    difficulty_coefficient: float | None = Field(default=None, ge=0, le=1)
+    points: float | None = Field(default=None, ge=0)
     answer_space: Literal["compact", "standard", "large"] = "standard"
 
 
@@ -755,8 +776,8 @@ class PaperDraft(BaseModel):
     )
     requested_counts: dict[str, int] = Field(default_factory=dict)
     items: list[PaperDraftItem] = Field(default_factory=list)
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
 class PaperDraftCreateRequest(BaseModel):
@@ -773,23 +794,24 @@ class PaperDraftCreateRequest(BaseModel):
 
 
 class PaperDraftUpdateRequest(BaseModel):
-    title: Optional[str] = None
-    knowledge_tags: Optional[list[str]] = None
-    knowledge_node_ids: Optional[list[str]] = None
-    difficulty_preset: Optional[str] = None
-    difficulty_distribution: Optional[dict[str, int]] = None
-    requested_counts: Optional[dict[str, int]] = None
-    items: Optional[list[PaperDraftItem]] = None
+    title: str | None = None
+    knowledge_tags: list[str] | None = None
+    knowledge_node_ids: list[str] | None = None
+    difficulty_preset: str | None = None
+    difficulty_distribution: dict[str, int] | None = None
+    requested_counts: dict[str, int] | None = None
+    items: list[PaperDraftItem] | None = None
 
 
 # ── 搜索 ──────────────────────────────────────────────
 
+
 class SearchQuery(BaseModel):
     tags: list[str] = Field(default_factory=list)
-    subject: Optional[str] = None
-    since: Optional[datetime] = None
-    error_type: Optional[str] = None
-    regex: Optional[str] = None
+    subject: str | None = None
+    since: datetime | None = None
+    error_type: str | None = None
+    regex: str | None = None
     limit: int = 50
 
 
@@ -798,7 +820,7 @@ class ProblemMergeRecord(BaseModel):
 
     source_problem_id: str
     target_problem_id: str
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
 class VariationRequest(BaseModel):
@@ -809,4 +831,4 @@ class VariationRequest(BaseModel):
     knowledge_points: list[str] = Field(default_factory=list)
     direction: str = "change_conditions"
     custom_request: str = Field(default="", max_length=2000)
-    difficulty: Optional[str] = None
+    difficulty: str | None = None

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from contextvars import ContextVar, Token
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from oopsnote.core import AssetStore, RunStore, TagStore, TaskStore, WorkspaceId
 
@@ -24,7 +24,7 @@ class McpCapability:
     expires_at: datetime
 
     def is_valid(self, now: datetime | None = None) -> bool:
-        current = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
+        current = (now or datetime.now(UTC)).astimezone(UTC)
         return current < self.expires_at
 
 

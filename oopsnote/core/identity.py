@@ -23,4 +23,6 @@ def problem_fingerprint(problem: Problem) -> str | None:
         "problem_text": compact(problem.problem_text),
         "options": [compact(option) for option in problem.options],
     }
-    return hashlib.sha256(json.dumps(payload, ensure_ascii=False, sort_keys=True).encode("utf-8")).hexdigest()
+    return hashlib.sha256(
+        json.dumps(payload, ensure_ascii=False, sort_keys=True).encode("utf-8")
+    ).hexdigest()

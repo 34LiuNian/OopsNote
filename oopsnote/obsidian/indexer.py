@@ -8,16 +8,22 @@ from __future__ import annotations
 
 from collections import defaultdict
 from pathlib import Path
-from typing import Optional
 
-from oopsnote.core import Problem, TagItem, TagStore
-from .writer import problem_filename, render_tag_index, subject_dir, tag_index_path, write_index_content
+from oopsnote.core import Problem, TagStore
+
+from .writer import (
+    problem_filename,
+    render_tag_index,
+    subject_dir,
+    tag_index_path,
+    write_index_content,
+)
 
 
 def build_indexes(
     problems: list[Problem],
     vault_root: Path,
-    tag_store: Optional[TagStore] = None,
+    tag_store: TagStore | None = None,
 ) -> list[Path]:
     """扫描所有 Problem，生成标签索引文件。
 
@@ -32,7 +38,7 @@ def build_indexes(
 def render_indexes(
     problems: list[Problem],
     vault_root: Path,
-    tag_store: Optional[TagStore] = None,
+    tag_store: TagStore | None = None,
 ) -> list[tuple[Path, str]]:
     """Build deterministic index content without mutating the vault.
 
@@ -57,10 +63,12 @@ def render_indexes(
                 items = tag_store.search(query=tag_name, limit=1)
                 if items and items[0].value == tag_name and items[0].aliases:
                     aliases = items[0].aliases
-            rendered.append((
-                tag_index_path(tag_name, vault_root, subject_dir(subject)),
-                render_tag_index(tag_name, references, aliases),
-            ))
+            rendered.append(
+                (
+                    tag_index_path(tag_name, vault_root, subject_dir(subject)),
+                    render_tag_index(tag_name, references, aliases),
+                )
+            )
     return rendered
 
 

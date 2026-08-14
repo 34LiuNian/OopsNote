@@ -12,11 +12,11 @@ import os
 import re
 import sys
 import tempfile
+import threading
 from abc import ABC, abstractmethod
 from ctypes import wintypes
 from pathlib import Path
 from uuid import uuid4
-import threading
 
 
 class SecretNotFoundError(KeyError):
@@ -58,6 +58,7 @@ class SecretStore(ABC):
 
 class MemorySecretStore(SecretStore):
     """Process-local test/development store; never used as production default."""
+
     def __init__(self) -> None:
         self._values: dict[str, str] = {}
         self._lock = threading.RLock()
@@ -110,15 +111,36 @@ class WindowsCredentialManagerSecretStore(SecretStore):
         encoded = secret.encode("utf-16-le")
 
         class CREDENTIALW(ctypes.Structure):
-            _fields_ = [("Flags", wintypes.DWORD), ("Type", wintypes.DWORD),
-                ("TargetName", wintypes.LPWSTR), ("Comment", wintypes.LPWSTR),
-                ("LastWritten", ctypes.c_byte * 8), ("CredentialBlobSize", wintypes.DWORD),
-                ("CredentialBlob", ctypes.POINTER(ctypes.c_byte)), ("Persist", wintypes.DWORD),
-                ("AttributeCount", wintypes.DWORD), ("Attributes", ctypes.c_void_p),
-                ("TargetAlias", wintypes.LPWSTR), ("UserName", wintypes.LPWSTR)]
+            _fields_ = [
+                ("Flags", wintypes.DWORD),
+                ("Type", wintypes.DWORD),
+                ("TargetName", wintypes.LPWSTR),
+                ("Comment", wintypes.LPWSTR),
+                ("LastWritten", ctypes.c_byte * 8),
+                ("CredentialBlobSize", wintypes.DWORD),
+                ("CredentialBlob", ctypes.POINTER(ctypes.c_byte)),
+                ("Persist", wintypes.DWORD),
+                ("AttributeCount", wintypes.DWORD),
+                ("Attributes", ctypes.c_void_p),
+                ("TargetAlias", wintypes.LPWSTR),
+                ("UserName", wintypes.LPWSTR),
+            ]
 
         blob = (ctypes.c_byte * len(encoded)).from_buffer_copy(encoded)
-        credential = CREDENTIALW(0, self._CRED_TYPE_GENERIC, target, None, (ctypes.c_byte * 8)(), len(encoded), blob, self._CRED_PERSIST_LOCAL_MACHINE, 0, None, None, "OopsNote")
+        credential = CREDENTIALW(
+            0,
+            self._CRED_TYPE_GENERIC,
+            target,
+            None,
+            (ctypes.c_byte * 8)(),
+            len(encoded),
+            blob,
+            self._CRED_PERSIST_LOCAL_MACHINE,
+            0,
+            None,
+            None,
+            "OopsNote",
+        )
         if not self._advapi32.CredWriteW(ctypes.byref(credential), 0):
             raise OSError(ctypes.get_last_error(), "CredWriteW failed")
         return reference
@@ -126,18 +148,28 @@ class WindowsCredentialManagerSecretStore(SecretStore):
     def get(self, reference: str) -> str:
         target = self._target(reference)
         credential_ptr = ctypes.c_void_p()
-        if not self._advapi32.CredReadW(target, self._CRED_TYPE_GENERIC, 0, ctypes.byref(credential_ptr)):
+        if not self._advapi32.CredReadW(
+            target, self._CRED_TYPE_GENERIC, 0, ctypes.byref(credential_ptr)
+        ):
             raise SecretNotFoundError(reference)
         try:
             # CredentialBlobSize is at offset determined by the platform ABI;
             # use CredRead only on Windows and decode the documented UTF-16 blob.
             class CREDENTIALW(ctypes.Structure):
-                _fields_ = [("Flags", wintypes.DWORD), ("Type", wintypes.DWORD),
-                    ("TargetName", wintypes.LPWSTR), ("Comment", wintypes.LPWSTR),
-                    ("LastWritten", ctypes.c_byte * 8), ("CredentialBlobSize", wintypes.DWORD),
-                    ("CredentialBlob", ctypes.POINTER(ctypes.c_byte))]
+                _fields_ = [
+                    ("Flags", wintypes.DWORD),
+                    ("Type", wintypes.DWORD),
+                    ("TargetName", wintypes.LPWSTR),
+                    ("Comment", wintypes.LPWSTR),
+                    ("LastWritten", ctypes.c_byte * 8),
+                    ("CredentialBlobSize", wintypes.DWORD),
+                    ("CredentialBlob", ctypes.POINTER(ctypes.c_byte)),
+                ]
+
             credential = ctypes.cast(credential_ptr, ctypes.POINTER(CREDENTIALW)).contents
-            return ctypes.string_at(credential.CredentialBlob, credential.CredentialBlobSize).decode("utf-16-le")
+            return ctypes.string_at(
+                credential.CredentialBlob, credential.CredentialBlobSize
+            ).decode("utf-16-le")
         finally:
             self._advapi32.CredFree(credential_ptr)
 
@@ -179,7 +211,9 @@ class EncryptedFileSecretStore(SecretStore):
         except FileNotFoundError:
             return {}
         except (OSError, json.JSONDecodeError) as error:
-            raise SecretStoreCorruptionError(f"encrypted secret store is unreadable: {self.path}") from error
+            raise SecretStoreCorruptionError(
+                f"encrypted secret store is unreadable: {self.path}"
+            ) from error
         if not isinstance(payload, dict) or payload.get("version") != self._FORMAT_VERSION:
             raise SecretStoreCorruptionError("encrypted secret store has an unsupported format")
         credentials = payload.get("credentials")
@@ -192,11 +226,14 @@ class EncryptedFileSecretStore(SecretStore):
 
     def _write(self, credentials: dict[str, str]) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-        payload = json.dumps(
-            {"version": self._FORMAT_VERSION, "credentials": credentials},
-            ensure_ascii=True,
-            separators=(",", ":"),
-        ) + "\n"
+        payload = (
+            json.dumps(
+                {"version": self._FORMAT_VERSION, "credentials": credentials},
+                ensure_ascii=True,
+                separators=(",", ":"),
+            )
+            + "\n"
+        )
         descriptor, temp_name = tempfile.mkstemp(prefix=f".{self.path.name}.", dir=self.path.parent)
         temp = Path(temp_name)
         descriptor_open = True
@@ -239,7 +276,9 @@ class EncryptedFileSecretStore(SecretStore):
         try:
             return self._fernet.decrypt(token.encode("ascii")).decode("utf-8")
         except Exception as error:
-            raise SecretStoreCorruptionError(f"credential cannot be decrypted: {reference}") from error
+            raise SecretStoreCorruptionError(
+                f"credential cannot be decrypted: {reference}"
+            ) from error
 
     def delete(self, reference: str) -> None:
         reference = _validated_reference(reference)
@@ -256,7 +295,9 @@ def secret_store_from_environment() -> SecretStore:
     if sys.platform == "win32":
         return WindowsCredentialManagerSecretStore()
     path = Path(os.getenv("OOPSNOTE_SECRET_STORE_PATH", "/vault/credentials.json"))
-    key_file = Path(os.getenv("OOPSNOTE_SECRET_STORE_KEY_FILE", "/run/secrets/oopsnote_secret_store_key"))
+    key_file = Path(
+        os.getenv("OOPSNOTE_SECRET_STORE_KEY_FILE", "/run/secrets/oopsnote_secret_store_key")
+    )
     return EncryptedFileSecretStore(path, key_file)
 
 

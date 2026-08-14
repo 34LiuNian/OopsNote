@@ -5,7 +5,6 @@ WORKDIR /app
 COPY pyproject.toml /app/
 COPY --chown=10001:10001 oopsnote /app/oopsnote
 COPY --chown=10001:10001 skills /app/skills
-COPY --chown=10001:10001 scripts/migrate_multitenancy.py /app/scripts/migrate_multitenancy.py
 COPY deploy/backend/entrypoint.sh /usr/local/bin/oopsnote-entrypoint
 RUN pip install --no-cache-dir .
 RUN apt-get update \

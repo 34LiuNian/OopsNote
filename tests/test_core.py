@@ -4,13 +4,12 @@ import base64
 import json
 import tempfile
 import threading
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
 
 import oopsnote.core.store as store_module
-
 from oopsnote.core import (
     AssetStore,
     BatchProcessJob,
@@ -79,7 +78,7 @@ class TestTaskStore:
         store = TaskStore(base_dir=base)
         (base / "broken.json").write_text("{not-json", encoding="utf-8")
 
-        with pytest.raises(StorageCorruptionError, match="broken.json"):
+        with pytest.raises(StorageCorruptionError, match=r"broken\.json"):
             store.list_all()
 
     def test_list_all(self):
@@ -185,7 +184,7 @@ class TestRunStore:
     def test_terminal_transition_owns_end_to_end_duration(self, tmp_path):
         store = RunStore(tmp_path / "runs")
         run = store.create("task-1")
-        queued_at = datetime.now(timezone.utc) - timedelta(seconds=2)
+        queued_at = datetime.now(UTC) - timedelta(seconds=2)
         store.update(run.id, queued_at=queued_at, duration_ms=1)
 
         completed = store.finish(run.id, RunStatus.COMPLETED)
@@ -199,14 +198,14 @@ class TestRunStore:
         artifact = RunArtifact(
             stage=TaskStage.OCR,
             kind="ocr",
-            raw_output="{\"raw\":true}",
+            raw_output='{"raw":true}',
             parsed_output={"raw": True},
         )
 
         first = store.record_artifact(run.id, artifact)
         repeated = store.record_artifact(
             run.id,
-            artifact.model_copy(update={"recorded_at": datetime.now(timezone.utc)}),
+            artifact.model_copy(update={"recorded_at": datetime.now(UTC)}),
         )
 
         assert len(first.artifacts) == 1
@@ -214,7 +213,7 @@ class TestRunStore:
         with pytest.raises(StateConflict, match="already has ocr evidence"):
             store.record_artifact(
                 run.id,
-                artifact.model_copy(update={"raw_output": "{\"raw\":false}"}),
+                artifact.model_copy(update={"raw_output": '{"raw":false}'}),
             )
 
         error = RunValidationError(
@@ -225,14 +224,14 @@ class TestRunStore:
         store.record_validation_error(run.id, error)
         store.record_validation_error(
             run.id,
-            error.model_copy(update={"recorded_at": datetime.now(timezone.utc)}),
+            error.model_copy(update={"recorded_at": datetime.now(UTC)}),
         )
         assert len(store.get(run.id).validation_errors) == 1
 
     def test_active_run_uses_heartbeat(self, tmp_path):
         store = RunStore(tmp_path / "runs")
         run = store.create("task-1")
-        old = datetime.now(timezone.utc) - timedelta(hours=1)
+        old = datetime.now(UTC) - timedelta(hours=1)
         store.update(run.id, heartbeat_at=old)
         assert store.active_for_task("task-1").id == run.id
 
@@ -280,37 +279,71 @@ class TestBatchSessionStore:
 
     def test_segments_require_contiguous_order_and_valid_document_locations(self):
         with pytest.raises(ValueError, match="orders must be unique and contiguous"):
-            BatchSegment.model_validate({
-                "parts": [
-                    {"page_index": 0, "x": 0, "y": 0, "width": 1, "height": 0.5, "order": 0},
-                    {"page_index": 1, "x": 0, "y": 0, "width": 1, "height": 0.5, "order": 2},
-                ],
-            })
+            BatchSegment.model_validate(
+                {
+                    "parts": [
+                        {"page_index": 0, "x": 0, "y": 0, "width": 1, "height": 0.5, "order": 0},
+                        {"page_index": 1, "x": 0, "y": 0, "width": 1, "height": 0.5, "order": 2},
+                    ],
+                }
+            )
 
         with pytest.raises(ValueError, match="follow document reading order"):
-            BatchSessionRecord.model_validate({
-                "file_hash": "abc123",
-                "filename": "questions.pdf",
-                "asset_path": "/assets/questions.pdf",
-                "page_count": 2,
-                "segments": [{
-                    "parts": [
-                        {"page_index": 1, "x": 0, "y": 0, "width": 1, "height": 0.5, "order": 0},
-                        {"page_index": 0, "x": 0, "y": 0, "width": 1, "height": 0.5, "order": 1},
+            BatchSessionRecord.model_validate(
+                {
+                    "file_hash": "abc123",
+                    "filename": "questions.pdf",
+                    "asset_path": "/assets/questions.pdf",
+                    "page_count": 2,
+                    "segments": [
+                        {
+                            "parts": [
+                                {
+                                    "page_index": 1,
+                                    "x": 0,
+                                    "y": 0,
+                                    "width": 1,
+                                    "height": 0.5,
+                                    "order": 0,
+                                },
+                                {
+                                    "page_index": 0,
+                                    "x": 0,
+                                    "y": 0,
+                                    "width": 1,
+                                    "height": 0.5,
+                                    "order": 1,
+                                },
+                            ],
+                        }
                     ],
-                }],
-            })
+                }
+            )
 
         with pytest.raises(ValueError, match="unavailable column"):
-            BatchSessionRecord.model_validate({
-                "file_hash": "abc123",
-                "filename": "questions.pdf",
-                "asset_path": "/assets/questions.pdf",
-                "page_count": 1,
-                "segments": [{
-                    "parts": [{"page_index": 0, "column_index": 1, "x": 0, "y": 0, "width": 1, "height": 0.5, "order": 0}],
-                }],
-            })
+            BatchSessionRecord.model_validate(
+                {
+                    "file_hash": "abc123",
+                    "filename": "questions.pdf",
+                    "asset_path": "/assets/questions.pdf",
+                    "page_count": 1,
+                    "segments": [
+                        {
+                            "parts": [
+                                {
+                                    "page_index": 0,
+                                    "column_index": 1,
+                                    "x": 0,
+                                    "y": 0,
+                                    "width": 1,
+                                    "height": 0.5,
+                                    "order": 0,
+                                }
+                            ],
+                        }
+                    ],
+                }
+            )
 
 
 class TestTagStore:
@@ -413,13 +446,14 @@ class TestTagStore:
             scope="core",
         )
 
-        assert groups == [{
-            "value": "一级目录",
-            "children": [
-                {"id": f"branch-{index}", "value": f"二级分支{index}"}
-                for index in range(7)
-            ],
-        }]
+        assert groups == [
+            {
+                "value": "一级目录",
+                "children": [
+                    {"id": f"branch-{index}", "value": f"二级分支{index}"} for index in range(7)
+                ],
+            }
+        ]
         assert tags.ai_knowledge_branches("数学", scope="core") == groups
         assert values == [f"叶子标签{index}" for index in range(6)]
         assert "竞赛叶子" not in values
@@ -450,10 +484,7 @@ class TestTagStore:
     def test_instances_serialize_writes_to_shared_file(self, tmp_path):
         user_path = tmp_path / "tags_user.json"
         builtin_path = tmp_path / "tags_builtin.json"
-        stores = [
-            TagStore(user_path=user_path, builtin_path=builtin_path)
-            for _ in range(12)
-        ]
+        stores = [TagStore(user_path=user_path, builtin_path=builtin_path) for _ in range(12)]
         threads = [
             threading.Thread(
                 target=store.upsert,
@@ -538,6 +569,7 @@ class TestAssetStore:
     def test_save_plain_binary(self):
         """非 data: URI 的原始 base64 字符串也能存。"""
         import base64
+
         store = AssetStore(base_dir=Path(tempfile.mkdtemp()))
         data = base64.b64encode(b"raw bytes").decode()
         path = store.save_base64(data)
@@ -566,13 +598,16 @@ class TestAssetStore:
 class TestSearcherExtra:
     def test_since_filter(self):
         """since 过滤掉旧题。"""
-        from datetime import datetime, timedelta, timezone
-        old = Problem(subject="数学", created_at=datetime(2020, 1, 1, tzinfo=timezone.utc))
-        new = Problem(subject="数学", created_at=datetime.now(timezone.utc))
-        s = Searcher([
-            TaskRecord(subject="数学", problem=old),
-            TaskRecord(subject="数学", problem=new),
-        ])
+        from datetime import datetime
+
+        old = Problem(subject="数学", created_at=datetime(2020, 1, 1, tzinfo=UTC))
+        new = Problem(subject="数学", created_at=datetime.now(UTC))
+        s = Searcher(
+            [
+                TaskRecord(subject="数学", problem=old),
+                TaskRecord(subject="数学", problem=new),
+            ]
+        )
         results = s.search(SearchQuery(since="2024-01-01"))
         assert len(results) == 1
 

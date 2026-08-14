@@ -12,7 +12,6 @@ from PIL import Image, ImageOps
 
 from .models import BatchCropRect, BatchSegment
 
-
 PDF_RENDER_SCALE = 1.5
 PAGE_CACHE_SIZE = 4
 MAX_SEGMENT_PIXELS = 80_000_000
@@ -33,7 +32,7 @@ class BatchSourceRenderer:
         self._image: Image.Image | None = None
         self._pages: OrderedDict[int, Image.Image] = OrderedDict()
 
-    def __enter__(self) -> "BatchSourceRenderer":
+    def __enter__(self) -> BatchSourceRenderer:
         if self.mime_type == "application/pdf" or self.source_path.suffix.lower() == ".pdf":
             self._pdf = pymupdf.open(self.source_path)
         else:
@@ -84,9 +83,7 @@ class BatchSourceRenderer:
             canvas_width = max(part.width for part in parts)
             canvas_height = sum(part.height for part in parts)
             if canvas_width * canvas_height > MAX_SEGMENT_PIXELS:
-                raise ValueError(
-                    f"Rendered segment exceeds {MAX_SEGMENT_PIXELS} pixels"
-                )
+                raise ValueError(f"Rendered segment exceeds {MAX_SEGMENT_PIXELS} pixels")
             canvas = Image.new("RGB", (canvas_width, canvas_height), "white")
             offset = 0
             for part in parts:
@@ -139,4 +136,4 @@ class BatchSourceRenderer:
         return rendered
 
 
-__all__ = ["BatchSourceRenderer", "PDF_RENDER_SCALE"]
+__all__ = ["PDF_RENDER_SCALE", "BatchSourceRenderer"]

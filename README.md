@@ -59,14 +59,28 @@ OopsNote/
 
 ## 安装与测试
 
+统一任务入口：
+
+- Linux / CI：`make check`（ruff + eslint + 格式校验 + typecheck + 测试），
+  `make sync` 安装依赖，`make help` 列出全部任务；
+- Windows / VSCode：任务 “OopsNote: Verify (Lint + Typecheck + Tests)”。
+
+等价的手工命令：
+
 ```powershell
 uv sync
 
 $env:PYTEST_ADDOPTS='--basetemp=E:/works/2026/OopsNote/.pytest-tmp'
 .\.venv\Scripts\python.exe -m pytest -q
+uv run ruff check .
+uv run ruff format --check .
 npm --prefix frontend run typecheck
 npm --prefix frontend run lint
 ```
+
+代码风格由 [ruff.toml](ruff.toml) 统一（line-length 100），配合
+[.editorconfig](.editorconfig) 与 [.gitattributes](.gitattributes)；提交前可安装
+pre-commit 钩子：`uv run pre-commit install`。
 
 API 与前端：
 
@@ -88,6 +102,25 @@ LangChain 隔离生产评测报告：
 
 单次任务状态、provider/model/policy version、token/cost、阶段延迟、重试和
 脱敏事件写入 `storage/runs/`；REST 只展示非敏感证据。
+
+## 部署
+
+生产环境以 Docker Compose 部署在 Linux 服务器，完整 runbook 见
+[deploy/README.md](deploy/README.md)：
+
+```sh
+cp .env.example .env               # 填写域名、OIDC 与管理员 subject
+./scripts/deploy/sync_production_context.sh
+docker compose up -d --build
+```
+
+- `docker-compose.yml` 生产 Compose；Pocket ID 位于 `oidc-rollback` profile
+  （`deploy/compose.oidc-rollback.yml`）。
+- `docker-compose.dev.yml` 容器化本地开发；`docker-compose.local.yml` 本地认证
+  模式覆盖。
+- Secret 模板与生成方式见 `deploy/oopsnote/secrets/README.md`。
+- CI：GitHub Actions（`.github/workflows/ci.yml`）在 push/PR 上运行 ruff、
+  eslint、tsc、单元测试与前后端镜像构建。
 
 ## 当前进度
 

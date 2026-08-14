@@ -9,7 +9,6 @@ from typing import Any
 
 from oopsnote.mcp.tool_registry import AI_TOOL_NAMES, MANAGED_TOOL_DEFINITIONS
 
-
 CONTRACT_PATH = Path(__file__).with_name("tool_contracts.json")
 
 
@@ -66,8 +65,7 @@ def build_tool_contract() -> dict[str, Any]:
     from oopsnote.mcp.restricted import create_restricted_mcp
 
     runtime = {
-        tool.name: tool.parameters
-        for tool in create_restricted_mcp()._tool_manager.list_tools()
+        tool.name: tool.parameters for tool in create_restricted_mcp()._tool_manager.list_tools()
     }
     return {
         "version": 1,

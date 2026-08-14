@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Optional
-
 from pydantic import BaseModel, Field
 
 from oopsnote.core import BatchSessionUpdateRequest, TagDimension
@@ -12,27 +10,27 @@ from oopsnote.core import BatchSessionUpdateRequest, TagDimension
 class UploadRequest(BaseModel):
     subject: str = "auto"
     notes: str = ""
-    question_no: Optional[str] = None
-    source: Optional[str] = None
-    question_type: Optional[str] = None
-    difficulty: Optional[str] = None
+    question_no: str | None = None
+    source: str | None = None
+    question_type: str | None = None
+    difficulty: str | None = None
     knowledge_tags: list[str] = Field(default_factory=list)
     error_tags: list[str] = Field(default_factory=list)
     user_tags: list[str] = Field(default_factory=list)
     image_base64: str
     filename: str
     mime_type: str = "image/png"
-    batch_session_hash: Optional[str] = None
-    batch_segment_id: Optional[str] = None
-    batch_page_index: Optional[int] = Field(default=None, ge=0)
-    batch_question_no: Optional[int] = Field(default=None, ge=1)
+    batch_session_hash: str | None = None
+    batch_segment_id: str | None = None
+    batch_page_index: int | None = Field(default=None, ge=0)
+    batch_question_no: int | None = Field(default=None, ge=1)
 
 
 class TagInput(BaseModel):
     dimension: TagDimension
     value: str
     aliases: list[str] = Field(default_factory=list)
-    subject: Optional[str] = None
+    subject: str | None = None
 
 
 class TagRenameInput(BaseModel):
@@ -61,18 +59,18 @@ class PaperCompileItem(BaseModel):
 class PaperCompileRequest(BaseModel):
     items: list[PaperCompileItem] = Field(min_length=1, max_length=500)
     title: str = Field(default="试卷", min_length=1, max_length=200)
-    subtitle: Optional[str] = Field(default=None, max_length=200)
+    subtitle: str | None = Field(default=None, max_length=200)
     show_answers: bool = False
 
 
 class PaperDraftCompileRequest(BaseModel):
-    subtitle: Optional[str] = Field(default=None, max_length=200)
+    subtitle: str | None = Field(default=None, max_length=200)
     show_answers: bool = False
 
 
 __all__ = [
-    "BatchProcessRequest",
     "BatchDeleteRequest",
+    "BatchProcessRequest",
     "BatchSessionPatchRequest",
     "PaperCompileItem",
     "PaperCompileRequest",

@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from contextvars import ContextVar, Token
+from dataclasses import dataclass
 from typing import Any
 
 from fastapi import Request

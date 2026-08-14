@@ -2,18 +2,17 @@
 
 from __future__ import annotations
 
-import time
 import hashlib
-from datetime import datetime, timezone
-from collections.abc import Collection
-from typing import Any, Iterable
+import time
+from collections.abc import Collection, Iterable
+from datetime import UTC, datetime
+from typing import Any
 from urllib.parse import urlsplit, urlunsplit
 
 from pydantic import BaseModel, ConfigDict, Field, HttpUrl, field_validator
 
 from oopsnote.ai.secrets import SecretNotFoundError, SecretStore
 from oopsnote.core.models import RunStatus
-
 
 SUPPORTED_PROVIDERS = frozenset({"deepseek", "openai", "anthropic", "google", "openai-compatible"})
 
@@ -104,7 +103,7 @@ class LangChainModelPolicy(BaseModel):
     updated_at: datetime | None = None
 
 
-def profile_for_channel_model(channel: ProviderChannel, model_id: str) -> "ProviderProfile":
+def profile_for_channel_model(channel: ProviderChannel, model_id: str) -> ProviderProfile:
     """Adapt a selected channel model to the existing provider client boundary."""
     item = channel.model(model_id)
     stable_model_key = hashlib.sha256(item.id.encode("utf-8")).hexdigest()[:16]
@@ -134,7 +133,7 @@ class ProviderValidationResult(BaseModel):
     latency_ms: int | None = Field(default=None, ge=0)
     error_code: str | None = None
     message: str
-    tested_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    tested_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
 class ProviderConnectionError(RuntimeError):
@@ -222,9 +221,8 @@ class ProviderClientFactory:
         """Whether this provider needs non-thinking mode for a strict tool loop."""
 
         return (
-            (profile.provider == "deepseek" and profile.model.startswith("deepseek-v4-"))
-            or cls._is_dashscope_compatible(profile)
-        )
+            profile.provider == "deepseek" and profile.model.startswith("deepseek-v4-")
+        ) or cls._is_dashscope_compatible(profile)
 
     def create_chat_model(self, profile: ProviderProfile) -> Any:
         if not profile.enabled:
@@ -367,10 +365,14 @@ class ProviderClientFactory:
     def _catalog_url(channel: ProviderChannel) -> str:
         base_url = str(channel.base_url or "").rstrip("/")
         if channel.provider == "deepseek":
-            base_url = ProviderClientFactory._openai_api_base(base_url) or "https://api.deepseek.com/v1"
+            base_url = (
+                ProviderClientFactory._openai_api_base(base_url) or "https://api.deepseek.com/v1"
+            )
             return f"{base_url}/models"
         if channel.provider in {"openai", "openai-compatible"}:
-            base_url = ProviderClientFactory._openai_api_base(base_url) or "https://api.openai.com/v1"
+            base_url = (
+                ProviderClientFactory._openai_api_base(base_url) or "https://api.openai.com/v1"
+            )
             return f"{base_url}/models"
         if channel.provider == "anthropic":
             return f"{base_url or 'https://api.anthropic.com'}/v1/models"
@@ -398,7 +400,9 @@ class ProviderClientFactory:
         else:
             headers = {"Authorization": f"Bearer {secret}"}
         try:
-            response = httpx.get(self._catalog_url(channel), headers=headers, params=params, timeout=20)
+            response = httpx.get(
+                self._catalog_url(channel), headers=headers, params=params, timeout=20
+            )
             response.raise_for_status()
             payload = response.json()
         except Exception as error:
@@ -412,14 +416,16 @@ class ProviderClientFactory:
             raise ProviderConnectionError(result) from error
         raw_items = payload.get("models") if channel.provider == "google" else payload.get("data")
         if not isinstance(raw_items, list):
-            raise ProviderConnectionError(ProviderValidationResult(
-                success=False,
-                provider=channel.provider,
-                model="catalog",
-                error_code="validation_failed",
-                message="Provider model discovery returned an invalid catalogue",
-            ))
-        discovered_at = datetime.now(timezone.utc)
+            raise ProviderConnectionError(
+                ProviderValidationResult(
+                    success=False,
+                    provider=channel.provider,
+                    model="catalog",
+                    error_code="validation_failed",
+                    message="Provider model discovery returned an invalid catalogue",
+                )
+            )
+        discovered_at = datetime.now(UTC)
         items: list[ChannelModel] = []
         seen: set[str] = set()
         for raw in raw_items:
@@ -433,21 +439,25 @@ class ProviderClientFactory:
                 continue
             seen.add(model_id)
             source = raw.get("owned_by") or raw.get("display_name") or channel.display_name
-            items.append(ChannelModel(
-                id=model_id,
-                source=str(source).strip() or channel.display_name,
-                # Tool Calling is enabled by default; Vision remains opt-in because
-                # provider catalogues do not reliably advertise image support.
-                discovered_at=discovered_at,
-            ))
+            items.append(
+                ChannelModel(
+                    id=model_id,
+                    source=str(source).strip() or channel.display_name,
+                    # Tool Calling is enabled by default; Vision remains opt-in because
+                    # provider catalogues do not reliably advertise image support.
+                    discovered_at=discovered_at,
+                )
+            )
         if not items:
-            raise ProviderConnectionError(ProviderValidationResult(
-                success=False,
-                provider=channel.provider,
-                model="catalog",
-                error_code="validation_failed",
-                message="Provider model discovery returned no usable models",
-            ))
+            raise ProviderConnectionError(
+                ProviderValidationResult(
+                    success=False,
+                    provider=channel.provider,
+                    model="catalog",
+                    error_code="validation_failed",
+                    message="Provider model discovery returned no usable models",
+                )
+            )
         return items
 
     @staticmethod
@@ -517,7 +527,11 @@ def collect_unreferenced_channel_secrets(
 
     def credential_refs(value: Any) -> set[str]:
         if isinstance(value, dict):
-            refs = {value["credential_ref"]} if isinstance(value.get("credential_ref"), str) and value["credential_ref"] else set()
+            refs = (
+                {value["credential_ref"]}
+                if isinstance(value.get("credential_ref"), str) and value["credential_ref"]
+                else set()
+            )
             for child in value.values():
                 refs.update(credential_refs(child))
             return refs
@@ -547,6 +561,7 @@ def collect_unreferenced_channel_secrets(
 
 
 __all__ = [
+    "SUPPORTED_PROVIDERS",
     "ChannelModel",
     "LangChainModelPolicy",
     "ProviderCapabilities",
@@ -555,7 +570,6 @@ __all__ = [
     "ProviderConnectionError",
     "ProviderProfile",
     "ProviderValidationResult",
-    "SUPPORTED_PROVIDERS",
     "StageModelSelection",
     "collect_unreferenced_channel_secrets",
     "profile_for_channel_model",

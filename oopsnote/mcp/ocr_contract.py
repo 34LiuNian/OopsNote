@@ -3,12 +3,11 @@
 from __future__ import annotations
 
 import re
-from typing import Literal, Optional
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from oopsnote.content import normalize_oopsmark, normalize_option_text
-
 
 ReviewReason = Literal[
     "unreadable",
@@ -61,23 +60,21 @@ class OcrExtraction(BaseModel):
     problem_text: str
     options: list[str]
     has_diagram: bool
-    printed_question_no: Optional[int] = Field(default=None, ge=1, le=999)
-    printed_chapter: Optional[str] = Field(default=None, max_length=160)
+    printed_question_no: int | None = Field(default=None, ge=1, le=999)
+    printed_chapter: str | None = Field(default=None, max_length=160)
     student_response_status: StudentResponseStatus
     student_response: str
-    review_reason: Optional[ReviewReason] = None
+    review_reason: ReviewReason | None = None
     uncertain_regions: list[str]
     confidence: float = Field(ge=0, le=1)
 
     @model_validator(mode="after")
-    def validate_student_response(self) -> "OcrExtraction":
+    def validate_student_response(self) -> OcrExtraction:
         self.problem_text = normalize_oopsmark(self.problem_text)
         if self.printed_chapter is not None:
             self.printed_chapter = self.printed_chapter.strip() or None
         if not self.problem_text and self.review_reason != "unreadable":
-            raise ValueError(
-                "empty OCR problem_text requires review_reason=unreadable"
-            )
+            raise ValueError("empty OCR problem_text requires review_reason=unreadable")
         self.student_response = normalize_oopsmark(self.student_response)
         if self.student_response_status == "answered" and not self.student_response:
             raise ValueError("answered OCR result requires student_response")

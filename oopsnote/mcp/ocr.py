@@ -3,23 +3,23 @@
 from __future__ import annotations
 
 import base64
+import contextlib
 import json
 import mimetypes
 import os
 import re
 import threading
 from collections import OrderedDict
+from collections.abc import Callable
 from copy import deepcopy
 from pathlib import Path
 from typing import Any
-from collections.abc import Callable
 
 import httpx
 
+from oopsnote.ai.secrets import SecretNotFoundError, SecretStore
 from oopsnote.core import OcrPrintedContext, RunArtifact, StateConflict, TaskStage, TaskStatus
 from oopsnote.mcp.ocr_contract import OCR_INSTRUCTION, normalize_ocr_result
-from oopsnote.ai.secrets import SecretStore, SecretNotFoundError
-
 
 MAX_IMAGE_BYTES = 12 * 1024 * 1024
 DEFAULT_OCR_ENDPOINT = "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions"
@@ -34,7 +34,9 @@ _VAULT_SECRET_STORE: SecretStore | None = None
 _VAULT_CREDENTIAL_REF: str | None = None
 _VAULT_OCR_CONFIG: dict[str, Any] = {}
 _RUN_MODEL_RESOLVER: Callable[[str], Any] | None = None
-_JSON_FENCE = re.compile(r"^\s*```(?:json)?\s*\n?(?P<body>\{.*\})\s*```\s*$", re.IGNORECASE | re.DOTALL)
+_JSON_FENCE = re.compile(
+    r"^\s*```(?:json)?\s*\n?(?P<body>\{.*\})\s*```\s*$", re.IGNORECASE | re.DOTALL
+)
 
 
 class OcrProviderError(RuntimeError):
@@ -66,7 +68,9 @@ def close_ocr_client() -> None:
         _OCR_RESULTS.clear()
 
 
-def configure_ocr_vault(secret_store: SecretStore, credential_ref: str, *, model: str, endpoint: str | None = None) -> None:
+def configure_ocr_vault(
+    secret_store: SecretStore, credential_ref: str, *, model: str, endpoint: str | None = None
+) -> None:
     """Configure OCR to resolve credentials from the OopsNote vault."""
     global _VAULT_SECRET_STORE, _VAULT_CREDENTIAL_REF, _VAULT_OCR_CONFIG
     _VAULT_SECRET_STORE = secret_store
@@ -130,8 +134,7 @@ def _vision_json_object(content: Any) -> dict[str, Any]:
 
     if isinstance(content, list):
         content = "".join(
-            str(item.get("text", "")) if isinstance(item, dict) else str(item)
-            for item in content
+            str(item.get("text", "")) if isinstance(item, dict) else str(item) for item in content
         )
     if isinstance(content, dict):
         return content
@@ -161,16 +164,29 @@ def _ocr_image_path(image_path: Path, vision_model: Any | None = None) -> dict[s
         try:
             from langchain_core.messages import HumanMessage
 
-            content = vision_model.invoke([HumanMessage(content=[
-                {"type": "text", "text": OCR_INSTRUCTION},
-                {"type": "image_url", "image_url": {"url": f"data:{mime};base64,{base64.b64encode(image).decode('ascii')}"}},
-            ])])
+            content = vision_model.invoke(
+                [
+                    HumanMessage(
+                        content=[
+                            {"type": "text", "text": OCR_INSTRUCTION},
+                            {
+                                "type": "image_url",
+                                "image_url": {
+                                    "url": f"data:{mime};base64,{base64.b64encode(image).decode('ascii')}"
+                                },
+                            },
+                        ]
+                    )
+                ]
+            )
             content = getattr(content, "content", content)
             parsed = _vision_json_object(content)
         except OcrProviderError:
             raise
         except (TypeError, ValueError, json.JSONDecodeError) as error:
-            raise OcrProviderError("ocr_invalid_response", "Vision model returned an invalid OCR response") from error
+            raise OcrProviderError(
+                "ocr_invalid_response", "Vision model returned an invalid OCR response"
+            ) from error
         except Exception as error:
             status = getattr(error, "status_code", None)
             if status is None:
@@ -184,7 +200,7 @@ def _ocr_image_path(image_path: Path, vision_model: Any | None = None) -> dict[s
             else:
                 is_transport = isinstance(error, httpx.TransportError)
                 is_timeout = isinstance(error, httpx.TimeoutException)
-                if is_timeout or isinstance(error, (TimeoutError,)):  # noqa: UP038
+                if is_timeout or isinstance(error, (TimeoutError,)):
                     code = "ocr_timeout"
                 elif is_transport or isinstance(error, ConnectionError):
                     code = "ocr_network_error"
@@ -210,10 +226,7 @@ def _ocr_image_path(image_path: Path, vision_model: Any | None = None) -> dict[s
                     {
                         "type": "image_url",
                         "image_url": {
-                            "url": (
-                                f"data:{mime};base64,"
-                                f"{base64.b64encode(image).decode('ascii')}"
-                            )
+                            "url": (f"data:{mime};base64,{base64.b64encode(image).decode('ascii')}")
                         },
                     },
                     {"type": "text", "text": OCR_INSTRUCTION},
@@ -298,10 +311,13 @@ def ocr_image(task_id: str, run_id: str) -> dict[str, Any]:
     vision_model = _RUN_MODEL_RESOLVER(run_id) if _RUN_MODEL_RESOLVER is not None else None
     if is_langchain_snapshot and vision_model is None:
         raise RuntimeError("LangChain Vision model is unavailable")
-    parsed = _ocr_image_path(image_path, vision_model) if vision_model is not None else _ocr_image_path(image_path)
-    expected_question_no = (
-        task.metadata.get("question_no")
-        or task.metadata.get("batch_question_no")
+    parsed = (
+        _ocr_image_path(image_path, vision_model)
+        if vision_model is not None
+        else _ocr_image_path(image_path)
+    )
+    expected_question_no = task.metadata.get("question_no") or task.metadata.get(
+        "batch_question_no"
     )
     try:
         result = normalize_ocr_result(
@@ -322,7 +338,8 @@ def ocr_image(task_id: str, run_id: str) -> dict[str, Any]:
             parsed_output=result,
         ),
     )
-    try:
+    with contextlib.suppress(StateConflict):
+        # A cancelled or replaced run must not attach stale OCR observations.
         stores.task_store.transition(
             task_id,
             expected_statuses={TaskStatus.PROCESSING},
@@ -332,9 +349,6 @@ def ocr_image(task_id: str, run_id: str) -> dict[str, Any]:
                 printed_chapter=result.get("printed_chapter"),
             ),
         )
-    except StateConflict:
-        # A cancelled or replaced run must not attach stale OCR observations.
-        pass
     with _OCR_RESULT_LOCK:
         _OCR_RESULTS[cache_key] = deepcopy(result)
         _OCR_RESULTS.move_to_end(cache_key)
@@ -343,4 +357,14 @@ def ocr_image(task_id: str, run_id: str) -> dict[str, Any]:
     return result
 
 
-__all__ = ["OCR_ENDPOINT", "OcrProviderError", "clear_ocr_run_model_resolver", "clear_ocr_vault", "close_ocr_client", "configure_ocr_run_model_resolver", "configure_ocr_vault", "ocr_image", "ocr_vault_is_configured"]
+__all__ = [
+    "OCR_ENDPOINT",
+    "OcrProviderError",
+    "clear_ocr_run_model_resolver",
+    "clear_ocr_vault",
+    "close_ocr_client",
+    "configure_ocr_run_model_resolver",
+    "configure_ocr_vault",
+    "ocr_image",
+    "ocr_vault_is_configured",
+]

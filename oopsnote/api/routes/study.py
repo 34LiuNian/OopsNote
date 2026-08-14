@@ -61,10 +61,12 @@ def list_duplicate_candidates(task_id: str) -> dict[str, list[dict[str, Any]]]:
             continue
         if api.PROBLEM_MERGE_STORE.canonical_for(candidate.problem.id) != candidate.problem.id:
             continue
-        items.append({
-            "task": api._task_view(candidate),
-            "source": api._problem_source(candidate, candidate.problem),
-        })
+        items.append(
+            {
+                "task": api._task_view(candidate),
+                "source": api._problem_source(candidate, candidate.problem),
+            }
+        )
     items.sort(key=lambda item: item["task"]["created_at"], reverse=True)
     return {"items": items}
 
@@ -109,16 +111,18 @@ def create_variations(task_id: str, payload: VariationPayload) -> dict[str, Any]
     runner = api._runner_for(api._configured_backend())
     created = []
     for _ in range(payload.count):
-        task = api.TASK_STORE.create(TaskCreateRequest(
-            subject=parent.problem.subject or parent.subject,
-            metadata={
-                "variation_request": variation.model_dump(mode="json"),
-                "variation_parent_problem": parent.problem.model_dump(mode="json"),
-                "parent_task_id": parent.id,
-                "error_tags": parent.problem.error_hypothesis,
-                "source": parent.problem.source or parent.metadata.get("source") or "",
-            },
-        ))
+        task = api.TASK_STORE.create(
+            TaskCreateRequest(
+                subject=parent.problem.subject or parent.subject,
+                metadata={
+                    "variation_request": variation.model_dump(mode="json"),
+                    "variation_parent_problem": parent.problem.model_dump(mode="json"),
+                    "parent_task_id": parent.id,
+                    "error_tags": parent.problem.error_hypothesis,
+                    "source": parent.problem.source or parent.metadata.get("source") or "",
+                },
+            )
+        )
         try:
             run = runner.submit(task.id)
         except RuntimeError as error:
@@ -129,7 +133,9 @@ def create_variations(task_id: str, payload: VariationPayload) -> dict[str, Any]
                 error_code="admission_conflict",
             )
             raise HTTPException(status_code=409, detail=str(error)) from error
-        created.append({"task": api._task_view(api.TASK_STORE.get(task.id)), "run": api._run_view(run)})
+        created.append(
+            {"task": api._task_view(api.TASK_STORE.get(task.id)), "run": api._run_view(run)}
+        )
     return {"items": created}
 
 

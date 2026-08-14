@@ -5,7 +5,6 @@ from __future__ import annotations
 import hashlib
 from pathlib import Path
 
-
 # Auto segmentation is intentionally excluded: Web tasks are already cropped.
 ACTIVE_AI_SKILLS = (
     "oopsnote-orchestrator",

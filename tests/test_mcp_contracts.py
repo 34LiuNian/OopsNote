@@ -13,19 +13,12 @@ from oopsnote.mcp.restricted import create_restricted_mcp
 
 def test_canonical_contract_matches_fastmcp_input_surface():
     runtime = {
-        tool.name: tool.parameters
-        for tool in create_restricted_mcp()._tool_manager.list_tools()
+        tool.name: tool.parameters for tool in create_restricted_mcp()._tool_manager.list_tools()
     }
-    canonical = {
-        tool["remoteName"]: tool["parameters"]
-        for tool in TOOL_CONTRACT["tools"]
-    }
+    canonical = {tool["remoteName"]: tool["parameters"] for tool in TOOL_CONTRACT["tools"]}
 
     assert runtime.keys() == canonical.keys()
-    assert {
-        name: canonicalize_tool_schema(schema)
-        for name, schema in runtime.items()
-    } == canonical
+    assert {name: canonicalize_tool_schema(schema) for name, schema in runtime.items()} == canonical
     assert build_tool_contract() == TOOL_CONTRACT
 
 

@@ -14,6 +14,13 @@ from oopsnote.api.schemas import (
     BatchProcessRequest,
     BatchSessionPatchRequest,
 )
+from oopsnote.api.services.batch_processing import (
+    BatchProcessError,
+    BatchProcessingContext,
+)
+from oopsnote.api.services.batch_processing import (
+    process_batch_session as run_batch_process,
+)
 from oopsnote.core import (
     BatchSessionRecord,
     BatchSessionUpdateRequest,
@@ -21,11 +28,6 @@ from oopsnote.core import (
     TaskStatus,
 )
 from oopsnote.core.assets import AssetUploadTooLargeError
-from oopsnote.api.services.batch_processing import (
-    BatchProcessError,
-    BatchProcessingContext,
-    process_batch_session as run_batch_process,
-)
 
 router = APIRouter()
 
@@ -60,6 +62,7 @@ def _validate_batch_source_length(request: Request) -> None:
                 scope="batch",
             ) from error
 
+
 @router.get("/batch-sessions")
 def list_batch_sessions() -> dict[str, list[dict[str, Any]]]:
     api = _api()
@@ -81,17 +84,15 @@ def get_batch_session(file_hash: str) -> dict[str, Any]:
     api = _api()
     try:
         record = api.BATCH_SESSION_STORE.get(file_hash)
-    except KeyError:
+    except KeyError as error:
         raise api_error(
             404,
             code="batch_session_not_found",
             message="批量扫描会话不存在",
             scope="batch",
             details={"file_hash": file_hash},
-        )
-    return {
-        "session": api._batch_session_view(api._sync_batch_session_tasks(record))
-    }
+        ) from error
+    return {"session": api._batch_session_view(api._sync_batch_session_tasks(record))}
 
 
 @router.get("/batch-sessions/{file_hash}/source")
@@ -99,14 +100,14 @@ def get_batch_source(file_hash: str) -> FileResponse:
     api = _api()
     try:
         record = api.BATCH_SESSION_STORE.get(file_hash)
-    except KeyError:
+    except KeyError as error:
         raise api_error(
             404,
             code="batch_session_not_found",
             message="批量扫描会话不存在",
             scope="batch",
             details={"file_hash": file_hash},
-        )
+        ) from error
     if not api.ASSET_STORE.is_available(record.asset_path, record.file_hash):
         raise api_error(
             404,
@@ -125,9 +126,7 @@ def get_batch_source(file_hash: str) -> FileResponse:
 @router.put("/batch-sessions/{file_hash}/source")
 async def upload_batch_source(file_hash: str, request: Request) -> dict[str, Any]:
     api = _api()
-    filename = unquote(
-        request.headers.get("x-oopsnote-filename", "batch-upload.bin")
-    )
+    filename = unquote(request.headers.get("x-oopsnote-filename", "batch-upload.bin"))
     mime_type = request.headers.get("content-type", "application/octet-stream")
     try:
         page_count = max(0, int(request.headers.get("x-oopsnote-page-count", "0")))
@@ -152,9 +151,13 @@ async def upload_batch_source(file_hash: str, request: Request) -> dict[str, Any
                 max_bytes=BATCH_SOURCE_MAX_BYTES,
             )
         except AssetUploadTooLargeError as error:
-            raise api_error(413, code="batch_source_too_large", message=str(error), scope="batch") from error
+            raise api_error(
+                413, code="batch_source_too_large", message=str(error), scope="batch"
+            ) from error
         except ValueError as error:
-            raise api_error(400, code="batch_source_invalid", message=str(error), scope="batch") from error
+            raise api_error(
+                400, code="batch_source_invalid", message=str(error), scope="batch"
+            ) from error
         record = api.BATCH_SESSION_STORE.create(
             BatchSessionRecord(
                 file_hash=file_hash,
@@ -178,9 +181,13 @@ async def upload_batch_source(file_hash: str, request: Request) -> dict[str, Any
                     max_bytes=BATCH_SOURCE_MAX_BYTES,
                 )
             except AssetUploadTooLargeError as error:
-                raise api_error(413, code="batch_source_too_large", message=str(error), scope="batch") from error
+                raise api_error(
+                    413, code="batch_source_too_large", message=str(error), scope="batch"
+                ) from error
             except ValueError as error:
-                raise api_error(400, code="batch_source_invalid", message=str(error), scope="batch") from error
+                raise api_error(
+                    400, code="batch_source_invalid", message=str(error), scope="batch"
+                ) from error
             record = api.BATCH_SESSION_STORE.update(
                 file_hash,
                 BatchSessionUpdateRequest(
@@ -209,8 +216,10 @@ def update_batch_session(
             ),
             expected_revision=expected_revision,
         )
-    except KeyError:
-        raise api_error(404, code="batch_session_not_found", message="批量扫描会话不存在", scope="batch")
+    except KeyError as error:
+        raise api_error(
+            404, code="batch_session_not_found", message="批量扫描会话不存在", scope="batch"
+        ) from error
     except StateConflict as error:
         raise api_error(
             409,
@@ -302,9 +311,7 @@ def retry_batch_segment(
 
 
 def _batch_task_ids(api: Any, record: BatchSessionRecord) -> set[str]:
-    task_ids = {
-        segment.task_id for segment in record.segments if segment.task_id
-    }
+    task_ids = {segment.task_id for segment in record.segments if segment.task_id}
     for task in api.TASK_STORE.list_all():
         snapshot = task.metadata.get("selection_snapshot")
         if isinstance(snapshot, dict) and snapshot.get("source_file_hash") == record.file_hash:
@@ -321,8 +328,8 @@ def delete_batch_session(
     if payload is None:
         try:
             record = api.BATCH_SESSION_STORE.delete(file_hash)
-        except KeyError:
-            raise HTTPException(status_code=404, detail="Batch session not found")
+        except KeyError as error:
+            raise HTTPException(status_code=404, detail="Batch session not found") from error
         return {
             "deleted": True,
             "file_hash": record.file_hash,
@@ -337,8 +344,8 @@ def delete_batch_session(
     with api.BATCH_SESSION_STORE.session_lock(file_hash):
         try:
             record = api.BATCH_SESSION_STORE.get(file_hash)
-        except KeyError:
-            raise HTTPException(status_code=404, detail="Batch session not found")
+        except KeyError as error:
+            raise HTTPException(status_code=404, detail="Batch session not found") from error
 
         task_ids = _batch_task_ids(api, record)
         tasks = []
@@ -392,10 +399,12 @@ def delete_batch_source(file_hash: str) -> dict[str, Any]:
     with api.BATCH_SESSION_STORE.session_lock(file_hash):
         try:
             record = api.BATCH_SESSION_STORE.get(file_hash)
-        except KeyError:
-            raise HTTPException(status_code=404, detail="Batch session not found")
+        except KeyError as error:
+            raise HTTPException(status_code=404, detail="Batch session not found") from error
         if any(segment.status == "processing" for segment in record.segments):
-            raise HTTPException(status_code=409, detail="Cannot remove the source while batch processing is active")
+            raise HTTPException(
+                status_code=409, detail="Cannot remove the source while batch processing is active"
+            )
         try:
             api.ASSET_STORE.delete(record.asset_path)
         except FileNotFoundError:

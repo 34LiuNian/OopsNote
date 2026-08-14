@@ -8,9 +8,9 @@ import queue
 import subprocess
 import threading
 import time
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Mapping, Sequence
 
 
 @dataclass(frozen=True)
@@ -33,7 +33,7 @@ def _read_lines(
     output: queue.Queue[str | None],
 ) -> None:
     try:
-        readline = getattr(stream, "readline")
+        readline = stream.readline
         for line in iter(readline, ""):
             output.put(line.rstrip("\r\n"))
     finally:

@@ -10,6 +10,6 @@ from .worker import RpcWorkerState
 __all__ = [
     "PiRuntimeAdapter",
     "RpcRuntimeAdapter",
-    "RustPiRuntimeAdapter",
     "RpcWorkerState",
+    "RustPiRuntimeAdapter",
 ]

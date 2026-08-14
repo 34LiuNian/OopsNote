@@ -9,10 +9,13 @@ from oopsnote.core import RunStore, TaskCreateRequest, TaskStatus, TaskStore
 def test_persisted_error_codes_have_stable_api_categories() -> None:
     assert category_for_error_code("provider_unavailable") == ApiErrorCategory.MODEL_REQUEST
     assert category_for_error_code("renderer_failed") == ApiErrorCategory.TIKZ_COMPILE
-    assert category_for_error_code(
-        "renderer_failed",
-        needs_review=True,
-    ) == ApiErrorCategory.TIKZ_COMPILE
+    assert (
+        category_for_error_code(
+            "renderer_failed",
+            needs_review=True,
+        )
+        == ApiErrorCategory.TIKZ_COMPILE
+    )
     assert category_for_error_code("runner_error") == ApiErrorCategory.INTERNAL
     assert category_for_error_code(None, needs_review=True) == ApiErrorCategory.HUMAN_REVIEW
 

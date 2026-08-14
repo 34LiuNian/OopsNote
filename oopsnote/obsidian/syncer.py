@@ -2,18 +2,24 @@
 
 from __future__ import annotations
 
-import json
 import hashlib
+import json
 import threading
 from pathlib import Path
-from typing import Optional
 from uuid import uuid4
 
-from oopsnote.core import AssetStore, DiagramStatus, Problem, StateConflict, TagStore, TaskStatus, TaskStore
+from oopsnote.core import (
+    AssetStore,
+    DiagramStatus,
+    Problem,
+    StateConflict,
+    TagStore,
+    TaskStatus,
+    TaskStore,
+)
 
 from .indexer import render_indexes
 from .writer import problem_filename, render_problem, subject_dir
-
 
 MANIFEST_NAME = ".oopsnote-managed.json"
 MANAGED_MARKER = "oopsnote_managed: true"
@@ -41,8 +47,8 @@ class ObsidianSyncer:
     def __init__(
         self,
         task_store: TaskStore,
-        vault_root: Optional[Path] = None,
-        tag_store: Optional[TagStore] = None,
+        vault_root: Path | None = None,
+        tag_store: TagStore | None = None,
     ) -> None:
         self.task_store = task_store
         self.asset_store = AssetStore(task_store.base_dir / "assets")
@@ -144,7 +150,11 @@ class ObsidianSyncer:
                 asset_path = None
                 if item.status == DiagramStatus.READY_TIKZ and item.selected_candidate_id:
                     selected = next(
-                        (candidate for candidate in item.candidates if candidate.id == item.selected_candidate_id),
+                        (
+                            candidate
+                            for candidate in item.candidates
+                            if candidate.id == item.selected_candidate_id
+                        ),
                         None,
                     )
                     asset_path = selected.svg_path if selected else None
@@ -298,7 +308,7 @@ class ObsidianSyncer:
                 problems.append(problem)
         return problems
 
-    def _write_managed(self, path: Path, content: str, expected_hash: Optional[str]) -> str:
+    def _write_managed(self, path: Path, content: str, expected_hash: str | None) -> str:
         """Write only when the existing managed file has not been locally edited."""
         if not path.exists():
             self._atomic_write(path, content)
@@ -319,7 +329,7 @@ class ObsidianSyncer:
             return "written"
         return "conflict"
 
-    def _write_managed_bytes(self, path: Path, content: bytes, expected_hash: Optional[str]) -> str:
+    def _write_managed_bytes(self, path: Path, content: bytes, expected_hash: str | None) -> str:
         digest = hashlib.sha256(content).hexdigest()
         if not path.exists():
             self._atomic_write_bytes(path, content)
@@ -473,11 +483,7 @@ class ObsidianSyncQueue:
                 key, (syncer, pending) = self._pending.popitem()
             items = list(pending.values())
             problems = [problem for problem, _ in items]
-            task_refs = [
-                (task_id, problem.id)
-                for problem, task_id in items
-                if task_id
-            ]
+            task_refs = [(task_id, problem.id) for problem, task_id in items if task_id]
             try:
                 report = syncer.sync_problems(problems)
                 self.last_error = None

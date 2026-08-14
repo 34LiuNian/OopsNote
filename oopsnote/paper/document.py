@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Literal, Mapping
+from typing import Literal
 
 from oopsnote.core import ContentFormat, DiagramStatus, PaperDraft, Problem, TaskRecord
-
 
 PaperAnswerSpace = Literal["compact", "standard", "large"]
 PaperDiagramKind = Literal["tikz", "image"]
@@ -95,7 +95,11 @@ def _paper_diagram(task: TaskRecord, *, item_id: str) -> PaperDiagram | None:
         )
     if item.status == DiagramStatus.READY_TIKZ:
         candidate = next(
-            (candidate for candidate in item.candidates if candidate.id == item.selected_candidate_id),
+            (
+                candidate
+                for candidate in item.candidates
+                if candidate.id == item.selected_candidate_id
+            ),
             None,
         )
         source = str(candidate.pdf_path if candidate else "").strip()

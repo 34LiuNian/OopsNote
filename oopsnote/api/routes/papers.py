@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Any
 from urllib.parse import quote
 
 from fastapi import APIRouter, HTTPException, Query, Response
@@ -117,8 +117,7 @@ def _pdf_response(content: bytes, title: str) -> Response:
         media_type="application/pdf",
         headers={
             "Content-Disposition": (
-                "attachment; filename=oopsnote-paper.pdf; "
-                f"filename*=UTF-8''{encoded_name}"
+                f"attachment; filename=oopsnote-paper.pdf; filename*=UTF-8''{encoded_name}"
             )
         },
     )
@@ -143,8 +142,8 @@ def list_papers() -> dict[str, list[dict[str, Any]]]:
 @router.get("/papers/candidates")
 def list_paper_candidates(
     subject: str,
-    knowledge_tag: Optional[list[str]] = Query(default=None),
-    knowledge_node_id: Optional[list[str]] = Query(default=None),
+    knowledge_tag: list[str] | None = Query(default=None),
+    knowledge_node_id: list[str] | None = Query(default=None),
     limit: int = Query(default=250, ge=1, le=1000),
 ) -> dict[str, list[dict[str, Any]]]:
     api = _api()
@@ -219,8 +218,8 @@ def compile_paper(payload: PaperCompileRequest) -> Response:
 def compile_paper_draft(draft_id: str, payload: PaperDraftCompileRequest) -> Response:
     try:
         draft = _api().PAPER_DRAFT_STORE.get(draft_id)
-    except KeyError:
-        raise HTTPException(status_code=404, detail="Paper draft not found")
+    except KeyError as error:
+        raise HTTPException(status_code=404, detail="Paper draft not found") from error
     try:
         document = build_paper_document(
             draft,
@@ -237,8 +236,8 @@ def compile_paper_draft(draft_id: str, payload: PaperDraftCompileRequest) -> Res
 def get_paper(draft_id: str) -> dict[str, Any]:
     try:
         draft = _api().PAPER_DRAFT_STORE.get(draft_id)
-    except KeyError:
-        raise HTTPException(status_code=404, detail="Paper draft not found")
+    except KeyError as error:
+        raise HTTPException(status_code=404, detail="Paper draft not found") from error
     return {"paper": _paper_view(draft)}
 
 
@@ -246,8 +245,8 @@ def get_paper(draft_id: str) -> dict[str, Any]:
 def update_paper(draft_id: str, payload: PaperDraftUpdateRequest) -> dict[str, Any]:
     try:
         draft = _api().PAPER_DRAFT_STORE.update(draft_id, payload)
-    except KeyError:
-        raise HTTPException(status_code=404, detail="Paper draft not found")
+    except KeyError as error:
+        raise HTTPException(status_code=404, detail="Paper draft not found") from error
     return {"paper": _paper_view(draft)}
 
 
@@ -255,6 +254,6 @@ def update_paper(draft_id: str, payload: PaperDraftUpdateRequest) -> dict[str, A
 def delete_paper(draft_id: str) -> dict[str, Any]:
     try:
         draft = _api().PAPER_DRAFT_STORE.delete(draft_id)
-    except KeyError:
-        raise HTTPException(status_code=404, detail="Paper draft not found")
+    except KeyError as error:
+        raise HTTPException(status_code=404, detail="Paper draft not found") from error
     return {"ok": True, "paper_id": draft.id}

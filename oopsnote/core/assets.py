@@ -12,13 +12,13 @@ import json
 import math
 import mimetypes
 import re
+from collections.abc import AsyncIterable, Mapping
 from io import BytesIO
 from pathlib import Path
-from typing import Any, AsyncIterable, Mapping, Optional
+from typing import Any
 from uuid import uuid4
 
 from PIL import Image, ImageOps, UnidentifiedImageError
-
 
 DATA_URI_RE = re.compile(r"^data:(?P<mime>[^;]+);base64,(?P<data>.+)$")
 MAX_UPLOAD_IMAGE_BYTES = 16 * 1024 * 1024
@@ -38,11 +38,11 @@ class AssetUploadTooLargeError(ValueError):
 class AssetStore:
     """本地资产文件存储。"""
 
-    def __init__(self, base_dir: Optional[Path] = None) -> None:
+    def __init__(self, base_dir: Path | None = None) -> None:
         self.base_dir = base_dir or Path(__file__).resolve().parents[1] / "storage" / "assets"
         self.base_dir.mkdir(parents=True, exist_ok=True)
 
-    def save_base64(self, data: str, filename: Optional[str] = None) -> str:
+    def save_base64(self, data: str, filename: str | None = None) -> str:
         """保存 base64 字符串，返回相对路径。"""
         payload, mime = self._extract(data)
         ext = self._guess_ext(filename, mime)
@@ -54,7 +54,7 @@ class AssetStore:
     def save_uploaded_image(
         self,
         data: str,
-        filename: Optional[str] = None,
+        filename: str | None = None,
         *,
         max_bytes: int = MAX_UPLOAD_IMAGE_BYTES,
         max_pixels: int = MAX_UPLOAD_IMAGE_PIXELS,
@@ -92,13 +92,16 @@ class AssetStore:
         self._write_atomic(dest, source.read_bytes())
         return f"/assets/{name}"
 
-    def save_bytes(self, data: bytes, filename: str, stable_name: Optional[str] = None) -> str:
+    def save_bytes(self, data: bytes, filename: str, stable_name: str | None = None) -> str:
         """保存原始上传文件；stable_name 用于内容哈希去重。"""
         ext = Path(filename).suffix or ".bin"
         name = f"{stable_name}{ext}" if stable_name else f"{uuid4().hex}{ext}"
         safe_name = name.replace("/", "_").replace("\\", "_")
         path = self.base_dir / safe_name
-        if not path.exists() or hashlib.sha256(path.read_bytes()).digest() != hashlib.sha256(data).digest():
+        if (
+            not path.exists()
+            or hashlib.sha256(path.read_bytes()).digest() != hashlib.sha256(data).digest()
+        ):
             self._write_atomic(path, data)
         return f"/assets/{safe_name}"
 
@@ -164,8 +167,13 @@ class AssetStore:
                 width, height = image.size
                 left = max(0, min(width - 1, math.floor(normalized["x"] * width)))
                 top = max(0, min(height - 1, math.floor(normalized["y"] * height)))
-                right = max(left + 1, min(width, math.ceil((normalized["x"] + normalized["width"]) * width)))
-                bottom = max(top + 1, min(height, math.ceil((normalized["y"] + normalized["height"]) * height)))
+                right = max(
+                    left + 1, min(width, math.ceil((normalized["x"] + normalized["width"]) * width))
+                )
+                bottom = max(
+                    top + 1,
+                    min(height, math.ceil((normalized["y"] + normalized["height"]) * height)),
+                )
                 cropped = image.crop((left, top, right, bottom))
                 if cropped.mode not in {"1", "L", "LA", "RGB", "RGBA"}:
                     cropped = cropped.convert("RGBA" if "transparency" in cropped.info else "RGB")
@@ -188,14 +196,21 @@ class AssetStore:
         normalized: dict[str, float] = {}
         for key in ("x", "y", "width", "height"):
             value = crop.get(key)
-            if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+            if (
+                isinstance(value, bool)
+                or not isinstance(value, (int, float))
+                or not math.isfinite(value)
+            ):
                 raise ValueError(f"diagram_image_crop.{key} must be a finite number")
             normalized[key] = round(float(value), 8)
         if normalized["x"] < 0 or normalized["y"] < 0:
             raise ValueError("diagram_image_crop origin must be within the image")
         if normalized["width"] <= 0 or normalized["height"] <= 0:
             raise ValueError("diagram_image_crop dimensions must be positive")
-        if normalized["x"] + normalized["width"] > 1.00000001 or normalized["y"] + normalized["height"] > 1.00000001:
+        if (
+            normalized["x"] + normalized["width"] > 1.00000001
+            or normalized["y"] + normalized["height"] > 1.00000001
+        ):
             raise ValueError("diagram_image_crop must stay within the image")
         normalized["width"] = min(normalized["width"], 1 - normalized["x"])
         normalized["height"] = min(normalized["height"], 1 - normalized["y"])
@@ -225,14 +240,14 @@ class AssetStore:
         return expected_sha256 is None or self._file_sha256(path) == expected_sha256
 
     @staticmethod
-    def _extract(data: str) -> tuple[str, Optional[str]]:
+    def _extract(data: str) -> tuple[str, str | None]:
         m = DATA_URI_RE.match(data)
         if m:
             return m.group("data"), m.group("mime")
         return data, None
 
     @staticmethod
-    def _decode_base64(payload: str, *, max_bytes: Optional[int] = None) -> bytes:
+    def _decode_base64(payload: str, *, max_bytes: int | None = None) -> bytes:
         if max_bytes is not None and len(payload) > ((max_bytes + 2) // 3) * 4 + 8:
             raise ValueError(f"Uploaded image exceeds {max_bytes} bytes")
         try:
@@ -262,7 +277,7 @@ class AssetStore:
         return digest.hexdigest()
 
     @staticmethod
-    def _guess_ext(filename: Optional[str], mime: Optional[str]) -> str:
+    def _guess_ext(filename: str | None, mime: str | None) -> str:
         if filename and Path(filename).suffix:
             return Path(filename).suffix
         if mime:

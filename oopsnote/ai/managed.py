@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+import contextlib
 import threading
 from abc import ABC, abstractmethod
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any, Optional, Protocol
+from typing import Any, Protocol
 
 from oopsnote.ai.dispatcher import ManagedTaskDispatcher
 from oopsnote.ai.run_control import ActiveRunControl, ProcessRunControl
@@ -44,23 +45,25 @@ class LifecycleAdmissionError(RuntimeError):
 class ManagedAiRunner(ABC):
     """Own task/run state independently from a specific agent process."""
 
-    _RETRYABLE_ERROR_CODES = frozenset({
-        "connection_error",
-        "network_error",
-        "ocr_network_error",
-        "ocr_provider_unavailable",
-        "ocr_rate_limit",
-        "ocr_timeout",
-        "rate_limit",
-        "rate_limit_exceeded",
-        "provider_rate_limit",
-        "provider_unavailable",
-        "renderer_timeout",
-        "renderer_unavailable",
-        "service_unavailable",
-        "429",
-        "503",
-    })
+    _RETRYABLE_ERROR_CODES = frozenset(
+        {
+            "connection_error",
+            "network_error",
+            "ocr_network_error",
+            "ocr_provider_unavailable",
+            "ocr_rate_limit",
+            "ocr_timeout",
+            "rate_limit",
+            "rate_limit_exceeded",
+            "provider_rate_limit",
+            "provider_unavailable",
+            "renderer_timeout",
+            "renderer_unavailable",
+            "service_unavailable",
+            "429",
+            "503",
+        }
+    )
 
     backend_name = "unknown"
     _admission_lock = threading.RLock()
@@ -107,7 +110,7 @@ class ManagedAiRunner(ABC):
         self,
         task_id: str,
         *,
-        retry_of: Optional[TaskRun] = None,
+        retry_of: TaskRun | None = None,
     ) -> TaskRun:
         """Create a run and move a task into the managed processing state."""
         # One local API process may receive concurrent requests for the same
@@ -117,7 +120,9 @@ class ManagedAiRunner(ABC):
             task = self.task_store.get(task_id)
             active = self.run_store.active_for_task(task_id)
             if active:
-                raise LifecycleAdmissionError("task_busy", f"Task already has active run {active.id}")
+                raise LifecycleAdmissionError(
+                    "task_busy", f"Task already has active run {active.id}"
+                )
             if task.status == TaskStatus.PROCESSING:
                 raise LifecycleAdmissionError(
                     "task_busy",
@@ -189,7 +194,7 @@ class ManagedAiRunner(ABC):
         item_id: str,
         *,
         mode: DiagramRunMode = DiagramRunMode.AUTO,
-        instruction: Optional[str] = None,
+        instruction: str | None = None,
         max_candidates: int = 4,
     ) -> TaskRun:
         """Admit an independent diagram run without changing problem-task status."""
@@ -258,7 +263,7 @@ class ManagedAiRunner(ABC):
         item_id: str,
         *,
         mode: DiagramRunMode = DiagramRunMode.AUTO,
-        instruction: Optional[str] = None,
+        instruction: str | None = None,
         max_candidates: int = 4,
     ) -> TaskRun:
         run = self.enqueue_diagram(
@@ -295,7 +300,7 @@ class ManagedAiRunner(ABC):
         except KeyError:
             return
         if run.purpose == RunPurpose.DIAGRAM and run.diagram_item_id:
-            try:
+            with contextlib.suppress(KeyError, StateConflict):
                 self.task_store.update_diagram_item(
                     task_id,
                     run.diagram_item_id,
@@ -306,8 +311,6 @@ class ManagedAiRunner(ABC):
                     last_error=str(error),
                     last_error_code="dispatcher_error",
                 )
-            except (KeyError, StateConflict):
-                pass
             return
         try:
             task = self.task_store.get(task_id)
@@ -381,7 +384,7 @@ class ManagedAiRunner(ABC):
             return
         self.run_store.finish(active.id, RunStatus.CANCELLED)
 
-    def _mark_cancelled(self, task_id: str, exit_code: Optional[int] = None) -> None:
+    def _mark_cancelled(self, task_id: str, exit_code: int | None = None) -> None:
         """Apply the shared cancellation terminal transition."""
         active = self.run_store.active_for_task(task_id)
         if active:
@@ -424,14 +427,14 @@ class ManagedAiRunner(ABC):
 
     def recover_stale(self) -> int:
         """Fail abandoned runs and legacy processing tasks after the stale window."""
-        cutoff = datetime.now(timezone.utc) - timedelta(seconds=self.stale_seconds)
+        cutoff = datetime.now(UTC) - timedelta(seconds=self.stale_seconds)
         recovered = 0
         active_task_ids: set[str] = set()
         for run in self.run_store.list_all():
-            if (
-                run.backend != self.backend_name
-                or run.status not in {RunStatus.QUEUED, RunStatus.RUNNING}
-            ):
+            if run.backend != self.backend_name or run.status not in {
+                RunStatus.QUEUED,
+                RunStatus.RUNNING,
+            }:
                 continue
             if run.purpose == RunPurpose.PROBLEM:
                 active_task_ids.add(run.task_id)
@@ -453,7 +456,7 @@ class ManagedAiRunner(ABC):
                     error_message=message,
                 )
                 if run.diagram_item_id:
-                    try:
+                    with contextlib.suppress(KeyError, StateConflict):
                         self.task_store.update_diagram_item(
                             run.task_id,
                             run.diagram_item_id,
@@ -464,8 +467,6 @@ class ManagedAiRunner(ABC):
                             last_error=message,
                             last_error_code="stale_heartbeat",
                         )
-                    except (KeyError, StateConflict):
-                        pass
                 recovered += 1
                 continue
             terminal_status = {
@@ -493,7 +494,7 @@ class ManagedAiRunner(ABC):
                 error_code="stale_heartbeat",
                 error_message=message,
             )
-            try:
+            with contextlib.suppress(KeyError, StateConflict):
                 self.task_store.transition(
                     run.task_id,
                     expected_statuses={TaskStatus.PROCESSING},
@@ -503,8 +504,6 @@ class ManagedAiRunner(ABC):
                     last_error=message,
                     last_error_code="stale_heartbeat",
                 )
-            except (KeyError, StateConflict):
-                pass
             recovered += 1
 
         for task in self.task_store.list_all():
@@ -547,7 +546,7 @@ class ManagedAiRunner(ABC):
                 )
                 self.run_store.update(run.id, retryable=True)
                 if task is not None and run.diagram_item_id:
-                    try:
+                    with contextlib.suppress(KeyError, StateConflict):
                         self.task_store.update_diagram_item(
                             task.id,
                             run.diagram_item_id,
@@ -558,8 +557,6 @@ class ManagedAiRunner(ABC):
                             last_error=message,
                             last_error_code="worker_lost",
                         )
-                    except (KeyError, StateConflict):
-                        pass
                 recovered += 1
                 continue
             terminal_status = {
@@ -588,7 +585,7 @@ class ManagedAiRunner(ABC):
                 )
                 self.run_store.update(run.id, retryable=True)
                 if task is not None:
-                    try:
+                    with contextlib.suppress(StateConflict):
                         self.task_store.transition(
                             task.id,
                             expected_statuses={TaskStatus.PROCESSING},
@@ -598,8 +595,6 @@ class ManagedAiRunner(ABC):
                             last_error=message,
                             last_error_code="worker_lost",
                         )
-                    except StateConflict:
-                        pass
             recovered += 1
         return recovered
 
@@ -647,7 +642,7 @@ class ManagedAiRunner(ABC):
         run_id: str,
         *,
         execute_inline: bool = False,
-    ) -> Optional[TaskRun]:
+    ) -> TaskRun | None:
         """Schedule a bounded fresh retry under the same managed backend.
 
         The failed run remains terminal evidence. This never switches provider
@@ -666,7 +661,7 @@ class ManagedAiRunner(ABC):
             self._dispatcher.schedule(task_id, retry.id)
         return retry
 
-    def retry_diagram_if_eligible(self, task_id: str, run_id: str) -> Optional[TaskRun]:
+    def retry_diagram_if_eligible(self, task_id: str, run_id: str) -> TaskRun | None:
         """Retry only a classified transient diagram failure as a fresh managed run."""
         completed = self.run_store.get(run_id)
         if (
@@ -721,8 +716,8 @@ class ManagedAiRunner(ABC):
 
     @staticmethod
     def is_retryable_error(
-        error_code: Optional[str],
-        message: Optional[str] = None,
+        error_code: str | None,
+        message: str | None = None,
     ) -> bool:
         """Retry only explicitly classified transient transport failures.
 

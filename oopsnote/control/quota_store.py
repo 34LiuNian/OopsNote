@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Any
 from uuid import uuid4
 
 from oopsnote.core.models import (
@@ -32,30 +32,29 @@ class QuotaAwareRunStore(RunStore):
         prompt_version: str = "unversioned",
         *,
         backend: str = "pi",
-        runtime_kind: Optional[str] = None,
-        runtime_version: Optional[str] = None,
-        provider: Optional[str] = None,
-        model: Optional[str] = None,
-        provider_profile_snapshot: Optional[dict[str, Any]] = None,
-        retry_of: Optional[TaskRun] = None,
+        runtime_kind: str | None = None,
+        runtime_version: str | None = None,
+        provider: str | None = None,
+        model: str | None = None,
+        provider_profile_snapshot: dict[str, Any] | None = None,
+        retry_of: TaskRun | None = None,
         purpose: RunPurpose = RunPurpose.PROBLEM,
         priority: int = 0,
-        diagram_item_id: Optional[str] = None,
-        diagram_mode: Optional[DiagramRunMode] = None,
-        diagram_instruction: Optional[str] = None,
-        diagram_max_candidates: Optional[int] = None,
-        diagram_step: Optional[DiagramRunStep] = None,
+        diagram_item_id: str | None = None,
+        diagram_mode: DiagramRunMode | None = None,
+        diagram_instruction: str | None = None,
+        diagram_max_candidates: int | None = None,
+        diagram_step: DiagramRunStep | None = None,
     ) -> TaskRun:
         previous_runs = [
-            run for run in self.list_for_task(task_id)
+            run
+            for run in self.list_for_task(task_id)
             if run.purpose == purpose and run.diagram_item_id == diagram_item_id
         ]
         attempt = 1 + max((run.attempt for run in previous_runs), default=0)
         run_id = uuid4().hex
         if retry_of is None:
-            operation_key = (
-                f"task:{task_id}:purpose:{purpose.value}:item:{diagram_item_id or '-'}:attempt:{attempt}"
-            )
+            operation_key = f"task:{task_id}:purpose:{purpose.value}:item:{diagram_item_id or '-'}:attempt:{attempt}"
             admission = self.quota.admit_run(
                 self.workspace_id,
                 task_id=task_id,
@@ -111,9 +110,9 @@ class QuotaAwareRunStore(RunStore):
         run_id: str,
         status: RunStatus,
         *,
-        exit_code: Optional[int] = None,
-        error_code: Optional[str] = None,
-        error_message: Optional[str] = None,
+        exit_code: int | None = None,
+        error_code: str | None = None,
+        error_message: str | None = None,
     ) -> TaskRun:
         run = super().finish(
             run_id,
@@ -122,12 +121,16 @@ class QuotaAwareRunStore(RunStore):
             error_code=error_code,
             error_message=error_message,
         )
-        if status in {
-            RunStatus.COMPLETED,
-            RunStatus.FAILED,
-            RunStatus.CANCELLED,
-            RunStatus.TIMED_OUT,
-        } and run.quota_reservation_id:
+        if (
+            status
+            in {
+                RunStatus.COMPLETED,
+                RunStatus.FAILED,
+                RunStatus.CANCELLED,
+                RunStatus.TIMED_OUT,
+            }
+            and run.quota_reservation_id
+        ):
             self.quota.settle_run(
                 self.workspace_id,
                 run_id,
@@ -139,10 +142,10 @@ class QuotaAwareRunStore(RunStore):
     def start(
         self,
         run_id: str,
-        pid: Optional[int],
+        pid: int | None,
         log_path: str,
         *,
-        worker_id: Optional[str] = None,
+        worker_id: str | None = None,
     ) -> TaskRun:
         if not self.claim_execution(run_id):
             raise QuotaError("concurrency_exceeded", "Concurrent run limit exceeded")

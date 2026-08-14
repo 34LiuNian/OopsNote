@@ -10,7 +10,7 @@ import asyncio
 import subprocess
 import threading
 from abc import ABC, abstractmethod
-from typing import Any, Optional
+from typing import Any
 
 
 class ActiveRunControl(ABC):
@@ -23,7 +23,7 @@ class ActiveRunControl(ABC):
         """Return whether the underlying execution still exists."""
 
     @property
-    def exit_code(self) -> Optional[int]:
+    def exit_code(self) -> int | None:
         return None
 
 
@@ -45,7 +45,7 @@ class ProcessRunControl(ActiveRunControl):
         return self.process.poll() is None
 
     @property
-    def exit_code(self) -> Optional[int]:
+    def exit_code(self) -> int | None:
         return self.process.poll()
 
 

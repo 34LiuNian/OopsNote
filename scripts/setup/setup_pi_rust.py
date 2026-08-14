@@ -9,6 +9,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import contextlib
 import hashlib
 import json
 import shutil
@@ -30,23 +31,16 @@ from oopsnote.mcp.contracts import (
 )
 from oopsnote.mcp.http_runtime import SharedMcpHttpRuntime
 
-
 ROOT = Path(__file__).resolve().parents[2]
 PI_RUST_VERSION = "0.1.22"
 PI_RUST_WINDOWS_X64_URL = (
     "https://github.com/Dicklesworthstone/pi_agent_rust/releases/download/"
     f"v{PI_RUST_VERSION}/pi-{PI_RUST_VERSION}-x86_64-pc-windows-msvc.zip"
 )
-PI_RUST_WINDOWS_X64_ZIP_SHA256 = (
-    "6486c6fe78c484b8be61360e9c96f91426efc2b9bb493696fab3ccd088e43ba3"
-)
-PI_RUST_WINDOWS_X64_EXE_SHA256 = (
-    "e898f4732ce139ea5cfaf41bb41ab792a58007ab626a657cd830c407a8d4ec51"
-)
+PI_RUST_WINDOWS_X64_ZIP_SHA256 = "6486c6fe78c484b8be61360e9c96f91426efc2b9bb493696fab3ccd088e43ba3"
+PI_RUST_WINDOWS_X64_EXE_SHA256 = "e898f4732ce139ea5cfaf41bb41ab792a58007ab626a657cd830c407a8d4ec51"
 PI_RUST_BINARY = ROOT / ".pi-rust" / "bin" / "pi.exe"
-GENERATED_CONTRACT_MODULE = (
-    ROOT / ".pi-rust" / "extensions" / "oopsnote_tool_contracts.js"
-)
+GENERATED_CONTRACT_MODULE = ROOT / ".pi-rust" / "extensions" / "oopsnote_tool_contracts.js"
 
 
 def check(condition: bool, label: str) -> bool:
@@ -68,9 +62,11 @@ def install_binary() -> None:
         temp_dir = Path(temp_name)
         archive = temp_dir / "pi-rust.zip"
         print(f"Downloading pi_agent_rust v{PI_RUST_VERSION} ...")
-        with urllib.request.urlopen(PI_RUST_WINDOWS_X64_URL, timeout=900) as response:
-            with archive.open("wb") as output:
-                shutil.copyfileobj(response, output, length=1024 * 1024)
+        with (
+            urllib.request.urlopen(PI_RUST_WINDOWS_X64_URL, timeout=900) as response,
+            archive.open("wb") as output,
+        ):
+            shutil.copyfileobj(response, output, length=1024 * 1024)
         actual_archive = sha256(archive)
         if actual_archive != PI_RUST_WINDOWS_X64_ZIP_SHA256:
             raise RuntimeError(
@@ -168,8 +164,7 @@ def validate() -> bool:
             "Rust restricted MCP bridge loaded explicitly",
         )
         valid &= check(
-            environment.get("PI_CODING_AGENT_DIR")
-            == str((ROOT / ".pi-rust" / "agent").resolve()),
+            environment.get("PI_CODING_AGENT_DIR") == str((ROOT / ".pi-rust" / "agent").resolve()),
             "Rust project-local agent directory",
         )
         probe = probe_new_session(
@@ -181,16 +176,13 @@ def validate() -> bool:
         startup_detail = "" if probe.success else probe.failure_detail
         valid &= check(
             probe.success,
-            "Rust restricted extension startup"
-            + (f": {startup_detail}" if startup_detail else ""),
+            "Rust restricted extension startup" + (f": {startup_detail}" if startup_detail else ""),
         )
     except (OSError, ValueError, subprocess.TimeoutExpired) as error:
         valid &= check(False, f"pi_agent_rust runtime config: {error}")
     finally:
-        try:
+        with contextlib.suppress(NameError, AttributeError):
             backend.runtime.cleanup()
-        except (NameError, AttributeError):
-            pass
         mcp_runtime.shutdown()
 
     try:
@@ -201,8 +193,15 @@ def validate() -> bool:
             "canonical Python tool surface",
         )
         active_run_tools = {
-            "ocr_image", "get_task", "get_asset_path", "list_tags", "create_tag",
-            "report_task_stage", "submit_solution_candidate", "finalize_task", "fail_task"
+            "ocr_image",
+            "get_task",
+            "get_asset_path",
+            "list_tags",
+            "create_tag",
+            "report_task_stage",
+            "submit_solution_candidate",
+            "finalize_task",
+            "fail_task",
         }
         for tool in contract["tools"]:
             if tool["remoteName"] in active_run_tools:
@@ -217,8 +216,7 @@ def validate() -> bool:
     valid &= check(CONTRACT_PATH.exists(), "canonical MCP tool contract")
     valid &= check(
         GENERATED_CONTRACT_MODULE.exists()
-        and GENERATED_CONTRACT_MODULE.read_text(encoding="utf-8")
-        == render_contract_module(),
+        and GENERATED_CONTRACT_MODULE.read_text(encoding="utf-8") == render_contract_module(),
         "Rust generated MCP contract is synchronized",
     )
     if bridge_path.exists():

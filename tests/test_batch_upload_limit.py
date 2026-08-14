@@ -7,9 +7,7 @@ from oopsnote.api.routes import batch
 from oopsnote.core import AssetStore, BatchSessionStore
 
 
-def test_batch_source_limit_is_advertised_and_enforced_before_persistence(
-    tmp_path, monkeypatch
-):
+def test_batch_source_limit_is_advertised_and_enforced_before_persistence(tmp_path, monkeypatch):
     storage = tmp_path / "storage"
     monkeypatch.setattr(main, "ASSET_STORE", AssetStore(storage / "assets"))
     monkeypatch.setattr(

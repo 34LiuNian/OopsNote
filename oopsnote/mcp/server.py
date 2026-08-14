@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Any, Literal, Optional
+from typing import Any, Literal
 
 from mcp.server.fastmcp import FastMCP
 
@@ -24,21 +24,20 @@ from oopsnote.core import (
     RunValidationError,
     Searcher,
     SearchQuery,
+    SolutionCandidate,
     StateConflict,
-    TagCreateRequest,
     TagDimension,
     TagItem,
     TagStore,
     TaskCreateRequest,
     TaskRecord,
-    SolutionCandidate,
     TaskStage,
     TaskStatus,
     TaskStore,
     subjects_match,
 )
-from oopsnote.obsidian.syncer import OBSIDIAN_SYNC_QUEUE, ObsidianSyncer
 from oopsnote.mcp.context import McpStores, current_capability
+from oopsnote.obsidian.syncer import OBSIDIAN_SYNC_QUEUE, ObsidianSyncer
 
 # ── Server ───────────────────────────────────────────
 
@@ -126,7 +125,7 @@ def _update_completed_task_message(
     task_id: str,
     problem_id: str,
     message: str,
-) -> Optional[TaskRecord]:
+) -> TaskRecord | None:
     """Attach derived-work status only while the same completion is current."""
     try:
         return _stores().task_store.transition(
@@ -139,9 +138,12 @@ def _update_completed_task_message(
     except (KeyError, StateConflict):
         return None
 
+
 # ── 存储实例（共享） ──────────────────────────────────
 
-STORAGE_DIR = Path(os.getenv("OOPSNOTE_STORAGE_DIR", str(Path(__file__).resolve().parents[2] / "storage")))
+STORAGE_DIR = Path(
+    os.getenv("OOPSNOTE_STORAGE_DIR", str(Path(__file__).resolve().parents[2] / "storage"))
+)
 TASK_STORE = TaskStore(base_dir=STORAGE_DIR)
 TAG_STORE = TagStore(
     user_path=STORAGE_DIR / "settings" / "tags_user.json",
@@ -179,8 +181,8 @@ def _obsidian_vault_root() -> Path:
 @mcp.tool()
 def create_task(
     subject: str = "",
-    asset_path: Optional[str] = None,
-    asset_base64: Optional[str] = None,
+    asset_path: str | None = None,
+    asset_base64: str | None = None,
 ) -> TaskRecord:
     """创建新任务。可附带图片路径或 base64（资产自动落盘）。"""
     payload = TaskCreateRequest(
@@ -233,11 +235,10 @@ def _parse_pipeline_problem(task: TaskRecord, problem_json: str) -> tuple[Proble
         raise ValueError("problem must declare content_format=oopsmark-v1")
     answer_issue = validate_answer_conclusion(problem.answer)
     if answer_issue:
-        raise ValueError(
-            f"answer:{answer_issue.line} [{answer_issue.code}] {answer_issue.message}"
-        )
+        raise ValueError(f"answer:{answer_issue.line} [{answer_issue.code}] {answer_issue.message}")
     missing = [
-        name for name in ("subject", "problem_text", "answer", "explanation")
+        name
+        for name in ("subject", "problem_text", "answer", "explanation")
         if not getattr(problem, name).strip()
     ]
     if missing:
@@ -249,9 +250,7 @@ def _parse_pipeline_problem(task: TaskRecord, problem_json: str) -> tuple[Proble
     if not subject or subject == "auto":
         subject = problem.subject
     elif not subjects_match(problem.subject, subject):
-        raise ValueError(
-            f"problem subject {problem.subject} does not match task subject {subject}"
-        )
+        raise ValueError(f"problem subject {problem.subject} does not match task subject {subject}")
     return problem, subject
 
 
@@ -285,7 +284,7 @@ def _raise_validation_error(
 
 @mcp.tool()
 def list_tasks(
-    status: Optional[str] = None,
+    status: str | None = None,
     limit: int = 20,
 ) -> list[TaskRecord]:
     """列出任务。可按状态过滤。"""
@@ -299,10 +298,10 @@ def list_tasks(
 @mcp.tool()
 def update_task(
     task_id: str,
-    status: Optional[str] = None,
-    subject: Optional[str] = None,
-    last_error: Optional[str] = None,
-) -> Optional[TaskRecord]:
+    status: str | None = None,
+    subject: str | None = None,
+    last_error: str | None = None,
+) -> TaskRecord | None:
     """更新任务字段。"""
     fields: dict = {}
     if status is not None:
@@ -321,8 +320,8 @@ def update_task(
 def mark_task_status(
     task_id: str,
     status: str,
-    error: Optional[str] = None,
-) -> Optional[TaskRecord]:
+    error: str | None = None,
+) -> TaskRecord | None:
     """标记任务状态。status: pending/processing/completed/failed/cancelled"""
     try:
         return _stores().task_store.mark_status(task_id, TaskStatus(status), error)
@@ -335,7 +334,7 @@ def report_task_stage(
     task_id: str,
     stage: ManagedStage,
     run_id: str,
-    message: Optional[str] = None,
+    message: str | None = None,
 ) -> dict[str, Any]:
     """上报受管 AI 任务阶段。stage: ocr/solving/verifying/tagging/finalizing。"""
     current = _require_active_run(task_id, run_id)
@@ -351,9 +350,7 @@ def report_task_stage(
     expected = PIPELINE_STAGE_PREDECESSORS.get(requested_stage)
     if expected is not None and current.stage not in expected:
         previous = current.stage.value if current.stage else "none"
-        raise ValueError(
-            f"stage {requested_stage.value} cannot follow {previous}"
-        )
+        raise ValueError(f"stage {requested_stage.value} cannot follow {previous}")
     task = _stores().task_store.transition(
         task_id,
         expected_statuses={TaskStatus.PROCESSING},
@@ -472,8 +469,8 @@ def finalize_task(
     problem_json: str,
     run_id: str,
     sync_to_obsidian: bool = True,
-    review_reason: Optional[ManagedReviewReason] = None,
-    student_response_status: Optional[ManagedStudentResponseStatus] = None,
+    review_reason: ManagedReviewReason | None = None,
+    student_response_status: ManagedStudentResponseStatus | None = None,
 ) -> dict[str, Any]:
     """校验并原子提交 AI 结果，可同时标记需人工复核。"""
     task = _require_active_run(task_id, run_id)
@@ -515,14 +512,11 @@ def finalize_task(
     student_response_status = candidate.student_response_status
 
     trusted_error_hints = {
-        str(value).strip()
-        for value in task.metadata.get("error_tags", [])
-        if str(value).strip()
+        str(value).strip() for value in task.metadata.get("error_tags", []) if str(value).strip()
     }
     if student_response_status != "answered":
         invented_errors = [
-            value for value in problem.error_hypothesis
-            if value not in trusted_error_hints
+            value for value in problem.error_hypothesis if value not in trusted_error_hints
         ]
         if invented_errors:
             _raise_validation_error(
@@ -530,7 +524,7 @@ def finalize_task(
                 TaskStage.FINALIZING,
                 problem_json,
                 "error_hypothesis requires a readable student response or an explicit "
-                "user-provided error tag"
+                "user-provided error tag",
             )
 
     trusted_source = str(task.metadata.get("source") or "").strip()
@@ -568,10 +562,11 @@ def finalize_task(
             scope=selection.get("scope"),
         )
         valid_leaf_set = set(valid_leaf_values)
-        invalid_tags = list(dict.fromkeys(
-            value for value in problem.knowledge_points
-            if value not in valid_leaf_set
-        ))
+        invalid_tags = list(
+            dict.fromkeys(
+                value for value in problem.knowledge_points if value not in valid_leaf_set
+            )
+        )
         if invalid_tags:
             _raise_validation_error(
                 run.id,
@@ -579,25 +574,28 @@ def finalize_task(
                 problem_json,
                 "knowledge_points must contain only knowledge-tree leaf tags; "
                 f"invalid: {', '.join(invalid_tags)}; "
-                f"allowed leaves: {', '.join(valid_leaf_values)}"
+                f"allowed leaves: {', '.join(valid_leaf_values)}",
             )
     if problem.error_hypothesis:
-        valid_error_values = set(_stores().tag_store.ai_values(
-            dimension=TagDimension.ERROR,
-            subject=subject,
-            scope="core",
-        ))
-        invalid_errors = list(dict.fromkeys(
-            value for value in problem.error_hypothesis
-            if value not in valid_error_values
-        ))
+        valid_error_values = set(
+            _stores().tag_store.ai_values(
+                dimension=TagDimension.ERROR,
+                subject=subject,
+                scope="core",
+            )
+        )
+        invalid_errors = list(
+            dict.fromkeys(
+                value for value in problem.error_hypothesis if value not in valid_error_values
+            )
+        )
         if invalid_errors:
             _raise_validation_error(
                 run.id,
                 TaskStage.FINALIZING,
                 problem_json,
                 "error_hypothesis must contain existing error tags; create missing tags first; "
-                f"invalid: {', '.join(invalid_errors)}"
+                f"invalid: {', '.join(invalid_errors)}",
             )
     _stores().run_store.record_artifact(
         run.id,
@@ -664,7 +662,7 @@ def finalize_task(
 def set_task_problem(
     task_id: str,
     problem_json: str,
-) -> Optional[TaskRecord]:
+) -> TaskRecord | None:
     """设置任务的唯一题目。problem_json 是 Problem 对象的 JSON 字符串。"""
     import json
 
@@ -683,9 +681,9 @@ def set_task_problem(
 @mcp.tool()
 def list_tags(
     dimension: str,
-    subject: Optional[str] = None,
-    scope: Optional[str] = "core",
-    branch_ids: Optional[list[str]] = None,
+    subject: str | None = None,
+    scope: str | None = "core",
+    branch_ids: list[str] | None = None,
 ) -> dict[str, Any]:
     """渐进列出 AI 标签；知识维度先列分支，再按最多六个分支列叶子。"""
     dim = TagDimension(dimension)
@@ -698,13 +696,13 @@ def list_tags(
                 "max_branches": 6,
                 "items": _stores().tag_store.ai_knowledge_branches(subject, scope=scope),
             }
-        selected_branch_ids = list(dict.fromkeys(
-            value.strip() for value in branch_ids if value.strip()
-        ))
+        selected_branch_ids = list(
+            dict.fromkeys(value.strip() for value in branch_ids if value.strip())
+        )
         return {
             "mode": "leaves",
             "branch_ids": selected_branch_ids,
-                "items": _stores().tag_store.ai_knowledge_leaves(
+            "items": _stores().tag_store.ai_knowledge_leaves(
                 subject,
                 selected_branch_ids,
                 scope=scope,
@@ -726,8 +724,8 @@ def list_tags(
 def create_tag(
     dimension: str,
     value: str,
-    aliases: Optional[list[str]] = None,
-    subject: Optional[str] = None,
+    aliases: list[str] | None = None,
+    subject: str | None = None,
 ) -> TagItem:
     """创建或更新非知识标签。已存在则合并 aliases。"""
     dim = TagDimension(dimension)
@@ -754,11 +752,11 @@ def delete_tag(tag_id: str) -> bool:
 
 @mcp.tool()
 def search_problems(
-    tags: Optional[list[str]] = None,
-    subject: Optional[str] = None,
-    since: Optional[str] = None,
-    error_type: Optional[str] = None,
-    regex: Optional[str] = None,
+    tags: list[str] | None = None,
+    subject: str | None = None,
+    since: str | None = None,
+    error_type: str | None = None,
+    regex: str | None = None,
     limit: int = 50,
 ) -> list[Problem]:
     """多维度搜索题目。支持标签、学科、时间、错因、正则全文搜索。"""
@@ -780,7 +778,7 @@ def search_problems(
 
 
 @mcp.tool()
-def sync_to_obsidian(subject: Optional[str] = None) -> str:
+def sync_to_obsidian(subject: str | None = None) -> str:
     """同步 JSON 数据到 Obsidian vault。
 
     生成 .md 文件和标签索引。
@@ -791,10 +789,7 @@ def sync_to_obsidian(subject: Optional[str] = None) -> str:
         tag_store=_stores().tag_store,
         vault_root=_obsidian_vault_root(),
     )
-    if subject:
-        report = syncer.sync_for_subject(subject)
-    else:
-        report = syncer.sync()
+    report = syncer.sync_for_subject(subject) if subject else syncer.sync()
     return str(report)
 
 

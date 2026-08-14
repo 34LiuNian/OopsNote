@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
 from dataclasses import dataclass
-from enum import Enum
-from typing import Callable, Optional
+from enum import StrEnum
 
 
-class OopsMarkBlockKind(str, Enum):
+class OopsMarkBlockKind(StrEnum):
     HEADING = "heading"
     PARAGRAPH = "paragraph"
     DISPLAY_MATH = "display_math"
@@ -22,7 +22,7 @@ class OopsMarkBlock:
     kind: OopsMarkBlockKind
     content: str
     line: int
-    language: Optional[str] = None
+    language: str | None = None
     rows: tuple[tuple[str, ...], ...] = ()
     ordered: bool = False
 
@@ -42,12 +42,16 @@ class ContentExportError(ValueError):
         self.line = line
 
 
-AssetResolver = Callable[[str, str], Optional[str]]
+AssetResolver = Callable[[str, str], str | None]
 
 _ALLOWED_FENCES = {"molecule", "smiles", "tikz", "mermaid", "text"}
 _TABLE_SEPARATOR = re.compile(r"^\s*\|?\s*:?-{3,}:?\s*(?:\|\s*:?-{3,}:?\s*)+\|?\s*$")
-_LIST_ITEM = re.compile(r"^(?P<indent>\s*)(?:(?P<number>\d+)[.)]|(?P<bullet>[-+*]))\s+(?P<text>.+)$")
-_RAW_ENVIRONMENT = re.compile(r"\\(?:begin|end)\{(?P<name>tabular|array|tblr|enumerate|itemize|tikzpicture|document)\}")
+_LIST_ITEM = re.compile(
+    r"^(?P<indent>\s*)(?:(?P<number>\d+)[.)]|(?P<bullet>[-+*]))\s+(?P<text>.+)$"
+)
+_RAW_ENVIRONMENT = re.compile(
+    r"\\(?:begin|end)\{(?P<name>tabular|array|tblr|enumerate|itemize|tikzpicture|document)\}"
+)
 _DOCUMENT_COMMAND = re.compile(
     r"\\(?:documentclass|usepackage|input|include|write18|openout|read)\b|"
     r"\\(?:begin|end)\s*\{document\}"
@@ -60,9 +64,7 @@ _OPTION_MARKER = re.compile(
 )
 _BARE_OPTION_MATH_COMMAND = re.compile(r"\\[A-Za-z]+")
 _BARE_OPTION_MATH_BODY = re.compile(r"[A-Za-z0-9\\{}()[\]^_+\-*/=<>.,:;|!'\s]+")
-_ORDERED_ITEM = re.compile(
-    r"^(?P<indent>\s*)(?P<number>\d{1,2})[.．、)）]\s+(?P<text>.+)$"
-)
+_ORDERED_ITEM = re.compile(r"^(?P<indent>\s*)(?P<number>\d{1,2})[.．、)）]\s+(?P<text>.+)$")
 _ANSWER_SUBQUESTION = re.compile(r"^（\d+）\s*\S+")
 _ANSWER_EXPLANATION_MARKERS = (
     "因为",
@@ -213,7 +215,11 @@ def parse_oopsmark(source: str) -> list[OopsMarkBlock]:
                 break
             if _LIST_ITEM.match(candidate):
                 break
-            if index + 1 < len(lines) and "|" in candidate and _TABLE_SEPARATOR.match(lines[index + 1]):
+            if (
+                index + 1 < len(lines)
+                and "|" in candidate
+                and _TABLE_SEPARATOR.match(lines[index + 1])
+            ):
                 break
             paragraph.append(candidate)
             index += 1
@@ -224,9 +230,11 @@ def parse_oopsmark(source: str) -> list[OopsMarkBlock]:
 
 def _unclosed_constructs(source: str) -> list[ContentIssue]:
     issues: list[ContentIssue] = []
-    fence_line: Optional[int] = None
-    display_line: Optional[int] = None
-    for number, line in enumerate(source.replace("\r\n", "\n").replace("\r", "\n").split("\n"), start=1):
+    fence_line: int | None = None
+    display_line: int | None = None
+    for number, line in enumerate(
+        source.replace("\r\n", "\n").replace("\r", "\n").split("\n"), start=1
+    ):
         stripped = line.strip()
         if stripped.startswith("```"):
             fence_line = number if fence_line is None else None
@@ -250,11 +258,21 @@ def validate_oopsmark(source: str) -> list[ContentIssue]:
         if block.kind == OopsMarkBlockKind.FENCE:
             language = block.language or ""
             if language not in _ALLOWED_FENCES:
-                issues.append(ContentIssue("unsupported-fence", f"不支持的代码块类型：{language or '未标注'}", block.line))
+                issues.append(
+                    ContentIssue(
+                        "unsupported-fence",
+                        f"不支持的代码块类型：{language or '未标注'}",
+                        block.line,
+                    )
+                )
             if language in {"molecule", "smiles", "tikz"} and not block.content.strip():
-                issues.append(ContentIssue("empty-special-block", f"{language} 块不能为空", block.line))
+                issues.append(
+                    ContentIssue("empty-special-block", f"{language} 块不能为空", block.line)
+                )
             if _DOCUMENT_COMMAND.search(block.content):
-                issues.append(ContentIssue("document-command", "内容块包含文档级或危险 TeX 命令", block.line))
+                issues.append(
+                    ContentIssue("document-command", "内容块包含文档级或危险 TeX 命令", block.line)
+                )
             continue
 
         raw_environment = _RAW_ENVIRONMENT.search(block.content)
@@ -267,21 +285,44 @@ def validate_oopsmark(source: str) -> list[ContentIssue]:
                 )
             )
         if _DOCUMENT_COMMAND.search(block.content):
-            issues.append(ContentIssue("document-command", "正文包含文档级或危险 TeX 命令", block.line))
+            issues.append(
+                ContentIssue("document-command", "正文包含文档级或危险 TeX 命令", block.line)
+            )
         if "\\chemfig" in block.content:
-            issues.append(ContentIssue("chemfig-not-portable", "分子结构请使用 molecule 块，不要使用 chemfig", block.line))
+            issues.append(
+                ContentIssue(
+                    "chemfig-not-portable",
+                    "分子结构请使用 molecule 块，不要使用 chemfig",
+                    block.line,
+                )
+            )
         if block.kind != OopsMarkBlockKind.DISPLAY_MATH and "\\ce{" in block.content:
             for line_offset, line in enumerate(block.content.splitlines()):
                 if "\\ce{" in line and "$" not in line:
-                    issues.append(ContentIssue("chemistry-outside-math", "\\ce 必须放在数学分隔符内", block.line + line_offset))
-        if block.kind in {OopsMarkBlockKind.PARAGRAPH, OopsMarkBlockKind.LIST, OopsMarkBlockKind.HEADING}:
+                    issues.append(
+                        ContentIssue(
+                            "chemistry-outside-math",
+                            "\\ce 必须放在数学分隔符内",
+                            block.line + line_offset,
+                        )
+                    )
+        if block.kind in {
+            OopsMarkBlockKind.PARAGRAPH,
+            OopsMarkBlockKind.LIST,
+            OopsMarkBlockKind.HEADING,
+        }:
             for line_offset, line in enumerate(block.content.splitlines()):
                 unescaped_dollars = sum(
-                    1 for index, char in enumerate(line)
+                    1
+                    for index, char in enumerate(line)
                     if char == "$" and (index == 0 or line[index - 1] != "\\")
                 )
                 if unescaped_dollars % 2:
-                    issues.append(ContentIssue("unclosed-inline-math", "行内公式缺少结束 $", block.line + line_offset))
+                    issues.append(
+                        ContentIssue(
+                            "unclosed-inline-math", "行内公式缺少结束 $", block.line + line_offset
+                        )
+                    )
     return issues
 
 
@@ -343,8 +384,7 @@ def _normalize_ordered_subquestions(lines: list[str]) -> None:
         if len(numbers) >= 2 and numbers == list(range(1, len(numbers) + 1)):
             for line_index, match in candidates:
                 lines[line_index] = (
-                    f'{match.group("indent")}（{match.group("number")}）'
-                    f'{match.group("text")}'
+                    f"{match.group('indent')}（{match.group('number')}）{match.group('text')}"
                 )
         candidates = []
 
@@ -381,7 +421,7 @@ def normalize_option_text(source: str) -> str:
     return normalized
 
 
-def validate_answer_conclusion(source: str) -> Optional[ContentIssue]:
+def validate_answer_conclusion(source: str) -> ContentIssue | None:
     """Reject answer-shaped explanations while leaving OopsMark math intact.
 
     This is deliberately a narrow contract, not a natural-language grader.
@@ -397,7 +437,9 @@ def validate_answer_conclusion(source: str) -> Optional[ContentIssue]:
             1,
         )
     paragraphs = [paragraph.strip() for paragraph in normalized.split("\n\n") if paragraph.strip()]
-    if len(paragraphs) > 1 and any(not _ANSWER_SUBQUESTION.fullmatch(paragraph) for paragraph in paragraphs):
+    if len(paragraphs) > 1 and any(
+        not _ANSWER_SUBQUESTION.fullmatch(paragraph) for paragraph in paragraphs
+    ):
         return ContentIssue(
             "answer-derivation-layout",
             "answer 的多段内容必须是原题对应的（1）（2）结论；推导应移入 explanation",
@@ -487,7 +529,7 @@ def _inline_to_latex(value: str) -> str:
     return "".join(output)
 
 
-def _asset_latex(language: str, source: str, line: int, resolver: Optional[AssetResolver]) -> str:
+def _asset_latex(language: str, source: str, line: int, resolver: AssetResolver | None) -> str:
     asset_path = resolver(language, source) if resolver else None
     if not asset_path:
         raise ContentExportError(
@@ -505,7 +547,7 @@ def _asset_latex(language: str, source: str, line: int, resolver: Optional[Asset
     )
 
 
-def to_latex(source: str, asset_resolver: Optional[AssetResolver] = None) -> str:
+def to_latex(source: str, asset_resolver: AssetResolver | None = None) -> str:
     """Convert valid OopsMark v1 source to a LaTeX document fragment."""
 
     issues = [issue for issue in validate_oopsmark(source) if issue.severity == "error"]
@@ -516,7 +558,9 @@ def to_latex(source: str, asset_resolver: Optional[AssetResolver] = None) -> str
     output: list[str] = []
     for block in parse_oopsmark(source):
         if block.kind == OopsMarkBlockKind.HEADING:
-            output.append(r"\par\medskip\noindent\textbf{" + _inline_to_latex(block.content) + r"}\par")
+            output.append(
+                r"\par\medskip\noindent\textbf{" + _inline_to_latex(block.content) + r"}\par"
+            )
         elif block.kind == OopsMarkBlockKind.PARAGRAPH:
             lines = block.content.splitlines()
             output.append((r" \\" + "\n").join(_inline_to_latex(line) for line in lines))
@@ -525,12 +569,18 @@ def to_latex(source: str, asset_resolver: Optional[AssetResolver] = None) -> str
         elif block.kind == OopsMarkBlockKind.LIST:
             environment = "enumerate" if block.ordered else "itemize"
             items = [f"\\item {_inline_to_latex(item)}" for item in block.content.splitlines()]
-            output.append(f"\\begin{{{environment}}}\n" + "\n".join(items) + f"\n\\end{{{environment}}}")
+            output.append(
+                f"\\begin{{{environment}}}\n" + "\n".join(items) + f"\n\\end{{{environment}}}"
+            )
         elif block.kind == OopsMarkBlockKind.TABLE:
             column_count = max((len(row) for row in block.rows), default=1)
-            rows = [" & ".join(_inline_to_latex(cell) for cell in row) + r" \\" for row in block.rows]
+            rows = [
+                " & ".join(_inline_to_latex(cell) for cell in row) + r" \\" for row in block.rows
+            ]
             output.append(
-                "\\begin{tblr}{colspec={" + "X" * column_count + "},hlines,vlines}\n"
+                "\\begin{tblr}{colspec={"
+                + "X" * column_count
+                + "},hlines,vlines}\n"
                 + "\n".join(rows)
                 + "\n\\end{tblr}"
             )
@@ -542,7 +592,9 @@ def to_latex(source: str, asset_resolver: Optional[AssetResolver] = None) -> str
                     content = "\\begin{tikzpicture}\n" + content + "\n\\end{tikzpicture}"
                 output.append(content)
             elif language in {"molecule", "smiles", "mermaid"}:
-                output.append(_asset_latex(language, block.content.strip(), block.line, asset_resolver))
+                output.append(
+                    _asset_latex(language, block.content.strip(), block.line, asset_resolver)
+                )
             else:
                 output.append("\\begin{verbatim}\n" + block.content + "\n\\end{verbatim}")
     return "\n\n".join(output)

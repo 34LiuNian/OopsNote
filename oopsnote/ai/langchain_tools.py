@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Collection, Mapping
 from copy import deepcopy
-from collections.abc import Collection
-from typing import Any, Mapping, Protocol
+from typing import Any, Protocol
 
 from oopsnote.mcp.contracts import load_tool_contract
 
@@ -76,14 +76,16 @@ def langchain_tool_schemas(
                 raise ValueError(f"{name} has no canonical parameter {argument}")
             properties[argument] = {**properties[argument], **deepcopy(override)}
         parameters["required"] = required
-        schemas.append({
-            "type": "function",
-            "function": {
-                "name": name,
-                "description": tool["description"],
-                "parameters": parameters,
-            },
-        })
+        schemas.append(
+            {
+                "type": "function",
+                "function": {
+                    "name": name,
+                    "description": tool["description"],
+                    "parameters": parameters,
+                },
+            }
+        )
     return schemas
 
 
@@ -165,7 +167,7 @@ class ContractBoundToolDispatcher:
                 ),
                 return_exceptions=True,
             )
-            for (index, _), value in zip(batch, values):
+            for (index, _), value in zip(batch, values, strict=True):
                 results[index] = value
 
         for index, call in enumerate(calls):
@@ -187,4 +189,9 @@ class ContractBoundToolDispatcher:
         return results
 
 
-__all__ = ["ContractBoundToolDispatcher", "McpHttpToolClient", "RestrictedMcpToolClient", "langchain_tool_schemas"]
+__all__ = [
+    "ContractBoundToolDispatcher",
+    "McpHttpToolClient",
+    "RestrictedMcpToolClient",
+    "langchain_tool_schemas",
+]

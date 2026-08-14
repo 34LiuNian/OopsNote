@@ -15,8 +15,7 @@ from oopsnote.core import (
     TaskStatus,
     TaskStore,
 )
-from oopsnote.mcp import ocr
-from oopsnote.mcp import server
+from oopsnote.mcp import ocr, server
 from oopsnote.mcp.ocr_contract import OCR_INSTRUCTION, normalize_ocr_result
 from oopsnote.mcp.restricted import AI_TOOL_NAMES, managed_ocr_image
 
@@ -96,7 +95,9 @@ def test_vision_ocr_rejects_json_surrounded_by_explanatory_prose(tmp_path):
 
     class VisionModel:
         def invoke(self, _messages):
-            return SimpleNamespace(content=f"Here is the result: {json.dumps(_vision_ocr_payload())}")
+            return SimpleNamespace(
+                content=f"Here is the result: {json.dumps(_vision_ocr_payload())}"
+            )
 
     with pytest.raises(ocr.OcrProviderError, match="invalid OCR response") as captured:
         ocr._ocr_image_path(image, VisionModel())
@@ -470,20 +471,26 @@ def test_langchain_ocr_never_falls_back_to_legacy_pi_configuration(tmp_path, mon
     task = task_store.create(TaskCreateRequest(asset_path="/assets/question.png"))
     task_store.update(task.id, status=TaskStatus.PROCESSING, active_run_id="run-1")
     run_store = RunStore(storage / "runs")
-    run_store._write(TaskRun(
-        id="run-1",
-        task_id=task.id,
-        status=RunStatus.RUNNING,
-        provider_profile_snapshot={"vision": {"provider": "google", "model": "vision"}},
-    ))
+    run_store._write(
+        TaskRun(
+            id="run-1",
+            task_id=task.id,
+            status=RunStatus.RUNNING,
+            provider_profile_snapshot={"vision": {"provider": "google", "model": "vision"}},
+        )
+    )
     monkeypatch.setattr(server, "TASK_STORE", task_store)
     monkeypatch.setattr(server, "ASSET_STORE", AssetStore(storage / "assets"))
     monkeypatch.setattr(server, "RUN_STORE", run_store)
     legacy = tmp_path / "extensions.json"
-    legacy.write_text('{"ocr_image":{"dashscope_api_key":"legacy","model":"legacy"}}', encoding="utf-8")
+    legacy.write_text(
+        '{"ocr_image":{"dashscope_api_key":"legacy","model":"legacy"}}', encoding="utf-8"
+    )
     monkeypatch.setenv("OOPSNOTE_OCR_CONFIG", str(legacy))
     monkeypatch.setattr(ocr, "_RUN_MODEL_RESOLVER", None)
-    monkeypatch.setattr(ocr, "_load_ocr_config", lambda: pytest.fail("legacy OCR configuration was read"))
+    monkeypatch.setattr(
+        ocr, "_load_ocr_config", lambda: pytest.fail("legacy OCR configuration was read")
+    )
 
     with pytest.raises(RuntimeError, match="LangChain Vision resolver is unavailable"):
         ocr.ocr_image(task.id, "run-1")

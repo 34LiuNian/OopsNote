@@ -1,8 +1,10 @@
 [project]
 name = "oopsnote"
 version = "0.1.0"
-license = { file = "LICENSE" }
+license = "AGPL-3.0-or-later"
+license-files = ["LICENSE"]
 description = "OopsNote - AI 错题管理助手"
+readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "pydantic>=2.0",
@@ -21,13 +23,13 @@ dependencies = [
     "cryptography>=45.0",
 ]
 
-[project.optional-dependencies]
-dev = [
-    "pytest>=8.0",
-]
+[project.urls]
+Homepage = "https://github.com/34LiuNian/OopsNote"
+Repository = "https://github.com/34LiuNian/OopsNote"
+Issues = "https://github.com/34LiuNian/OopsNote/issues"
 
 [build-system]
-requires = ["setuptools>=75"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
@@ -41,4 +43,6 @@ dev = [
     "httpx2>=2.0.0",
     "pytest>=9.1.1",
     "pytest-cov>=7.1.0",
+    "ruff>=0.14",
+    "pre-commit>=4.1",
 ]

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -15,11 +15,29 @@ from scripts.benchmarks.langchain_production_report import (
 
 
 def test_report_groups_retries_per_task_and_never_inferrs_unobserved_gates():
-    start = datetime(2026, 8, 1, tzinfo=timezone.utc)
+    start = datetime(2026, 8, 1, tzinfo=UTC)
     task = TaskRecord(id="task-1")
     snapshot = _snapshot()
-    failed = TaskRun(id="run-1", task_id=task.id, backend="langchain", provider_profile_snapshot=snapshot, status=RunStatus.FAILED, queued_at=start, ended_at=start + timedelta(seconds=2))
-    completed = TaskRun(id="run-2", task_id=task.id, backend="langchain", provider_profile_snapshot=snapshot, status=RunStatus.COMPLETED, retry_count=1, queued_at=start + timedelta(seconds=3), ended_at=start + timedelta(seconds=10), cost=0.12)
+    failed = TaskRun(
+        id="run-1",
+        task_id=task.id,
+        backend="langchain",
+        provider_profile_snapshot=snapshot,
+        status=RunStatus.FAILED,
+        queued_at=start,
+        ended_at=start + timedelta(seconds=2),
+    )
+    completed = TaskRun(
+        id="run-2",
+        task_id=task.id,
+        backend="langchain",
+        provider_profile_snapshot=snapshot,
+        status=RunStatus.COMPLETED,
+        retry_count=1,
+        queued_at=start + timedelta(seconds=3),
+        ended_at=start + timedelta(seconds=10),
+        cost=0.12,
+    )
 
     report = build_report([task], [failed, completed], policy_version=1)
 
@@ -49,14 +67,29 @@ def _snapshot():
 def _strategy():
     return {
         "policy_version": 1,
-        "vision": {"channel_id": "deepseek-primary", "provider": "deepseek", "model": "m", "version": 3},
-        "agent": {"channel_id": "deepseek-primary", "provider": "deepseek", "model": "m", "version": 3},
-        "review": {"channel_id": "deepseek-primary", "provider": "deepseek", "model": "m", "version": 3},
+        "vision": {
+            "channel_id": "deepseek-primary",
+            "provider": "deepseek",
+            "model": "m",
+            "version": 3,
+        },
+        "agent": {
+            "channel_id": "deepseek-primary",
+            "provider": "deepseek",
+            "model": "m",
+            "version": 3,
+        },
+        "review": {
+            "channel_id": "deepseek-primary",
+            "provider": "deepseek",
+            "model": "m",
+            "version": 3,
+        },
     }
 
 
 def _passing_cohort():
-    start = datetime(2026, 8, 1, tzinfo=timezone.utc)
+    start = datetime(2026, 8, 1, tzinfo=UTC)
     snapshot = _snapshot()
     tasks = [TaskRecord(id=f"task-{index}") for index in range(30)]
     runs = [
@@ -69,12 +102,14 @@ def _passing_cohort():
             queued_at=start + timedelta(seconds=index * 2),
             ended_at=start + timedelta(seconds=index * 2 + 1),
             cost=0.1,
-            artifacts=[RunArtifact(
-                stage=TaskStage.FINALIZING,
-                kind="verifier_submission",
-                raw_output="{}",
-                parsed_output={},
-            )],
+            artifacts=[
+                RunArtifact(
+                    stage=TaskStage.FINALIZING,
+                    kind="verifier_submission",
+                    raw_output="{}",
+                    parsed_output={},
+                )
+            ],
         )
         for index, task in enumerate(tasks)
     ]
@@ -83,41 +118,47 @@ def _passing_cohort():
         metadata={"source": "langchain-cancellation-trial"},
     )
     tasks.append(cancellation_task)
-    runs.append(TaskRun(
-        id="cancelled-run",
-        task_id=cancellation_task.id,
-        backend="langchain",
-        provider_profile_snapshot=snapshot,
-        status=RunStatus.CANCELLED,
-        queued_at=start,
-        ended_at=start + timedelta(milliseconds=100),
-    ))
-    evidence = EvaluationEvidence.model_validate({
-        "schema_version": 2,
-        "strategy": _strategy(),
-        "baseline_p95_ms": 1000,
-        "task_results": [
-            {
-                "task_id": task.id,
-                "langchain_quality_pass": True,
-                "baseline_quality_pass": True,
-            }
-            for task in tasks[:30]
-        ],
-        "cancellation_trials": [{
-            "run_id": "cancelled-run",
-            "cancellation_requested": True,
-            "reached_cancelled_terminal": True,
-            "terminal_state_preserved": True,
-        }],
-        "cost_approval": {
-            "approved": True,
-            "maximum_total_cost": 3.01,
-            "currency": "USD",
-            "approved_by": "evaluation-owner",
-            "approved_at": "2026-08-02T00:00:00Z",
-        },
-    })
+    runs.append(
+        TaskRun(
+            id="cancelled-run",
+            task_id=cancellation_task.id,
+            backend="langchain",
+            provider_profile_snapshot=snapshot,
+            status=RunStatus.CANCELLED,
+            queued_at=start,
+            ended_at=start + timedelta(milliseconds=100),
+        )
+    )
+    evidence = EvaluationEvidence.model_validate(
+        {
+            "schema_version": 2,
+            "strategy": _strategy(),
+            "baseline_p95_ms": 1000,
+            "task_results": [
+                {
+                    "task_id": task.id,
+                    "langchain_quality_pass": True,
+                    "baseline_quality_pass": True,
+                }
+                for task in tasks[:30]
+            ],
+            "cancellation_trials": [
+                {
+                    "run_id": "cancelled-run",
+                    "cancellation_requested": True,
+                    "reached_cancelled_terminal": True,
+                    "terminal_state_preserved": True,
+                }
+            ],
+            "cost_approval": {
+                "approved": True,
+                "maximum_total_cost": 3.01,
+                "currency": "USD",
+                "approved_by": "evaluation-owner",
+                "approved_at": "2026-08-02T00:00:00Z",
+            },
+        }
+    )
     return tasks, runs, evidence
 
 
@@ -134,12 +175,14 @@ def test_explicit_evidence_can_prove_every_rustpi_deletion_gate():
 
 def test_evidence_cannot_attest_to_a_task_missing_from_persisted_runs():
     tasks, runs, evidence = _passing_cohort()
-    evidence = evidence.model_copy(update={
-        "task_results": [
-            *evidence.task_results[:-1],
-            evidence.task_results[-1].model_copy(update={"task_id": "missing-task"}),
-        ]
-    })
+    evidence = evidence.model_copy(
+        update={
+            "task_results": [
+                *evidence.task_results[:-1],
+                evidence.task_results[-1].model_copy(update={"task_id": "missing-task"}),
+            ]
+        }
+    )
 
     report = build_report(tasks, runs, evidence=evidence)
 
@@ -168,7 +211,12 @@ def test_report_excludes_legacy_single_profile_snapshots():
         id="legacy-run",
         task_id=task.id,
         backend="langchain",
-        provider_profile_snapshot={"id": "old-profile", "version": 1, "provider": "deepseek", "model": "m"},
+        provider_profile_snapshot={
+            "id": "old-profile",
+            "version": 1,
+            "provider": "deepseek",
+            "model": "m",
+        },
         status=RunStatus.COMPLETED,
     )
 

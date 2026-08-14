@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import sqlite3
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from oopsnote.core.workspace import Principal, UserRole, WorkspaceContext, WorkspaceId
@@ -34,7 +34,7 @@ class WorkspaceRegistry:
     def get_or_create(self, principal: Principal) -> WorkspaceContext:
         """Return one stable workspace, including under repeated/concurrent calls."""
         self.database.migrate()
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
         with self.database.connection() as connection:
             connection.execute("BEGIN IMMEDIATE")
             try:
@@ -133,8 +133,12 @@ class WorkspaceRegistry:
             if row is None:
                 connection.rollback()
                 raise KeyError(auth_user_id)
-            daily = int(row["daily_success_limit"] if daily_success_limit is None else daily_success_limit)
-            concurrent = int(row["max_concurrent_runs"] if max_concurrent_runs is None else max_concurrent_runs)
+            daily = int(
+                row["daily_success_limit"] if daily_success_limit is None else daily_success_limit
+            )
+            concurrent = int(
+                row["max_concurrent_runs"] if max_concurrent_runs is None else max_concurrent_runs
+            )
             connection.execute(
                 """
                 UPDATE quota_policies
@@ -146,9 +150,11 @@ class WorkspaceRegistry:
             connection.commit()
         return {"daily_success_limit": daily, "max_concurrent_runs": concurrent}
 
-    def quota_summary(self, auth_user_id: str, *, usage_day_utc: str | None = None) -> dict[str, object] | None:
+    def quota_summary(
+        self, auth_user_id: str, *, usage_day_utc: str | None = None
+    ) -> dict[str, object] | None:
         self.database.migrate()
-        day = usage_day_utc or datetime.now(timezone.utc).date().isoformat()
+        day = usage_day_utc or datetime.now(UTC).date().isoformat()
         with self.database.connection() as connection:
             row = connection.execute(
                 """
@@ -173,8 +179,12 @@ class WorkspaceRegistry:
             "usage_day_utc": day,
         }
 
-    def quota_summaries(self, auth_user_ids: list[str], *, usage_day_utc: str | None = None) -> dict[str, dict[str, object] | None]:
+    def quota_summaries(
+        self, auth_user_ids: list[str], *, usage_day_utc: str | None = None
+    ) -> dict[str, dict[str, object] | None]:
         return {
             user_id: self.quota_summary(user_id, usage_day_utc=usage_day_utc)
-            for user_id in dict.fromkeys(user_id.strip() for user_id in auth_user_ids if user_id.strip())
+            for user_id in dict.fromkeys(
+                user_id.strip() for user_id in auth_user_ids if user_id.strip()
+            )
         }

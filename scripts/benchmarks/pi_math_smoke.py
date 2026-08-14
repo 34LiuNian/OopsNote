@@ -46,12 +46,16 @@ def run_task(image_path: Path, expected_option: str, runtime: str) -> int:
     assets = AssetStore(storage / "assets")
     source = image_path.resolve()
     asset_root = assets.base_dir.resolve()
-    asset_path = f"/assets/{source.name}" if source.parent == asset_root else assets.save_file(source)
-    task = task_store.create(TaskCreateRequest(
-        subject="math",
-        asset_path=asset_path,
-        metadata={"source": "pi-smoke-example-1.1", "expected_option": expected_option},
-    ))
+    asset_path = (
+        f"/assets/{source.name}" if source.parent == asset_root else assets.save_file(source)
+    )
+    task = task_store.create(
+        TaskCreateRequest(
+            subject="math",
+            asset_path=asset_path,
+            metadata={"source": "pi-smoke-example-1.1", "expected_option": expected_option},
+        )
+    )
     runner = PiRpcRunner(
         backend=PiRpcBackend(ROOT, runtime=runtime),
         project_root=ROOT,
@@ -87,8 +91,14 @@ def run_task(image_path: Path, expected_option: str, runtime: str) -> int:
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--image", type=Path, help="Use an existing cropped image instead of rendering the Markdown excerpt")
-    parser.add_argument("--expected", help="Override the expected answer from the benchmark manifest")
+    parser.add_argument(
+        "--image",
+        type=Path,
+        help="Use an existing cropped image instead of rendering the Markdown excerpt",
+    )
+    parser.add_argument(
+        "--expected", help="Override the expected answer from the benchmark manifest"
+    )
     parser.add_argument("--runtime", choices=("pi", "pi-rust"), default="pi-rust")
     args = parser.parse_args()
 

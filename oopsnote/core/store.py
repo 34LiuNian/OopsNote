@@ -10,9 +10,9 @@ import hashlib
 import json
 import threading
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Optional, TypeVar
+from typing import Any, TypeVar
 from uuid import uuid4
 
 from pydantic import BaseModel
@@ -21,29 +21,28 @@ from .models import (
     BatchProcessJob,
     BatchSessionRecord,
     BatchSessionUpdateRequest,
-    PaperDraft,
-    PaperDraftCreateRequest,
-    PaperDraftUpdateRequest,
     DiagramCandidate,
     DiagramItem,
     DiagramRunMode,
     DiagramRunStep,
+    PaperDraft,
+    PaperDraftCreateRequest,
+    PaperDraftUpdateRequest,
     Problem,
+    ProblemMergeRecord,
     RunArtifact,
-    RunStatus,
     RunPurpose,
+    RunStatus,
     RunValidationError,
+    SolutionCandidate,
     StageRun,
     StageStatus,
     TaskCreateRequest,
     TaskRecord,
     TaskRun,
-    SolutionCandidate,
     TaskStage,
     TaskStatus,
-    ProblemMergeRecord,
 )
-
 
 _ModelT = TypeVar("_ModelT", bound=BaseModel)
 
@@ -113,7 +112,7 @@ class TaskStore:
 
     _lock = threading.RLock()
 
-    def __init__(self, base_dir: Optional[Path] = None) -> None:
+    def __init__(self, base_dir: Path | None = None) -> None:
         self.base_dir = base_dir or Path(__file__).resolve().parents[1] / "storage"
         self.base_dir.mkdir(parents=True, exist_ok=True)
 
@@ -158,9 +157,7 @@ class TaskStore:
         records: list[TaskRecord] = []
         for path in sorted(self.base_dir.glob("*.json")):
             try:
-                records.append(
-                    TaskRecord.model_validate_json(_read_text_with_retry(path))
-                )
+                records.append(TaskRecord.model_validate_json(_read_text_with_retry(path)))
             except Exception as error:
                 raise StorageCorruptionError(path, error) from error
         return records
@@ -170,7 +167,7 @@ class TaskStore:
             record = self.get(task_id)
             updated = _validated_update(
                 record,
-                {"updated_at": datetime.now(timezone.utc), **fields},
+                {"updated_at": datetime.now(UTC), **fields},
             )
             self._write(updated)
             return updated
@@ -179,7 +176,7 @@ class TaskStore:
         self,
         task_id: str,
         *,
-        expected_statuses: Optional[set[TaskStatus]] = None,
+        expected_statuses: set[TaskStatus] | None = None,
         expected_active_run_id: object = _UNSET,
         expected_problem_id: object = _UNSET,
         **fields,
@@ -200,21 +197,18 @@ class TaskStore:
                     f"Run {expected_active_run_id!s} is not active for task {task_id}"
                 )
             actual_problem_id = record.problem.id if record.problem else None
-            if (
-                expected_problem_id is not _UNSET
-                and actual_problem_id != expected_problem_id
-            ):
+            if expected_problem_id is not _UNSET and actual_problem_id != expected_problem_id:
                 raise StateConflict(
                     f"Problem {expected_problem_id!s} is not current for task {task_id}"
                 )
             updated = _validated_update(
                 record,
-                {"updated_at": datetime.now(timezone.utc), **fields},
+                {"updated_at": datetime.now(UTC), **fields},
             )
             self._write(updated)
             return updated
 
-    def set_problem(self, task_id: str, problem: Optional[Problem]) -> TaskRecord:
+    def set_problem(self, task_id: str, problem: Problem | None) -> TaskRecord:
         return self.update(task_id, problem=problem)
 
     def add_diagram_item(self, task_id: str, item: DiagramItem) -> TaskRecord:
@@ -250,7 +244,7 @@ class TaskStore:
                 )
             items[index] = _validated_update(
                 current,
-                {"updated_at": datetime.now(timezone.utc), **fields},
+                {"updated_at": datetime.now(UTC), **fields},
             )
             return self.update(task_id, diagram_items=items)
 
@@ -302,7 +296,11 @@ class TaskStore:
                 raise StateConflict(f"Run {expected_active_run_id} is no longer active")
             candidates = list(item.candidates)
             index = next(
-                (index for index, candidate in enumerate(candidates) if candidate.id == candidate_id),
+                (
+                    index
+                    for index, candidate in enumerate(candidates)
+                    if candidate.id == candidate_id
+                ),
                 None,
             )
             if index is None:
@@ -321,9 +319,9 @@ class TaskStore:
         self,
         task_id: str,
         status: TaskStatus,
-        error: Optional[str] = None,
+        error: str | None = None,
         *,
-        error_code: Optional[str] = None,
+        error_code: str | None = None,
     ) -> TaskRecord:
         fields: dict = {
             "status": status,
@@ -369,27 +367,28 @@ class RunStore:
         task_id: str,
         prompt_version: str = "unversioned",
         *,
-        run_id: Optional[str] = None,
-        workspace_id: Optional[Any] = None,
-        quota_reservation_id: Optional[str] = None,
+        run_id: str | None = None,
+        workspace_id: Any | None = None,
+        quota_reservation_id: str | None = None,
         backend: str = "pi",
-        runtime_kind: Optional[str] = None,
-        runtime_version: Optional[str] = None,
-        provider: Optional[str] = None,
-        model: Optional[str] = None,
-        provider_profile_snapshot: Optional[dict[str, Any]] = None,
-        retry_of: Optional[TaskRun] = None,
+        runtime_kind: str | None = None,
+        runtime_version: str | None = None,
+        provider: str | None = None,
+        model: str | None = None,
+        provider_profile_snapshot: dict[str, Any] | None = None,
+        retry_of: TaskRun | None = None,
         purpose: RunPurpose = RunPurpose.PROBLEM,
         priority: int = 0,
-        diagram_item_id: Optional[str] = None,
-        diagram_mode: Optional[DiagramRunMode] = None,
-        diagram_instruction: Optional[str] = None,
-        diagram_max_candidates: Optional[int] = None,
-        diagram_step: Optional[DiagramRunStep] = None,
+        diagram_item_id: str | None = None,
+        diagram_mode: DiagramRunMode | None = None,
+        diagram_instruction: str | None = None,
+        diagram_max_candidates: int | None = None,
+        diagram_step: DiagramRunStep | None = None,
     ) -> TaskRun:
         with self._lock:
             previous_runs = [
-                run for run in self.list_for_task(task_id)
+                run
+                for run in self.list_for_task(task_id)
                 if run.purpose == purpose and run.diagram_item_id == diagram_item_id
             ]
             attempt = 1 + max((run.attempt for run in previous_runs), default=0)
@@ -415,11 +414,7 @@ class RunStore:
                 provider_profile_snapshot=provider_profile_snapshot,
                 retry_count=(retry_of.retry_count + 1 if retry_of else 0),
                 retry_of_run_id=(retry_of.id if retry_of else None),
-                retry_root_run_id=(
-                    retry_of.retry_root_run_id or retry_of.id
-                    if retry_of
-                    else None
-                ),
+                retry_root_run_id=(retry_of.retry_root_run_id or retry_of.id if retry_of else None),
             )
             self._write(run)
             if self._task_index is not None:
@@ -471,7 +466,7 @@ class RunStore:
         self,
         run_id: str,
         candidate: SolutionCandidate,
-        artifact: Optional[RunArtifact] = None,
+        artifact: RunArtifact | None = None,
     ) -> TaskRun:
         """Persist the sole solver output before an independent verification session."""
         with self._lock:
@@ -541,7 +536,7 @@ class RunStore:
                 return run
             updated = _validated_update(
                 run,
-                {"verification_started_at": datetime.now(timezone.utc)},
+                {"verification_started_at": datetime.now(UTC)},
             )
             self._write(updated)
             return updated
@@ -551,10 +546,11 @@ class RunStore:
         task_id: str,
         *,
         purpose: RunPurpose = RunPurpose.PROBLEM,
-        diagram_item_id: Optional[str] = None,
-    ) -> Optional[TaskRun]:
+        diagram_item_id: str | None = None,
+    ) -> TaskRun | None:
         active = [
-            run for run in self.list_for_task(task_id)
+            run
+            for run in self.list_for_task(task_id)
             if run.status in {RunStatus.QUEUED, RunStatus.RUNNING}
             and run.purpose == purpose
             and (diagram_item_id is None or run.diagram_item_id == diagram_item_id)
@@ -566,10 +562,11 @@ class RunStore:
         task_id: str,
         *,
         purpose: RunPurpose = RunPurpose.PROBLEM,
-        diagram_item_id: Optional[str] = None,
-    ) -> Optional[TaskRun]:
+        diagram_item_id: str | None = None,
+    ) -> TaskRun | None:
         runs = [
-            run for run in self.list_for_task(task_id)
+            run
+            for run in self.list_for_task(task_id)
             if run.purpose == purpose
             and (diagram_item_id is None or run.diagram_item_id == diagram_item_id)
         ]
@@ -578,12 +575,12 @@ class RunStore:
     def start(
         self,
         run_id: str,
-        pid: Optional[int],
+        pid: int | None,
         log_path: str,
         *,
-        worker_id: Optional[str] = None,
+        worker_id: str | None = None,
     ) -> TaskRun:
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         return self.update(
             run_id,
             status=RunStatus.RUNNING,
@@ -612,16 +609,16 @@ class RunStore:
             run_id,
             status=RunStatus.QUEUED,
             worker_id=None,
-            heartbeat_at=datetime.now(timezone.utc),
+            heartbeat_at=datetime.now(UTC),
         )
 
     def heartbeat(self, run_id: str) -> TaskRun:
-        return self.update(run_id, heartbeat_at=datetime.now(timezone.utc))
+        return self.update(run_id, heartbeat_at=datetime.now(UTC))
 
-    def observe_stage(self, run_id: str, stage: TaskStage, message: Optional[str] = None) -> TaskRun:
+    def observe_stage(self, run_id: str, stage: TaskStage, message: str | None = None) -> TaskRun:
         with self._lock:
             run = self.get(run_id)
-            now = datetime.now(timezone.utc)
+            now = datetime.now(UTC)
             stages = list(run.stage_runs)
             if stages and stages[-1].stage == stage:
                 if stages[-1].message == message:
@@ -635,9 +632,7 @@ class RunStore:
                         {
                             "status": StageStatus.COMPLETED,
                             "ended_at": now,
-                            "latency_ms": int(
-                                (now - started_at).total_seconds() * 1000
-                            ),
+                            "latency_ms": int((now - started_at).total_seconds() * 1000),
                         },
                     )
                 stages.append(StageRun(stage=stage, message=message, started_at=now))
@@ -653,9 +648,9 @@ class RunStore:
         run_id: str,
         status: RunStatus,
         *,
-        exit_code: Optional[int] = None,
-        error_code: Optional[str] = None,
-        error_message: Optional[str] = None,
+        exit_code: int | None = None,
+        error_code: str | None = None,
+        error_message: str | None = None,
     ) -> TaskRun:
         with self._lock:
             run = self.get(run_id)
@@ -669,7 +664,7 @@ class RunStore:
             # never turn a cancelled run into failed/completed or vice versa.
             if run.status in terminal:
                 return run
-            now = datetime.now(timezone.utc)
+            now = datetime.now(UTC)
             stages = list(run.stage_runs)
             if stages and stages[-1].status == StageStatus.RUNNING:
                 stage_status = {
@@ -681,9 +676,7 @@ class RunStore:
                     {
                         "status": stage_status,
                         "ended_at": now,
-                        "latency_ms": int(
-                            (now - stages[-1].started_at).total_seconds() * 1000
-                        ),
+                        "latency_ms": int((now - stages[-1].started_at).total_seconds() * 1000),
                         "error_code": error_code,
                     },
                 )
@@ -736,10 +729,7 @@ class BatchSessionStore:
             raise StorageCorruptionError(self.path, error) from error
 
     def _write(self, records: dict[str, BatchSessionRecord]) -> None:
-        records = {
-            key: _validated_update(record, {})
-            for key, record in records.items()
-        }
+        records = {key: _validated_update(record, {}) for key, record in records.items()}
         tmp = self.path.with_name(f"{self.path.name}.{uuid4().hex}.tmp")
         try:
             tmp.write_text(
@@ -794,9 +784,7 @@ class BatchSessionStore:
                     f"expected {expected_revision}"
                 )
             update = payload.model_dump(exclude_unset=True)
-            proposed_segments = (
-                payload.segments if "segments" in payload.model_fields_set else None
-            )
+            proposed_segments = payload.segments if "segments" in payload.model_fields_set else None
             if proposed_segments is not None:
                 proposed_by_id = {segment.id: segment for segment in proposed_segments}
                 for segment in current.segments:
@@ -810,7 +798,7 @@ class BatchSessionStore:
             updated = BatchSessionRecord.model_validate(
                 {
                     **current.model_dump(),
-                    "updated_at": datetime.now(timezone.utc),
+                    "updated_at": datetime.now(UTC),
                     "revision": current.revision + 1,
                     **update,
                 }
@@ -867,7 +855,7 @@ class BatchSessionStore:
             updated = BatchSessionRecord.model_validate(
                 {
                     **current.model_dump(),
-                    "updated_at": datetime.now(timezone.utc),
+                    "updated_at": datetime.now(UTC),
                     "revision": current.revision + 1,
                     "segments": segments,
                 }
@@ -913,7 +901,7 @@ class BatchProcessJobStore:
     def save(self, job: BatchProcessJob) -> BatchProcessJob:
         updated = _validated_update(
             job,
-            {"updated_at": datetime.now(timezone.utc)},
+            {"updated_at": datetime.now(UTC)},
         )
         path = self._path(job.file_hash)
         tmp = path.with_name(f"{path.name}.{uuid4().hex}.tmp")
@@ -925,6 +913,7 @@ class BatchProcessJobStore:
                 if tmp.exists():
                     tmp.unlink()
         return updated
+
 
 class PaperDraftStore:
     """One atomic JSON document per persistent paper draft."""
@@ -993,7 +982,7 @@ class PaperDraftStore:
                 {
                     **current.model_dump(),
                     **update,
-                    "updated_at": datetime.now(timezone.utc),
+                    "updated_at": datetime.now(UTC),
                 }
             )
             self._write(updated)
@@ -1028,7 +1017,14 @@ class ProblemMergeStore:
         items = [_validated_update(item, {}) for item in items]
         tmp = self.path.with_name(f"{self.path.name}.{uuid4().hex}.tmp")
         try:
-            tmp.write_text(json.dumps({"items": [item.model_dump(mode="json") for item in items]}, ensure_ascii=False, indent=2), encoding="utf-8")
+            tmp.write_text(
+                json.dumps(
+                    {"items": [item.model_dump(mode="json") for item in items]},
+                    ensure_ascii=False,
+                    indent=2,
+                ),
+                encoding="utf-8",
+            )
             _replace_with_retry(tmp, self.path)
         finally:
             if tmp.exists():
@@ -1063,7 +1059,9 @@ class ProblemMergeStore:
                 if existing.target_problem_id == target_root:
                     return existing
                 raise ValueError("Source problem is already merged into another problem")
-            record = ProblemMergeRecord(source_problem_id=source_root, target_problem_id=target_root)
+            record = ProblemMergeRecord(
+                source_problem_id=source_root, target_problem_id=target_root
+            )
             items.append(record)
             self._write(items)
             return record

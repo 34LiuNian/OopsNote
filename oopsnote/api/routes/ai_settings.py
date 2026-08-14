@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+import contextlib
+from datetime import UTC, datetime
 from time import monotonic
 from typing import Any
 
@@ -103,45 +104,64 @@ def _vault():
     try:
         return _api().get_secret_store()
     except RuntimeError as error:
-        raise HTTPException(status_code=503, detail="provider secret store is unavailable") from error
+        raise HTTPException(
+            status_code=503, detail="provider secret store is unavailable"
+        ) from error
 
 
 def _channel(channel_id: str) -> ProviderChannel:
-    channel = next((item for item in _api().APP_SETTINGS_STORE.provider_channels() if item.id == channel_id), None)
+    channel = next(
+        (item for item in _api().APP_SETTINGS_STORE.provider_channels() if item.id == channel_id),
+        None,
+    )
     if channel is None:
         raise HTTPException(status_code=404, detail="provider channel not found")
     return channel
 
 
-def _active_snapshot_contains(snapshot: Any, *, channel_id: str | None = None, credential_ref: str | None = None) -> bool:
+def _active_snapshot_contains(
+    snapshot: Any, *, channel_id: str | None = None, credential_ref: str | None = None
+) -> bool:
     if isinstance(snapshot, dict):
         if channel_id and snapshot.get("channel_id") == channel_id:
             return True
         if credential_ref and snapshot.get("credential_ref") == credential_ref:
             return True
-        return any(_active_snapshot_contains(value, channel_id=channel_id, credential_ref=credential_ref) for value in snapshot.values())
+        return any(
+            _active_snapshot_contains(value, channel_id=channel_id, credential_ref=credential_ref)
+            for value in snapshot.values()
+        )
     if isinstance(snapshot, list):
-        return any(_active_snapshot_contains(value, channel_id=channel_id, credential_ref=credential_ref) for value in snapshot)
+        return any(
+            _active_snapshot_contains(value, channel_id=channel_id, credential_ref=credential_ref)
+            for value in snapshot
+        )
     return False
 
 
 def _is_in_use(channel: ProviderChannel) -> bool:
     return any(
-        _active_snapshot_contains(run.provider_profile_snapshot, channel_id=channel.id, credential_ref=channel.credential_ref)
+        _active_snapshot_contains(
+            run.provider_profile_snapshot,
+            channel_id=channel.id,
+            credential_ref=channel.credential_ref,
+        )
         for run in _api().RUN_STORE.list_all()
         if run.status in {RunStatus.QUEUED, RunStatus.RUNNING}
     )
 
 
 def _public(channel: ProviderChannel) -> dict[str, Any]:
-    settings = _api().APP_SETTINGS_STORE.get()
     policy = _api().APP_SETTINGS_STORE.langchain_model_policy()
     try:
         value = channel.public_view(_vault())
     except SecretStoreCorruptionError as error:
-        raise HTTPException(status_code=503, detail="provider secret store is unavailable") from error
+        raise HTTPException(
+            status_code=503, detail="provider secret store is unavailable"
+        ) from error
     value["policy_stages"] = [
-        stage for stage in ("vision", "agent", "review", "diagram")
+        stage
+        for stage in ("vision", "agent", "review", "diagram")
         if policy is not None and getattr(policy, stage).channel_id == channel.id
     ]
     return value
@@ -192,10 +212,8 @@ def _retire_legacy() -> None:
             if run.status in {RunStatus.QUEUED, RunStatus.RUNNING}
         ):
             continue
-        try:
+        with contextlib.suppress(KeyError):
             vault.delete(credential_ref)
-        except KeyError:
-            pass
 
 
 def retire_legacy_provider_configuration() -> None:
@@ -222,7 +240,7 @@ def create_channel(payload: ChannelCreate, request: Request) -> dict[str, Any]:
     api = _api()
     if any(item.id == payload.id for item in api.APP_SETTINGS_STORE.provider_channels()):
         raise HTTPException(status_code=409, detail="provider channel already exists")
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     channel = ProviderChannel(**payload.model_dump(), version=1, created_at=now, updated_at=now)
     api.APP_SETTINGS_STORE.upsert_provider_channel(channel)
     return {"channel": _public(channel)}
@@ -235,7 +253,9 @@ def reorder_channels(payload: ChannelOrderUpdate, request: Request) -> dict[str,
         _api().APP_SETTINGS_STORE.reorder_provider_channels(payload.channel_ids)
     except ValueError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
-    return {"items": [_public(channel) for channel in _api().APP_SETTINGS_STORE.provider_channels()]}
+    return {
+        "items": [_public(channel) for channel in _api().APP_SETTINGS_STORE.provider_channels()]
+    }
 
 
 @router.patch("/channels/{channel_id}")
@@ -244,46 +264,61 @@ def update_channel(channel_id: str, payload: ChannelPatch, request: Request) -> 
     api = _api()
     previous = _channel(channel_id)
     updates = payload.model_dump(exclude_unset=True)
-    candidate = ProviderChannel.model_validate({
-        **previous.model_dump(mode="json"),
-        **updates,
-        "version": previous.version + 1,
-        "updated_at": datetime.now(timezone.utc),
-    })
+    candidate = ProviderChannel.model_validate(
+        {
+            **previous.model_dump(mode="json"),
+            **updates,
+            "version": previous.version + 1,
+            "updated_at": datetime.now(UTC),
+        }
+    )
     api.APP_SETTINGS_STORE.upsert_provider_channel(candidate)
     return {"channel": _public(candidate)}
 
 
 @router.post("/channels/{channel_id}/credential")
-def update_credential(channel_id: str, payload: CredentialUpdate, request: Request) -> dict[str, Any]:
+def update_credential(
+    channel_id: str, payload: CredentialUpdate, request: Request
+) -> dict[str, Any]:
     _require_admin(request)
     api = _api()
     vault = _vault()
     previous = _channel(channel_id)
     reference = vault.put(payload.secret)
-    candidate = previous.model_copy(update={
-        "version": previous.version + 1,
-        "credential_ref": reference,
-        "secret_updated_at": datetime.now(timezone.utc),
-        "updated_at": datetime.now(timezone.utc),
-    })
+    candidate = previous.model_copy(
+        update={
+            "version": previous.version + 1,
+            "credential_ref": reference,
+            "secret_updated_at": datetime.now(UTC),
+            "updated_at": datetime.now(UTC),
+        }
+    )
     try:
         started = monotonic()
         models = ProviderClientFactory(vault).discover_models(candidate)
         validation = _catalog_validation(candidate, started)
-        candidate = candidate.model_copy(update={"models": _merge_discovered_models(previous, models)})
+        candidate = candidate.model_copy(
+            update={"models": _merge_discovered_models(previous, models)}
+        )
         api.APP_SETTINGS_STORE.upsert_provider_channel(candidate)
     except ProviderConnectionError as error:
         vault.delete(reference)
-        raise HTTPException(status_code=422 if error.result.error_code in {"authentication_failed", "invalid_configuration"} else 502, detail={"code": error.result.error_code, "message": error.result.message}) from error
+        raise HTTPException(
+            status_code=422
+            if error.result.error_code in {"authentication_failed", "invalid_configuration"}
+            else 502,
+            detail={"code": error.result.error_code, "message": error.result.message},
+        ) from error
     except Exception:
         vault.delete(reference)
         raise
-    if previous.credential_ref and previous.credential_ref != reference and not _is_in_use(previous):
-        try:
+    if (
+        previous.credential_ref
+        and previous.credential_ref != reference
+        and not _is_in_use(previous)
+    ):
+        with contextlib.suppress(KeyError):
             vault.delete(previous.credential_ref)
-        except KeyError:
-            pass
     return {
         "channel": _public(candidate),
         "discovery": {"count": len(models), "capabilities_unknown": True},
@@ -304,7 +339,9 @@ def reveal_credential(channel_id: str, request: Request, response: Response) -> 
     except KeyError as error:
         raise HTTPException(status_code=404, detail="channel credential is unavailable") from error
     except SecretStoreCorruptionError as error:
-        raise HTTPException(status_code=503, detail="provider secret store is unavailable") from error
+        raise HTTPException(
+            status_code=503, detail="provider secret store is unavailable"
+        ) from error
     response.headers["Cache-Control"] = "no-store"
     response.headers["Pragma"] = "no-cache"
     return {"secret": secret}
@@ -321,7 +358,13 @@ def sync_models(channel_id: str, request: Request) -> dict[str, Any]:
     discovered = ProviderClientFactory(_vault()).discover_models(channel)
     validation = _catalog_validation(channel, started)
     merged = _merge_discovered_models(channel, discovered)
-    candidate = channel.model_copy(update={"version": channel.version + 1, "models": tuple(merged), "updated_at": datetime.now(timezone.utc)})
+    candidate = channel.model_copy(
+        update={
+            "version": channel.version + 1,
+            "models": tuple(merged),
+            "updated_at": datetime.now(UTC),
+        }
+    )
     api.APP_SETTINGS_STORE.upsert_provider_channel(candidate)
     return {
         "channel": _public(candidate),
@@ -331,7 +374,9 @@ def sync_models(channel_id: str, request: Request) -> dict[str, Any]:
 
 
 @router.post("/channels/{channel_id}/check")
-def check_channel(channel_id: str, payload: ChannelCheckRequest, request: Request) -> dict[str, Any]:
+def check_channel(
+    channel_id: str, payload: ChannelCheckRequest, request: Request
+) -> dict[str, Any]:
     _require_admin(request)
     channel = _channel(channel_id)
     vault = _vault()
@@ -345,7 +390,9 @@ def check_channel(channel_id: str, payload: ChannelCheckRequest, request: Reques
 
 
 @router.patch("/channels/{channel_id}/models/{model_id}")
-def update_model(channel_id: str, model_id: str, payload: ModelPatch, request: Request) -> dict[str, Any]:
+def update_model(
+    channel_id: str, model_id: str, payload: ModelPatch, request: Request
+) -> dict[str, Any]:
     _require_admin(request)
     api = _api()
     channel = _channel(channel_id)
@@ -356,7 +403,9 @@ def update_model(channel_id: str, model_id: str, payload: ModelPatch, request: R
     updates = payload.model_dump(exclude_unset=True)
     model = selected.model_copy(update=updates)
     models = tuple(model if item.id == model_id else item for item in channel.models)
-    candidate = channel.model_copy(update={"version": channel.version + 1, "models": models, "updated_at": datetime.now(timezone.utc)})
+    candidate = channel.model_copy(
+        update={"version": channel.version + 1, "models": models, "updated_at": datetime.now(UTC)}
+    )
     api.APP_SETTINGS_STORE.upsert_provider_channel(candidate)
     return {"channel": _public(candidate)}
 
@@ -369,19 +418,27 @@ def delete_channel(channel_id: str, request: Request) -> dict[str, bool]:
         raise HTTPException(status_code=409, detail="channel_in_use")
     _api().APP_SETTINGS_STORE.remove_provider_channel(channel.id)
     if channel.credential_ref:
-        try:
+        with contextlib.suppress(KeyError):
             _vault().delete(channel.credential_ref)
-        except KeyError:
-            pass
     return {"deleted": True}
 
 
 def _validate_policy(payload: PolicyUpdate) -> LangChainModelPolicy:
     api = _api()
     channels = {channel.id: channel for channel in api.APP_SETTINGS_STORE.provider_channels()}
-    for stage, selection in (("vision", payload.vision), ("agent", payload.agent), ("review", payload.review), ("diagram", payload.diagram)):
+    for stage, selection in (
+        ("vision", payload.vision),
+        ("agent", payload.agent),
+        ("review", payload.review),
+        ("diagram", payload.diagram),
+    ):
         channel = channels.get(selection.channel_id)
-        if channel is None or not channel.enabled or not channel.credential_ref or not _vault().has(channel.credential_ref):
+        if (
+            channel is None
+            or not channel.enabled
+            or not channel.credential_ref
+            or not _vault().has(channel.credential_ref)
+        ):
             raise HTTPException(status_code=409, detail=f"{stage} channel is unavailable")
         try:
             model = channel.model(selection.model_id)
@@ -390,7 +447,9 @@ def _validate_policy(payload: PolicyUpdate) -> LangChainModelPolicy:
         if not model.enabled:
             raise HTTPException(status_code=409, detail=f"{stage} model is disabled")
         if stage in {"vision", "diagram"} and not model.capability.vision:
-            raise HTTPException(status_code=409, detail=f"{stage} stage requires an enabled Vision model")
+            raise HTTPException(
+                status_code=409, detail=f"{stage} stage requires an enabled Vision model"
+            )
         if stage in {"agent", "review"} and not model.capability.tool_calling:
             raise HTTPException(status_code=409, detail=f"{stage} stage requires Tool Calling")
     previous = api.APP_SETTINGS_STORE.langchain_model_policy()
@@ -400,7 +459,7 @@ def _validate_policy(payload: PolicyUpdate) -> LangChainModelPolicy:
         agent=payload.agent,
         review=payload.review,
         diagram=payload.diagram,
-        updated_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(UTC),
     )
 
 

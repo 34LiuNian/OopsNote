@@ -13,12 +13,30 @@ from fastapi.testclient import TestClient
 from PIL import Image
 from starlette.requests import Request
 
-from oopsnote.api import main
-from oopsnote.api import auth
-from oopsnote.api.auth import AuthConfig, AuthenticatedUser, AuthenticationError
 from oopsnote.ai import HermesRunner
 from oopsnote.ai.diagram_renderer import TikzRenderBundle, TikzRenderClient
-from oopsnote.core import AssetStore, BatchProcessJobStore, BatchSegment, BatchSegmentPart, BatchSessionRecord, BatchSessionStore, Problem, ProblemMergeStore, RunArtifact, RunStatus, RunStore, TagStore, TaskCreateRequest, TaskRecord, TaskRun, TaskStore, TaskStage, TaskStatus
+from oopsnote.api import auth, main
+from oopsnote.api.auth import AuthConfig, AuthenticatedUser, AuthenticationError
+from oopsnote.core import (
+    AssetStore,
+    BatchProcessJobStore,
+    BatchSegment,
+    BatchSegmentPart,
+    BatchSessionRecord,
+    BatchSessionStore,
+    Problem,
+    ProblemMergeStore,
+    RunArtifact,
+    RunStatus,
+    RunStore,
+    TagStore,
+    TaskCreateRequest,
+    TaskRecord,
+    TaskRun,
+    TaskStage,
+    TaskStatus,
+    TaskStore,
+)
 
 
 class RecordingBatchRunner:
@@ -142,7 +160,10 @@ def test_asset_route_serves_only_one_file_from_the_active_asset_root(tmp_path, m
 
 
 def test_auth_config_rejects_unknown_mode():
-    with patch.dict("os.environ", {"OOPSNOTE_AUTH_MODE": "bypass"}, clear=False), pytest.raises(RuntimeError):
+    with (
+        patch.dict("os.environ", {"OOPSNOTE_AUTH_MODE": "bypass"}, clear=False),
+        pytest.raises(RuntimeError),
+    ):
         auth.auth_config_from_env()
 
 
@@ -218,14 +239,17 @@ def test_task_routes_require_bearer_token_when_oidc_is_configured():
 
 def test_task_routes_accept_verified_bearer_token_when_oidc_is_configured():
     fake_user = AuthenticatedUser(subject="user-1", claims={"sub": "user-1"})
-    with patch.dict(
-        "os.environ",
-        {
-            "OOPSNOTE_AUTH_ISSUER": "https://auth.example.com",
-            "OOPSNOTE_AUTH_AUDIENCE": "client-id",
-        },
-        clear=False,
-    ), patch("oopsnote.api.main.authenticate_request", return_value=fake_user):
+    with (
+        patch.dict(
+            "os.environ",
+            {
+                "OOPSNOTE_AUTH_ISSUER": "https://auth.example.com",
+                "OOPSNOTE_AUTH_AUDIENCE": "client-id",
+            },
+            clear=False,
+        ),
+        patch("oopsnote.api.main.authenticate_request", return_value=fake_user),
+    ):
         response = TestClient(main.app).get(
             "/tasks",
             headers={"Authorization": "Bearer test-token"},
@@ -243,15 +267,19 @@ def test_provider_settings_require_an_administrator_role_when_oidc_is_enabled():
         "OOPSNOTE_AUTH_ISSUER": "https://auth.example.com",
         "OOPSNOTE_AUTH_AUDIENCE": "client-id",
     }
-    with patch.dict("os.environ", environment, clear=False), patch(
-        "oopsnote.api.main.authenticate_request", return_value=ordinary
-    ), patch("oopsnote.api.main.get_secret_store", return_value=MemorySecretStore()):
+    with (
+        patch.dict("os.environ", environment, clear=False),
+        patch("oopsnote.api.main.authenticate_request", return_value=ordinary),
+        patch("oopsnote.api.main.get_secret_store", return_value=MemorySecretStore()),
+    ):
         rejected = TestClient(main.app).get(
             "/settings/ai/channels", headers={"Authorization": "Bearer test-token"}
         )
-    with patch.dict("os.environ", environment, clear=False), patch(
-        "oopsnote.api.main.authenticate_request", return_value=admin
-    ), patch("oopsnote.api.main.get_secret_store", return_value=MemorySecretStore()):
+    with (
+        patch.dict("os.environ", environment, clear=False),
+        patch("oopsnote.api.main.authenticate_request", return_value=admin),
+        patch("oopsnote.api.main.get_secret_store", return_value=MemorySecretStore()),
+    ):
         allowed = TestClient(main.app).get(
             "/settings/ai/channels", headers={"Authorization": "Bearer test-token"}
         )
@@ -302,10 +330,13 @@ def test_authentication_returns_503_when_jwks_service_is_unavailable():
         jwks_url="http://pocket-id:1411/.well-known/jwks.json",
     )
 
-    with patch(
-        "oopsnote.api.auth._jwk_client",
-        side_effect=auth.jwt.PyJWKClientConnectionError("connection refused"),
-    ), pytest.raises(AuthenticationError) as error:
+    with (
+        patch(
+            "oopsnote.api.auth._jwk_client",
+            side_effect=auth.jwt.PyJWKClientConnectionError("connection refused"),
+        ),
+        pytest.raises(AuthenticationError) as error,
+    ):
         auth.authenticate_request(request, config)
 
     assert error.value.status_code == 503
@@ -318,12 +349,28 @@ def test_duplicate_candidates_merge_without_removing_source_task(tmp_path, monke
     monkeypatch.setattr(main, "STORAGE_DIR", storage)
     monkeypatch.setattr(main, "TASK_STORE", task_store)
     monkeypatch.setattr(main, "RUN_STORE", RunStore(storage / "runs"))
-    monkeypatch.setattr(main, "PROBLEM_MERGE_STORE", ProblemMergeStore(storage / "settings" / "problem_merges.json"))
+    monkeypatch.setattr(
+        main, "PROBLEM_MERGE_STORE", ProblemMergeStore(storage / "settings" / "problem_merges.json")
+    )
 
     current = task_store.create(TaskCreateRequest(subject="math"))
     candidate = task_store.create(TaskCreateRequest(subject="math"))
-    current = task_store.set_problem(current.id, Problem(subject="math", problem_text="Find $x$.", options=["1", "2"], answer="A", explanation=""))
-    candidate = task_store.set_problem(candidate.id, Problem(subject="math", problem_text=" Find   $x$. ", options=["1", "2"], answer="A", explanation=""))
+    current = task_store.set_problem(
+        current.id,
+        Problem(
+            subject="math", problem_text="Find $x$.", options=["1", "2"], answer="A", explanation=""
+        ),
+    )
+    candidate = task_store.set_problem(
+        candidate.id,
+        Problem(
+            subject="math",
+            problem_text=" Find   $x$. ",
+            options=["1", "2"],
+            answer="A",
+            explanation="",
+        ),
+    )
     client = TestClient(main.app)
 
     listed = client.get(f"/tasks/{current.id}/duplicates")
@@ -352,17 +399,24 @@ def test_variation_request_carries_parent_error_and_custom_constraints(tmp_path,
     monkeypatch.setattr(main, "_configured_backend", lambda: "pi")
 
     parent = task_store.create(TaskCreateRequest(subject="math"))
-    parent = task_store.set_problem(parent.id, Problem(
-        subject="math",
-        problem_text="Find $x$.",
-        answer="$1$",
-        explanation="",
-        error_hypothesis=["sign error"],
-        knowledge_points=["linear equation"],
-    ))
+    parent = task_store.set_problem(
+        parent.id,
+        Problem(
+            subject="math",
+            problem_text="Find $x$.",
+            answer="$1$",
+            explanation="",
+            error_hypothesis=["sign error"],
+            knowledge_points=["linear equation"],
+        ),
+    )
     response = TestClient(main.app).post(
         f"/tasks/{parent.id}/variations",
-        json={"direction": "add_distractors", "custom_request": "Use a real-world setting", "count": 2},
+        json={
+            "direction": "add_distractors",
+            "custom_request": "Use a real-world setting",
+            "count": 2,
+        },
     )
 
     assert response.status_code == 200
@@ -409,14 +463,22 @@ def test_web_contract_uses_wrapped_collections_and_persisted_upload(tmp_path, mo
         ),
     )
     monkeypatch.setattr(main, "ASSET_STORE", AssetStore(base_dir=storage / "assets"))
+
     def render_bundle(renderer: TikzRenderClient, source: str) -> TikzRenderBundle:
         del source
         return TikzRenderBundle(
-            svg_path=renderer.asset_store.save_bytes(b"<svg xmlns='http://www.w3.org/2000/svg'/>", "diagram.svg", "api-test"),
-            pdf_path=renderer.asset_store.save_bytes(b"%PDF-1.4\n%%EOF\n", "diagram.pdf", "api-test"),
-            png_path=renderer.asset_store.save_bytes(base64.b64decode(png_base64()), "diagram.png", "api-test"),
+            svg_path=renderer.asset_store.save_bytes(
+                b"<svg xmlns='http://www.w3.org/2000/svg'/>", "diagram.svg", "api-test"
+            ),
+            pdf_path=renderer.asset_store.save_bytes(
+                b"%PDF-1.4\n%%EOF\n", "diagram.pdf", "api-test"
+            ),
+            png_path=renderer.asset_store.save_bytes(
+                base64.b64decode(png_base64()), "diagram.png", "api-test"
+            ),
             renderer_profile_version="test-v1",
         )
+
     monkeypatch.setattr(TikzRenderClient, "render", render_bundle)
     monkeypatch.setattr(
         main,
@@ -508,7 +570,9 @@ def test_web_contract_uses_wrapped_collections_and_persisted_upload(tmp_path, mo
         json={"difficulty_coefficient_override": 0.73},
     )
     assert overridden_difficulty.status_code == 200
-    assert overridden_difficulty.json()["task"]["problem"]["difficulty_coefficient_override"] == 0.73
+    assert (
+        overridden_difficulty.json()["task"]["problem"]["difficulty_coefficient_override"] == 0.73
+    )
     assert main.TASK_STORE.get(task["id"]).difficulty_coefficient_override == 0.73
 
     section_total = client.patch(
@@ -572,7 +636,12 @@ def test_web_contract_uses_wrapped_collections_and_persisted_upload(tmp_path, mo
     cropped_problem = cropped.json()["task"]["problem"]
     assert cropped_problem["diagram_image_path"].startswith("/assets/diagram-")
     assert cropped_problem["diagram_image_path"] != task["asset"]["path"]
-    assert cropped_problem["diagram_image_crop"] == {"x": 0.5, "y": 0.0, "width": 0.5, "height": 1.0}
+    assert cropped_problem["diagram_image_crop"] == {
+        "x": 0.5,
+        "y": 0.0,
+        "width": 0.5,
+        "height": 1.0,
+    }
     assert cropped_problem["diagram_image_tone"] == "auto"
     with Image.open(main.ASSET_STORE.resolve(cropped_problem["diagram_image_path"])) as crop_image:
         assert crop_image.size == (2, 4)
@@ -586,7 +655,10 @@ def test_web_contract_uses_wrapped_collections_and_persisted_upload(tmp_path, mo
         },
     )
     assert repeated_crop.status_code == 200
-    assert repeated_crop.json()["task"]["problem"]["diagram_image_path"] == cropped_problem["diagram_image_path"]
+    assert (
+        repeated_crop.json()["task"]["problem"]["diagram_image_path"]
+        == cropped_problem["diagram_image_path"]
+    )
 
     invalid_image = client.patch(
         f"/tasks/{task['id']}/problem/override",
@@ -635,18 +707,29 @@ def test_tag_rename_and_merge_migrate_persisted_problem_references(tmp_path, mon
     monkeypatch.setattr(main, "TAG_STORE", tag_store)
     client = TestClient(main.app)
 
-    old_error = client.post("/tags", json={"dimension": "error", "value": "旧错因"}).json()["items"][0]
-    source_custom = client.post("/tags", json={"dimension": "custom", "value": "待合并"}).json()["items"][0]
-    target_custom = client.post("/tags", json={"dimension": "custom", "value": "目标标签"}).json()["items"][0]
-    task = task_store.create(TaskCreateRequest(
-        subject="math",
-        metadata={"user_tags": ["待合并"]},
-    ))
-    task_store.set_problem(task.id, Problem(
-        subject="math",
-        problem_text="题目",
-        error_hypothesis=["旧错因"],
-    ))
+    old_error = client.post("/tags", json={"dimension": "error", "value": "旧错因"}).json()[
+        "items"
+    ][0]
+    source_custom = client.post("/tags", json={"dimension": "custom", "value": "待合并"}).json()[
+        "items"
+    ][0]
+    target_custom = client.post("/tags", json={"dimension": "custom", "value": "目标标签"}).json()[
+        "items"
+    ][0]
+    task = task_store.create(
+        TaskCreateRequest(
+            subject="math",
+            metadata={"user_tags": ["待合并"]},
+        )
+    )
+    task_store.set_problem(
+        task.id,
+        Problem(
+            subject="math",
+            problem_text="题目",
+            error_hypothesis=["旧错因"],
+        ),
+    )
 
     renamed = client.put(f"/tags/{old_error['id']}", json={"value": "新错因"})
     merged = client.post(
@@ -677,7 +760,11 @@ def test_batch_session_deduplicates_source_and_persists_progress(tmp_path, monke
     created = client.put(
         f"/batch-sessions/{digest}/source",
         content=source,
-        headers={"x-oopsnote-filename": "mock.pdf", "x-oopsnote-page-count": "7", "content-type": "application/pdf"},
+        headers={
+            "x-oopsnote-filename": "mock.pdf",
+            "x-oopsnote-page-count": "7",
+            "content-type": "application/pdf",
+        },
     )
     assert created.status_code == 200
     assert created.json()["session"]["asset_path"].endswith(f"batch-{digest}.pdf")
@@ -692,22 +779,33 @@ def test_batch_session_deduplicates_source_and_persists_progress(tmp_path, monke
             "notes": "目录后开始",
             "active_page": 4,
             "excluded_page_indices": [2],
-            "segments": [{
-                "id": "region-1",
-                "page_index": 3,
-                "x": 0.1,
-                "y": 0.2,
-                "width": 0.3,
-                "height": 0.4,
-                "continuation": {"page_index": 4, "x": 0.1, "y": 0, "width": 0.3, "height": 0.25},
-            }],
+            "segments": [
+                {
+                    "id": "region-1",
+                    "page_index": 3,
+                    "x": 0.1,
+                    "y": 0.2,
+                    "width": 0.3,
+                    "height": 0.4,
+                    "continuation": {
+                        "page_index": 4,
+                        "x": 0.1,
+                        "y": 0,
+                        "width": 0.3,
+                        "height": 0.25,
+                    },
+                }
+            ],
         },
     )
     assert updated.status_code == 200
 
     renamed = client.patch(
         f"/batch-sessions/{digest}",
-        json={"filename": "renamed.pdf", "expected_revision": updated.json()["session"]["revision"]},
+        json={
+            "filename": "renamed.pdf",
+            "expected_revision": updated.json()["session"]["revision"],
+        },
     )
     assert renamed.status_code == 200
     assert renamed.json()["session"]["filename"] == "renamed.pdf"
@@ -751,11 +849,14 @@ def test_batch_session_persists_parts_crop_and_deletes_without_tasks(tmp_path, m
     client = TestClient(main.app)
     source = b"continuous-pdf"
     digest = hashlib.sha256(source).hexdigest()
-    assert client.put(
-        f"/batch-sessions/{digest}/source",
-        content=source,
-        headers={"x-oopsnote-filename": "continuous.pdf", "content-type": "application/pdf"},
-    ).status_code == 200
+    assert (
+        client.put(
+            f"/batch-sessions/{digest}/source",
+            content=source,
+            headers={"x-oopsnote-filename": "continuous.pdf", "content-type": "application/pdf"},
+        ).status_code
+        == 200
+    )
     initial_session = client.get(f"/batch-sessions/{digest}").json()["session"]
     assert initial_session["source_available"] is True
     removed_source = client.delete(f"/batch-sessions/{digest}/source")
@@ -788,18 +889,44 @@ def test_batch_session_persists_parts_crop_and_deletes_without_tasks(tmp_path, m
             "crop_rect": {"x": 0.1, "y": 0.08, "width": 0.8, "height": 0.84},
             "crop_confirmed": True,
             "column_layout": {"column_count": 2, "overlap_ratio": 0.5},
-            "segments": [{
-                "id": "selection-1",
-                "parts": [
-                    {"page_index": 0, "column_index": 1, "x": 0.2, "y": 0.8, "width": 0.5, "height": 0.2, "order": 0},
-                    {"page_index": 1, "column_index": 0, "x": 0.2, "y": 0, "width": 0.5, "height": 1, "order": 1},
-                    {"page_index": 2, "column_index": 0, "x": 0.2, "y": 0, "width": 0.5, "height": 0.15, "order": 2},
-                ],
-                "question_no": 1,
-                "status": "needs_review",
-                "review_reason": "multiple_questions",
-                "review_previous_status": "pending",
-            }],
+            "segments": [
+                {
+                    "id": "selection-1",
+                    "parts": [
+                        {
+                            "page_index": 0,
+                            "column_index": 1,
+                            "x": 0.2,
+                            "y": 0.8,
+                            "width": 0.5,
+                            "height": 0.2,
+                            "order": 0,
+                        },
+                        {
+                            "page_index": 1,
+                            "column_index": 0,
+                            "x": 0.2,
+                            "y": 0,
+                            "width": 0.5,
+                            "height": 1,
+                            "order": 1,
+                        },
+                        {
+                            "page_index": 2,
+                            "column_index": 0,
+                            "x": 0.2,
+                            "y": 0,
+                            "width": 0.5,
+                            "height": 0.15,
+                            "order": 2,
+                        },
+                    ],
+                    "question_no": 1,
+                    "status": "needs_review",
+                    "review_reason": "multiple_questions",
+                    "review_previous_status": "pending",
+                }
+            ],
         },
     )
     assert updated.status_code == 200
@@ -834,7 +961,10 @@ def test_batch_session_persists_parts_crop_and_deletes_without_tasks(tmp_path, m
         task["id"],
         status=TaskStatus.COMPLETED,
         problem=Problem(subject="math", problem_text="第一道完整题"),
-        metadata={**task_store.get(task["id"]).metadata, "intake_review_reason": "multiple_questions"},
+        metadata={
+            **task_store.get(task["id"]).metadata,
+            "intake_review_reason": "multiple_questions",
+        },
     )
     renamed = client.patch(
         f"/batch-sessions/{digest}",
@@ -856,13 +986,16 @@ def test_batch_session_persists_parts_crop_and_deletes_without_tasks(tmp_path, m
         "review_previous_status": None,
         "review_resolved": False,
     }
-    assert client.patch(
-        f"/batch-sessions/{digest}",
-        json={
-            "segments": [linked_segment],
-            "expected_revision": renamed.json()["session"]["revision"],
-        },
-    ).status_code == 200
+    assert (
+        client.patch(
+            f"/batch-sessions/{digest}",
+            json={
+                "segments": [linked_segment],
+                "expected_revision": renamed.json()["session"]["revision"],
+            },
+        ).status_code
+        == 200
+    )
     persisted_before_read = main.BATCH_SESSION_STORE.get(digest)
     auto_review_session = client.get(f"/batch-sessions/{digest}").json()["session"]
     persisted_after_read = main.BATCH_SESSION_STORE.get(digest)
@@ -880,13 +1013,16 @@ def test_batch_session_persists_parts_crop_and_deletes_without_tasks(tmp_path, m
         "review_previous_status": None,
         "review_resolved": True,
     }
-    assert client.patch(
-        f"/batch-sessions/{digest}",
-        json={
-            "segments": [resolved_segment],
-            "expected_revision": auto_review_session["revision"],
-        },
-    ).status_code == 200
+    assert (
+        client.patch(
+            f"/batch-sessions/{digest}",
+            json={
+                "segments": [resolved_segment],
+                "expected_revision": auto_review_session["revision"],
+            },
+        ).status_code
+        == 200
+    )
     resolved = client.get(f"/batch-sessions/{digest}").json()["session"]["segments"][0]
     assert resolved["status"] == "completed"
     assert resolved["review_resolved"] is True
@@ -914,26 +1050,36 @@ def test_batch_delete_selected_parts_preserves_unselected_parts(tmp_path, monkey
     client = TestClient(main.app)
     source = b"selected-batch-delete"
     digest = hashlib.sha256(source).hexdigest()
-    assert client.put(
-        f"/batch-sessions/{digest}/source",
-        content=source,
-        headers={"x-oopsnote-filename": "delete.pdf", "content-type": "application/pdf"},
-    ).status_code == 200
-    assert client.patch(
-        f"/batch-sessions/{digest}",
-        json={
-            "expected_revision": 0,
-            "segments": [{
-                "id": "pending-selection",
-                "parts": [{"page_index": 0, "x": 0, "y": 0, "width": 1, "height": 1}],
-                "status": "pending",
-            }],
-        },
-    ).status_code == 200
-    task = task_store.create(TaskCreateRequest(
-        subject="math",
-        metadata={"selection_snapshot": {"source_file_hash": digest}},
-    ))
+    assert (
+        client.put(
+            f"/batch-sessions/{digest}/source",
+            content=source,
+            headers={"x-oopsnote-filename": "delete.pdf", "content-type": "application/pdf"},
+        ).status_code
+        == 200
+    )
+    assert (
+        client.patch(
+            f"/batch-sessions/{digest}",
+            json={
+                "expected_revision": 0,
+                "segments": [
+                    {
+                        "id": "pending-selection",
+                        "parts": [{"page_index": 0, "x": 0, "y": 0, "width": 1, "height": 1}],
+                        "status": "pending",
+                    }
+                ],
+            },
+        ).status_code
+        == 200
+    )
+    task = task_store.create(
+        TaskCreateRequest(
+            subject="math",
+            metadata={"selection_snapshot": {"source_file_hash": digest}},
+        )
+    )
 
     deleted_task = client.request(
         "DELETE",
@@ -969,7 +1115,9 @@ def test_batch_process_renders_all_pending_segments_and_enqueues_once(tmp_path, 
         "BATCH_SESSION_STORE",
         BatchSessionStore(storage / "settings" / "batch_sessions.json"),
     )
-    monkeypatch.setattr(main, "BATCH_PROCESS_JOB_STORE", BatchProcessJobStore(storage / "batch_jobs"))
+    monkeypatch.setattr(
+        main, "BATCH_PROCESS_JOB_STORE", BatchProcessJobStore(storage / "batch_jobs")
+    )
     monkeypatch.setattr(main, "_runner_for", lambda _backend: runner)
     client = TestClient(main.app)
 
@@ -980,37 +1128,61 @@ def test_batch_process_renders_all_pending_segments_and_enqueues_once(tmp_path, 
     source = document.tobytes()
     document.close()
     digest = hashlib.sha256(source).hexdigest()
-    assert client.put(
-        f"/batch-sessions/{digest}/source",
-        content=source,
-        headers={
-            "x-oopsnote-filename": "questions.pdf",
-            "x-oopsnote-page-count": "1",
-            "content-type": "application/pdf",
-        },
-    ).status_code == 200
-    assert client.patch(
-        f"/batch-sessions/{digest}",
-        json={
-            "expected_revision": 0,
-            "page_count": 1,
-            "crop_confirmed": True,
-            "segments": [
-                {
-                    "id": "segment-1",
-                    "parts": [{"page_index": 0, "x": 0, "y": 0, "width": 0.5, "height": 0.5, "order": 0}],
-                    "question_no": 1,
-                    "status": "pending",
-                },
-                {
-                    "id": "segment-2",
-                    "parts": [{"page_index": 0, "x": 0.5, "y": 0.5, "width": 0.5, "height": 0.5, "order": 0}],
-                    "question_no": 2,
-                    "status": "pending",
-                },
-            ],
-        },
-    ).status_code == 200
+    assert (
+        client.put(
+            f"/batch-sessions/{digest}/source",
+            content=source,
+            headers={
+                "x-oopsnote-filename": "questions.pdf",
+                "x-oopsnote-page-count": "1",
+                "content-type": "application/pdf",
+            },
+        ).status_code
+        == 200
+    )
+    assert (
+        client.patch(
+            f"/batch-sessions/{digest}",
+            json={
+                "expected_revision": 0,
+                "page_count": 1,
+                "crop_confirmed": True,
+                "segments": [
+                    {
+                        "id": "segment-1",
+                        "parts": [
+                            {
+                                "page_index": 0,
+                                "x": 0,
+                                "y": 0,
+                                "width": 0.5,
+                                "height": 0.5,
+                                "order": 0,
+                            }
+                        ],
+                        "question_no": 1,
+                        "status": "pending",
+                    },
+                    {
+                        "id": "segment-2",
+                        "parts": [
+                            {
+                                "page_index": 0,
+                                "x": 0.5,
+                                "y": 0.5,
+                                "width": 0.5,
+                                "height": 0.5,
+                                "order": 0,
+                            }
+                        ],
+                        "question_no": 2,
+                        "status": "pending",
+                    },
+                ],
+            },
+        ).status_code
+        == 200
+    )
 
     processed = client.post(
         f"/batch-sessions/{digest}/process",
@@ -1033,7 +1205,9 @@ def test_batch_process_renders_all_pending_segments_and_enqueues_once(tmp_path, 
     assert {task.metadata["batch_question_no"] for task in tasks} == {1, 2}
     assert all(task.metadata["selection_snapshot"]["schema_version"] == 1 for task in tasks)
     assert all(task.metadata["selection_snapshot"]["parts"] for task in tasks)
-    assert {item["task_id"] for item in payload["session"]["submitted_selections"]} == {task.id for task in tasks}
+    assert {item["task_id"] for item in payload["session"]["submitted_selections"]} == {
+        task.id for task in tasks
+    }
     assert all((storage / task.asset_path.lstrip("/")).is_file() for task in tasks)
     job = main.BATCH_PROCESS_JOB_STORE.get(digest)
     assert {state.status for state in job.segments} == {"processing"}
@@ -1068,7 +1242,9 @@ def test_batch_process_renders_all_pending_segments_and_enqueues_once(tmp_path, 
     task_store.update(original_task_id, status=TaskStatus.FAILED, active_run_id=None)
     assert client.delete(f"/tasks/{original_task_id}").status_code == 200
     stale_session = client.get(f"/batch-sessions/{digest}").json()["session"]
-    stale_segment = next(segment for segment in stale_session["segments"] if segment["id"] == "segment-1")
+    stale_segment = next(
+        segment for segment in stale_session["segments"] if segment["id"] == "segment-1"
+    )
     assert stale_segment["status"] == "failed"
     assert stale_segment["error"] == "关联任务不存在"
 
@@ -1081,7 +1257,9 @@ def test_batch_process_renders_all_pending_segments_and_enqueues_once(tmp_path, 
     assert retry_payload["requested"] == 1
     assert retry_payload["created"] == 1
     assert retry_payload["queued"] == 1
-    recreated_segment = next(segment for segment in retry_payload["session"]["segments"] if segment["id"] == "segment-1")
+    recreated_segment = next(
+        segment for segment in retry_payload["session"]["segments"] if segment["id"] == "segment-1"
+    )
     assert recreated_segment["task_id"] != original_task_id
     assert task_store.get(recreated_segment["task_id"]).status == TaskStatus.PROCESSING
     assert len(runner.submitted) == 3
@@ -1098,34 +1276,43 @@ def test_batch_session_rejects_invalid_segment_pages_before_persistence(tmp_path
         "BATCH_SESSION_STORE",
         BatchSessionStore(storage / "settings" / "batch_sessions.json"),
     )
-    monkeypatch.setattr(main, "BATCH_PROCESS_JOB_STORE", BatchProcessJobStore(storage / "batch_jobs"))
+    monkeypatch.setattr(
+        main, "BATCH_PROCESS_JOB_STORE", BatchProcessJobStore(storage / "batch_jobs")
+    )
     monkeypatch.setattr(main, "PI_RUNNER", RecordingBatchRunner(task_store))
     client = TestClient(main.app)
     image = base64.b64decode(
         "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
     )
     digest = hashlib.sha256(image).hexdigest()
-    assert client.put(
-        f"/batch-sessions/{digest}/source",
-        content=image,
-        headers={
-            "x-oopsnote-filename": "question.png",
-            "x-oopsnote-page-count": "1",
-            "content-type": "image/png",
-        },
-    ).status_code == 200
+    assert (
+        client.put(
+            f"/batch-sessions/{digest}/source",
+            content=image,
+            headers={
+                "x-oopsnote-filename": "question.png",
+                "x-oopsnote-page-count": "1",
+                "content-type": "image/png",
+            },
+        ).status_code
+        == 200
+    )
     invalid_patch = client.patch(
         f"/batch-sessions/{digest}",
         json={
             "expected_revision": 0,
             "page_count": 1,
             "crop_confirmed": True,
-            "segments": [{
-                "id": "bad-page",
-                "parts": [{"page_index": 1, "x": 0, "y": 0, "width": 1, "height": 1, "order": 0}],
-                "question_no": 1,
-                "status": "pending",
-            }],
+            "segments": [
+                {
+                    "id": "bad-page",
+                    "parts": [
+                        {"page_index": 1, "x": 0, "y": 0, "width": 1, "height": 1, "order": 0}
+                    ],
+                    "question_no": 1,
+                    "status": "pending",
+                }
+            ],
         },
     )
 
@@ -1141,38 +1328,62 @@ def test_batch_session_rejects_invalid_segment_pages_before_persistence(tmp_path
     assert task_store.list_all() == []
 
 
-def test_batch_process_marks_invalid_question_numbers_for_review_and_queues_valid_segments(tmp_path, monkeypatch):
+def test_batch_process_marks_invalid_question_numbers_for_review_and_queues_valid_segments(
+    tmp_path, monkeypatch
+):
     storage = tmp_path / "storage"
     task_store = TaskStore(storage)
     runner = RecordingBatchRunner(task_store)
     monkeypatch.setattr(main, "ASSET_STORE", AssetStore(storage / "assets"))
     monkeypatch.setattr(main, "TASK_STORE", task_store)
     monkeypatch.setattr(main, "TAG_STORE", TagStore(storage / "settings" / "tags.json"))
-    monkeypatch.setattr(main, "BATCH_SESSION_STORE", BatchSessionStore(storage / "settings" / "batch_sessions.json"))
-    monkeypatch.setattr(main, "BATCH_PROCESS_JOB_STORE", BatchProcessJobStore(storage / "batch_jobs"))
+    monkeypatch.setattr(
+        main, "BATCH_SESSION_STORE", BatchSessionStore(storage / "settings" / "batch_sessions.json")
+    )
+    monkeypatch.setattr(
+        main, "BATCH_PROCESS_JOB_STORE", BatchProcessJobStore(storage / "batch_jobs")
+    )
     monkeypatch.setattr(main, "_runner_for", lambda _backend: runner)
     client = TestClient(main.app)
     image = base64.b64decode(
         "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
     )
     digest = hashlib.sha256(image).hexdigest()
-    assert client.put(
-        f"/batch-sessions/{digest}/source",
-        content=image,
-        headers={"x-oopsnote-filename": "question.png", "x-oopsnote-page-count": "1", "content-type": "image/png"},
-    ).status_code == 200
-    assert client.patch(
-        f"/batch-sessions/{digest}",
-        json={
-            "expected_revision": 0,
-            "page_count": 1,
-            "crop_confirmed": True,
-            "segments": [
-                {"id": "missing", "parts": [{"page_index": 0, "x": 0, "y": 0, "width": 0.5, "height": 1}], "question_no": None},
-                {"id": "valid", "parts": [{"page_index": 0, "x": 0.5, "y": 0, "width": 0.5, "height": 1}], "question_no": 2},
-            ],
-        },
-    ).status_code == 200
+    assert (
+        client.put(
+            f"/batch-sessions/{digest}/source",
+            content=image,
+            headers={
+                "x-oopsnote-filename": "question.png",
+                "x-oopsnote-page-count": "1",
+                "content-type": "image/png",
+            },
+        ).status_code
+        == 200
+    )
+    assert (
+        client.patch(
+            f"/batch-sessions/{digest}",
+            json={
+                "expected_revision": 0,
+                "page_count": 1,
+                "crop_confirmed": True,
+                "segments": [
+                    {
+                        "id": "missing",
+                        "parts": [{"page_index": 0, "x": 0, "y": 0, "width": 0.5, "height": 1}],
+                        "question_no": None,
+                    },
+                    {
+                        "id": "valid",
+                        "parts": [{"page_index": 0, "x": 0.5, "y": 0, "width": 0.5, "height": 1}],
+                        "question_no": 2,
+                    },
+                ],
+            },
+        ).status_code
+        == 200
+    )
 
     processed = client.post(f"/batch-sessions/{digest}/process", json={"expected_revision": 1})
 
@@ -1182,7 +1393,9 @@ def test_batch_process_marks_invalid_question_numbers_for_review_and_queues_vali
     assert payload["needs_review"] == 1
     assert payload["queued"] == 1
     assert {item["status"] for item in payload["items"]} == {"needs_review", "processing"}
-    reviewed = next(segment for segment in payload["session"]["segments"] if segment["id"] == "missing")
+    reviewed = next(
+        segment for segment in payload["session"]["segments"] if segment["id"] == "missing"
+    )
     assert reviewed["status"] == "needs_review"
     assert reviewed["review_reason"] == "other"
     assert reviewed["task_id"] is None

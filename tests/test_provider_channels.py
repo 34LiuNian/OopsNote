@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import patch
 
@@ -13,8 +13,7 @@ from oopsnote.ai.providers import (
     StageModelSelection,
 )
 from oopsnote.ai.secrets import MemorySecretStore
-from oopsnote.core import AppSettingsStore
-from oopsnote.core import RunStatus, RunStore, TaskCreateRequest, TaskStore
+from oopsnote.core import AppSettingsStore, RunStatus, RunStore, TaskCreateRequest, TaskStore
 
 
 def channel(vault: MemorySecretStore) -> ProviderChannel:
@@ -25,11 +24,15 @@ def channel(vault: MemorySecretStore) -> ProviderChannel:
         provider="openai-compatible",
         base_url="https://gateway.example/v1",
         credential_ref=vault.put("secret"),
-        models=(ChannelModel(
-            id="text", source="DeepSeek", enabled=True,
-            capability=ProviderCapabilities(tool_calling=True, vision=True),
-        ),),
-        created_at=datetime.now(timezone.utc),
+        models=(
+            ChannelModel(
+                id="text",
+                source="DeepSeek",
+                enabled=True,
+                capability=ProviderCapabilities(tool_calling=True, vision=True),
+            ),
+        ),
+        created_at=datetime.now(UTC),
     )
 
 
@@ -39,12 +42,16 @@ def test_legacy_policy_migration_persists_an_independent_diagram_selection(tmp_p
     configured = channel(vault)
     settings.upsert_provider_channel(configured)
     selection = {"channel_id": configured.id, "model_id": "text"}
-    settings.update({"langchain_model_policy": {
-        "version": 1,
-        "vision": selection,
-        "agent": selection,
-        "review": selection,
-    }})
+    settings.update(
+        {
+            "langchain_model_policy": {
+                "version": 1,
+                "vision": selection,
+                "agent": selection,
+                "review": selection,
+            }
+        }
+    )
 
     assert settings.langchain_model_policy() is None
     assert settings.migrate_legacy_diagram_policy() is True
@@ -63,12 +70,16 @@ def test_incomplete_policy_never_infers_diagram_from_vision(tmp_path: Path):
     configured = channel(vault)
     settings.upsert_provider_channel(configured)
     selection = {"channel_id": configured.id, "model_id": "text"}
-    settings.update({"langchain_model_policy": {
-        "version": 1,
-        "vision": selection,
-        "agent": selection,
-        "review": selection,
-    }})
+    settings.update(
+        {
+            "langchain_model_policy": {
+                "version": 1,
+                "vision": selection,
+                "agent": selection,
+                "review": selection,
+            }
+        }
+    )
 
     assert settings.langchain_model_policy() is None
 
@@ -76,13 +87,25 @@ def test_incomplete_policy_never_infers_diagram_from_vision(tmp_path: Path):
 def test_discovery_groups_by_provider_source_and_defaults_tool_calling_capability():
     vault = MemorySecretStore()
     configured = channel(vault)
-    response = type("Response", (), {
-        "raise_for_status": lambda self: None,
-        "json": lambda self: {"data": [{"id": "deepseek-chat", "owned_by": "DeepSeek"}, {"id": "other", "owned_by": "Other"}]},
-    })()
+    response = type(
+        "Response",
+        (),
+        {
+            "raise_for_status": lambda self: None,
+            "json": lambda self: {
+                "data": [
+                    {"id": "deepseek-chat", "owned_by": "DeepSeek"},
+                    {"id": "other", "owned_by": "Other"},
+                ]
+            },
+        },
+    )()
     with patch("httpx.get", return_value=response):
         models = ProviderClientFactory(vault).discover_models(configured)
-    assert [(item.id, item.source) for item in models] == [("deepseek-chat", "DeepSeek"), ("other", "Other")]
+    assert [(item.id, item.source) for item in models] == [
+        ("deepseek-chat", "DeepSeek"),
+        ("other", "Other"),
+    ]
     assert all(not item.enabled for item in models)
     assert all(item.capability.tool_calling for item in models)
     assert all(not item.capability.vision for item in models)
@@ -91,10 +114,14 @@ def test_discovery_groups_by_provider_source_and_defaults_tool_calling_capabilit
 def test_openai_catalog_normalizes_an_origin_to_v1():
     vault = MemorySecretStore()
     configured = channel(vault).model_copy(update={"base_url": "https://gateway.example"})
-    response = type("Response", (), {
-        "raise_for_status": lambda self: None,
-        "json": lambda self: {"data": [{"id": "text", "owned_by": "Gateway"}]},
-    })()
+    response = type(
+        "Response",
+        (),
+        {
+            "raise_for_status": lambda self: None,
+            "json": lambda self: {"data": [{"id": "text", "owned_by": "Gateway"}]},
+        },
+    )()
     with patch("httpx.get", return_value=response) as request:
         ProviderClientFactory(vault).discover_models(configured)
 
@@ -107,7 +134,9 @@ def test_policy_and_channel_are_persisted_as_one_authoritative_settings_shape(tm
     configured = channel(vault)
     store.upsert_provider_channel(configured)
     selection = StageModelSelection(channel_id=configured.id, model_id="text")
-    policy = LangChainModelPolicy(version=1, vision=selection, agent=selection, review=selection, diagram=selection)
+    policy = LangChainModelPolicy(
+        version=1, vision=selection, agent=selection, review=selection, diagram=selection
+    )
     store.set_langchain_model_policy(policy)
     assert store.provider_channels() == [configured]
     assert store.langchain_model_policy() == policy
@@ -136,7 +165,9 @@ def test_channel_order_is_atomic_and_survives_channel_updates(tmp_path: Path):
     store.upsert_provider_channel(second)
 
     store.reorder_provider_channels(["second", "first"])
-    store.upsert_provider_channel(second.model_copy(update={"version": 2, "display_name": "Second updated"}))
+    store.upsert_provider_channel(
+        second.model_copy(update={"version": 2, "display_name": "Second updated"})
+    )
 
     assert [item.id for item in store.provider_channels()] == ["second", "first"]
     assert store.provider_channels()[0].display_name == "Second updated"
@@ -154,20 +185,32 @@ def test_channel_order_rejects_partial_or_duplicate_ids(tmp_path: Path):
     assert [item.id for item in store.provider_channels()] == ["first", "second"]
 
 
-def test_channel_mutation_preserves_policy_intent_when_one_selection_becomes_unavailable(tmp_path: Path):
+def test_channel_mutation_preserves_policy_intent_when_one_selection_becomes_unavailable(
+    tmp_path: Path,
+):
     vault = MemorySecretStore()
     store = AppSettingsStore(tmp_path / "settings.json")
     configured = channel(vault)
     store.upsert_provider_channel(configured)
     selection = StageModelSelection(channel_id=configured.id, model_id="text")
-    store.set_langchain_model_policy(LangChainModelPolicy(
-        version=1, vision=selection, agent=selection, review=selection, diagram=selection,
-    ))
+    store.set_langchain_model_policy(
+        LangChainModelPolicy(
+            version=1,
+            vision=selection,
+            agent=selection,
+            review=selection,
+            diagram=selection,
+        )
+    )
 
-    store.upsert_provider_channel(configured.model_copy(update={
-        "version": 2,
-        "models": (configured.models[0].model_copy(update={"enabled": False}),),
-    }))
+    store.upsert_provider_channel(
+        configured.model_copy(
+            update={
+                "version": 2,
+                "models": (configured.models[0].model_copy(update={"enabled": False}),),
+            }
+        )
+    )
 
     assert store.langchain_model_policy() is not None
     assert store.langchain_model_policy().agent == selection
@@ -176,27 +219,37 @@ def test_channel_mutation_preserves_policy_intent_when_one_selection_becomes_una
 def test_store_rejects_persisting_a_policy_with_missing_capability(tmp_path: Path):
     vault = MemorySecretStore()
     store = AppSettingsStore(tmp_path / "settings.json")
-    configured = channel(vault).model_copy(update={
-        "models": (ChannelModel(id="text", source="DeepSeek", enabled=True),),
-    })
+    configured = channel(vault).model_copy(
+        update={
+            "models": (ChannelModel(id="text", source="DeepSeek", enabled=True),),
+        }
+    )
     store.upsert_provider_channel(configured)
     selection = StageModelSelection(channel_id=configured.id, model_id="text")
 
     with pytest.raises(ValueError, match="unavailable channel or model"):
-        store.set_langchain_model_policy(LangChainModelPolicy(
-            version=1, vision=selection, agent=selection, review=selection, diagram=selection,
-        ))
+        store.set_langchain_model_policy(
+            LangChainModelPolicy(
+                version=1,
+                vision=selection,
+                agent=selection,
+                review=selection,
+                diagram=selection,
+            )
+        )
 
 
 def test_retiring_legacy_profile_shape_returns_only_opaque_references(tmp_path: Path):
     store = AppSettingsStore(tmp_path / "settings.json")
-    store.update({
-        "provider_profiles": [
-            {"id": "old", "credential_ref": "opaque-old", "version": 1},
-            {"id": "without-secret", "version": 1},
-        ],
-        "ai_provider_profile_id": "old",
-    })
+    store.update(
+        {
+            "provider_profiles": [
+                {"id": "old", "credential_ref": "opaque-old", "version": 1},
+                {"id": "without-secret", "version": 1},
+            ],
+            "ai_provider_profile_id": "old",
+        }
+    )
 
     assert store.retire_legacy_provider_secrets() == ["opaque-old"]
     assert "provider_profiles" not in store.get()
@@ -221,7 +274,9 @@ def test_secret_collection_retains_current_channel_reference(tmp_path: Path):
     runs.finish(run.id, RunStatus.COMPLETED)
     from oopsnote.ai.providers import collect_unreferenced_channel_secrets
 
-    assert collect_unreferenced_channel_secrets(vault, store.provider_channels(), runs.list_all()) == 0
+    assert (
+        collect_unreferenced_channel_secrets(vault, store.provider_channels(), runs.list_all()) == 0
+    )
     assert vault.has(configured.credential_ref)
 
 
@@ -234,7 +289,10 @@ def test_secret_collection_finds_nested_stage_snapshot_references(tmp_path: Path
     run = runs.create(
         task.id,
         backend="langchain",
-        provider_profile_snapshot={"vision": {"credential_ref": stale_ref}, "agent": {"credential_ref": stale_ref}},
+        provider_profile_snapshot={
+            "vision": {"credential_ref": stale_ref},
+            "agent": {"credential_ref": stale_ref},
+        },
     )
     runs.finish(run.id, RunStatus.COMPLETED)
     from oopsnote.ai.providers import collect_unreferenced_channel_secrets
@@ -243,26 +301,47 @@ def test_secret_collection_finds_nested_stage_snapshot_references(tmp_path: Path
     assert not vault.has(stale_ref)
 
 
-def test_langchain_admission_freezes_all_three_stage_models_and_rejects_closed_capability(tmp_path: Path):
+def test_langchain_admission_freezes_all_three_stage_models_and_rejects_closed_capability(
+    tmp_path: Path,
+):
     from oopsnote.ai.backends.langchain import LangChainRunner
 
     vault = MemorySecretStore()
     settings = AppSettingsStore(tmp_path / "settings.json")
-    configured = channel(vault).model_copy(update={
-        "models": (
-            ChannelModel(id="vision", source="Gateway", enabled=True, capability=ProviderCapabilities(vision=True)),
-            ChannelModel(id="agent", source="Gateway", enabled=True, capability=ProviderCapabilities(tool_calling=True)),
-            ChannelModel(id="review", source="Gateway", enabled=True, capability=ProviderCapabilities(tool_calling=True)),
-        )
-    })
+    configured = channel(vault).model_copy(
+        update={
+            "models": (
+                ChannelModel(
+                    id="vision",
+                    source="Gateway",
+                    enabled=True,
+                    capability=ProviderCapabilities(vision=True),
+                ),
+                ChannelModel(
+                    id="agent",
+                    source="Gateway",
+                    enabled=True,
+                    capability=ProviderCapabilities(tool_calling=True),
+                ),
+                ChannelModel(
+                    id="review",
+                    source="Gateway",
+                    enabled=True,
+                    capability=ProviderCapabilities(tool_calling=True),
+                ),
+            )
+        }
+    )
     settings.upsert_provider_channel(configured)
-    settings.set_langchain_model_policy(LangChainModelPolicy(
-        version=1,
-        vision=StageModelSelection(channel_id=configured.id, model_id="vision"),
-        agent=StageModelSelection(channel_id=configured.id, model_id="agent"),
-        review=StageModelSelection(channel_id=configured.id, model_id="review"),
-        diagram=StageModelSelection(channel_id=configured.id, model_id="vision"),
-    ))
+    settings.set_langchain_model_policy(
+        LangChainModelPolicy(
+            version=1,
+            vision=StageModelSelection(channel_id=configured.id, model_id="vision"),
+            agent=StageModelSelection(channel_id=configured.id, model_id="agent"),
+            review=StageModelSelection(channel_id=configured.id, model_id="review"),
+            diagram=StageModelSelection(channel_id=configured.id, model_id="vision"),
+        )
+    )
     tasks = TaskStore(tmp_path / "tasks")
     runs = RunStore(tmp_path / "runs")
     runner = LangChainRunner(
@@ -278,13 +357,24 @@ def test_langchain_admission_freezes_all_three_stage_models_and_rejects_closed_c
     )
     task = tasks.create(TaskCreateRequest(subject="math"))
     metadata = runner._run_metadata(task.id)
-    assert set(metadata["provider_profile_snapshot"]) == {"policy_version", "vision", "agent", "review", "diagram"}
+    assert set(metadata["provider_profile_snapshot"]) == {
+        "policy_version",
+        "vision",
+        "agent",
+        "review",
+        "diagram",
+    }
     assert metadata["provider_profile_snapshot"]["diagram"]["model"] == "vision"
     assert metadata["provider_profile_snapshot"]["vision"]["model"] == "vision"
-    closed = configured.model_copy(update={
-        "version": 2,
-        "models": tuple(item.model_copy(update={"capability": ProviderCapabilities()}) for item in configured.models),
-    })
+    closed = configured.model_copy(
+        update={
+            "version": 2,
+            "models": tuple(
+                item.model_copy(update={"capability": ProviderCapabilities()})
+                for item in configured.models
+            ),
+        }
+    )
     settings.upsert_provider_channel(closed)
     assert settings.langchain_model_policy() is not None
     with pytest.raises(RuntimeError, match="selected LangChain Vision model is not enabled"):

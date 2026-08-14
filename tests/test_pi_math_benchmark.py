@@ -4,18 +4,22 @@ from scripts.benchmarks import pi_math_benchmark as benchmark
 
 
 def test_benchmark_table_renders_stage_and_cost_metrics():
-    table = benchmark.markdown_table([{
-        "case": "example-1.1",
-        "expected": "C",
-        "answer": "C",
-        "status": "completed",
-        "duration_ms": 1234,
-        "stages": {"ocr": 100, "solving": 200, "verifying": 300, "tagging": 400},
-        "input_tokens": 10,
-        "output_tokens": 20,
-        "cache_tokens": 30,
-        "cost": 0.001,
-    }])
+    table = benchmark.markdown_table(
+        [
+            {
+                "case": "example-1.1",
+                "expected": "C",
+                "answer": "C",
+                "status": "completed",
+                "duration_ms": 1234,
+                "stages": {"ocr": 100, "solving": 200, "verifying": 300, "tagging": 400},
+                "input_tokens": 10,
+                "output_tokens": 20,
+                "cache_tokens": 30,
+                "cost": 0.001,
+            }
+        ]
+    )
 
     assert "example-1.1" in table
     assert "1.23s" in table

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -41,7 +41,7 @@ def import_model_channel(
         raise ValueError(f"legacy auth has no {provider}.key credential")
     reference = store.put(secret)
     try:
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         channel = ProviderChannel(
             id=channel_id,
             version=_next_version(settings, channel_id),
@@ -81,7 +81,7 @@ def import_ocr_channel(
         raise ValueError("legacy OCR config has no endpoint")
     reference = store.put(secret)
     try:
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         channel = ProviderChannel(
             id=channel_id,
             version=_next_version(settings, channel_id),
@@ -129,28 +129,37 @@ def main() -> int:
     settings = AppSettingsStore(args.settings)
     channels: list[ProviderChannel] = []
     if args.pi_auth is not None:
-        channels.append(import_model_channel(
-            args.pi_auth,
-            store=store,
-            settings=settings,
-            channel_id=args.channel_id,
-            provider=args.provider,
-            model=args.model,
-            base_url=args.base_url,
-        ))
+        channels.append(
+            import_model_channel(
+                args.pi_auth,
+                store=store,
+                settings=settings,
+                channel_id=args.channel_id,
+                provider=args.provider,
+                model=args.model,
+                base_url=args.base_url,
+            )
+        )
     if args.ocr_config is not None:
-        channels.append(import_ocr_channel(
-            args.ocr_config,
-            store=store,
-            settings=settings,
-            channel_id=args.ocr_channel_id,
-        ))
-    print(json.dumps({
-        "channels": [
-            channel.model_dump(mode="json", exclude={"credential_ref"})
-            for channel in channels
-        ]
-    }, ensure_ascii=False))
+        channels.append(
+            import_ocr_channel(
+                args.ocr_config,
+                store=store,
+                settings=settings,
+                channel_id=args.ocr_channel_id,
+            )
+        )
+    print(
+        json.dumps(
+            {
+                "channels": [
+                    channel.model_dump(mode="json", exclude={"credential_ref"})
+                    for channel in channels
+                ]
+            },
+            ensure_ascii=False,
+        )
+    )
     return 0
 
 

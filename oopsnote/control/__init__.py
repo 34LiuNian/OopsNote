@@ -8,9 +8,9 @@ from .workspaces import WorkspaceRegistry
 __all__ = [
     "ControlDatabase",
     "ControlDatabaseError",
+    "QuotaAwareRunStore",
     "QuotaError",
     "QuotaService",
-    "QuotaAwareRunStore",
     "RunAdmission",
     "WorkspaceRegistry",
 ]

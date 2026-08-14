@@ -5,16 +5,16 @@ services:
       args:
         OOPSNOTE_BACKEND_URL: http://backend:8000
         NEXT_PUBLIC_AUTH_MODE: ${NEXT_PUBLIC_AUTH_MODE:-better-auth}
-        NEXT_PUBLIC_OIDC_AUTHORITY: https://auth.alan-ztr.eu.org
-        NEXT_PUBLIC_OIDC_CLIENT_ID: abd3d0b3-46f3-4aaa-994c-1c9258c74c1e
-        NEXT_PUBLIC_OIDC_REDIRECT_URI: https://oopsnote.alan-ztr.eu.org/auth/callback
-        NEXT_PUBLIC_OIDC_POST_LOGOUT_REDIRECT_URI: https://oopsnote.alan-ztr.eu.org/
-        NEXT_PUBLIC_OIDC_SCOPE: openid profile email groups
-        NEXT_PUBLIC_ADMIN_SUBJECTS: 5cf94ffe-c14b-4c32-9092-7ff8ab947579
+        NEXT_PUBLIC_OIDC_AUTHORITY: ${OOPSNOTE_OIDC_AUTHORITY:-https://auth.example.com}
+        NEXT_PUBLIC_OIDC_CLIENT_ID: ${OOPSNOTE_OIDC_CLIENT_ID:-}
+        NEXT_PUBLIC_OIDC_REDIRECT_URI: ${OOPSNOTE_OIDC_REDIRECT_URI:-https://oopsnote.example.com/auth/callback}
+        NEXT_PUBLIC_OIDC_POST_LOGOUT_REDIRECT_URI: ${OOPSNOTE_OIDC_POST_LOGOUT_REDIRECT_URI:-https://oopsnote.example.com/}
+        NEXT_PUBLIC_OIDC_SCOPE: "${OOPSNOTE_OIDC_SCOPE:-openid profile email groups}"
+        NEXT_PUBLIC_ADMIN_SUBJECTS: ${OOPSNOTE_ADMIN_SUBJECTS:-}
     environment:
       NODE_ENV: production
       NEXT_PUBLIC_AUTH_MODE: ${NEXT_PUBLIC_AUTH_MODE:-better-auth}
-      BETTER_AUTH_URL: https://oopsnote.alan-ztr.eu.org
+      BETTER_AUTH_URL: ${OOPSNOTE_PUBLIC_URL:-https://oopsnote.example.com}
       OOPSNOTE_AUTH_DB_PATH: /auth/auth.sqlite
       OOPSNOTE_BACKEND_URL: http://backend:8000
       OOPSNOTE_BETTER_AUTH_SECRET_FILE: /run/secrets/oopsnote_better_auth_secret
@@ -26,6 +26,10 @@ services:
       - oopsnote_bff_hmac_secret
     ports:
       - "127.0.0.1:13000:3000"
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
     networks:
       - app
 
@@ -52,6 +56,7 @@ services:
     depends_on:
       latex-renderer:
         condition: service_healthy
+    restart: unless-stopped
     networks:
       - app
       - latex-internal
@@ -67,7 +72,7 @@ services:
     env_file:
       - ./deploy/pocket-id/pocket-id.env
     environment:
-      APP_URL: https://auth.alan-ztr.eu.org
+      APP_URL: ${OOPSNOTE_OIDC_AUTHORITY:-https://auth.example.com}
       ENCRYPTION_KEY_FILE: /run/secrets/pocket_id_encryption_key
       TRUST_PROXY: "true"
     secrets:
@@ -101,6 +106,7 @@ services:
       - ALL
     security_opt:
       - no-new-privileges:true
+    restart: unless-stopped
     networks:
       - latex-internal
     healthcheck:

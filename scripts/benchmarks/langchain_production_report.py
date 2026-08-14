@@ -13,9 +13,10 @@ import math
 import statistics
 import sys
 from collections import defaultdict
-from datetime import datetime, timezone
+from collections.abc import Iterable
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Iterable, Literal, Optional
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, PositiveInt, model_validator
 
@@ -25,9 +26,14 @@ if str(ROOT) not in sys.path:
 
 from oopsnote.core import RunStatus, RunStore, TaskRecord, TaskRun, TaskStore
 
-TERMINAL = frozenset({
-    RunStatus.COMPLETED, RunStatus.FAILED, RunStatus.CANCELLED, RunStatus.TIMED_OUT,
-})
+TERMINAL = frozenset(
+    {
+        RunStatus.COMPLETED,
+        RunStatus.FAILED,
+        RunStatus.CANCELLED,
+        RunStatus.TIMED_OUT,
+    }
+)
 SYNTHETIC_SOURCES = (
     "langchain-benchmark-",
     "langchain-smoke-",
@@ -97,7 +103,7 @@ class EvaluationEvidence(BaseModel):
     cost_approval: CostApproval
 
     @model_validator(mode="after")
-    def unique_references(self) -> "EvaluationEvidence":
+    def unique_references(self) -> EvaluationEvidence:
         task_ids = [item.task_id for item in self.task_results]
         if len(task_ids) != len(set(task_ids)):
             raise ValueError("task_results contains duplicate task_id values")
@@ -111,7 +117,7 @@ def _timestamp(run: TaskRun) -> datetime:
     return run.ended_at or run.heartbeat_at or run.queued_at
 
 
-def _p95(values: list[int]) -> Optional[int]:
+def _p95(values: list[int]) -> int | None:
     if not values:
         return None
     ordered = sorted(values)
@@ -127,12 +133,14 @@ def _strategy_from_snapshot(snapshot: Any) -> LangChainStrategy | None:
         if not isinstance(raw, dict):
             return None
         try:
-            stages[stage] = StageStrategy.model_validate({
-                "channel_id": raw.get("channel_id"),
-                "provider": raw.get("provider"),
-                "model": raw.get("model"),
-                "version": raw.get("version"),
-            })
+            stages[stage] = StageStrategy.model_validate(
+                {
+                    "channel_id": raw.get("channel_id"),
+                    "provider": raw.get("provider"),
+                    "model": raw.get("model"),
+                    "version": raw.get("version"),
+                }
+            )
         except ValueError:
             return None
     try:
@@ -150,7 +158,7 @@ def build_report(
     tasks: Iterable[TaskRecord],
     runs: Iterable[TaskRun],
     *,
-    policy_version: Optional[int] = None,
+    policy_version: int | None = None,
     include_synthetic: bool = False,
     evidence: EvaluationEvidence | None = None,
 ) -> dict[str, Any]:
@@ -159,16 +167,18 @@ def build_report(
             raise ValueError("evidence policy_version does not match the report filter")
         policy_version = evidence.strategy.policy_version
     cohort_task_ids = (
-        {item.task_id for item in evidence.task_results}
-        if evidence is not None
-        else None
+        {item.task_id for item in evidence.task_results} if evidence is not None else None
     )
     tasks_by_id = {task.id: task for task in tasks}
     all_runs = list(runs)
     attempts: dict[str, list[TaskRun]] = defaultdict(list)
     matching_terminal_runs: dict[str, TaskRun] = {}
     for run in all_runs:
-        if run.backend != "langchain" or run.status not in TERMINAL or run.task_id not in tasks_by_id:
+        if (
+            run.backend != "langchain"
+            or run.status not in TERMINAL
+            or run.task_id not in tasks_by_id
+        ):
             continue
         strategy = _strategy_from_snapshot(run.provider_profile_snapshot)
         if strategy is None:
@@ -190,21 +200,25 @@ def build_report(
         first = min(task_attempts, key=lambda run: run.queued_at)
         final = max(task_attempts, key=_timestamp)
         ended_at = _timestamp(final)
-        outcomes.append({
-            "task_id": task_id,
-            "final_run_id": final.id,
-            "status": final.status.value,
-            "duration_ms": max(0, int((ended_at - first.queued_at).total_seconds() * 1000)),
-            "attempt_count": len(task_attempts),
-            "retry_count": max(run.retry_count for run in task_attempts),
-            "cost": final.cost,
-            "verifier_submission_count": sum(
-                artifact.kind == "verifier_submission"
-                for attempt in task_attempts
-                for artifact in attempt.artifacts
-            ),
-            "strategy": _strategy_from_snapshot(final.provider_profile_snapshot).model_dump(mode="json"),
-        })
+        outcomes.append(
+            {
+                "task_id": task_id,
+                "final_run_id": final.id,
+                "status": final.status.value,
+                "duration_ms": max(0, int((ended_at - first.queued_at).total_seconds() * 1000)),
+                "attempt_count": len(task_attempts),
+                "retry_count": max(run.retry_count for run in task_attempts),
+                "cost": final.cost,
+                "verifier_submission_count": sum(
+                    artifact.kind == "verifier_submission"
+                    for attempt in task_attempts
+                    for artifact in attempt.artifacts
+                ),
+                "strategy": _strategy_from_snapshot(final.provider_profile_snapshot).model_dump(
+                    mode="json"
+                ),
+            }
+        )
     outcomes.sort(key=lambda item: item["task_id"])
     durations = [item["duration_ms"] for item in outcomes]
     total = len(outcomes)
@@ -227,10 +241,14 @@ def build_report(
             and denominator
             and (baseline_quality_count - quality_count) / denominator <= 0.02
         )
-        integrity_gate = bool(exact_cohort and all(
-            item["verifier_submission_count"] == (1 if item["status"] == RunStatus.COMPLETED.value else 0)
-            for item in outcomes
-        ))
+        integrity_gate = bool(
+            exact_cohort
+            and all(
+                item["verifier_submission_count"]
+                == (1 if item["status"] == RunStatus.COMPLETED.value else 0)
+                for item in outcomes
+            )
+        )
         cancellation_gate = bool(
             evidence.cancellation_trials
             and all(
@@ -266,16 +284,26 @@ def build_report(
         "cost_threshold_approved_from_measured_usage": cost_gate,
     }
     return {
-        "generated_at": datetime.now(timezone.utc),
-        "filters": {"backend": "langchain", "policy_version": policy_version, "include_synthetic": include_synthetic},
-        "population": {"tasks": total, "completed": completed, "completion_rate": completed / total if total else None},
+        "generated_at": datetime.now(UTC),
+        "filters": {
+            "backend": "langchain",
+            "policy_version": policy_version,
+            "include_synthetic": include_synthetic,
+        },
+        "population": {
+            "tasks": total,
+            "completed": completed,
+            "completion_rate": completed / total if total else None,
+        },
         "metrics": {
             "p50_duration_ms": round(statistics.median(durations)) if durations else None,
             "p95_duration_ms": _p95(durations),
             "total_cost": sum(float(cost or 0) for cost in costs),
             "cost_coverage": sum(cost is not None for cost in costs) / total if total else None,
         },
-        "evidence": None if evidence is None else {
+        "evidence": None
+        if evidence is None
+        else {
             "schema_version": evidence.schema_version,
             "strategy": evidence.strategy.model_dump(mode="json"),
             "cohort_matches_persisted_runs": exact_cohort,
@@ -296,18 +324,30 @@ def markdown_report(report: dict[str, Any]) -> str:
     population = report["population"]
     metrics = report["metrics"]
     rate = population["completion_rate"]
+    p50_cell = (
+        "--" if metrics["p50_duration_ms"] is None else f"{metrics['p50_duration_ms'] / 1000:.2f}s"
+    )
+    p95_cell = (
+        "--" if metrics["p95_duration_ms"] is None else f"{metrics['p95_duration_ms'] / 1000:.2f}s"
+    )
     lines = [
-        "# LangChain isolated evaluation report", "",
-        "| metric | value |", "| --- | ---: |",
+        "# LangChain isolated evaluation report",
+        "",
+        "| metric | value |",
+        "| --- | ---: |",
         f"| real terminal tasks | {population['tasks']} |",
         f"| completion rate | {'--' if rate is None else f'{rate * 100:.1f}%'} |",
-        f"| P50 duration | {'--' if metrics['p50_duration_ms'] is None else f"{metrics['p50_duration_ms'] / 1000:.2f}s"} |",
-        f"| P95 duration | {'--' if metrics['p95_duration_ms'] is None else f"{metrics['p95_duration_ms'] / 1000:.2f}s"} |",
+        f"| P50 duration | {p50_cell} |",
+        f"| P95 duration | {p95_cell} |",
         f"| total measured provider cost | {metrics['total_cost']:.6f} |",
-        "", "| RustPi deletion gate | result |", "| --- | --- |",
+        "",
+        "| RustPi deletion gate | result |",
+        "| --- | --- |",
     ]
     for name, value in report["gates"].items():
-        lines.append(f"| {name.replace('_', ' ')} | {'pass' if value is True else 'not met' if value is False else 'not observed'} |")
+        lines.append(
+            f"| {name.replace('_', ' ')} | {'pass' if value is True else 'not met' if value is False else 'not observed'} |"
+        )
     return "\n".join(lines)
 
 
@@ -359,8 +399,7 @@ def main() -> int:
             include_synthetic=args.include_synthetic,
         )
         strategies = {
-            json.dumps(item["strategy"], sort_keys=True)
-            for item in preliminary["outcomes"]
+            json.dumps(item["strategy"], sort_keys=True) for item in preliminary["outcomes"]
         }
         if len(strategies) != 1:
             parser.error("the selected cohort must contain exactly one frozen three-stage strategy")
@@ -392,7 +431,9 @@ def main() -> int:
     if args.output_dir:
         args.output_dir.mkdir(parents=True, exist_ok=True)
         stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-        (args.output_dir / f"{stamp}.json").write_text(json.dumps(report, ensure_ascii=False, indent=2, default=str) + "\n", encoding="utf-8")
+        (args.output_dir / f"{stamp}.json").write_text(
+            json.dumps(report, ensure_ascii=False, indent=2, default=str) + "\n", encoding="utf-8"
+        )
         (args.output_dir / f"{stamp}.md").write_text(rendered + "\n", encoding="utf-8")
     return 0 if report["all_gates_pass"] else 1
 
