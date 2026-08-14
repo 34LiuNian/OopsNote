@@ -27,7 +27,7 @@ class AuthConfig:
     issuer: str
     audience: str
     jwks_url: str
-    mode: str = "oidc"
+    mode: str = "better-auth"
 
     @property
     def enabled(self) -> bool:
@@ -63,7 +63,7 @@ class AuthenticationError(RuntimeError):
 
 
 def auth_config_from_env() -> AuthConfig:
-    mode = os.getenv("OOPSNOTE_AUTH_MODE", "oidc").strip().lower() or "oidc"
+    mode = os.getenv("OOPSNOTE_AUTH_MODE", "better-auth").strip().lower() or "better-auth"
     if mode not in {"oidc", "local", "better-auth"}:
         raise RuntimeError("OOPSNOTE_AUTH_MODE must be 'oidc', 'better-auth', or 'local'")
     issuer = os.getenv("OOPSNOTE_AUTH_ISSUER", "").strip().rstrip("/")

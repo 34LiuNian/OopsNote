@@ -109,13 +109,13 @@ LangChain 隔离生产评测报告：
 [deploy/README.md](deploy/README.md)：
 
 ```sh
-cp .env.example .env               # 填写域名、OIDC 与管理员 subject
+cp .env.example .env               # 填写公开域名（认证默认 Better Auth）
 ./scripts/deploy/sync_production_context.sh
 docker compose up -d --build
 ```
 
-- `docker-compose.yml` 生产 Compose；Pocket ID 位于 `oidc-rollback` profile
-  （`deploy/compose.oidc-rollback.yml`）。
+- `docker-compose.yml` 生产 Compose（backend / frontend / latex-renderer，
+  认证默认 Better Auth）。
 - `docker-compose.dev.yml` 容器化本地开发；`docker-compose.local.yml` 本地认证
   模式覆盖。
 - Secret 模板与生成方式见 `deploy/oopsnote/secrets/README.md`。

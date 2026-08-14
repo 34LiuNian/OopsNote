@@ -1,6 +1,10 @@
 # Local authentication mode
 
-Local mode is available for loopback development when Pocket ID is unavailable.
+Local mode is a loopback-only development convenience. The frontend skips the
+login page and uses a fixed local administrator identity; the backend accepts
+requests without a bearer token. It never creates a Better Auth user and must
+not be used beyond loopback bindings.
+
 Set both sides explicitly:
 
 ```dotenv
@@ -11,17 +15,15 @@ NEXT_PUBLIC_AUTH_MODE=local
 OOPSNOTE_AUTH_MODE=local
 ```
 
-For the Docker stack, use the checked-in override so Pocket ID is not started:
+For the Docker stack:
 
 ```bash
 docker compose -f docker-compose.yml -f docker-compose.local.yml up -d --build frontend backend latex-renderer
 ```
 
-The frontend skips the OIDC redirect and uses a local administrator identity.
-The backend accepts requests without a bearer token, including administrator
-settings routes. This mode does not create an OIDC user or token and must only
-be used behind a loopback-only frontend/backend binding. Keep the production
-Compose stack on its default OIDC configuration.
-
-To return to Pocket ID, remove the two local-mode settings (or set both values
-to `oidc`) and provide the normal OIDC configuration.
+Production and normal development default to Better Auth
+(`NEXT_PUBLIC_AUTH_MODE=better-auth` / `OOPSNOTE_AUTH_MODE=better-auth`). The
+first administrator is created through the one-time bootstrap flow (see
+`deploy/README.md` and `deploy/oopsnote/secrets/README.md`). Return to Better
+Auth by removing the two local-mode settings (or setting both values to
+`better-auth`).

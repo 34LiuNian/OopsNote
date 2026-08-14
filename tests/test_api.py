@@ -167,6 +167,14 @@ def test_auth_config_rejects_unknown_mode():
         auth.auth_config_from_env()
 
 
+def test_unauthenticated_request_is_rejected_by_better_auth_default(monkeypatch):
+    monkeypatch.delenv("OOPSNOTE_AUTH_MODE", raising=False)
+    monkeypatch.setenv("OOPSNOTE_BFF_HMAC_SECRET", "x" * 64)
+    # 未显式配置时默认模式即 better-auth：无内部身份签名的一律拒绝。
+    response = TestClient(main.app).get("/tasks")
+    assert response.status_code == 401
+
+
 def test_enabled_runner_registry_does_not_construct_disabled_backends(monkeypatch):
     langchain_runner = object()
 
@@ -226,6 +234,7 @@ def test_task_routes_require_bearer_token_when_oidc_is_configured():
     with patch.dict(
         "os.environ",
         {
+            "OOPSNOTE_AUTH_MODE": "oidc",
             "OOPSNOTE_AUTH_ISSUER": "https://auth.example.com",
             "OOPSNOTE_AUTH_AUDIENCE": "client-id",
         },
@@ -243,6 +252,7 @@ def test_task_routes_accept_verified_bearer_token_when_oidc_is_configured():
         patch.dict(
             "os.environ",
             {
+                "OOPSNOTE_AUTH_MODE": "oidc",
                 "OOPSNOTE_AUTH_ISSUER": "https://auth.example.com",
                 "OOPSNOTE_AUTH_AUDIENCE": "client-id",
             },
@@ -264,6 +274,7 @@ def test_provider_settings_require_an_administrator_role_when_oidc_is_enabled():
     ordinary = AuthenticatedUser(subject="user-1", claims={"sub": "user-1", "roles": ["student"]})
     admin = AuthenticatedUser(subject="admin-1", claims={"sub": "admin-1", "roles": ["admin"]})
     environment = {
+        "OOPSNOTE_AUTH_MODE": "oidc",
         "OOPSNOTE_AUTH_ISSUER": "https://auth.example.com",
         "OOPSNOTE_AUTH_AUDIENCE": "client-id",
     }
@@ -302,6 +313,7 @@ def test_authentication_uses_explicit_jwks_url_when_configured():
     with patch.dict(
         "os.environ",
         {
+            "OOPSNOTE_AUTH_MODE": "oidc",
             "OOPSNOTE_AUTH_ISSUER": "https://auth.example.com",
             "OOPSNOTE_AUTH_AUDIENCE": "client-id",
             "OOPSNOTE_AUTH_JWKS_URL": "http://pocket-id:1411/.well-known/jwks.json",
@@ -314,6 +326,7 @@ def test_authentication_uses_explicit_jwks_url_when_configured():
         issuer="https://auth.example.com",
         audience="client-id",
         jwks_url="http://pocket-id:1411/.well-known/jwks.json",
+        mode="oidc",
     )
 
 
@@ -328,6 +341,7 @@ def test_authentication_returns_503_when_jwks_service_is_unavailable():
         issuer="https://auth.example.com",
         audience="client-id",
         jwks_url="http://pocket-id:1411/.well-known/jwks.json",
+        mode="oidc",
     )
 
     with (

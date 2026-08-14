@@ -3,7 +3,6 @@
 # 域名通过环境变量注入，启动 Caddy 前设置（见 deploy/README.md「反向代理」）：
 #   OOPSNOTE_DOMAIN      生产前端 -> 127.0.0.1:13000
 #   OOPSNOTE_DEV_DOMAIN  开发前端 -> 127.0.0.1:13001
-#   OOPSNOTE_AUTH_DOMAIN 认证入口 -> 127.0.0.1:14110
 
 {$OOPSNOTE_DOMAIN} {
     encode zstd gzip
@@ -13,9 +12,4 @@
 {$OOPSNOTE_DEV_DOMAIN} {
     encode zstd gzip
     reverse_proxy 127.0.0.1:13001
-}
-
-{$OOPSNOTE_AUTH_DOMAIN} {
-    encode zstd gzip
-    reverse_proxy 127.0.0.1:14110
 }

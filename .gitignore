@@ -15,10 +15,7 @@ oopsnote/storage/
 /deploy/pi-rust/sessions/
 /deploy/pi-rust/cache/
 
-# Server-only Pocket ID runtime secrets and state
-/deploy/pocket-id/pocket-id.env
-/deploy/pocket-id/secrets/*
-!/deploy/pocket-id/secrets/*.example
+# Server-only OopsNote Compose secrets（只提交 *.example 模板与 README）
 /deploy/oopsnote/secrets/*
 !/deploy/oopsnote/secrets/*.example
 !/deploy/oopsnote/secrets/README.md

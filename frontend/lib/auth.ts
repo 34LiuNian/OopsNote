@@ -25,7 +25,7 @@ const LOCAL_USER: AuthUser = {
 };
 
 export function isLocalAuthMode(): boolean {
-  return (process.env.NEXT_PUBLIC_AUTH_MODE || "oidc").trim().toLowerCase() === "local";
+  return (process.env.NEXT_PUBLIC_AUTH_MODE || "better-auth").trim().toLowerCase() === "local";
 }
 
 export type AuthUser = {

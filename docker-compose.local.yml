@@ -7,7 +7,3 @@ services:
   backend:
     environment:
       OOPSNOTE_AUTH_MODE: local
-
-  pocket-id:
-    profiles:
-      - oidc

@@ -53,7 +53,7 @@ vaults/              user-owned source and Obsidian data; never delete
 ## Production build and release policy
 
 - Do not run a production frontend build, Docker build, Compose recreation, or production publish unless the user explicitly requests it for the current task.
-- When explicitly requested, use the production Compose file and rebuild only the affected services; do not recreate Pocket ID, databases, or unrelated infrastructure.
+- When explicitly requested, use the production Compose file and rebuild only the affected services; do not recreate databases or unrelated infrastructure.
 - After an explicitly requested recreation, verify container health, the public health endpoint, and the changed route or workflow.
 
 ## Durable fix requirements

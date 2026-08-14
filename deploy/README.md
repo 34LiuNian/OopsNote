@@ -7,21 +7,20 @@
 
 | 文件 | 用途 |
 | --- | --- |
-| `docker-compose.yml` | 生产（backend / frontend / latex-renderer；Pocket ID 位于 `oidc-rollback` profile） |
+| `docker-compose.yml` | 生产（backend / frontend / latex-renderer，认证默认 Better Auth） |
 | `docker-compose.dev.yml` | 容器化本地开发（源码绑定挂载 + `--reload` 热更新） |
 | `docker-compose.local.yml` | 本地认证模式覆盖：`docker compose -f docker-compose.yml -f docker-compose.local.yml ...` |
-| `deploy/compose.bootstrap.yml` | 一次性引导（bootstrap secret，用于首次成员邀请/管理员引导） |
-| `deploy/compose.oidc-rollback.yml` | OIDC（Pocket ID）回滚 profile：`docker compose --profile oidc-rollback ...` |
+| `deploy/compose.bootstrap.yml` | 一次性引导（bootstrap secret，创建第一个管理员账号） |
 
 ## 生产部署（从零开始）
 
 1. 准备 Compose 上下文（以 `/opt/oopsnote` 为例）：克隆仓库后执行
    `scripts/deploy/sync_production_context.sh`（只同步构建输入，不覆盖 Compose
    文件与密钥）。
-2. 环境变量：`cp .env.example .env`，填写 `OOPSNOTE_PUBLIC_URL`、OIDC 参数与
-   `OOPSNOTE_ADMIN_SUBJECTS`。
+2. 环境变量：`cp .env.example .env`，填写 `OOPSNOTE_PUBLIC_URL`（认证默认
+   Better Auth，无需其它认证配置）。
 3. 生成 secret：按 [deploy/oopsnote/secrets/README.md](oopsnote/secrets/README.md)
-   生成；Pocket ID 见 [deploy/pocket-id/README.md](pocket-id/README.md)。
+   生成。
 4. 启动并检查：
 
    ```sh
@@ -36,21 +35,25 @@
    - 前端 `https://<OOPSNOTE_PUBLIC_URL>`。
    - `docker compose logs -f backend frontend`。
 
+6. 创建第一个管理员：按上方 `deploy/compose.bootstrap.yml` 挂载一次性
+   bootstrap secret 后调用 `/api/admin/bootstrap`（curl 示例见
+   [deploy/oopsnote/secrets/README.md](oopsnote/secrets/README.md)），完成后
+   移除该 override。
+
 ## 升级
 
 ```sh
 git pull
 ./scripts/deploy/sync_production_context.sh
-docker compose up -d --build   # 只重建有变更的服务，不动 Pocket ID 与数据卷
+docker compose up -d --build   # 只重建有变更的服务，不动数据卷
 ```
 
 ## 备份
 
 - 数据卷：`oopsnote-data`（题库/任务）、`oopsnote-auth`（认证库）、
   `oopsnote-vault`（凭证库）。
-- 密钥文件：`deploy/oopsnote/secrets/*`、`deploy/pocket-id/secrets/*`。丢失
-  `credential_store_key` 或 Pocket ID 加密密钥会导致对应数据不可解密，必须与
-  数据卷一起备份并妥善保管。
+- 密钥文件：`deploy/oopsnote/secrets/*`。丢失 `credential_store_key` 会导致
+  凭证库不可解密，必须与数据卷一起备份并妥善保管。
 
 ## 反向代理
 
@@ -60,7 +63,6 @@ export；1Panel 在应用环境变量中配置）：
 
 - `OOPSNOTE_DOMAIN`：生产前端（反代 `127.0.0.1:13000`）
 - `OOPSNOTE_DEV_DOMAIN`：开发前端（反代 `127.0.0.1:13001`）
-- `OOPSNOTE_AUTH_DOMAIN`：认证入口（反代 `127.0.0.1:14110`）
 
 Compose 内服务仅绑定回环或内部网络（`latex-internal` 为 `internal: true`）。
 本地开发经反代域名访问时，还需在 `frontend/.env.local` 设置
