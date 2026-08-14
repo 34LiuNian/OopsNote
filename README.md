@@ -109,9 +109,17 @@ LangChain 隔离生产评测报告：
 [deploy/README.md](deploy/README.md)：
 
 ```sh
-cp .env.example .env               # 填写公开域名（认证默认 Better Auth）
+./scripts/deploy/bootstrap.sh      # 首次启动：自动生成 .env 与全部 secret
+# 编辑 .env 填写公开域名（认证默认 Better Auth）
 ./scripts/deploy/sync_production_context.sh
 docker compose up -d --build
+```
+
+首次启动后，挂载一次性引导并访问 `/setup` 创建管理员：
+
+```sh
+docker compose -f docker-compose.yml -f deploy/compose.bootstrap.yml up -d frontend
+# 浏览器打开 https://<你的域名>/setup，填表创建管理员，完成后移除该 override
 ```
 
 - `docker-compose.yml` 生产 Compose（backend / frontend / latex-renderer，

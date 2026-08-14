@@ -16,6 +16,7 @@ export default function LoginPage() {
   });
   const [password, setPassword] = useState("");
   const [registrationOpen, setRegistrationOpen] = useState(false);
+  const [setupAvailable, setSetupAvailable] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -25,6 +26,12 @@ export default function LoginPage() {
     }).catch((reason) => {
       setError(reason instanceof Error ? reason.message : "无法读取注册策略");
     });
+    void fetch("/api/admin/setup").then((response) => {
+      if (!response.ok) return null;
+      return response.json() as Promise<{ available: boolean }>;
+    }).then((payload) => {
+      if (payload?.available) setSetupAvailable(true);
+    }).catch(() => {});
   }, []);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
@@ -73,6 +80,12 @@ export default function LoginPage() {
             {submitting ? "正在登录" : "登录"}
           </Button>
         </div>
+        {setupAvailable && (
+          <div className={styles.footer}>
+            <span className={styles.hint}>首次使用？</span>
+            <Link className={styles.back} href="/setup">初始化管理员</Link>
+          </div>
+        )}
       </form>
     </AuthenticationShell>
   );

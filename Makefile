@@ -1,7 +1,7 @@
 # OopsNote 统一任务入口（Linux 服务器 / GitHub Actions CI）
 # Windows 本地开发请使用 VSCode 任务（.vscode/tasks.json）
 
-.PHONY: help sync lint format format-check typecheck test ci-backend ci-frontend check
+.PHONY: help sync secrets lint format format-check typecheck test ci-backend ci-frontend check
 
 help: ## 列出所有可用任务
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) \
@@ -10,6 +10,9 @@ help: ## 列出所有可用任务
 sync: ## 安装 Python 与前端依赖
 	uv sync
 	npm --prefix frontend ci
+
+secrets: ## 首次启动：自动生成 .env 与全部 secret 文件（服务器上执行）
+	./scripts/deploy/bootstrap.sh
 
 lint: ci-backend ci-frontend ## Python (ruff) 与前端 (eslint) 静态检查
 

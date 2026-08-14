@@ -10,35 +10,39 @@
 | `docker-compose.yml` | 生产（backend / frontend / latex-renderer，认证默认 Better Auth） |
 | `docker-compose.dev.yml` | 容器化本地开发（源码绑定挂载 + `--reload` 热更新） |
 | `docker-compose.local.yml` | 本地认证模式覆盖：`docker compose -f docker-compose.yml -f docker-compose.local.yml ...` |
-| `deploy/compose.bootstrap.yml` | 一次性引导（bootstrap secret，创建第一个管理员账号） |
+| `deploy/compose.bootstrap.yml` | 一次性引导：挂载 bootstrap secret，使 `/setup` 引导页可用（创建第一个管理员） |
 
 ## 生产部署（从零开始）
 
 1. 准备 Compose 上下文（以 `/opt/oopsnote` 为例）：克隆仓库后执行
    `scripts/deploy/sync_production_context.sh`（只同步构建输入，不覆盖 Compose
    文件与密钥）。
-2. 环境变量：`cp .env.example .env`，填写 `OOPSNOTE_PUBLIC_URL`（认证默认
-   Better Auth，无需其它认证配置）。
-3. 生成 secret：按 [deploy/oopsnote/secrets/README.md](oopsnote/secrets/README.md)
-   生成。
-4. 启动并检查：
+2. 环境变量与密钥：执行 `./scripts/deploy/bootstrap.sh`（或 `make secrets`）——
+   自动从模板生成 `.env` 与全部 secret 文件；随后编辑 `.env` 填写
+   `OOPSNOTE_PUBLIC_URL`（认证默认 Better Auth，无需其它认证配置）。
+3. 启动并检查：
 
    ```sh
    docker compose up -d --build
    docker compose ps
    ```
 
-5. 验证：
+4. 验证：
 
    - 后端健康检查 `curl http://127.0.0.1:8000/health`（backend 不对外暴露端口，
      由前端口径反代）。
    - 前端 `https://<OOPSNOTE_PUBLIC_URL>`。
    - `docker compose logs -f backend frontend`。
 
-6. 创建第一个管理员：按上方 `deploy/compose.bootstrap.yml` 挂载一次性
-   bootstrap secret 后调用 `/api/admin/bootstrap`（curl 示例见
-   [deploy/oopsnote/secrets/README.md](oopsnote/secrets/README.md)），完成后
-   移除该 override。
+5. 首次进入网页完成引导（创建第一个管理员）：
+
+   ```sh
+   docker compose -f docker-compose.yml -f deploy/compose.bootstrap.yml up -d frontend
+   ```
+
+   然后浏览器打开 `https://<OOPSNOTE_PUBLIC_URL>/setup`，填表创建管理员账号。
+   完成后立即移除该 override（`docker compose up -d frontend`），引导页即随
+   bootstrap secret 一起失效。
 
 ## 升级
 
