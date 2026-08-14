@@ -25,11 +25,11 @@ for name in better_auth_secret bff_hmac_secret bootstrap_secret \
     fi
 done
 
-# 3. SecretStore 主密钥：与 EncryptedFileSecretStore.generate_key() 同构
-#    （0x80 + 32 随机字节的 urlsafe base64，44 字符，Fernet 兼容）。
+# 3. SecretStore 主密钥：32 随机字节的 urlsafe base64（44 字符，Fernet 兼容），
+#    与 EncryptedFileSecretStore.generate_key() 等价。
 #    等价替代：在安装了 oopsnote 的环境中执行 scripts/setup/init_secret_store.py。
 if [ ! -f "$secrets_dir/credential_store_key" ]; then
-    { printf '\200'; openssl rand 32; } | base64 | tr '+/' '-_' | tr -d '\n' > "$secrets_dir/credential_store_key"
+    openssl rand -base64 32 | tr '+/' '-_' | tr -d '\n' > "$secrets_dir/credential_store_key"
     chmod 600 "$secrets_dir/credential_store_key"
     echo "created $secrets_dir/credential_store_key"
 fi

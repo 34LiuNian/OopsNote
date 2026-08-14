@@ -11,7 +11,7 @@
 | --- | --- |
 | `better_auth_secret` | Better Auth 会话签名密钥（≥32 字节） |
 | `bff_hmac_secret` | 前端 BFF → 后端请求 HMAC 密钥 |
-| `credential_store_key` | SecretStore 凭证库主密钥（Fernet 兼容，urlsafe base64） |
+| `credential_store_key` | SecretStore 凭证库主密钥（Fernet 兼容：32 随机字节的 urlsafe base64） |
 | `bootstrap_secret` | 首次引导密钥：`deploy/compose.bootstrap.yml` 挂载后，访问 `/setup` 创建第一个管理员 |
 
 ## 开发（docker-compose.dev.yml）
@@ -30,7 +30,7 @@
 - `.env` 从 `.env.example` 复制（请按需修改 `OOPSNOTE_PUBLIC_URL`）。
 - `credential_store_key` 由 shell 生成，与
   `EncryptedFileSecretStore.generate_key()`（`scripts/setup/init_secret_store.py`）
-  同构（0x80 + 32 随机字节的 urlsafe base64），两者等价、可互换。
+  等价（32 随机字节的 urlsafe base64），两者可互换。
 
 ## 手动生成（等价）
 
@@ -41,7 +41,7 @@ for name in better_auth_secret bff_hmac_secret bootstrap_secret \
     [ -f "$name" ] || openssl rand -base64 32 > "$name"
     chmod 600 "$name"
 done
-{ printf '\200'; openssl rand 32; } | base64 | tr '+/' '-_' > credential_store_key
+openssl rand -base64 32 | tr '+/' '-_' > credential_store_key
 chmod 600 credential_store_key
 ```
 
