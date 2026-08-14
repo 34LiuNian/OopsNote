@@ -1,3 +1,3 @@
 - [ ] $[a, b]$ 识别为标签
 - [ ] ()、（）标准化
-- [x] ai后端越权完成oopsnotecore工作（受限 MCP 工具面和 run_id/阶段/字段校验已覆盖）
+- [ ] hermes越权完成oopsnotecore工作

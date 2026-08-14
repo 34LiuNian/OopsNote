@@ -3,6 +3,9 @@ at frontend/public/fonts/Gloock-OFL.txt; see THIRD-PARTY-NOTICES.md. -->
 
 <div align="center">
 
+[![CI](https://github.com/34LiuNian/OopsNote/actions/workflows/ci.yml/badge.svg)](https://github.com/34LiuNian/OopsNote/actions/workflows/ci.yml)
+[![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0--or--later-blue.svg)](LICENSE)
+
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="assets/favicon_white.svg">
   <img src="assets/favicon_black.svg" height="150" alt="OopsNote Logo" />
