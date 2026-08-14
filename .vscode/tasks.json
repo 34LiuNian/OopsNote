@@ -19,7 +19,7 @@
                 "cwd": "${workspaceFolder}",
                 "env": {
                     "PYTHONPATH": "${workspaceFolder}",
-                    "OOPSNOTE_AUTH_MODE": "local",
+                    "OOPSNOTE_AUTH_MODE": "better-auth",
                     "OOPSNOTE_AI_BACKEND": "langchain",
                     "OOPSNOTE_ENABLED_AI_BACKENDS": "langchain",
                     "OOPSNOTE_LATEX_RENDERER_URL": "http://127.0.0.1:8091"
@@ -35,7 +35,7 @@
             "options": {
                 "cwd": "${workspaceFolder}\\frontend",
                 "env": {
-                    "NEXT_PUBLIC_AUTH_MODE": "local",
+                    "NEXT_PUBLIC_AUTH_MODE": "better-auth",
                     "NEXT_PUBLIC_BACKEND_URL": "http://127.0.0.1:8000",
                     "OOPSNOTE_BACKEND_URL": "http://127.0.0.1:8000"
                 }
