@@ -32,6 +32,11 @@ Issues = "https://github.com/34LiuNian/OopsNote/issues"
 requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
+[tool.pytest.ini_options]
+# tests/ 直接 import scripts.*：确保 console-script 调用（uv run pytest）与
+# python -m pytest 都从仓库根解析，而不是依赖 cwd 恰好位于 sys.path。
+pythonpath = ["."]
+
 [tool.setuptools.packages.find]
 include = ["oopsnote*"]
 
