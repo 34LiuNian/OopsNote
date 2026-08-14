@@ -222,35 +222,38 @@ where "source" = 'admin'
 ] as const;
 
 export function ensureBetterAuthSchema(database: Database.Database): void {
-  database.exec(`
-    create table if not exists "_oopsnote_auth_schema_migrations" (
-      "version" integer not null primary key,
-      "name" text not null unique,
-      "appliedAt" text not null
+  const applyMigrations = database.transaction(() => {
+    database.exec(`
+      create table if not exists "_oopsnote_auth_schema_migrations" (
+        "version" integer not null primary key,
+        "name" text not null unique,
+        "appliedAt" text not null
+      );
+    `);
+    const expected = new Map<number, string>(
+      migrations.map((migration) => [migration.version, migration.name]),
     );
-  `);
-  const expected = new Map<number, string>(
-    migrations.map((migration) => [migration.version, migration.name]),
-  );
-  const appliedRows = database
-    .prepare('select "version", "name" from "_oopsnote_auth_schema_migrations"')
-    .all() as { version: number; name: string }[];
-  for (const row of appliedRows) {
-    if (expected.get(Number(row.version)) !== row.name) {
-      throw new Error(`Unknown or mismatched Better Auth schema migration: ${row.version}`);
+    const appliedRows = database
+      .prepare('select "version", "name" from "_oopsnote_auth_schema_migrations"')
+      .all() as { version: number; name: string }[];
+    for (const row of appliedRows) {
+      if (expected.get(Number(row.version)) !== row.name) {
+        throw new Error(`Unknown or mismatched Better Auth schema migration: ${row.version}`);
+      }
     }
-  }
-  const applied = new Set<number>(appliedRows.map((row) => Number(row.version)));
-  for (const migration of migrations) {
-    if (applied.has(migration.version)) continue;
-    const apply = database.transaction(() => {
+    const applied = new Set<number>(appliedRows.map((row) => Number(row.version)));
+    for (const migration of migrations) {
+      if (applied.has(migration.version)) continue;
       database.exec(migration.sql);
       database
         .prepare(
           'insert into "_oopsnote_auth_schema_migrations" ("version", "name", "appliedAt") values (?, ?, ?)',
         )
         .run(migration.version, migration.name, new Date().toISOString());
-    });
-    apply();
-  }
+    }
+  });
+  // BEGIN IMMEDIATE：并发构建 worker / 多实例冷启动会对同一个新库同时迁移，
+  // 第二个连接在写锁上等待并重读已应用版本，避免 check-then-ALTER 竞态产生
+  // "duplicate column name"（见 CI 前端镜像构建失败）。
+  applyMigrations.immediate();
 }
