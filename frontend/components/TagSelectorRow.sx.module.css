@@ -1,0 +1,2 @@
+/* Generated from components/TagSelectorRow.tsx */
+.sx1{display:grid;grid-template-columns:1fr;gap:var(--oops-space-4);}@media (min-width: 544px){.sx1{grid-template-columns:repeat(auto-fit, minmax(min(260px, 100%), 1fr));}}

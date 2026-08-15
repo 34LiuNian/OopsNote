@@ -1,0 +1,20 @@
+/* Generated from components/settings/SettingsRuntimeSection.tsx */
+.sx1{padding:var(--oops-space-4);}
+
+/* Generated from components/settings/SettingsRuntimeSection.tsx */
+.sx2{display:flex;justify-content:space-between;align-items:flex-start;gap:var(--oops-space-4);margin-bottom:var(--oops-space-4);flex-wrap:wrap;}
+
+/* Generated from components/settings/SettingsRuntimeSection.tsx */
+.sx3{display:flex;align-items:center;gap:var(--oops-space-2);}
+
+/* Generated from components/settings/SettingsRuntimeSection.tsx */
+.sx4{margin:var(--oops-space-0);font-size:var(--oops-text-md);}
+
+/* Generated from components/settings/SettingsRuntimeSection.tsx */
+.sx5{display:flex;gap:var(--oops-space-2);}
+
+/* Generated from components/settings/SettingsRuntimeSection.tsx */
+.sx6{display:flex;justify-content:center;padding-block:var(--oops-space-5);}
+.message{display:block;margin-top:var(--oops-space-3);font-size:var(--oops-text-sm);}
+.message[data-status="danger"]{color:var(--fgColor-danger);}
+.message[data-status="success"]{color:var(--fgColor-success);}

@@ -1,0 +1,8 @@
+/* Generated from components/renderers/SvgMarkup.tsx */
+.sx1{color:var(--fgColor-muted);font-size:var(--oops-text-sm);}
+
+.svgContainer{max-width:100%;}
+.svgContainer[data-fit="true"]{width:100%;height:100%;overflow:hidden;}
+.svgContainer[data-fit="false"]{overflow-x:auto;}
+.svgContainer :global(svg){display:block;max-width:100%;height:auto;margin-inline:auto;}
+.svgContainer[data-fit="true"] :global(svg){width:100%;height:100%;}

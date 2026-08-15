@@ -136,6 +136,7 @@ html[data-oopsnote-paper-compose="active"] .oops-page-enter {
 .oops-app-shell {
   --oops-titlebar-height: 58px;
   --oops-sidebar-width: 208px;
+  --oops-secondary-sidebar-width: 240px;
   display: flex;
   height: 100dvh;
   min-height: 100vh;
@@ -143,6 +144,8 @@ html[data-oopsnote-paper-compose="active"] .oops-page-enter {
   overflow: hidden;
   background: var(--sidebar-bg);
 }
+
+.oops-app-shell.is-secondary-channels { --oops-secondary-sidebar-width: 312px; }
 
 .oops-app-shell.is-sidebar-collapsed { --oops-sidebar-width: 58px; }
 
@@ -178,7 +181,7 @@ html[data-oopsnote-paper-compose="active"] .oops-page-enter {
   transition: width var(--oops-transition-normal), min-width var(--oops-transition-normal), color var(--oops-transition-fast);
 }
 
-.oops-titlebar__brand-toggle > p {
+.oops-titlebar__brand-toggle p {
   margin: 0;
   font-family: 'OopsNoteFont', Inter, 'Noto Sans SC', sans-serif;
   font-size: 40px;
@@ -190,19 +193,19 @@ html[data-oopsnote-paper-compose="active"] .oops-page-enter {
 }
 
 .oops-app-shell.is-sidebar-collapsed .oops-titlebar__brand-toggle { gap: 0; }
-.oops-app-shell.is-sidebar-collapsed .oops-titlebar__brand-toggle > p {
+.oops-app-shell.is-sidebar-collapsed .oops-titlebar__brand-toggle p {
   opacity: 0;
   visibility: hidden;
 }
 
 /* L1 keeps the brand visible across the compact L0 rail and its context panel. */
 .oops-app-shell.is-sidebar-collapsed.is-secondary-open .oops-titlebar__brand-toggle {
-  width: calc(var(--oops-sidebar-width) + 240px);
-  min-width: calc(var(--oops-sidebar-width) + 240px);
+  width: calc(var(--oops-sidebar-width) + var(--oops-secondary-sidebar-width));
+  min-width: calc(var(--oops-sidebar-width) + var(--oops-secondary-sidebar-width));
   gap: 10px;
 }
 
-.oops-app-shell.is-sidebar-collapsed.is-secondary-open .oops-titlebar__brand-toggle > p {
+.oops-app-shell.is-sidebar-collapsed.is-secondary-open .oops-titlebar__brand-toggle p {
   opacity: 1;
   visibility: visible;
   transition-delay: 0s;
@@ -253,6 +256,50 @@ html[data-oopsnote-paper-compose="active"] .oops-page-enter {
 .oops-titlebar__mobile-brand { display: none; }
 
 .oops-titlebar__actions { min-width: 0; flex: 0 1 auto; }
+
+/* Text containment contract for the Oops UI facade. Every public control and
+   semantic text node must be allowed to shrink inside flex/grid parents. */
+.oops-text,
+.oops-heading,
+.oops-box,
+.oops-button,
+.oops-button .mantine-Button-inner,
+.oops-button .mantine-Button-label,
+.oops-input-wrap,
+.oops-input-wrap .mantine-TextInput-root,
+.oops-input-wrap .mantine-TextInput-wrapper,
+.oops-input-wrap .mantine-TextInput-input,
+.oops-select,
+.oops-select .mantine-Select-wrapper,
+.oops-select-input,
+.oops-textarea,
+.oops-textarea .mantine-Textarea-wrapper,
+.oops-textarea .mantine-Textarea-input {
+  max-width: 100%;
+  min-width: 0;
+}
+
+.oops-text {
+  overflow-wrap: anywhere;
+}
+
+.oops-box {
+  overflow-wrap: anywhere;
+}
+
+.oops-heading {
+  overflow-wrap: anywhere;
+}
+
+.oops-button .mantine-Button-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.oops-icon-button {
+  flex: 0 0 auto;
+}
 
 .oops-account-trigger {
   display: inline-flex;
@@ -355,10 +402,10 @@ html[data-oopsnote-paper-compose="active"] .oops-page-enter {
 .oops-secondary-sidebar {
   position: relative;
   z-index: 15;
-  width: 240px;
+  width: var(--oops-secondary-sidebar-width);
   height: calc(100% - 16px);
   margin-top: 16px;
-  flex: 0 0 240px;
+  flex: 0 0 var(--oops-secondary-sidebar-width);
   overflow: hidden;
   border-top: 1px solid var(--sidebar-border);
   border-left: 1px solid var(--sidebar-border);
@@ -385,7 +432,7 @@ html[data-oopsnote-paper-compose="active"] .oops-page-enter {
 .oops-secondary-sidebar__view {
   position: absolute;
   inset: 0;
-  width: 240px;
+  width: var(--oops-secondary-sidebar-width);
   overflow-x: hidden;
   overflow-y: auto;
   opacity: 0;
@@ -445,6 +492,31 @@ html[data-oopsnote-paper-compose="active"] .oops-page-enter {
   padding-inline: 11px;
   font-size: 13px;
 }
+
+/* Titlebar brand + account controls are chromeless buttons. Mantine sets the
+   default-variant box colors as inline CSS vars via its vars resolver, so these
+   overrides need !important to strip the border/background back to transparent. */
+.oops-titlebar__brand-toggle.mantine-Button-root {
+  --button-bg: transparent !important;
+  --button-hover: transparent !important;
+  --button-bd: 0 solid transparent !important;
+  --button-color: var(--sidebar-text-strong) !important;
+  min-height: var(--oops-titlebar-height);
+  padding: 6px 0 0;
+  font-size: inherit;
+}
+.oops-titlebar__brand-toggle .mantine-Button-inner { justify-content: flex-start; }
+.oops-titlebar__brand-toggle .mantine-Button-label { display: flex; align-items: center; gap: 10px; }
+
+.oops-account-trigger.mantine-Button-root {
+  --button-bg: transparent !important;
+  --button-hover: var(--sidebar-hover) !important;
+  --button-bd: 1px solid transparent !important;
+  --button-color: var(--sidebar-text-strong) !important;
+  min-height: 34px;
+  padding-inline: 3px 6px;
+}
+.oops-account-trigger.mantine-Button-root:hover { --button-bd: 1px solid var(--sidebar-border) !important; }
 
 @media (max-width: 543px) {
   .app-sidebar { display: none !important; }
@@ -1108,6 +1180,7 @@ select {
 
 .oops-form-control {
   display: flex;
+  max-width: 100%;
   min-width: 0;
   flex-direction: column;
   gap: 6px;
@@ -1178,12 +1251,16 @@ select {
 
 .oops-nav-list {
   display: flex;
+  max-width: 100%;
+  min-width: 0;
   flex-direction: column;
   gap: 2px;
 }
 
 .oops-nav-item {
   display: flex;
+  max-width: 100%;
+  min-width: 0;
   min-height: 36px;
   align-items: center;
   gap: 10px;
@@ -1193,7 +1270,10 @@ select {
   font-size: 14px;
   font-weight: 500;
   line-height: 1.35;
+  overflow: hidden;
   text-decoration: none;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .oops-nav-item:hover {
@@ -1277,6 +1357,8 @@ select {
 /* === Section header === */
 .oops-section-header {
   display: flex;
+  max-width: 100%;
+  min-width: 0;
   align-items: center;
   gap: 8px;
   padding-bottom: 12px;
@@ -1284,12 +1366,18 @@ select {
   border-bottom: 1px solid var(--borderColor-muted);
 }
 .oops-section-title {
+  max-width: 100%;
+  min-width: 0;
+  overflow-wrap: anywhere;
   font-size: 16px;
   font-weight: 600;
   color: var(--fgColor-default);
   margin: 0;
 }
 .oops-section-subtitle {
+  max-width: 100%;
+  min-width: 0;
+  overflow-wrap: anywhere;
   font-size: 12px;
   color: var(--fgColor-muted);
   letter-spacing: 0;
@@ -1614,6 +1702,8 @@ select {
 
 /* === Smooth list item === */
 .oops-list-item {
+  max-width: 100%;
+  min-width: 0;
   transition: background-color var(--oops-transition-fast), box-shadow var(--oops-transition-fast);
   border-radius: var(--oops-radius-sm);
 }
@@ -1985,3 +2075,36 @@ html.oops-splash-skip #oops-splash {
   transform: scale(0.92);
   transition: transform 80ms ease;
 }
+
+.oops-error-banner {
+  display: grid;
+  gap: var(--oops-space-1);
+  margin-block: var(--oops-space-3);
+  padding: var(--oops-space-3) var(--oops-space-4);
+  border: var(--oops-border-width) solid var(--borderColor-danger-emphasis);
+  border-radius: var(--oops-radius-sm);
+  color: var(--fgColor-danger);
+  background: var(--bgColor-danger-muted);
+}
+.oops-error-banner strong,
+.oops-error-banner span { font-size: var(--oops-text-sm); }
+
+.task-thumbnail {
+  display: flex;
+  width: var(--oops-geometry-width);
+  height: var(--oops-geometry-height);
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border-radius: var(--oops-radius-sm);
+  background: var(--bgColor-muted);
+}
+.task-thumbnail-empty {
+  color: var(--fgColor-muted);
+  font-size: var(--oops-text-xs);
+}
+.oops-markdown[data-font-size="0"] { font-size: var(--oops-text-xs); }
+.oops-markdown[data-font-size="1"] { font-size: var(--oops-text-sm); }
+.oops-markdown[data-font-size="2"] { font-size: var(--oops-text-md); }
+.oops-markdown[data-font-size="3"] { font-size: var(--oops-text-lg); }
+.oops-markdown .katex { font-size: 1.1em; }

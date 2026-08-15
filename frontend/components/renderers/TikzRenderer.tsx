@@ -5,6 +5,7 @@ import { Box, Text } from "@/components/ui/primitives";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
 import { sanitizeSvgMarkup, SvgMarkup } from "./SvgMarkup";
 import { apiErrorFromResponse, fetchApi } from "@/lib/api";
+import sxStyles from "./TikzRenderer.sx.module.css";
 
 const SVG_CACHE = new Map<string, string>();
 let renderQueue: Promise<void> = Promise.resolve();
@@ -77,13 +78,12 @@ export function TikzRenderer({
   if (error) {
     return <>
       <ErrorBanner message={error} title="TikZ 渲染失败" />
-      <Text sx={{ color: "danger.fg", fontSize: 1 }}>{error}</Text>
     </>;
   }
 
   return (
-    <Box sx={{ py: 2 }}>
-      <Text sx={{ color: "fg.muted", fontSize: 1 }}>正在请求统一 LaTeX 渲染器...</Text>
+    <Box className={sxStyles.sx2}>
+      <Text className={sxStyles.sx3}>正在请求统一 LaTeX 渲染器...</Text>
     </Box>
   );
 }

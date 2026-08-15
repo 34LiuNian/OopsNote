@@ -1,0 +1,17 @@
+/* Generated from components/ProblemListItem.tsx */
+.sx1{display:flex;align-items:flex-start;gap:var(--oops-space-4);}
+
+/* Generated from components/ProblemListItem.tsx */
+.sx2{min-width:0px;flex:1;}
+
+/* Generated from components/ProblemListItem.tsx */
+.sx3{display:flex;align-items:flex-start;gap:var(--oops-space-4);cursor:pointer;}
+
+/* Generated from components/ProblemListItem.tsx */
+.sx4{min-width:0px;flex:1;}
+.shell{padding:var(--oops-space-2);border-radius:var(--oops-radius-sm);background:transparent;transition:background-color var(--oops-transition-normal);}
+.shell[data-interactive="true"]{cursor:pointer;}
+.shell[data-selected="true"]{outline:1px solid var(--fgColor-accent);background:var(--bgColor-accent-muted);}
+.shell[data-interactive="true"]:hover{background:var(--bgColor-muted);}
+.shell[data-selected="true"]:hover{background:var(--bgColor-accent-muted);}
+.link{color:inherit;text-decoration:none;}

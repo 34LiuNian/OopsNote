@@ -1,6 +1,6 @@
-"use client";
+﻿"use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
 import { ListChecks, SlidersHorizontal, Trash2 } from "lucide-react";
@@ -22,8 +22,10 @@ import { useTagDimensions } from "../../features/tags";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { useSecondarySidebar } from "@/components/layout/SecondarySidebarContext";
 import { LibraryFilterPanel } from "@/components/library/LibraryFilterPanel";
+import sxStyles from "./page.sx.module.css";
 
 const TASK_STRIP_CONTENT_MIN_HEIGHT = 84;
+const TASK_STRIP_STYLE = { "--oops-geometry-min-height": `${TASK_STRIP_CONTENT_MIN_HEIGHT}px` } as React.CSSProperties;
 
 function problemSelectionKey(taskId: string, problemId: string) {
   return `${taskId}:${problemId}`;
@@ -49,8 +51,8 @@ export default function LibraryPage() {
     isLoading,
     error,
     refresh: refreshProblems,
-  } = useProblemList({ 
-    subject: subject || undefined, 
+  } = useProblemList({
+    subject: subject || undefined,
     source: sourceFilter.length > 0 ? sourceFilter : undefined,
     knowledge_tag: knowledgeFilter.length > 0 ? knowledgeFilter : undefined,
     error_tag: errorFilter.length > 0 ? errorFilter : undefined,
@@ -73,6 +75,9 @@ export default function LibraryPage() {
     subject: subject || undefined,
   });
   const [taskStripTab, setTaskStripTab] = useState<"active" | "failed">("active");
+  const taskStripView = taskStripTab === "active" && activeTaskItems.length === 0 && failedTaskItems.length > 0
+    ? "failed"
+    : taskStripTab;
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Record<string, boolean>>({});
   const [isBatchDeleting, setIsBatchDeleting] = useState(false);
@@ -130,11 +135,11 @@ export default function LibraryPage() {
     const failedCount = Object.keys(failedKeys).length;
     const successCount = selected.length - failedCount;
 
-    if (successCount > 0) notify.success({ title: `已删除 ${successCount} 道题` });
+     if (successCount > 0) notify.success({ title: `已删除 ${successCount} 道题` });
     if (failedCount > 0) {
       const firstFailure = results.find((result) => result.status === "rejected");
       notify.error({
-        title: `${failedCount} 道题未能删除`,
+       title: `${failedCount} 道题未能删除`,
         description: firstFailure?.status === "rejected"
           ? formatApiError(firstFailure.reason, "请检查任务状态后重试")
           : undefined,
@@ -158,19 +163,12 @@ export default function LibraryPage() {
     if (selected.length === 0 || isBatchDeleting) return;
     confirmAction({
       title: "删除题目",
-      message: `删除选中的 ${selected.length} 道题？对应任务记录也会删除，此操作无法撤销。`,
+       message: `删除选中的 ${selected.length} 道题？对应任务记录也会删除，此操作无法撤销。`,
       confirmLabel: "删除",
       destructive: true,
       onConfirm: performDeleteSelected,
     });
   }, [isBatchDeleting, items, performDeleteSelected, selectedIds]);
-
-  // 显示错误通知
-  useEffect(() => {
-    if (error) {
-      notify.error({ title: error });
-    }
-  }, [error]);
 
   return (
     <>
@@ -218,7 +216,7 @@ export default function LibraryPage() {
         />,
         secondarySidebarTarget,
       ) : null}
-    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+    <Box className={sxStyles.sx1}>
       {/* Page header */}
       <PageHeader
         title="题库"
@@ -229,30 +227,30 @@ export default function LibraryPage() {
       {/* Active Tasks - compact strip */}
       {(activeTaskItems.length > 0 || failedTaskItems.length > 0 || isLoadingActive || isLoadingFailed) && (
         <Box
-          className="oops-card"
-          sx={{ px: 3, py: 2 }}
+          className={["oops-card", sxStyles.sx2].filter(Boolean).join(" ")}
+
         >
-          <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
-            <Box sx={{ display: "flex", alignItems: "center", gap: 2, flexWrap: "wrap" }}>
+          <Box className={sxStyles.sx3}>
+            <Box className={sxStyles.sx4}>
               <Button
                 size="small"
-                variant={taskStripTab === "active" ? "default" : "invisible"}
+                variant={taskStripView === "active" ? "default" : "invisible"}
                 onClick={() => setTaskStripTab("active")}
               >
                 进行中 {activeTaskItems.length}
               </Button>
               <Button
                 size="small"
-                variant={taskStripTab === "failed" ? "default" : "invisible"}
+                variant={taskStripView === "failed" ? "default" : "invisible"}
                 onClick={() => setTaskStripTab("failed")}
               >
                 失败 {failedTaskItems.length}
               </Button>
-              {(taskStripTab === "active" ? isLoadingActive : isLoadingFailed) && (
+              {(taskStripView === "active" ? isLoadingActive : isLoadingFailed) && (
                 <Spinner size="small" />
               )}
             </Box>
-            {taskStripTab === "failed" ? (
+            {taskStripView === "failed" ? (
               <FailedTaskPanel
                 tasks={failedTaskItems}
                 isLoading={isLoadingFailed}
@@ -261,27 +259,15 @@ export default function LibraryPage() {
               />
             ) : (
               <Box
-                sx={{
-                  minHeight: TASK_STRIP_CONTENT_MIN_HEIGHT,
-                  display: "flex",
-                  alignItems: "center",
-                }}
+                className={sxStyles.taskStripContent}
+                style={TASK_STRIP_STYLE}
               >
               {activeTaskItems.length > 0 ? (
-                <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+                <Box className={sxStyles.sx5}>
                 {activeTaskItems.map((t) => (
-                    <Link key={t.id} href={`/tasks/${t.id}`} style={{ textDecoration: 'none', color: 'inherit' }}>
+                    <Link key={t.id} href={`/tasks/${t.id}`} className={sxStyles.taskLink}>
                       <Box
-                        sx={{
-                          position: "relative",
-                          cursor: 'pointer',
-                          borderRadius: "var(--oops-radius-sm)",
-                          overflow: 'hidden',
-                          border: "1px solid",
-                          borderColor: "border.default",
-                          transition: "all var(--oops-transition-fast)",
-                          '&:hover': { boxShadow: "var(--oops-shadow-md)", transform: "scale(1.05)" },
-                        }}
+                        className={sxStyles.sx6}
                       >
                         <TaskThumbnail asset={t.asset} size="medium" />
                       </Box>
@@ -289,12 +275,12 @@ export default function LibraryPage() {
                 ))}
                 </Box>
               ) : isLoadingActive ? (
-                <Box sx={{ width: "100%", display: "flex", justifyContent: "center" }}>
+                <Box className={sxStyles.sx7}>
                   <Spinner size="small" />
                 </Box>
               ) : (
-                <Text sx={{ color: "fg.muted", fontSize: 1 }}>
-                  当前没有{taskStripTab === "active" ? "进行中" : "失败"}任务
+                <Text className={sxStyles.sx8}>
+                  当前没有{taskStripView === "active" ? "进行中" : "失败"}任务
                 </Text>
               )}
               </Box>
@@ -306,18 +292,18 @@ export default function LibraryPage() {
       {/* Results */}
       <Box>
         {/* Toolbar */}
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 2, flexWrap: "wrap", mb: 2 }}>
-          <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
-            <Text sx={{ fontWeight: 600, fontSize: 2 }}>题目列表</Text>
+        <Box className={sxStyles.sx9}>
+          <Box className={sxStyles.sx10}>
+            <Text className={sxStyles.sx11}>题目列表</Text>
             <Box className="oops-badge oops-badge-muted">{items.length} 题</Box>
           </Box>
           {selectionMode ? (
             <Box
               role="toolbar"
               aria-label="批量操作题库题目"
-              sx={{ display: 'flex', alignItems: "center", gap: 2, flexWrap: "wrap" }}
+              className={sxStyles.sx12}
             >
-              <Text sx={{ fontSize: 1, fontWeight: 600 }} aria-live="polite">
+              <Text className={sxStyles.sx13} aria-live="polite">
                 已选 {selectedCount} 项
               </Text>
               <Button
@@ -362,7 +348,7 @@ export default function LibraryPage() {
               </Button>
             </Box>
           ) : (
-            <Box sx={{ display: "flex", alignItems: "center", gap: 2, flexWrap: "wrap" }}>
+            <Box className={sxStyles.sx14}>
               <Button
                 className="library-filter-trigger"
                 size="small"
@@ -394,26 +380,20 @@ export default function LibraryPage() {
             <ListSkeleton count={5} showAvatar={false} />
           ) : (
             <Box className="oops-empty-state">
-              <Text as="p" sx={{ fontWeight: 600, fontSize: 2 }}>暂无题目</Text>
-              <Text as="p" sx={{ fontSize: 1 }}>在首页上传手稿图片，AI 会自动识别并生成题目。</Text>
-              <Link href="/" style={{ textDecoration: "none" }}>
-                <Button variant="primary" sx={{ mt: 2 }}>去上传</Button>
+              <Text as="p" className={sxStyles.sx15}>暂无题目</Text>
+              <Text as="p" className={sxStyles.sx16}>在首页上传手稿图片，AI 会自动识别并生成题目。</Text>
+              <Link href="/" className={sxStyles.taskLink}>
+                <Button variant="primary" className={sxStyles.sx17}>去上传</Button>
               </Link>
             </Box>
           )
         ) : (
-          <Box sx={{ display: "flex", flexDirection: "column" }}>
+          <Box className={sxStyles.sx18}>
             {items.map((item, idx) => (
               <Box
                 key={`${item.task_id}-${item.problem_id}`}
-                className="oops-list-item"
-                sx={{
-                  px: 2,
-                  py: 2,
-                  borderBottomWidth: idx < items.length - 1 ? 1 : 0,
-                  borderBottomStyle: 'solid',
-                  borderBottomColor: 'border.muted',
-                }}
+                className={["oops-list-item", sxStyles.problemItem].join(" ")}
+                data-last={idx === items.length - 1 ? "true" : undefined}
               >
                 <ProblemListItem
                   item={item}

@@ -1,0 +1,148 @@
+/* Generated from components/ProblemEditPanel.tsx */
+.sx1{color:var(--fgColor-muted);font-size:var(--oops-text-xs);}
+
+/* Generated from components/ProblemEditPanel.tsx */
+.sx2{overflow:hidden;animation:slideUp 0.25s ease-out;}
+
+/* Generated from components/ProblemEditPanel.tsx */
+.sx3{padding-inline:var(--oops-space-4);padding-block:var(--oops-space-2);border-bottom-width:1px;border-bottom-style:solid;border-bottom-color:var(--borderColor-muted);background-color:var(--bgColor-muted);}
+
+/* Generated from components/ProblemEditPanel.tsx */
+.sx4{display:flex;justify-content:space-between;align-items:center;gap:var(--oops-space-2);flex-wrap:wrap;}
+
+/* Generated from components/ProblemEditPanel.tsx */
+.sx5{flex:1;min-width:220px;}
+
+/* Generated from components/ProblemEditPanel.tsx */
+.sx6{font-weight:600;font-size:var(--oops-text-md);display:block;}
+
+/* Generated from components/ProblemEditPanel.tsx */
+.sx7{display:flex;align-items:center;gap:var(--oops-space-2);flex-wrap:wrap;}
+
+/* Generated from components/ProblemEditPanel.tsx */
+.sx8{color:var(--fgColor-attention);font-size:var(--oops-text-xs);}
+
+/* Generated from components/ProblemEditPanel.tsx */
+.sx9{padding:var(--oops-space-4);display:flex;flex-direction:column;gap:var(--oops-space-4);}
+
+/* Generated from components/ProblemEditPanel.tsx */
+.sx10{display:grid;grid-template-columns:1fr;gap:var(--oops-space-4);}@media (min-width: 544px){.sx10{grid-template-columns:1fr 1fr 1fr;}}
+
+/* Generated from components/ProblemEditPanel.tsx */
+.sx11{color:var(--color-text-subtle);font-size:0.8125rem;}
+
+/* Generated from components/ProblemEditPanel.tsx */
+.sx12{font-weight:600;font-size:var(--oops-text-sm);}
+
+/* Generated from components/ProblemEditPanel.tsx */
+.sx13{padding-top:var(--oops-space-4);border-top-width:1px;border-top-style:solid;border-top-color:var(--borderColor-muted);}
+
+/* Generated from components/ProblemEditPanel.tsx */
+.sx14{font-weight:600;font-size:var(--oops-text-sm);display:block;margin-bottom:var(--oops-space-2);}
+
+/* Generated from components/ProblemEditPanel.tsx */
+.sx15{padding-top:var(--oops-space-4);border-top-width:1px;border-top-style:solid;border-top-color:var(--borderColor-muted);}
+
+/* Generated from components/ProblemEditPanel.tsx */
+.sx16{margin-top:var(--oops-space-2);display:grid;grid-template-columns:1fr;gap:var(--oops-space-2);}@media (min-width: 544px){.sx16{grid-template-columns:minmax(0, 1fr) 96px;}}
+
+/* Generated from components/ProblemEditPanel.tsx */
+.sx17{margin-top:var(--oops-space-2);display:flex;gap:var(--oops-space-2);flex-wrap:wrap;align-items:center;}
+
+/* Generated from components/ProblemEditPanel.tsx */
+.sx18{margin-top:var(--oops-space-4);display:grid;grid-template-columns:1fr;gap:var(--oops-space-4);}@media (min-width: 544px){.sx18{grid-template-columns:180px minmax(0, 1fr);}}
+
+/* Generated from components/ProblemEditPanel.tsx */
+.sx19{display:flex;flex-direction:column;gap:var(--oops-space-1);}
+
+/* Generated from components/ProblemEditPanel.tsx */
+.sx20{min-width:0px;display:flex;flex-direction:column;gap:var(--oops-space-2);}
+
+/* Generated from components/ProblemEditPanel.tsx */
+.sx21{padding:var(--oops-space-2);border:1px solid;border-color:var(--borderColor-default);border-radius:1px;background-color:var(--bgColor-muted);}
+
+/* Generated from components/ProblemEditPanel.tsx */
+.sx22{color:var(--fgColor-muted);font-size:var(--oops-text-xs);}
+
+/* Generated from components/ProblemEditPanel.tsx */
+.sx23{font-family:var(--font-mono);font-size:var(--oops-text-xs);resize:vertical;}
+
+/* Generated from components/ProblemEditPanel.tsx */
+.sx25{color:var(--fgColor-muted);font-size:var(--oops-text-xs);}
+
+/* Generated from components/ProblemEditPanel.tsx */
+.sx26{margin-top:var(--oops-space-2);display:flex;gap:var(--oops-space-2);flex-wrap:wrap;}
+
+/* Generated from components/ProblemEditPanel.tsx */
+.sx27{margin-top:var(--oops-space-4);display:flex;flex-direction:column;gap:var(--oops-space-2);}
+
+/* Generated from components/ProblemEditPanel.tsx */
+.sx28{display:flex;align-items:center;gap:var(--oops-space-2);flex-wrap:wrap;}
+
+/* Generated from components/ProblemEditPanel.tsx */
+.sx29{color:var(--fgColor-muted);font-size:var(--oops-text-sm);}
+
+/* Generated from components/ProblemEditPanel.tsx */
+.sx30{display:flex;align-items:center;gap:var(--oops-space-2);flex-wrap:wrap;}
+
+/* Generated from components/ProblemEditPanel.tsx */
+.sx31{color:var(--fgColor-muted);font-size:var(--oops-text-sm);}
+
+/* Generated from components/ProblemEditPanel.tsx */
+.sx32{min-width:42px;font-size:var(--oops-text-sm);}
+
+/* Generated from components/ProblemEditPanel.tsx */
+.sx33{margin-top:var(--oops-space-4);resize:vertical;font-family:var(--font-mono);font-size:var(--oops-text-sm);}
+
+/* Generated from components/ProblemEditPanel.tsx */
+.sx34{margin-top:var(--oops-space-2);display:flex;gap:var(--oops-space-2);flex-wrap:wrap;}
+
+/* Generated from components/ProblemEditPanel.tsx */
+.sx35{margin-right:var(--oops-space-1);}
+
+/* Generated from components/ProblemEditPanel.tsx */
+.sx36{margin-top:var(--oops-space-4);}
+
+/* Generated from components/ProblemEditPanel.tsx */
+.sx37{margin-top:var(--oops-space-2);padding:var(--oops-space-2);border:1px solid;border-color:var(--borderColor-default);border-radius:1px;background-color:var(--bgColor-muted);}.sx37 svg{max-width:100%;height:auto;}
+
+/* Generated from components/ProblemEditPanel.tsx */
+.sx38{margin-top:var(--oops-space-2);padding:var(--oops-space-2);border:1px solid;border-color:var(--fgColor-danger-emphasis);border-radius:1px;background-color:var(--bgColor-danger-muted);}
+
+/* Generated from components/ProblemEditPanel.tsx */
+.sx39{color:var(--fgColor-danger);font-size:var(--oops-text-sm);font-weight:600;}
+
+/* Generated from components/ProblemEditPanel.tsx */
+.sx40{display:block;margin-top:var(--oops-space-1);color:var(--fgColor-default);font-size:var(--oops-text-xs);white-space:pre-wrap;}
+
+/* Generated from components/ProblemEditPanel.tsx */
+.sx41{display:flex;gap:var(--oops-space-2);justify-content:flex-end;padding-top:var(--oops-space-2);border-top-width:1px;border-top-style:solid;border-top-color:var(--borderColor-muted);position:sticky;bottom:0px;background-color:var(--bgColor-default);padding-bottom:var(--oops-space-2);z-index:10;}
+
+/* Generated from components/ProblemEditPanel.tsx */
+.sx42{margin-right:var(--oops-space-1);}
+.diagramStatus{font-size:var(--oops-text-xs);}
+.diagramStatus[data-status="danger"]{color:var(--fgColor-danger);}
+.diagramStatus[data-status="muted"]{color:var(--fgColor-muted);}
+
+/* Section rhythm — unified titles + dividers across the editor body */
+.section{padding-top:var(--oops-space-4);border-top:1px solid var(--borderColor-muted);}
+.sectionTitle{display:block;margin-bottom:var(--oops-space-3);font-size:var(--oops-text-sm);font-weight:600;color:var(--fgColor-default);}
+
+/* 附图 disclosure header (in-place collapsible) */
+.diagramDisclosure{display:flex;width:100%;align-items:center;justify-content:space-between;gap:var(--oops-space-2);padding:0;border:0;background:transparent;color:var(--fgColor-default);font:inherit;cursor:pointer;text-align:left;}
+.diagramDisclosureLead{display:flex;align-items:center;gap:var(--oops-space-2);min-width:0;}
+.diagramDisclosureIcon{flex-shrink:0;color:var(--fgColor-muted);transition:transform var(--oops-transition-fast);}
+.diagramDisclosureTitle{font-size:var(--oops-text-sm);font-weight:600;color:var(--fgColor-default);}
+.diagramDisclosureSummary{color:var(--fgColor-muted);font-size:var(--oops-text-xs);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.diagramBody{margin-top:var(--oops-space-3);display:flex;flex-direction:column;gap:var(--oops-space-4);}
+
+/* TikZ AI/手动 view tabs — mirrors aiSettings .filterTab* against the same tokens */
+.diagramTabs{display:flex;gap:var(--oops-space-1);border-bottom:1px solid var(--borderColor-muted);}
+.diagramTab{display:inline-flex;min-height:36px;align-items:center;gap:var(--oops-space-1);padding:0 var(--oops-space-3);border:0;border-bottom:2px solid transparent;color:var(--fgColor-muted);background:transparent;font:inherit;font-size:var(--oops-text-xs);white-space:nowrap;cursor:pointer;}
+.diagramTab:hover{color:var(--fgColor-default);}
+.diagramTabActive{border-bottom-color:var(--fgColor-default);color:var(--fgColor-default);font-weight:650;}
+.diagramTabPanel{display:flex;flex-direction:column;gap:var(--oops-space-3);}
+
+/* Layout sub-group (position + size) inside 附图 */
+.diagramLayoutRow{display:flex;align-items:center;gap:var(--oops-space-2);flex-wrap:wrap;}
+.diagramLayoutLabel{min-width:36px;color:var(--fgColor-muted);font-size:var(--oops-text-sm);}

@@ -15,6 +15,7 @@ import { rehypeInlineDisplaystyle } from "@/lib/rehype-inline-displaystyle";
 import type { ContentFormat } from "@/types/api";
 import type { PluggableList } from "unified";
 import { useEffect, useMemo, useRef } from "react";
+import sxStyles from "./MarkdownRenderer.sx.module.css";
 
 export function MarkdownRenderer({
   text,
@@ -52,20 +53,20 @@ export function MarkdownRenderer({
     <Box
       ref={containerRef}
       className="oops-markdown"
-      sx={{ fontSize: fontSize ?? 1, "& .katex": { fontSize: "1.1em" } }}
+      data-font-size={fontSize ?? 1}
     >
       <ReactMarkdown
         remarkPlugins={remarkPlugins}
         rehypePlugins={rehypePlugins}
         components={{
           p: ({ children }) => (
-            <Box as="p" sx={{ m: 0, mb: 2, whiteSpace: "pre-wrap" }}>
+            <Box as="p" className={sxStyles.sx1}>
               {children}
             </Box>
           ),
-          ul: ({ children }) => <Box as="ul" sx={{ pl: 3, mt: 0, mb: 2 }}>{children}</Box>,
-          ol: ({ children }) => <Box as="ol" sx={{ pl: 3, mt: 0, mb: 2 }}>{children}</Box>,
-          li: ({ children }) => <Box as="li" sx={{ mb: 1, whiteSpace: "pre-wrap" }}>{children}</Box>,
+          ul: ({ children }) => <Box as="ul" className={sxStyles.sx2}>{children}</Box>,
+          ol: ({ children }) => <Box as="ol" className={sxStyles.sx3}>{children}</Box>,
+          li: ({ children }) => <Box as="li" className={sxStyles.sx4}>{children}</Box>,
           pre: ({ children }) => {
             const child = Array.isArray(children) ? children[0] : children;
             let className = "";
@@ -79,7 +80,7 @@ export function MarkdownRenderer({
 
             if (["molecule", "smiles", "mermaid", "tikz"].includes(language)) {
               return (
-                <Box sx={{ m: 0, mb: 2 }}>
+                <Box className={sxStyles.sx5}>
                   {children}
                 </Box>
               );
@@ -88,19 +89,7 @@ export function MarkdownRenderer({
             return (
               <Box
                 as="pre"
-                sx={{
-                  whiteSpace: "pre-wrap",
-                  fontFamily: "mono",
-                  fontSize: 1,
-                  m: 0,
-                  mb: 2,
-                  p: 2,
-                  borderRadius: 1,
-                  border: "1px solid",
-                  borderColor: "border.default",
-                  bg: "canvas.subtle",
-                  overflowX: "auto",
-                }}
+                className={sxStyles.sx6}
               >
                 {children}
               </Box>
@@ -123,7 +112,7 @@ export function MarkdownRenderer({
             }
 
             return (
-              <Box as="code" sx={{ fontFamily: "mono", fontSize: 1, whiteSpace: "pre-wrap" }}>
+              <Box as="code" className={sxStyles.sx7}>
                 {children}
               </Box>
             );

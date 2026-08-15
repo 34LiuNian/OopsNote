@@ -3,6 +3,7 @@
 import { Box, Text } from "@/components/ui/primitives";
 import { TagPicker } from "./TagPicker";
 import type { TagDimensionStyle } from "@/types/api";
+import sxStyles from "./TagSelectorRow.sx.module.css";
 
 /**
  * 统一的标签选择器行组件
@@ -37,14 +38,7 @@ export function TagSelectorRow({
   };
 }) {
 return (
-    <Box sx={{ 
-      display: "grid", 
-      gridTemplateColumns: [
-        "1fr",
-        "repeat(auto-fit, minmax(min(260px, 100%), 1fr))",
-      ],
-      gap: 3 
-    }}>
+    <Box className={sxStyles.sx1}>
       <Box>
         <TagPicker
           title="来源"

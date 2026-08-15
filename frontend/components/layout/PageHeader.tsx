@@ -1,4 +1,5 @@
 import { Box, Heading, Text } from "@/components/ui/primitives";
+import sxStyles from "./PageHeader.sx.module.css";
 
 export function PageHeader({
   title,
@@ -10,10 +11,10 @@ export function PageHeader({
   action?: React.ReactNode;
 }) {
   return (
-    <Box className="page-header" sx={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 3, flexWrap: "wrap" }}>
+    <Box className={["page-header", sxStyles.sx1].filter(Boolean).join(" ")} >
       <Box>
-        <Heading as="h1" sx={{ fontSize: 4, m: 0 }}>{title}</Heading>
-        <Text sx={{ color: "fg.muted", fontSize: 1 }}>{description}</Text>
+        <Heading as="h1" className={sxStyles.sx2}>{title}</Heading>
+        <Text className={sxStyles.sx3}>{description}</Text>
       </Box>
       {action}
     </Box>

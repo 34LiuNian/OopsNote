@@ -4,6 +4,7 @@ import { Fragment } from "react";
 import { Box, Text, Spinner, Octicon } from "@/components/ui/primitives";
 import { CheckIcon, XIcon, SkipIcon } from "@/components/ui/icons";
 import { PROGRESS_STEPS, ProgressStep, UseTaskProgressResult } from "@/hooks/useTaskProgress";
+import sxStyles from "./TaskProgressBar.sx.module.css";
 
 interface TaskProgressBarProps {
   progressState: UseTaskProgressResult;
@@ -14,13 +15,7 @@ interface TaskProgressBarProps {
   steps?: ProgressStep[];
 }
 
-// 状态颜色规范（使用 Primer 语义化 token，适配亮暗模式）
-const STATUS_COLORS = {
-  success: "var(--fgColor-success)",
-  error: "var(--fgColor-danger)",
-  processing: "var(--fgColor-info)",
-  wait: "var(--fgColor-muted)",
-} as const;
+type NodeStatus = "success" | "error" | "processing" | "wait";
 
 interface NodeStyle {
   left: string;
@@ -46,7 +41,7 @@ function getNodeStatus(
   idx: number,
   progressState: UseTaskProgressResult,
   isCancelled: boolean
-): keyof typeof STATUS_COLORS {
+): NodeStatus {
   const isError = progressState.isFailed && progressState.highestIndex === idx;
   const isDone = progressState.highestIndex >= idx;
   const isActive = progressState.activeIndex === idx;
@@ -57,35 +52,16 @@ function getNodeStatus(
   return "wait";
 }
 
-function NodeDot({ status }: { status: keyof typeof STATUS_COLORS }) {
-  const color = STATUS_COLORS[status];
+function NodeDot({ status }: { status: NodeStatus }) {
   return (
     <Box
-      sx={{
-        width: 22,
-        height: 22,
-        borderRadius: "50%",
-        borderWidth: 2,
-        borderStyle: "solid",
-        borderColor: color,
-        bg: status === "processing" ? "canvas.default" : color,
-        color: "canvas.default",
-        fontSize: 0,
-        fontWeight: 700,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        boxShadow: status === "processing" ? "var(--oops-focus-ring)" : "none",
-        transition: "all 0.4s ease-in-out",
-        animation: status === "processing" ? "oops-progress-pulse 1.5s ease-in-out infinite" : "none",
-        opacity: status === "wait" ? 0.5 : 1,
-        flexShrink: 0,
-      }}
+      className={sxStyles.nodeDot}
+      data-status={status}
     >
-      {status === "error" && <Octicon icon={XIcon} size={14} sx={{ animation: "fadeIn 0.3s ease-in-out" }} />}
-      {status === "success" && <Octicon icon={CheckIcon} size={14} sx={{ animation: "fadeIn 0.3s ease-in-out" }} />}
-      {status === "processing" && <Spinner size="small" sx={{ animation: "fadeIn 0.3s ease-in-out" }} />}
-      {status === "wait" && <Octicon icon={SkipIcon} size={14} sx={{ opacity: 0.3 }} />}
+      {status === "error" && <Octicon icon={XIcon} size={14} className={sxStyles.sx1} />}
+      {status === "success" && <Octicon icon={CheckIcon} size={14} className={sxStyles.sx2} />}
+      {status === "processing" && <Spinner size="small" className={sxStyles.sx3} />}
+      {status === "wait" && <Octicon icon={SkipIcon} size={14} className={sxStyles.sx4} />}
     </Box>
   );
 }
@@ -94,10 +70,10 @@ export function TaskProgressBar({ progressState, latestLine, error, statusMessag
   const isCancelled = progressState.isCancelled;
 
   return (
-    <Box sx={{ p: embedded ? 0 : 2, borderWidth: embedded ? 0 : 1, borderStyle: "solid", borderColor: "border.default", borderRadius: embedded ? 0 : 2 }}>
+    <Box className={sxStyles.progressRoot} data-embedded={embedded ? "true" : "false"}>
       {/* ── Desktop horizontal layout ── */}
-      <Box sx={{ display: ["none", "block"] }}>
-        <Box sx={{ display: "flex", alignItems: "center", mb: 2 }}>
+      <Box className={sxStyles.sx5}>
+        <Box className={sxStyles.sx6}>
           {steps.map((step, idx) => {
             const nodeStatus = getNodeStatus(idx, progressState, isCancelled);
             const lineToNext = idx < steps.length - 1;
@@ -110,29 +86,11 @@ export function TaskProgressBar({ progressState, latestLine, error, statusMessag
                 <NodeDot status={nodeStatus} />
                 {lineToNext && (
                   <Box
-                    sx={{
-                      flex: 1,
-                      height: 3,
-                      mx: 1,
-                      bg: isCurrentErrorLine ? STATUS_COLORS.error : isLineDone ? STATUS_COLORS.success : STATUS_COLORS.wait,
-                      transition: "all 0.4s ease-in-out",
-                      position: "relative",
-                      overflow: "hidden",
-                      borderRadius: 1,
-                    }}
+                    className={sxStyles.progressLine}
+                    data-status={isCurrentErrorLine ? "error" : isLineDone ? "success" : "wait"}
                   >
                     {isLineDone && !isCurrentErrorLine && (
-                      <Box
-                        sx={{
-                          position: "absolute",
-                          top: 0,
-                          left: 0,
-                          height: "100%",
-                          bg: STATUS_COLORS.success,
-                          width: "100%",
-                          animation: isLastDoneLine ? "progressLine 1s cubic-bezier(0.4, 0, 0.2, 1) forwards" : "none",
-                        }}
-                      />
+                      <Box className={sxStyles.progressFill} data-last={isLastDoneLine ? "true" : undefined} />
                     )}
                   </Box>
                 )}
@@ -142,14 +100,13 @@ export function TaskProgressBar({ progressState, latestLine, error, statusMessag
         </Box>
 
         {/* Desktop text labels */}
-        <Box sx={{ position: "relative", height: "40px" }}>
+        <Box className={sxStyles.sx7}>
           {steps.map((step, idx) => {
             const nodeStatus = getNodeStatus(idx, progressState, isCancelled);
             const isDisabled = (progressState.isFailed || isCancelled) && progressState.highestIndex < idx;
             const isDone = progressState.highestIndex >= idx;
             const isActive = progressState.activeIndex === idx;
             const isError = progressState.isFailed && progressState.highestIndex === idx;
-            const textColor = STATUS_COLORS[nodeStatus];
             const subtitle = isError
               ? (error || statusMessage || "处理失败")
               : isCancelled
@@ -165,18 +122,17 @@ export function TaskProgressBar({ progressState, latestLine, error, statusMessag
             return (
               <Box
                 key={step.key}
-                sx={{
-                  position: "absolute",
-                  left: style.left,
-                  transform: style.transform,
-                  textAlign: style.textAlign,
-                  minWidth: "80px",
-                }}
+                className={sxStyles.desktopLabel}
+                data-align={style.textAlign}
+                style={{
+                  "--oops-geometry-left": style.left,
+                  "--oops-geometry-transform": style.transform,
+                } as React.CSSProperties}
               >
-                <Text sx={{ display: "block", fontSize: 1, fontWeight: 600, color: textColor, transition: "all 0.4s ease-in-out", opacity: isDisabled ? 0.5 : 1, animation: nodeStatus === "processing" ? "fadeIn 0.3s ease-in-out" : "none" }}>
+                <Text className={sxStyles.desktopTitle} data-status={nodeStatus} data-disabled={isDisabled ? "true" : undefined}>
                   {step.title}
                 </Text>
-                <Text sx={{ display: "block", fontSize: 0, color: STATUS_COLORS.wait, mt: 1, transition: "color var(--oops-transition-slow)" }}>
+                <Text className={sxStyles.desktopSubtitle}>
                   {subtitle}
                 </Text>
               </Box>
@@ -186,14 +142,13 @@ export function TaskProgressBar({ progressState, latestLine, error, statusMessag
       </Box>
 
       {/* ── Mobile vertical layout ── */}
-      <Box sx={{ display: ["flex", "none"], flexDirection: "column", gap: 0 }}>
+      <Box className={sxStyles.sx8}>
         {steps.map((step, idx) => {
           const nodeStatus = getNodeStatus(idx, progressState, isCancelled);
           const isDisabled = (progressState.isFailed || isCancelled) && progressState.highestIndex < idx;
           const isDone = progressState.highestIndex >= idx;
           const isActive = progressState.activeIndex === idx;
           const isError = progressState.isFailed && progressState.highestIndex === idx;
-          const textColor = STATUS_COLORS[nodeStatus];
           const subtitle = isError
             ? (error || statusMessage || "处理失败")
             : isCancelled
@@ -210,28 +165,23 @@ export function TaskProgressBar({ progressState, latestLine, error, statusMessag
           const isCurrentErrorLine = progressState.isFailed && progressState.highestIndex === idx + 1;
 
           return (
-            <Box key={step.key} sx={{ display: "flex", alignItems: "stretch", gap: 2 }}>
+            <Box key={step.key} className={sxStyles.sx9}>
               {/* Left rail: dot + vertical line */}
-              <Box sx={{ display: "flex", flexDirection: "column", alignItems: "center", width: "22px", flexShrink: 0 }}>
+              <Box className={sxStyles.sx10}>
                 <NodeDot status={nodeStatus} />
                 {!isLast && (
-                  <Box sx={{
-                    flex: 1,
-                    width: 3,
-                    my: "2px",
-                    bg: isCurrentErrorLine ? STATUS_COLORS.error : isLineDone ? STATUS_COLORS.success : STATUS_COLORS.wait,
-                    borderRadius: 1,
-                    transition: "all 0.4s ease-in-out",
-                    minHeight: "12px",
-                  }} />
+                  <Box
+                    className={sxStyles.mobileLine}
+                    data-status={isCurrentErrorLine ? "error" : isLineDone ? "success" : "wait"}
+                  />
                 )}
               </Box>
               {/* Right: text */}
-              <Box sx={{ py: "2px", pb: isLast ? 0 : 2, minWidth: 0 }}>
-                <Text sx={{ display: "block", fontSize: 1, fontWeight: 600, color: textColor, opacity: isDisabled ? 0.5 : 1 }}>
+              <Box className={sxStyles.mobileContent} data-last={isLast ? "true" : undefined}>
+                <Text className={sxStyles.mobileTitle} data-status={nodeStatus} data-disabled={isDisabled ? "true" : undefined}>
                   {step.title}
                 </Text>
-                <Text sx={{ display: "block", fontSize: 0, color: STATUS_COLORS.wait, mt: "2px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "calc(100vw - 100px)" }}>
+                <Text className={sxStyles.mobileSubtitle}>
                   {subtitle}
                 </Text>
               </Box>

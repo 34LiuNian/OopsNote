@@ -6,6 +6,7 @@ import { useTheme } from "@/components/providers/ThemeProvider";
 import { loadDerivedSvg, storeDerivedSvg } from "@/lib/derived-svg-cache";
 import { useEffect, useId, useState } from "react";
 import { sanitizeSvgMarkup } from "./SvgMarkup";
+import sxStyles from "./Mermaid.sx.module.css";
 
 const RENDERER_VERSION = "mermaid-10.9.3";
 
@@ -75,7 +76,6 @@ export function Mermaid({ code }: { code: string }) {
     return (
       <Box>
         <ErrorBanner message={error} title="流程图渲染失败" />
-        <Text sx={{ color: "danger.fg", fontSize: 1 }}>流程图渲染失败：{error}</Text>
       </Box>
     );
   }
@@ -83,20 +83,15 @@ export function Mermaid({ code }: { code: string }) {
   if (!svg) {
     return (
       <Box>
-        <Text sx={{ color: "fg.muted", fontSize: 1 }}>流程图渲染中…</Text>
+        <Text className={sxStyles.sx2}>流程图渲染中…</Text>
       </Box>
     );
   }
 
   return (
-    <Box data-mermaid-theme={resolvedTheme} sx={{ bg: "canvas.default", overflowX: "auto", maxWidth: "100%" }}>
+    <Box data-mermaid-theme={resolvedTheme} className={sxStyles.sx3}>
       <Box
-        sx={{
-          "& svg": {
-            maxWidth: "100%",
-            height: "auto",
-          },
-        }}
+        className={sxStyles.sx4}
         dangerouslySetInnerHTML={{ __html: svg }}
       />
     </Box>

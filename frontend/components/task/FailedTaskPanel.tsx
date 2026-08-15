@@ -13,6 +13,7 @@ import { notify } from "@/lib/notify";
 import type { TaskStage, TaskSummary } from "@/types/api";
 import { Box, Button, Spinner, Text } from "@/components/ui/primitives";
 import { useAuthenticatedAssetUrl } from "@/hooks/useAuthenticatedAssetUrl";
+import sxStyles from "./FailedTaskPanel.sx.module.css";
 
 function AuthenticatedTaskImage({
   path,
@@ -202,8 +203,8 @@ export function FailedTaskPanel({
   if (tasks.length === 0) {
     return (
       <Box className="failed-task-panel__empty">
-        <Text sx={{ fontWeight: 600 }}>没有待处理的失败任务</Text>
-        <Text sx={{ color: "fg.muted", fontSize: 1 }}>重新提交的任务会出现在“进行中”。</Text>
+        <Text className={sxStyles.sx1}>没有待处理的失败任务</Text>
+        <Text className={sxStyles.sx2}>重新提交的任务会出现在“进行中”。</Text>
       </Box>
     );
   }
@@ -214,9 +215,9 @@ export function FailedTaskPanel({
         <Box className="failed-task-panel__summary-icon" aria-hidden="true">
           <AlertTriangle size={18} />
         </Box>
-        <Box sx={{ minWidth: 0, flex: 1 }}>
-          <Text sx={{ fontWeight: 650 }}>{tasks.length} 个任务需要处理</Text>
-          <Text sx={{ color: "fg.muted", fontSize: 1 }}>
+        <Box className={sxStyles.sx3}>
+          <Text className={sxStyles.sx4}>{tasks.length} 个任务需要处理</Text>
+          <Text className={sxStyles.sx5}>
             先确认失败原因，再重新处理；每次重试都会创建一次新的运行记录。
           </Text>
         </Box>
@@ -229,7 +230,7 @@ export function FailedTaskPanel({
 
       {selectionMode && (
         <Box className="failed-task-panel__batch" role="toolbar" aria-label="批量处理失败任务">
-          <Text sx={{ fontWeight: 600, fontSize: 1 }} aria-live="polite">
+          <Text className={sxStyles.sx6} aria-live="polite">
             已选 {selectedCount} 项
           </Text>
           <Button
@@ -242,7 +243,7 @@ export function FailedTaskPanel({
           <Button size="small" variant="invisible" onClick={() => setSelectedIds({})} disabled={selectedCount === 0}>
             清空
           </Button>
-          <Box sx={{ flex: 1 }} />
+          <Box className={sxStyles.sx7} />
           <Button
             size="small"
             variant="danger"
@@ -319,7 +320,7 @@ export function FailedTaskPanel({
                   <span className="oops-badge oops-badge-danger">
                     {task.stage ? STAGE_LABELS[task.stage] || "处理失败" : "处理失败"}
                   </span>
-                  <Text as="span" sx={{ color: "fg.muted", fontSize: 0 }}>
+                  <Text as="span" className={sxStyles.sx8}>
                     {SUBJECT_LABELS[task.subject] || task.subject || "未分类"}
                     {task.question_no ? ` · 第 ${task.question_no} 题` : ""}
                     {` · ${formatFailureTime(task.updated_at)}`}

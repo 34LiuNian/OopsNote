@@ -139,7 +139,7 @@ export function ChannelRail({
                 onClick={() => onSelect(channel)}
               >
                 <ProviderMark provider={channel.provider} icon={channel.icon} size={34} />
-                <span style={{ minWidth: 0 }}>
+                <span className={styles.channelText}>
                   <span className={styles.channelItemName}>{channel.display_name}</span>
                   <span className={styles.channelItemMeta}>{channel.models.length} 个模型 · {channel.id}</span>
                 </span>

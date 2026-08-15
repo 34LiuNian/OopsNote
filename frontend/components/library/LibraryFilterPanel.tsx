@@ -13,6 +13,7 @@ import { SidebarCollapseIcon } from "@/components/ui/icons";
 import { SUBJECT_OPTIONS } from "@/config/subjects";
 import type { TagDimensionStyle } from "@/types/api";
 import { TagSelectorRow } from "@/components/TagSelectorRow";
+import sxStyles from "./LibraryFilterPanel.sx.module.css";
 
 const LIBRARY_SUBJECT_OPTIONS = [
   { value: "", label: "全部学科" },
@@ -61,7 +62,7 @@ export function LibraryFilterPanel({
   return (
     <Box className="library-filter-panel">
       <Box className="oops-secondary-sidebar__header">
-        <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
+        <Box className={sxStyles.sx1}>
           <Text as="span">题库筛选</Text>
           {activeCount > 0 ? (
             <Box className="oops-badge oops-badge-muted">{activeCount}</Box>
@@ -84,7 +85,7 @@ export function LibraryFilterPanel({
 
         <FormControl>
           <FormControl.Label>日期范围</FormControl.Label>
-          <Box sx={{ display: "grid", gap: 2 }}>
+          <Box className={sxStyles.sx2}>
             <TextInput
               type="date"
               value={dateAfter}

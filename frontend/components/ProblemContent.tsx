@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useLayoutEffect, useRef, useState } from "react";
 import { Box } from "@/components/ui/primitives";
@@ -10,6 +10,7 @@ import { TikzRenderer } from "./renderers/TikzRenderer";
 import { OptionsList } from "./ui/OptionsList";
 import { ProblemRenderStatus } from "./ProblemRenderStatus";
 import type { ContentFormat, DiagramImageTone } from "@/types/api";
+import sxStyles from "./ProblemContent.sx.module.css";
 
 type ProblemOption = {
   key: string;
@@ -135,9 +136,9 @@ export function ProblemContent({
           <Box
             ref={illustrationRef}
             as="figure"
-            className="problem-content__illustration"
+            className={["problem-content__illustration", sxStyles.sx1].filter(Boolean).join(" ")}
             style={{ height: figureHeight, aspectRatio: illustrationAspectRatio }}
-            sx={{ m: 0 }}
+
           >
             {diagramKind === "image" && imageUrl ? (
               <NativeImage className={diagramImageTone === "auto" ? "is-auto-tone" : undefined} src={imageUrl} alt="附图" />

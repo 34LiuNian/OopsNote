@@ -16,6 +16,40 @@ const allowedMantineFiles = new Set([
   "app/layout.tsx",
 ]);
 
+// Inline styles are restricted to runtime geometry. Existing framework and
+// renderer boundary files remain explicit until their owning CSS module batch
+// is complete; each entry carries an owner and removal condition.
+const inlineStyleAllowlist = new Map([
+  ["app/layout.tsx", "framework body canvas; owner: UI foundations; remove when root shell token is CSS-only"],
+  ["app/apple-icon.tsx", "Next metadata renderer; owner: app shell; remove when metadata API supports tokens"],
+  ["app/icon.tsx", "Next metadata renderer; owner: app shell; remove when metadata API supports tokens"],
+  ["app/icon-dark/route.tsx", "Next metadata renderer; owner: app shell; remove when metadata API supports tokens"],
+  ["app/icon-light/route.tsx", "Next metadata renderer; owner: app shell; remove when metadata API supports tokens"],
+  ["components/ProblemEditPanel.tsx", "image fit geometry; owner: problem editor; geometry migration"],
+  ["components/ProblemContent.tsx", "illustration ratio geometry; owner: renderer; geometry migration"],
+  ["components/TaskThumbnail.tsx", "thumbnail dimensions; owner: library; geometry migration"],
+  ["app/library/page.tsx", "task strip minimum geometry; owner: library; geometry migration"],
+  ["app/paper-builder/page.tsx", "PDF viewport geometry; owner: paper builder; geometry migration"],
+  ["app/papers/new/page.tsx", "paper canvas geometry; owner: paper builder; geometry migration"],
+  ["app/papers/[draftId]/edit/page.tsx", "paper preview geometry; owner: paper builder; geometry migration"],
+  ["app/settings/policy/page.tsx", "empty-state layout boundary; owner: settings; migrate with policy CSS module"],
+  ["app/settings/channels/page.tsx", "channel detail layout boundary; owner: settings; migrate with channels CSS module"],
+  ["features/upload/components/BatchScanForm.tsx", "crop and page ratio geometry; owner: batch scan; geometry migration"],
+  ["features/papers/KnowledgeTreeSelector.tsx", "tree indentation geometry; owner: paper builder; geometry migration"],
+  ["components/batch-continuous/BatchSelectionOverlay.tsx", "selection rectangle geometry; owner: batch scan; geometry migration"],
+  ["components/batch-continuous/BatchContinuousSurface.tsx", "page and crop geometry; owner: batch scan; geometry migration"],
+  ["components/image-selection/NormalizedRectEditor.tsx", "normalized rectangle geometry; owner: image selection; geometry migration"],
+  ["components/task/TaskProgressBar.tsx", "step label geometry variables; owner: task workflow; geometry migration"],
+  ["components/task/TaskMathRenderer.tsx", "hidden measurement node; owner: renderer; remove with measurement API"],
+  ["components/task/TaskStatusNotifications.tsx", "notification progress content; owner: task workflow; migrate to notification content CSS"],
+  ["components/settings/ai/ChannelRail.tsx", "channel rail layout boundary; owner: AI settings; migrate with rail CSS module"],
+  ["components/settings/ai/ModelCatalog.tsx", "catalog layout boundary; owner: AI settings; migrate with catalog CSS module"],
+  ["components/settings/ai/PolicyEditor.tsx", "policy layout boundary; owner: AI settings; migrate with policy CSS module"],
+  ["components/settings/ai/ProviderMark.tsx", "provider mark dimensions; owner: AI settings; geometry migration"],
+  ["components/task/ProblemStudyPanel.tsx", "task link presentation; owner: task workflow; migrate to task CSS module"],
+  ["components/upload/UploadQueue.tsx", "native file input hiding; owner: upload; replace with facade input"],
+]);
+
 function collectFiles(directory) {
   const files = [];
   for (const entry of readdirSync(directory)) {
@@ -76,13 +110,26 @@ for (const absolute of sourceRoots.flatMap((root) => collectFiles(join(frontendR
   const file = relativeFile(absolute);
   const source = readFileSync(absolute, "utf8");
   if (file.includes("components/ui/")) continue;
-  inventory.sx += source.match(/\bsx=\{/g)?.length ?? 0;
+  const sxMatches = source.match(/\bsx=\{/g)?.length ?? 0;
+  inventory.sx += sxMatches;
   inventory.nativeControls += source.match(/<(?:button|input|select|textarea)\b/g)?.length ?? 0;
+  if (sxMatches > 0) {
+    const lines = source.split(/\r?\n/);
+    lines.forEach((line, index) => {
+      if (/\bsx=\{/.test(line)) failures.push(`${file}:${index + 1}: business sx is forbidden; use semantic UI props or feature geometry CSS`);
+    });
+  }
+  const inlineStyleMatches = source.match(/\bstyle=\{\{/g)?.length ?? 0;
+  if (inlineStyleMatches > 0 && !inlineStyleAllowlist.has(file)) {
+    failures.push(`${file}: inline style is forbidden; use CSS Module or --oops-geometry-* variables`);
+  }
 }
+
+if (inventory.nativeControls > 0) failures.push(`business source contains ${inventory.nativeControls} native interactive controls; use components/ui facade`);
 
 if (failures.length) {
   console.error("UI boundary audit failed:\n\n" + failures.map((failure) => `- ${failure}`).join("\n"));
   process.exitCode = 1;
 } else {
-  console.log(`UI boundary audit passed (legacy inventory: ${inventory.sx} sx, ${inventory.nativeControls} native controls; no new escapes).`);
+  console.log(`UI boundary audit passed (legacy inventory: ${inventory.sx} sx, ${inventory.nativeControls} native controls; inline-style allowlist: ${inlineStyleAllowlist.size}).`);
 }

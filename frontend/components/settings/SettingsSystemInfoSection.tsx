@@ -9,6 +9,7 @@ import {
 } from "@/components/ui/icons";
 import { ErrorBanner } from "../ui/ErrorBanner";
 import type { SystemInfoResponse } from "../../types/api";
+import sxStyles from "./SettingsSystemInfoSection.sx.module.css";
 
 type SettingsSystemInfoSectionProps = {
   info: SystemInfoResponse | null;
@@ -31,12 +32,12 @@ export function SettingsSystemInfoSection({
   errorMessage,
 }: SettingsSystemInfoSectionProps) {
   return (
-    <Box className="oops-card" sx={{ p: 3 }}>
-      <Box sx={{ display: "flex", alignItems: "center", gap: 2, mb: 3 }}>
+    <Box className={["oops-card", sxStyles.sx1].filter(Boolean).join(" ")} >
+      <Box className={sxStyles.sx2}>
         <InfoIcon size={16} />
         <Box>
           <Text className="oops-section-subtitle">System</Text>
-          <Heading as="h3" className="oops-section-title" sx={{ m: 0, fontSize: 2 }}>
+          <Heading as="h3" className={["oops-section-title", sxStyles.sx3].filter(Boolean).join(" ")} >
             系统信息
           </Heading>
         </Box>
@@ -45,17 +46,17 @@ export function SettingsSystemInfoSection({
       <ErrorBanner message={errorMessage} />
 
       {isLoading ? (
-        <Box sx={{ display: "flex", justifyContent: "center", py: 4 }}>
+        <Box className={sxStyles.sx4}>
           <Spinner size="medium" />
         </Box>
       ) : info ? (
-        <Box sx={{ display: "flex", flexDirection: "column", gap: 0 }}>
+        <Box className={sxStyles.sx5}>
           <InfoRow
             label="网关连接"
             value={
-              <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
+              <Box className={sxStyles.sx6}>
                 <StatusDot status={info.gateway_reachable} />
-                <Text sx={{ fontSize: 1 }}>
+                <Text className={sxStyles.sx7}>
                   {info.gateway_reachable === null
                     ? "未配置"
                     : info.gateway_reachable
@@ -69,7 +70,7 @@ export function SettingsSystemInfoSection({
             <InfoRow
               label="网关地址"
               value={
-                <Text sx={{ fontSize: 1, fontFamily: "mono" }}>
+                <Text className={sxStyles.sx8}>
                   {info.gateway_url}
                 </Text>
               }
@@ -78,9 +79,9 @@ export function SettingsSystemInfoSection({
           <InfoRow
             label="API Key"
             value={
-              <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
+              <Box className={sxStyles.sx9}>
                 <StatusDot status={info.env_configured} />
-                <Text sx={{ fontSize: 1 }}>
+                <Text className={sxStyles.sx10}>
                   {info.env_configured ? "已配置" : "未配置"}
                 </Text>
               </Box>
@@ -89,7 +90,7 @@ export function SettingsSystemInfoSection({
           <InfoRow
             label="存储路径"
             value={
-              <Text sx={{ fontSize: 1, fontFamily: "mono" }}>
+              <Text className={sxStyles.sx11}>
                 {info.storage_path}
               </Text>
             }
@@ -98,7 +99,7 @@ export function SettingsSystemInfoSection({
             label="缓存模型"
             last
             value={
-              <Text sx={{ fontSize: 1 }}>
+              <Text className={sxStyles.sx12}>
                 {info.models_count > 0
                   ? `${info.models_count} 个模型`
                   : "无缓存"}
@@ -107,7 +108,7 @@ export function SettingsSystemInfoSection({
           />
         </Box>
       ) : (
-        <Text sx={{ fontSize: 1, color: "fg.muted" }}>加载中...</Text>
+        <Text className={sxStyles.sx13}>加载中...</Text>
       )}
     </Box>
   );
@@ -116,18 +117,10 @@ export function SettingsSystemInfoSection({
 function InfoRow({ label, value, last }: { label: string; value: React.ReactNode; last?: boolean }) {
   return (
     <Box
-      className="oops-list-item"
-      sx={{
-        display: "flex",
-        justifyContent: "space-between",
-        alignItems: "center",
-        px: 3,
-        py: 2,
-        borderBottom: last ? "none" : "1px solid",
-        borderColor: "border.muted",
-      }}
+      className={["oops-list-item", sxStyles.infoRow].join(" ")}
+      data-last={last ? "true" : undefined}
     >
-      <Text sx={{ fontWeight: 600, fontSize: 1, color: "fg.muted" }}>{label}</Text>
+      <Text className={sxStyles.sx14}>{label}</Text>
       {value}
     </Box>
   );

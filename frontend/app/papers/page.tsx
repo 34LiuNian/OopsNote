@@ -8,6 +8,7 @@ import { PageHeader } from "@/components/layout/PageHeader";
 import { deletePaper, listPapers } from "@/features/papers";
 import { confirmAction } from "@/lib/confirm";
 import type { PaperDraft } from "@/types/api";
+import sxStyles from "./page.sx.module.css";
 
 export default function PapersPage() {
   const router = useRouter();
@@ -36,27 +37,27 @@ export default function PapersPage() {
   }
 
   return (
-    <Box sx={{ display: "flex", flexDirection: "column", gap: 3 }}>
+    <Box className={sxStyles.sx1}>
       <PageHeader
         title="试卷草稿"
         description="草稿会自动保存并永久保留，直到你主动删除"
         action={<Button variant="primary" size="small" onClick={() => router.push("/papers/new")}>新建试卷</Button>}
       />
-      {loading ? <Box sx={{ p: 5, textAlign: "center" }}><Spinner /></Box> : null}
+      {loading ? <Box className={sxStyles.sx2}><Spinner /></Box> : null}
       <ErrorBanner message={error} title="加载试卷草稿失败" />
       {!loading && !papers.length ? (
-        <Box sx={{ p: 5, border: "1px dashed", borderColor: "border.default", borderRadius: 2, textAlign: "center" }}>
-          <Text sx={{ color: "fg.muted" }}>还没有试卷草稿。</Text>
+        <Box className={sxStyles.sx3}>
+          <Text className={sxStyles.sx4}>还没有试卷草稿。</Text>
         </Box>
       ) : null}
-      <Box sx={{ display: "grid", gridTemplateColumns: ["1fr", "repeat(2, minmax(0, 1fr))"], gap: 2 }}>
+      <Box className={sxStyles.sx5}>
         {papers.map((paper) => (
-          <Box key={paper.id} sx={{ p: 3, border: "1px solid", borderColor: "border.default", borderRadius: 2 }}>
-            <Text sx={{ display: "block", fontWeight: 650, fontSize: 2 }}>{paper.title}</Text>
-            <Text sx={{ display: "block", mt: 1, color: "fg.muted", fontSize: 1 }}>
+          <Box key={paper.id} className={sxStyles.sx6}>
+            <Text className={sxStyles.sx7}>{paper.title}</Text>
+            <Text className={sxStyles.sx8}>
               {paper.items.length} 道题 · 更新于 {new Date(paper.updated_at).toLocaleString()}
             </Text>
-            <Box sx={{ display: "flex", gap: 2, mt: 3 }}>
+            <Box className={sxStyles.sx9}>
               <Button variant="primary" size="small" onClick={() => router.push(`/papers/${paper.id}/edit`)}>继续编辑</Button>
               <Button size="small" onClick={() => void removePaper(paper)}>删除</Button>
             </Box>

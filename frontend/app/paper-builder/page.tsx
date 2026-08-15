@@ -19,6 +19,7 @@ import { SUBJECT_OPTIONS } from "../../config/subjects";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { ApiError } from "@/lib/api";
 import { notify } from "@/lib/notify";
+import sxStyles from "./page.sx.module.css";
 
 const BUILDER_SUBJECT_OPTIONS = [
   ...SUBJECT_OPTIONS,
@@ -154,20 +155,20 @@ export default function PaperBuilderPage() {
   }, [paperPdfUrl]);
 
   return (
-    <Box sx={{ display: "flex", flexDirection: "column", gap: 3 }}>
+    <Box className={sxStyles.sx1}>
       <PageHeader
         title="试题组卷"
         description="从题库选择题目，生成练习试卷"
         action={isLoading ? <Spinner size="small" /> : undefined}
       />
-      <Box sx={{ display: "grid", gridTemplateColumns: ["1fr", "1fr 1fr"], gap: 3 }}>
+      <Box className={sxStyles.sx2}>
         {/* <Box> */}
 
-        <Box sx={{ borderColor: "border.default", borderRadius: 2 }}>
-          <Box sx={{ display: "flex", justifyContent: "flex-end", alignItems: "center", flexWrap: "wrap", gap: 2, mb: 3 }}>
-            <Box sx={{ display: "flex", gap: 2, alignItems: "center" }}>
+        <Box className={sxStyles.sx3}>
+          <Box className={sxStyles.sx4}>
+            <Box className={sxStyles.sx5}>
               <ErrorBanner message={error ?? ""} title="加载题库失败" />
-              <Text sx={{ color: "fg.muted" }}>已选 {selectedCount} 道</Text>
+              <Text className={sxStyles.sx6}>已选 {selectedCount} 道</Text>
               <Button 
                 size="small" 
                 onClick={() => setSelected({})}
@@ -193,7 +194,7 @@ export default function PaperBuilderPage() {
               </Button>
             </Box>
           </Box>
-          <Box sx={{ display: 'grid', gridTemplateColumns: ['1fr', '1fr 1fr 1fr'], gap: 3, mb: 3 }}>
+          <Box className={sxStyles.sx7}>
             <FormControl>
               <FormControl.Label>试卷标题</FormControl.Label>
               <TextInput
@@ -217,20 +218,20 @@ export default function PaperBuilderPage() {
             </FormControl>
             <FormControl>
               <FormControl.Label>日期范围</FormControl.Label>
-              <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+              <Box className={sxStyles.sx8}>
                 <TextInput
                   type="date"
                   value={effectiveDateAfter}
                   onChange={(e) => setDateAfter(e.target.value)}
-                  sx={{ flex: 1, fontSize: 0 }}
+                  className={sxStyles.sx9}
                   placeholder="起始"
                 />
-                <Text sx={{ color: 'fg.muted', fontSize: 1 }}>-</Text>
+                <Text className={sxStyles.sx10}>-</Text>
                 <TextInput
                   type="date"
                   value={effectiveDateBefore}
                   onChange={(e) => setDateBefore(e.target.value)}
-                  sx={{ flex: 1, fontSize: 0 }}
+                  className={sxStyles.sx11}
                   placeholder="结束"
                 />
                 <Button
@@ -240,7 +241,7 @@ export default function PaperBuilderPage() {
                     setDateBefore('');
                   }}
                   disabled={!effectiveDateAfter && !effectiveDateBefore}
-                  sx={{ fontSize: 0, px: 1, py: 0 }}
+                  className={sxStyles.sx12}
                 >
                   清空
                 </Button>
@@ -265,24 +266,24 @@ export default function PaperBuilderPage() {
           />
 
           {isLoading ? (
-            <Box sx={{ textAlign: "center", p: 4, color: "fg.muted" }}>
+            <Box className={sxStyles.sx13}>
               <Spinner size="small" />
-              <Text as="p" sx={{ mt: 2 }}>正在加载题库…</Text>
+              <Text as="p" className={sxStyles.sx14}>正在加载题库…</Text>
             </Box>
           ) : items.length === 0 ? (
-            <Box sx={{ textAlign: "center", p: 4, color: "fg.muted" }}>
-              <Text as="p" sx={{ fontWeight: "bold" }}>
+            <Box className={sxStyles.sx15}>
+              <Text as="p" className={sxStyles.sx16}>
                 暂无题目。
               </Text>
             </Box>
           ) : (
             <Box>
-              <Box as="ul" sx={{ listStyle: "none", p: 0, m: 0 }}>
+              <Box as="ul" className={sxStyles.sx17}>
                 {items.map((item) => (
                   <Box
                     as="li"
                     key={`${item.task_id}-${item.problem_id}`}
-                    sx={{ px: 2, py: 2, borderBottom: "1px solid", borderColor: "border.muted" }}
+                    className={sxStyles.sx18}
                   >
                     <ProblemListItem
                       item={item}
@@ -297,41 +298,19 @@ export default function PaperBuilderPage() {
           )}
         </Box>
         {/* </Box> */}
-        <Box sx={{ minHeight: 320, border: "1px solid", borderColor: "border.default", borderRadius: 2, overflow: "hidden" }}>
+        <Box className={sxStyles.sx19}>
           {paperLoading ? (
-            <Box sx={{ p: 4, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: 320 }}>
+            <Box className={sxStyles.sx20}>
               <Spinner size="large" />
-              <Text sx={{ mt: 3, color: "fg.muted" }}>正在生成试卷...</Text>
-              {/* <Box
-                sx={{
-                  mt: 4,
-                  width: "80%",
-                  height: 200,
-                  bg: "canvas.subtle",
-                  borderRadius: 2,
-                  animation: "pulse 1.5s ease-in-out infinite",
-                  "@keyframes pulse": {
-                    "0%": { opacity: 0.6 },
-                    "50%": { opacity: 1 },
-                    "100%": { opacity: 0.6 },
-                  },
-                }}
-              /> */}
+              <Text className={sxStyles.sx21}>正在生成试卷...</Text>
             </Box>
           ) : paperError ? (
-            <Box sx={{ p: 3, height: "100%", overflow: "auto" }}>
-              <Text sx={{ color: "danger.fg", fontWeight: "bold" }}>生成失败</Text>
-              <Text sx={{ mt: 2, display: "block", color: "danger.fg", whiteSpace: "pre-wrap" }}>{paperError.message}</Text>
+            <Box className={sxStyles.sx22}>
+              <Text className={sxStyles.sx23}>生成失败</Text>
+              <Text className={sxStyles.sx24}>{paperError.message}</Text>
               {paperError.log ? (
                 <Text
-                  sx={{
-                    mt: 3,
-                    display: "block",
-                    fontSize: 0,
-                    whiteSpace: "pre-wrap",
-                    fontFamily:
-                      "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace",
-                  }}
+                  className={sxStyles.sx25}
                 >
                   {paperError.log}
                 </Text>
@@ -340,8 +319,8 @@ export default function PaperBuilderPage() {
           ) : paperPdfUrl ? (
             <iframe title="试卷 PDF 预览" src={paperPdfUrl} style={{ width: "100%", height: "100%", border: 0 }} />
           ) : (
-            <Box sx={{ p: 3 }}>
-              <Text sx={{ color: "fg.muted" }}>选择题目后点击“生成试卷”即可预览。</Text>
+            <Box className={sxStyles.sx26}>
+              <Text className={sxStyles.sx27}>选择题目后点击“生成试卷”即可预览。</Text>
             </Box>
           )}
         </Box>

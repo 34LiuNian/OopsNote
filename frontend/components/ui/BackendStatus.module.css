@@ -1,0 +1,6 @@
+.status{display:flex;align-items:center;gap:6px;cursor:default;padding:var(--oops-space-2) var(--oops-space-1);border-radius:var(--oops-radius-full);font-size:12px;color:var(--fgColor-muted);transition:all var(--oops-transition-fast);}
+.status:hover{background:var(--bgColor-muted);}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--fgColor-muted);transition:all var(--oops-transition-normal);}
+.status[data-status="connected"] .dot{background:var(--fgColor-success);}
+.status[data-status="disconnected"] .dot{background:var(--fgColor-danger);}
+.label{font-size:12px;font-weight:500;}

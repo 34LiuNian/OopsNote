@@ -6,6 +6,7 @@ import { Ban, Check, Copy, KeyRound, LoaderCircle, RefreshCcw, RotateCcw, Shield
 import { PageHeader } from "@/components/layout/PageHeader";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { InitialAvatar } from "@/components/ui/InitialAvatar";
+import { ErrorBanner } from "@/components/ui/ErrorBanner";
 import { Button, Collapse, IconButton, Modal, PasswordInput, Select, TextInput } from "@/components/ui/primitives";
 import { fetchJson } from "@/lib/api";
 import { isAdminUser } from "@/lib/auth";
@@ -61,6 +62,7 @@ export default function MembersPage() {
   const [invitations, setInvitations] = useState<Invitation[]>([]);
   const [quotaAvailable, setQuotaAvailable] = useState(true);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [invitationModalOpen, setInvitationModalOpen] = useState(false);
@@ -68,6 +70,7 @@ export default function MembersPage() {
 
   const load = useCallback(async () => {
     setLoading(true);
+    setLoadError("");
     try {
       const response = await fetch("/api/admin/members", { cache: "no-store" });
       const payload = await response.json() as MembersResponse & { error?: string };
@@ -76,7 +79,7 @@ export default function MembersPage() {
       setInvitations(payload.invitations || []);
       setQuotaAvailable(payload.quotaAvailable);
     } catch (reason) {
-      notify.error({ title: "成员加载失败", description: reason instanceof Error ? reason.message : "无法加载成员列表" });
+      setLoadError(reason instanceof Error ? reason.message : "无法加载成员列表");
     } finally {
       setLoading(false);
     }
@@ -217,6 +220,7 @@ export default function MembersPage() {
           </div>
         )}
       />
+      <ErrorBanner message={loadError} title="成员加载失败" />
 
       <Collapse expanded={showCreateForm} transitionDuration={reducedMotion ? 0 : 180}>
         <section className={styles.panel}>

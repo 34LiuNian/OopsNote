@@ -25,9 +25,9 @@ const notificationHost = read("components/ui/MantineNotifications.tsx");
 
 if (!/color === "red" \? false/.test(policySource)) failures.push("red notification policy must force autoClose=false");
 if (!/errorNotificationId/.test(notifySource)) failures.push("notify.error must use stable error IDs");
-if (!/notify\.error/.test(bannerSource) || !/return null/.test(bannerSource)) failures.push("ErrorBanner must bridge to notify.error without a second inline renderer");
-if (!/QueryCache/.test(querySource) || !/MutationCache/.test(querySource)) failures.push("React Query cache failures must report globally");
-if (!/addEventListener\("error"/.test(monitorSource) || !/unhandledrejection/.test(monitorSource)) failures.push("browser-level failures must report globally");
+if (/notify\.error/.test(bannerSource) || !/role="alert"/.test(bannerSource)) failures.push("ErrorBanner must render the owning page error without creating a notification");
+if (!/queryCache:\s*new QueryCache\(\)/.test(querySource) || !/mutationCache:\s*new MutationCache\(\)/.test(querySource)) failures.push("React Query cache failures must stay in the owning page state");
+if (!/addEventListener\("error"/.test(monitorSource) || !/unhandledrejection/.test(monitorSource) || !/console\.error/.test(monitorSource)) failures.push("browser-level failures must preserve console evidence without notification duplication");
 const notificationLimit = Number(notificationHost.match(/limit=\{(\d+)\}/)?.[1] || 0);
 if (notificationLimit < 6) failures.push("notification host must keep enough persistent errors visible");
 

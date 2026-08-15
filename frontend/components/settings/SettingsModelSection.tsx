@@ -6,6 +6,7 @@ import { AgentSettingsRow } from "./AgentSettingsRow";
 import { ErrorBanner } from "../ui/ErrorBanner";
 import { notify } from "@/lib/notify";
 import { useEffect } from "react";
+import sxStyles from "./SettingsModelSection.sx.module.css";
 
 type AgentDescriptor = {
   key: string;
@@ -79,18 +80,18 @@ export function SettingsModelSection({
   }, [statusMessage]);
 
   return (
-    <Box className="oops-card" sx={{ p: 3 }}>
-      <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", mb: 3 }}>
-        <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
+    <Box className={["oops-card", sxStyles.sx1].filter(Boolean).join(" ")} >
+      <Box className={sxStyles.sx2}>
+        <Box className={sxStyles.sx3}>
           <CpuIcon size={16} />
           <Box>
             <Text className="oops-section-subtitle">Models</Text>
-            <Heading as="h3" className="oops-section-title" sx={{ m: 0, fontSize: 2 }}>
+            <Heading as="h3" className={["oops-section-title", sxStyles.sx4].filter(Boolean).join(" ")} >
               Model and Agent Settings
             </Heading>
           </Box>
         </Box>
-        <Box sx={{ display: "flex", gap: 2 }}>
+        <Box className={sxStyles.sx5}>
           <Button onClick={() => onRefreshModels(true)} disabled={isLoadingModels || isSaving} leadingVisual={SyncIcon}>
             {isLoadingModels ? "Refreshing..." : "Refresh model list"}
           </Button>
@@ -104,7 +105,7 @@ export function SettingsModelSection({
       </Box>
 
       {isDirty && !isSaving && !isLoadingSettings && (
-        <Box className="oops-badge oops-badge-warning" sx={{ mb: 3 }}>
+        <Box className={["oops-badge oops-badge-warning", sxStyles.sx6].filter(Boolean).join(" ")} >
           Unsaved changes
         </Box>
       )}
@@ -114,13 +115,13 @@ export function SettingsModelSection({
       <ErrorBanner message={thinkingErrorMessage} />
       <ErrorBanner message={temperatureErrorMessage} />
 
-      <Box sx={{ p: 3, bg: "canvas.subtle", borderRadius: "var(--oops-radius-sm)", mb: 4 }}>
-        <Text as="p" sx={{ fontSize: 1, color: "fg.muted" }}>
+      <Box className={sxStyles.sx7}>
+        <Text as="p" className={sxStyles.sx8}>
           Edit model override, enabled state, thinking mode, and temperature here, then save them together.
         </Text>
       </Box>
 
-      <Box sx={{ display: "flex", flexDirection: "column", gap: 3 }}>
+      <Box className={sxStyles.sx9}>
         {agents.map((agent) => {
           const currentValue = draft[agent.key] ?? "";
           const hasCurrentInList = currentValue ? sortedModels.some((m) => m.id === currentValue) : true;
@@ -149,7 +150,7 @@ export function SettingsModelSection({
         })}
       </Box>
 
-      <Text as="p" sx={{ fontSize: 1, color: "fg.muted", mt: 3 }}>
+      <Text as="p" className={sxStyles.sx10}>
         Saved model overrides:
         {Object.keys(agentModels).length === 0
           ? " none (all agents use the default model)"

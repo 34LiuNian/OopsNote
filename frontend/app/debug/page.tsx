@@ -10,6 +10,7 @@ import { TaskProgressBar } from "../../components/task/TaskProgressBar";
 import { useTaskProgress, ProgressStepKey } from "../../hooks/useTaskProgress";
 import { confirmAction } from "@/lib/confirm";
 import { notify } from "@/lib/notify";
+import sxStyles from "./page.sx.module.css";
 
 const DEFAULT_TEXT = [
   "# Debug 页面",
@@ -104,20 +105,20 @@ export default function DebugPage() {
   };
 
   return (
-    <Box sx={{ display: "flex", flexDirection: "column", gap: 4 }}>
+    <Box className={sxStyles.sx1}>
       <DesignSystemMatrix />
       <Box>
-        <Text sx={{ fontSize: 0, color: "fg.muted", textTransform: "uppercase" }}>Debug</Text>
-        <Heading as="h2" sx={{ fontSize: 3 }}>Debug 页面</Heading>
-        <Text sx={{ color: "fg.muted", mt: 1 }}>
+        <Text className={sxStyles.sx2}>Debug</Text>
+        <Heading as="h2" className={sxStyles.sx3}>Debug 页面</Heading>
+        <Text className={sxStyles.sx4}>
           在左侧编辑 Markdown，右侧实时预览渲染效果。
         </Text>
       </Box>
 
       {/* TaskProgressBar 测试区域 */}
-      <Box sx={{ p: 3, border: "1px solid", borderColor: "border.default", borderRadius: 2 }}>
-        <Heading as="h3" sx={{ fontSize: 2, mb: 2 }}>TaskProgressBar 组件测试</Heading>
-        <Text sx={{ fontSize: 0, color: "fg.muted", mb: 2 }}>
+      <Box className={sxStyles.sx5}>
+        <Heading as="h3" className={sxStyles.sx6}>TaskProgressBar 组件测试</Heading>
+        <Text className={sxStyles.sx7}>
           当前状态：isFailed={isFailed ? "true" : "false"}, isRunning={isRunning ? "true" : "false"}, progressIndex={progressIndex}
         </Text>
         <TaskProgressBar
@@ -126,7 +127,7 @@ export default function DebugPage() {
           error={isFailed ? "模拟错误：处理失败" : undefined}
           statusMessage={isFailed ? "处理失败" : undefined}
         />
-        <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap", mt: 2 }}>
+        <Box className={sxStyles.sx8}>
           <Button size="small" onClick={handleReset}>重置</Button>
           {STEP_KEYS.map((step, idx) => (
             <Button
@@ -147,12 +148,12 @@ export default function DebugPage() {
         </Box>
       </Box>
 
-      <Box sx={{ p: 3, border: "1px solid", borderColor: "border.default", borderRadius: 2 }}>
-        <Heading as="h3" sx={{ fontSize: 2, mb: 1 }}>通知与对话框测试</Heading>
-        <Text sx={{ fontSize: 0, color: "fg.muted", mb: 2 }}>
+      <Box className={sxStyles.sx9}>
+        <Heading as="h3" className={sxStyles.sx10}>通知与对话框测试</Heading>
+        <Text className={sxStyles.sx11}>
           验证 Mantine 通知、危险操作确认和表单对话框的明暗主题表现。
         </Text>
-        <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap" }}>
+        <Box className={sxStyles.sx12}>
           <Button size="small" variant="primary" onClick={() => notify.success({ title: "保存成功", description: "示例内容已保存。" })}>成功通知</Button>
           <Button size="small" onClick={() => notify.info({ title: "正在同步", description: "这是信息提示。" })}>信息通知</Button>
           <Button size="small" variant="danger" onClick={() => notify.error({ title: "操作失败", description: "这是错误提示。" })}>错误通知</Button>
@@ -179,13 +180,13 @@ export default function DebugPage() {
         />
       </Box>
 
-      <Box sx={{ display: "flex", gap: 2 }}>
+      <Box className={sxStyles.sx13}>
         <Button size="small" onClick={() => setText(DEFAULT_TEXT)}>恢复默认示例</Button>
       </Box>
 
-      <Box id="problem-illustration-fixtures" sx={{ display: "grid", gridTemplateColumns: ["1fr", "1fr 1fr"], gap: 3 }}>
-        <Box id="problem-illustration-auto" sx={{ p: 3, border: "1px solid", borderColor: "border.default", borderRadius: 2 }}>
-          <Heading as="h3" sx={{ fontSize: 2, mb: 2 }}>TikZ/SVG 右侧自适应</Heading>
+      <Box id="problem-illustration-fixtures" className={sxStyles.sx14}>
+        <Box id="problem-illustration-auto" className={sxStyles.sx15}>
+          <Heading as="h3" className={sxStyles.sx16}>TikZ/SVG 右侧自适应</Heading>
           <ProblemContent
             problemText={"已知函数 $f(x)=x^2$，观察右图并回答。\n图形默认位于右侧，高度与完整作答内容栏一致。"}
             contentFormat="oopsmark-v1"
@@ -195,8 +196,8 @@ export default function DebugPage() {
             diagramSvg={'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 80"><rect id="theme-background" width="120" height="80" fill="#fff"/><path id="theme-axis" d="M10 70H110M20 75V5" fill="none" stroke="#000" stroke-width="3"/><path id="theme-series" d="M25 65Q55 60 100 15" fill="none" stroke="#0ea5e9" stroke-width="3"/></svg>'}
           />
         </Box>
-        <Box id="problem-illustration-custom" sx={{ p: 3, border: "1px solid", borderColor: "border.default", borderRadius: 2 }}>
-          <Heading as="h3" sx={{ fontSize: 2, mb: 2 }}>题图左侧 125%</Heading>
+        <Box id="problem-illustration-custom" className={sxStyles.sx17}>
+          <Heading as="h3" className={sxStyles.sx18}>题图左侧 125%</Heading>
           <ProblemContent
             problemText={"题图与 TikZ 二选一。\n这个样例使用手动大小。"}
             contentFormat="oopsmark-v1"
@@ -210,15 +211,10 @@ export default function DebugPage() {
       </Box>
 
       <Box
-        sx={{
-          display: "grid",
-          gridTemplateColumns: ["1fr", "1fr 1fr"],
-          gap: 3,
-          alignItems: "stretch",
-        }}
+        className={sxStyles.sx19}
       >
-        <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
-          <Heading as="h3" sx={{ fontSize: 2 }}>输入</Heading>
+        <Box className={sxStyles.sx20}>
+          <Heading as="h3" className={sxStyles.sx21}>输入</Heading>
           <Textarea
             value={text}
             onChange={(e) => setText(e.target.value)}
@@ -226,9 +222,9 @@ export default function DebugPage() {
             block
           />
         </Box>
-        <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
-          <Heading as="h3" sx={{ fontSize: 2 }}>预览</Heading>
-          <Box sx={{ p: 3, border: "1px solid", borderColor: "border.default", borderRadius: 2 }}>
+        <Box className={sxStyles.sx22}>
+          <Heading as="h3" className={sxStyles.sx23}>预览</Heading>
+          <Box className={sxStyles.sx24}>
             <MarkdownRenderer text={text} format="oopsmark-v1" />
           </Box>
         </Box>

@@ -45,7 +45,7 @@ export function DesignSystemMatrix() {
         <Surface className={styles.surface}>
           <Stack gap="md">
             <Heading order={2}>Controls</Heading>
-            <Group align="flex-end" wrap="wrap">
+            <Group className={styles.controls} align="end" wrap>
               <TextInput label="Search model" placeholder="Long label with English and Chinese" value={value} onChange={(event) => setValue(event.currentTarget.value)} leadingVisual={Search} />
               <PasswordInput label="Credential" placeholder="Persistent secret field" />
               <Select label="Theme" value={choice} onValueChange={setChoice}>
@@ -53,7 +53,7 @@ export function DesignSystemMatrix() {
                 <Select.Option value="graphite-long">Graphite with a deliberately long option label</Select.Option>
               </Select>
             </Group>
-            <Group align="center" wrap="wrap">
+            <Group align="center" wrap>
               <Checkbox label="Keep local draft" checked={checked} onChange={(event) => setChecked(event.currentTarget.checked)} />
               <ToggleSwitch aria-label="Enable auto sync" checked={enabled} onChange={(event) => setEnabled(event.currentTarget.checked)} />
               <IconButton icon={Save} aria-label="Save current settings" />
@@ -69,7 +69,7 @@ export function DesignSystemMatrix() {
         <Surface className={styles.surface}>
           <Stack gap="md">
             <Heading order={2}>States</Heading>
-            <Group wrap="wrap">
+            <Group wrap>
               <Label variant="success">Saved</Label>
               <Label variant="warning">Needs review</Label>
               <Label variant="danger">Failed</Label>

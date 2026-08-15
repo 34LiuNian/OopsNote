@@ -1,0 +1,68 @@
+/* Generated from components/task/TaskProblemList.tsx */
+.sx1{font-size:var(--oops-text-md);margin:var(--oops-space-0);margin-bottom:var(--oops-space-4);}
+
+/* Generated from components/task/TaskProblemList.tsx */
+.sx2{padding-block:var(--oops-space-6);}
+
+/* Generated from components/task/TaskProblemList.tsx */
+.sx3{font-weight:600;font-size:var(--oops-text-md);}
+
+/* Generated from components/task/TaskProblemList.tsx */
+.sx4{font-size:var(--oops-text-sm);}
+
+/* Generated from components/task/TaskProblemList.tsx */
+.sx5{overflow:hidden;animation:slideUp 0.3s ease-out;}
+
+/* Generated from components/task/TaskProblemList.tsx */
+.sx6{display:flex;align-items:center;justify-content:space-between;padding-inline:var(--oops-space-4);padding-block:var(--oops-space-2);border-bottom-width:1px;border-bottom-style:solid;border-bottom-color:var(--borderColor-muted);background-color:var(--bgColor-muted);}
+
+/* Generated from components/task/TaskProblemList.tsx */
+.sx7{display:flex;align-items:center;gap:var(--oops-space-2);flex-wrap:wrap;flex:1;min-width:0px;}
+
+/* Generated from components/task/TaskProblemList.tsx */
+.sx8{font-weight:600;font-size:var(--oops-text-md);}
+
+/* Generated from components/task/TaskProblemList.tsx */
+.sx9{font-size:var(--oops-text-xs);color:var(--fgColor-muted);}
+
+/* Generated from components/task/TaskProblemList.tsx */
+.sx10{font-size:var(--oops-text-xs);color:var(--fgColor-muted);}
+
+/* Generated from components/task/TaskProblemList.tsx */
+.sx11{font-size:var(--oops-text-xs);color:var(--fgColor-muted);}
+
+/* Generated from components/task/TaskProblemList.tsx */
+.sx12{font-size:var(--oops-text-xs);color:var(--fgColor-muted);}
+
+/* Generated from components/task/TaskProblemList.tsx */
+.sx13{display:flex;gap:var(--oops-space-1);flex-shrink:0px;align-items:center;}
+
+/* Generated from components/task/TaskProblemList.tsx */
+.sx14{padding-inline:var(--oops-space-4);padding-block:var(--oops-space-4);}
+
+/* Generated from components/task/TaskProblemList.tsx */
+.sx15{padding-inline:var(--oops-space-4);padding-bottom:var(--oops-space-2);display:flex;gap:var(--oops-space-1);flex-wrap:wrap;}
+
+/* Generated from components/task/TaskProblemList.tsx */
+.sx16{font-size:11px;}
+
+/* Generated from components/task/TaskProblemList.tsx */
+.sx17{border-top-width:1px;border-top-style:solid;border-top-color:var(--borderColor-muted);}
+
+/* Generated from components/task/TaskProblemList.tsx */
+.sx18{display:flex;align-items:center;justify-content:space-between;padding-inline:var(--oops-space-4);padding-block:var(--oops-space-2);cursor:pointer;background-color:var(--bgColor-muted);transition:background-color var(--oops-transition-fast);user-select:none;}.sx18:hover{background-color:neutral.muted;}.sx18:active{background-color:neutral.muted;}
+
+/* Generated from components/task/TaskProblemList.tsx */
+.sx19{font-weight:600;font-size:var(--oops-text-sm);color:var(--fgColor-muted);}
+
+/* Generated from components/task/TaskProblemList.tsx */
+.sx20{padding-inline:var(--oops-space-4);padding-block:var(--oops-space-4);}
+
+/* Generated from components/task/TaskProblemList.tsx */
+.sx21{margin-bottom:var(--oops-space-4);}
+
+/* Generated from components/task/TaskProblemList.tsx */
+.sx22{font-weight:600;font-size:var(--oops-text-sm);color:var(--fgColor-accent);display:block;margin-bottom:var(--oops-space-1);}
+
+/* Generated from components/task/TaskProblemList.tsx */
+.sx23{font-weight:600;font-size:var(--oops-text-sm);color:var(--fgColor-accent);display:block;margin-bottom:var(--oops-space-1);}

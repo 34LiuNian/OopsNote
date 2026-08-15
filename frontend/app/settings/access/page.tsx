@@ -4,6 +4,7 @@ import { FormEvent, useEffect, useState } from "react";
 import { Save, ShieldAlert, ShieldCheck } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { useAuth } from "@/components/providers/AuthProvider";
+import { ErrorBanner } from "@/components/ui/ErrorBanner";
 import { Button, Select, TextInput } from "@/components/ui/primitives";
 import { isAdminUser } from "@/lib/auth";
 import { notify } from "@/lib/notify";
@@ -18,6 +19,7 @@ export default function RegistrationAccessPage() {
   const [openDailySuccessLimit, setOpenDailySuccessLimit] = useState(5);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [loadError, setLoadError] = useState("");
 
   useEffect(() => {
     if (authLoading || !isAdminUser(user)) return;
@@ -28,7 +30,7 @@ export default function RegistrationAccessPage() {
         setMode(payload.mode);
         setOpenDailySuccessLimit(payload.openDailySuccessLimit);
       })
-      .catch((reason) => notify.error({ title: "加载失败", description: reason instanceof Error ? reason.message : "无法读取注册策略" }))
+      .catch((reason) => setLoadError(reason instanceof Error ? reason.message : "无法读取注册策略"))
       .finally(() => setLoading(false));
   }, [authLoading, user]);
 
@@ -58,6 +60,7 @@ export default function RegistrationAccessPage() {
   return (
     <div className={styles.page}>
       <PageHeader title="注册与访问" description="控制新用户如何进入 OopsNote" />
+      <ErrorBanner message={loadError} title="注册策略加载失败" />
       <form className={styles.panel} onSubmit={save}>
         <div className={styles.heading}><ShieldCheck size={22} aria-hidden="true" /><div><h2>用户注册</h2><p>所有注册方式都要求唯一用户名、邮箱和密码。</p></div></div>
         <label className={styles.field}>

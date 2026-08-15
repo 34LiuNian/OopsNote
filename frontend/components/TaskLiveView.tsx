@@ -27,6 +27,7 @@ import { TaskMathRenderer } from "./task/TaskMathRenderer";
 import { TaskStatusNotifications } from "./task/TaskStatusNotifications";
 import { CheckIcon, ChevronDownIcon, ChevronUpIcon } from "./ui/icons";
 import { ProblemStudyPanel } from "./task/ProblemStudyPanel";
+import sxStyles from "./TaskLiveView.sx.module.css";
 
 function formatDurationMs(diffMs: number): string {
   if (!Number.isFinite(diffMs) || diffMs < 0) return "未知";
@@ -180,7 +181,7 @@ export function TaskLiveView({ taskId }: { taskId: string }) {
   const duration = runDuration(viewData?.task?.run);
 
   return (
-    <Box sx={{ display: "flex", flexDirection: "column", gap: 4, width: "100%", maxWidth: 1320, mx: "auto" }}>
+    <Box className={sxStyles.sx1}>
       {/* Math renderer */}
       <TaskMathRenderer data={viewData} />
 
@@ -194,30 +195,16 @@ export function TaskLiveView({ taskId }: { taskId: string }) {
 
       {/* Task header card */}
       <Box
-        className="oops-card"
-        sx={{ p: isCompleted ? 3 : 4, position: "relative", overflow: "hidden" }}
+        className={`oops-card ${sxStyles.headerCard}`}
+        data-completed={isCompleted ? "true" : "false"}
       >
         {/* Status is semantic; the bar must not introduce a local palette. */}
-        <Box
-          sx={{
-            position: "absolute",
-            top: 0,
-            left: 0,
-            right: 0,
-            height: "3px",
-            background: viewData?.task?.status === "completed"
-              ? "var(--fgColor-success)"
-              : viewData?.task?.status === "failed"
-                ? "var(--fgColor-danger)"
-                : "var(--fgColor-info)",
-            borderRadius: "var(--oops-radius-md) var(--oops-radius-md) 0 0",
-          }}
-        />
+        <Box className={sxStyles.statusBar} data-status={viewData?.task?.status ?? "pending"} />
 
-        <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: isCompleted ? "center" : "flex-start", gap: 3, flexWrap: "wrap" }}>
-          <Box sx={{ flex: 1, minWidth: 200 }}>
-            <Box sx={{ display: "flex", alignItems: "center", gap: 2, mb: isCompleted ? 0 : 1, flexWrap: "wrap" }}>
-              <Heading as="h2" sx={{ fontSize: isCompleted ? 2 : 3, m: 0 }}>任务详情</Heading>
+        <Box className={sxStyles.headerRow} data-completed={isCompleted ? "true" : "false"}>
+          <Box className={sxStyles.sx2}>
+            <Box className={sxStyles.titleRow} data-completed={isCompleted ? "true" : "false"}>
+              <Heading as="h2" className={sxStyles.title} data-completed={isCompleted ? "true" : "false"}>任务详情</Heading>
               {!isCompleted && (
                 <Box
                   className={`oops-badge ${
@@ -239,7 +226,7 @@ export function TaskLiveView({ taskId }: { taskId: string }) {
                   variant="invisible"
                   onClick={() => setShowTaskDetails((value) => !value)}
                   aria-expanded={showTaskDetails}
-                  sx={{ px: 1, color: "var(--fgColor-success)" }}
+                  className={sxStyles.sx3}
                   leadingVisual={CheckIcon}
                   trailingVisual={showTaskDetails ? ChevronUpIcon : ChevronDownIcon}
                 >
@@ -248,15 +235,15 @@ export function TaskLiveView({ taskId }: { taskId: string }) {
               )}
             </Box>
             {(!isCompleted || showTaskDetails) && (
-              <Box sx={{ mt: 1 }}>
-                <Text sx={{ fontSize: 0, color: "fg.muted", fontFamily: "mono" }}>{taskId}</Text>
+              <Box className={sxStyles.sx4}>
+                <Text className={sxStyles.sx5}>{taskId}</Text>
                 {viewData?.task?.created_at && (
-                  <Box sx={{ mt: 2, display: "flex", gap: 3, flexWrap: "wrap" }}>
-                    <Text sx={{ fontSize: 0, color: "fg.muted" }}>
+                  <Box className={sxStyles.sx6}>
+                    <Text className={sxStyles.sx7}>
                       创建：{new Date(viewData.task.created_at).toLocaleString("zh-CN")}
                     </Text>
                     {duration && (
-                      <Text sx={{ fontSize: 0, color: "fg.muted" }}>
+                      <Text className={sxStyles.sx8}>
                         用时：{duration}
                       </Text>
                     )}
@@ -277,7 +264,7 @@ export function TaskLiveView({ taskId }: { taskId: string }) {
           />
         </Box>
         {(!isCompleted || showTaskDetails) && (
-          <Box sx={{ mt: 3 }}>
+          <Box className={sxStyles.sx9}>
             <TaskProgressBar
               progressState={progressState}
               latestLine={progressState.latestLine}
@@ -288,10 +275,10 @@ export function TaskLiveView({ taskId }: { taskId: string }) {
           </Box>
         )}
         {diagramProgressVisible && (
-          <Box sx={{ mt: 3, pt: 3, borderTopWidth: 1, borderTopStyle: "solid", borderTopColor: "border.default" }}>
-            <Box sx={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 2, mb: 2 }}>
-              <Text sx={{ fontWeight: 600 }}>TikZ 题图重建</Text>
-              <Text sx={{ color: diagramNeedsReview ? "fg.danger" : diagramProgressState.isCompleted ? "fg.success" : "fg.muted", fontSize: 0 }}>
+          <Box className={sxStyles.sx10}>
+            <Box className={sxStyles.sx11}>
+              <Text className={sxStyles.sx12}>TikZ 题图重建</Text>
+              <Text className={sxStyles.diagramStatus} data-status={diagramNeedsReview ? "review" : diagramProgressState.isCompleted ? "success" : "pending"}>
                 {diagramNeedsReview ? "待人工复核" : diagramProgressState.isCompleted ? "已完成" : diagramProgressState.latestLine}
               </Text>
             </Box>
@@ -337,9 +324,9 @@ export function TaskLiveView({ taskId }: { taskId: string }) {
       <ErrorBanner message={error} />
 
       {!error && !viewData && (
-        <Box className="oops-empty-state" sx={{ py: 6 }}>
+        <Box className={["oops-empty-state", sxStyles.sx13].filter(Boolean).join(" ")} >
           <Spinner size="medium" />
-          <Text as="p" sx={{ color: "fg.muted" }}>正在加载任务数据...</Text>
+          <Text as="p" className={sxStyles.sx14}>正在加载任务数据...</Text>
         </Box>
       )}
 
@@ -377,12 +364,12 @@ export function TaskLiveView({ taskId }: { taskId: string }) {
       )}
 
       {/* Bottom navigation */}
-      <Box sx={{ display: "flex", gap: 3, pt: 2, borderTopWidth: 1, borderTopStyle: "solid", borderTopColor: "border.muted", fontSize: 1 }}>
-        <Link href="/" style={{ textDecoration: "none" }}>
-          <Text as="span" sx={{ color: "accent.fg", fontWeight: 500, "&:hover": { textDecoration: "underline" } }}>← 采集面板</Text>
+      <Box className={sxStyles.sx15}>
+        <Link href="/" className={sxStyles.navLink}>
+          <Text as="span" className={sxStyles.sx16}>← 采集面板</Text>
         </Link>
-        <Link href="/library" style={{ textDecoration: "none" }}>
-          <Text as="span" sx={{ color: "accent.fg", fontWeight: 500, "&:hover": { textDecoration: "underline" } }}>题库总览</Text>
+        <Link href="/library" className={sxStyles.navLink}>
+          <Text as="span" className={sxStyles.sx17}>题库总览</Text>
         </Link>
       </Box>
     </Box>

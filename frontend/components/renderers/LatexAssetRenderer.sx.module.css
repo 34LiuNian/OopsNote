@@ -1,0 +1,11 @@
+/* Generated from components/renderers/LatexAssetRenderer.tsx */
+.sx1{padding:var(--oops-space-2);border:1px solid;border-color:var(--fgColor-danger-emphasis);border-radius:1px;background-color:var(--bgColor-danger-muted);}
+
+/* Generated from components/renderers/LatexAssetRenderer.tsx */
+.sx3{padding:var(--oops-space-2);border:1px dashed;border-color:var(--borderColor-default);border-radius:1px;}
+
+/* Generated from components/renderers/LatexAssetRenderer.tsx */
+.sx4{color:var(--fgColor-muted);font-size:var(--oops-text-sm);}
+.asset{display:block;}
+.asset[data-inline="true"]{display:inline-flex;align-items:center;}
+.asset[data-fit="true"]{width:100%;height:100%;}

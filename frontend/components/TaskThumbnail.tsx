@@ -26,17 +26,11 @@ export function TaskThumbnail({ asset, size = "medium" }: TaskThumbnailProps) {
   if (!asset?.path) {
     return (
       <Box
-        sx={{
-          width: `${width}px`,
-          height: `${height}px`,
-          backgroundColor: "canvas.subtle",
-          borderRadius: 2,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          color: "fg.muted",
-          fontSize: 0,
-        }}
+        className="task-thumbnail task-thumbnail-empty"
+        style={{
+          "--oops-geometry-width": `${width}px`,
+          "--oops-geometry-height": `${height}px`,
+        } as React.CSSProperties}
       >
         无图像
       </Box>
@@ -46,16 +40,11 @@ export function TaskThumbnail({ asset, size = "medium" }: TaskThumbnailProps) {
   // Protected files are loaded as authenticated blob URLs by the shared hook.
   return (
     <Box
-      sx={{
-        width: `${width}px`,
-        height: `${height}px`,
-        borderRadius: 2,
-        overflow: "hidden",
-        backgroundColor: "canvas.subtle",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-      }}
+      className="task-thumbnail"
+      style={{
+        "--oops-geometry-width": `${width}px`,
+        "--oops-geometry-height": `${height}px`,
+      } as React.CSSProperties}
     >
       {imageUrl ? <Image
         width={width}

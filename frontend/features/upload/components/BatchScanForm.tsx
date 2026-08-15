@@ -33,6 +33,7 @@ import { ImageSelectionStage, NormalizedRectEditor } from "@/components/image-se
 import { PageHeader } from "@/components/layout/PageHeader";
 import { useTheme } from "@/components/providers/ThemeProvider";
 import { Box, Button, GeometryButton, IconButton, NativeInput, NativeSelect, Spinner, Text } from "@/components/ui/primitives";
+import { ErrorBanner } from "@/components/ui/ErrorBanner";
 import { RenameDialog } from "@/components/ui/RenameDialog";
 import { notify } from "@/lib/notify";
 import { confirmAction } from "@/lib/confirm";
@@ -102,6 +103,7 @@ export function BatchScanForm() {
   const [imageUrls, setImageUrls] = useState<Record<number, string>>({});
   const [currentSession, setCurrentSession] = useState<BatchSession | null>(null);
   const [savedSessions, setSavedSessions] = useState<BatchSession[]>([]);
+  const [savedSessionsError, setSavedSessionsError] = useState("");
   const [crop, setCrop] = useState<DocumentCropRect>(FULL_CROP);
   const [columnLayout, setColumnLayout] = useState<ColumnLayout>({ ...DEFAULT_COLUMN_LAYOUT });
   const [excludedPageIndices, setExcludedPageIndices] = useState<number[]>([]);
@@ -151,12 +153,13 @@ export function BatchScanForm() {
     try {
       return await listBatchSessions();
     } catch (reason) {
-      notify.error({ title: "批量扫描记录加载失败", description: reason instanceof Error ? reason.message : "无法读取已保存记录" });
+      setSavedSessionsError(reason instanceof Error ? reason.message : "无法读取已保存记录");
       return null;
     }
   }, []);
 
   const refreshSavedSessions = useCallback(async () => {
+    setSavedSessionsError("");
     const sessions = await loadSavedSessions();
     if (sessions) setSavedSessions(sessions);
   }, [loadSavedSessions]);
@@ -196,6 +199,8 @@ export function BatchScanForm() {
 
   useEffect(() => {
     let cancelled = false;
+    // The initial session request owns its loading/error state transition.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void loadSavedSessions().then((sessions) => {
       if (!cancelled && sessions) setSavedSessions(sessions);
     });
@@ -845,6 +850,7 @@ export function BatchScanForm() {
       {!pages.length ? (
         <>
           <PageHeader title="批量扫描" description="先统一裁剪页面，再在连续文档上框选题目" />
+          <ErrorBanner message={savedSessionsError} title="批量扫描记录加载失败" />
           <Box className="batch-scan-toolbar">
             <Button variant="primary" leadingVisual={Upload} onClick={() => inputRef.current?.click()} disabled={isImporting}>
               {isImporting ? "正在载入" : "选择 PDF 或图片"}

@@ -13,6 +13,7 @@ import { policyModelUnavailableReason, updatePolicyStage } from "@/features/sett
 import type { LangChainPolicy, StageSelection } from "@/features/settings/types";
 import { ModelPickerDrawer, PolicyStageCard, type PolicyStageDefinition } from "@/components/settings/ai";
 import styles from "@/components/settings/ai/aiSettings.module.css";
+import sxStyles from "./page.sx.module.css";
 
 const STAGES: PolicyStageDefinition[] = [
   { id: "vision", label: "Vision / OCR", hint: "图像理解与 OCR 阶段", capabilityLabel: "Vision", icon: ScanText },
@@ -67,8 +68,8 @@ export default function LangChainPolicyPage() {
 
   // Auth and React Query can be initialized from browser-only session/cache
   // state. Keep the SSR tree and the first client tree identical.
-  if (!isHydrated || loading) return <Box sx={{ p: 4 }}><Spinner size="medium" /></Box>;
-  if (!isAdmin) return <Box sx={{ p: 4, display: "flex", gap: 2, alignItems: "center" }}><ShieldAlert size={22} /><Box><Heading order={2}>无权访问</Heading><Text sx={{ color: "fg.muted" }}>LangChain 策略仅管理员可用。</Text></Box></Box>;
+  if (!isHydrated || loading) return <Box className={sxStyles.sx1}><Spinner size="medium" /></Box>;
+  if (!isAdmin) return <Box className={sxStyles.sx2}><ShieldAlert size={22} /><Box><Heading order={2}>无权访问</Heading><Text className={sxStyles.sx3}>LangChain 策略仅管理员可用。</Text></Box></Box>;
 
   const activePolicy = policyDraft ?? serverPolicy;
   const complete = STAGES.every((stage) => activePolicy[stage.id].channel_id && activePolicy[stage.id].model_id);
@@ -121,8 +122,8 @@ export default function LangChainPolicyPage() {
           <Button variant="primary" leadingVisual={Save} onClick={() => void savePolicy()} disabled={!canSave}>保存策略</Button>
         </header>
 
-        {channels.isLoading && <Box sx={{ py: 5 }}><Spinner size="medium" /></Box>}
-        {channels.isError && <Text sx={{ color: "fg.danger", mt: 4 }}>无法加载渠道，请确认管理员权限和后端状态。</Text>}
+        {channels.isLoading && <Box className={sxStyles.sx4}><Spinner size="medium" /></Box>}
+        {channels.isError && <Text className={sxStyles.sx5}>无法加载渠道，请确认管理员权限和后端状态。</Text>}
         {!channels.isLoading && !channels.isError && !items.length && (
           <div className={styles.emptyState}>
             <strong>还没有可编排的 AI 渠道</strong>
@@ -133,7 +134,7 @@ export default function LangChainPolicyPage() {
         {!channels.isLoading && !channels.isError && items.length > 0 && (
           <>
             {channels.data?.policy === null && (
-              <div className={styles.emptyState} style={{ minHeight: "auto", alignItems: "flex-start", textAlign: "left", padding: "16px 0 0" }}>
+              <div className={styles.policyNotice}>
                 <strong>策略尚未配置</strong>
                 <p>为每个阶段选择具备所需能力的已启用模型。</p>
               </div>

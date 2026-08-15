@@ -3,20 +3,31 @@
 import { useEffect, useState } from "react";
 import { Box, Text } from "@/components/ui/primitives";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
+import sxStyles from "./SvgMarkup.sx.module.css";
 
 const BLOCKED_ELEMENTS = "script,foreignObject,iframe,object,embed,link,meta,audio,video";
 const UNSAFE_CSS = /(?:expression\s*\(|javascript:|vbscript:|data:text\/html|-moz-binding)/i;
 const THEMED_COLOR_ATTRIBUTES = new Set(["color", "fill", "flood-color", "lighting-color", "stop-color", "stroke"]);
-const CSS_COLOR_DECLARATION = /(^|[;{])(\s*(?:color|fill|flood-color|lighting-color|stop-color|stroke)\s*:\s*)(#[0-9a-f]{3,6}\b|[a-z]+\b|rgba?\([^)]*\))(?=\s*(?:!important)?\s*(?:[;}\n]|$))/gim;
+const CSS_COLOR_DECLARATION = /(^|[;{])(\s*(?:color|fill|flood-color|lighting-color|stop-color|stroke)\s*:\s*)(#[0-9a-f]{3,8}\b|[a-z]+\b|rgba?\([^)]*\))(?=\s*(?:!important)?\s*(?:[;}\n]|$))/gim;
 
 export type SvgColorMode = "preserve" | "themed";
 
 function themedColor(value: string): string | null {
   const compact = value.trim().toLowerCase().replace(/\s+/g, "");
-  if (/^(?:#000|#000000|black|rgb\(0,0,0\)|rgba\(0,0,0,1(?:\.0*)?\))$/.test(compact)) {
+  const black = /^(?:#000(?:000)?(?:ff)?|black|rgb\((?:0%?,){2}0%?\)|rgba\((?:0%?,){2}0%?,1(?:\.0*)?\))$/.test(compact)
+    || /^rgb\(0(?:,|\s)0(?:,|\s)0\)$/.test(compact)
+    || /^rgb\(0%?\s+0%?\s+0%?\)$/.test(compact)
+    || /^rgba\(0(?:,|\s)0(?:,|\s)0(?:,|\s)1(?:\.0*)?\)$/.test(compact);
+  if (black) {
     return "currentColor";
   }
-  if (/^(?:#fff|#ffffff|white|rgb\(255,255,255\)|rgba\(255,255,255,1(?:\.0*)?\))$/.test(compact)) {
+  const white = /^(?:#fff(?:fff)?(?:ff)?|white|rgb\((?:255%?,){2}255%?\)|rgba\((?:255%?,){2}255%?,1(?:\.0*)?\))$/.test(compact)
+    || /^rgb\(100%(?:,|\s)100%(?:,|\s)100%\)$/.test(compact)
+    || /^rgb\(100%\s+100%\s+100%\)$/.test(compact)
+    || /^rgba\(100%(?:,|\s)100%(?:,|\s)100%(?:,|\s)1(?:\.0*)?\)$/.test(compact)
+    || /^rgb\(255(?:,|\s)255(?:,|\s)255\)$/.test(compact)
+    || /^rgba\(255(?:,|\s)255(?:,\s)255(?:,\s)1(?:\.0*)?\)$/.test(compact);
+  if (white) {
     return "var(--oops-svg-background)";
   }
   return null;
@@ -117,13 +128,12 @@ export function SvgMarkup({
   }, [colorMode, preparationKey, svg]);
 
   if (currentMarkup === null) {
-    return <Text sx={{ color: "fg.muted", fontSize: 1 }}>图形准备中…</Text>;
+    return <Text className={sxStyles.sx1}>图形准备中…</Text>;
   }
 
   if (!currentMarkup) {
     return <>
       <ErrorBanner message="SVG 内容无效，无法显示。" title="SVG 渲染失败" />
-      <Text sx={{ color: "danger.fg", fontSize: 1 }}>SVG 内容无效，无法显示。</Text>
     </>;
   }
 
@@ -131,21 +141,8 @@ export function SvgMarkup({
     <Box
       role="img"
       aria-label={label}
-      className={`oops-svg is-${colorMode}`}
-      sx={{
-        width: fit ? "100%" : undefined,
-        height: fit ? "100%" : undefined,
-        maxWidth: "100%",
-        overflow: fit ? "hidden" : undefined,
-        overflowX: fit ? undefined : "auto",
-        "& svg": {
-          display: "block",
-          width: fit ? "100%" : undefined,
-          maxWidth: "100%",
-          height: fit ? "100%" : "auto",
-          marginInline: "auto",
-        },
-      }}
+      className={`oops-svg is-${colorMode} ${sxStyles.svgContainer}`}
+      data-fit={fit ? "true" : "false"}
       dangerouslySetInnerHTML={{ __html: currentMarkup }}
     />
   );
