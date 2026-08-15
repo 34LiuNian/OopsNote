@@ -4,6 +4,7 @@ import { Box, Text } from "@/components/ui/primitives";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
 import { useLatexAsset } from "@/hooks/useLatexAsset";
 import { SvgMarkup } from "./SvgMarkup";
+import sxStyles from "./LatexAssetRenderer.sx.module.css";
 
 type LatexAssetRendererProps = {
   kind: "tikz";
@@ -28,30 +29,22 @@ export function LatexAssetRenderer({
 
   if (status === "error") {
     return (
-      <Box sx={{ p: 2, border: "1px solid", borderColor: "danger.emphasis", borderRadius: 1, bg: "danger.subtle" }}>
+      <Box className={sxStyles.sx1}>
         <ErrorBanner message={error || errorLabel} title="LaTeX 渲染失败" />
-        <Text sx={{ color: "danger.fg", fontSize: 1, whiteSpace: "pre-wrap" }}>{error || errorLabel}</Text>
       </Box>
     );
   }
 
   if (status !== "ready") {
     return (
-      <Box sx={{ p: 2, border: "1px dashed", borderColor: "border.default", borderRadius: 1 }}>
-        <Text sx={{ color: "fg.muted", fontSize: 1 }}>{loadingLabel}</Text>
+      <Box className={sxStyles.sx3}>
+        <Text className={sxStyles.sx4}>{loadingLabel}</Text>
       </Box>
     );
   }
 
   return (
-    <Box
-      sx={{
-        display: inline ? "inline-flex" : "block",
-        alignItems: "center",
-        width: fit ? "100%" : undefined,
-        height: fit ? "100%" : undefined,
-      }}
-    >
+    <Box className={sxStyles.asset} data-inline={inline ? "true" : "false"} data-fit={fit ? "true" : "false"}>
       <SvgMarkup svg={data} label="后端生成的 TikZ 图形" colorMode="themed" fit={fit} />
     </Box>
   );

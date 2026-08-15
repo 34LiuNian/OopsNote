@@ -1,0 +1,32 @@
+/* Generated from components/upload/AnnotationForm.tsx */
+.sx1{display:flex;flex-direction:column;gap:var(--oops-space-4);}
+
+/* Generated from components/upload/AnnotationForm.tsx */
+.sx2{display:grid;grid-template-columns:1fr;gap:var(--oops-space-4);}@media (min-width: 544px){.sx2{grid-template-columns:1fr 1fr;}}
+
+/* Generated from components/upload/AnnotationForm.tsx */
+.sx3{display:flex;align-items:center;border:1px solid;border-color:var(--borderColor-default);border-radius:2px;overflow:hidden;}.sx3:focus-within{box-shadow:0 0 0 2px var(--borderColor-accent-emphasis);}
+
+/* Generated from components/upload/AnnotationForm.tsx */
+.sx4{flex:1;border:none;border-radius:0px;}.sx4 input{text-align:center;}.sx4:focus{box-shadow:none;border:none;}
+
+/* Generated from components/upload/AnnotationForm.tsx */
+.sx5{display:flex;align-items:center;justify-content:center;padding-inline:var(--oops-space-2);color:var(--fgColor-muted);user-select:none;}
+
+/* Generated from components/upload/AnnotationForm.tsx */
+.sx6{flex:1;border:0px solid;border-radius:0px;}.sx6 input{text-align:center;outline:none;}.sx6:focus{box-shadow:none;}
+
+/* Generated from components/upload/AnnotationForm.tsx */
+.sx7{display:flex;align-items:center;justify-content:flex-end;}
+
+/* Generated from components/upload/AnnotationForm.tsx */
+.sx8{display:flex;flex-direction:column;gap:var(--oops-space-4);}
+
+/* Generated from components/upload/AnnotationForm.tsx */
+.sx9{display:grid;grid-template-columns:1fr;gap:var(--oops-space-4);}@media (min-width: 544px){.sx9{grid-template-columns:1fr 1fr;}}
+
+/* Generated from components/upload/AnnotationForm.tsx */
+.sx10{display:flex;gap:var(--oops-space-2);align-items:center;}
+
+/* Generated from components/upload/AnnotationForm.tsx */
+.sx11{margin-right:var(--oops-space-1);}

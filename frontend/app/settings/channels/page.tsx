@@ -1,10 +1,10 @@
 "use client";
 
 import { useDeferredValue, useMemo, useState } from "react";
-import { PasswordInput } from "@mantine/core";
+import { createPortal } from "react-dom";
 import { CircleCheck, CircleX, Copy, PlugZap, Save, ShieldAlert, Trash2 } from "lucide-react";
 import { useAuth } from "@/components/providers/AuthProvider";
-import { Box, Button, FormControl, Heading, IconButton, Select, Spinner, Text, TextInput, Tooltip } from "@/components/ui/primitives";
+import { Box, Button, FormControl, Heading, IconButton, PasswordInput, Select, Spinner, Text, TextInput, Tooltip } from "@/components/ui/primitives";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
 import { isAdminUser } from "@/lib/auth";
 import { notify } from "@/lib/notify";
@@ -14,7 +14,9 @@ import { getChannelCredential } from "@/features/settings/api";
 import { useAiChannels, useAiChannelMutations } from "@/features/settings/useAiProviders";
 import type { ChannelDraft, ChannelModel, ProviderChannel, ProviderValidation } from "@/features/settings/types";
 import { ChannelRail, ModelCatalog, type ModelCatalogFilter, ProviderIconPicker, ProviderMark, providerLabel } from "@/components/settings/ai";
+import { useSecondarySidebar } from "@/components/layout/SecondarySidebarContext";
 import styles from "@/components/settings/ai/aiSettings.module.css";
+import sxStyles from "./page.sx.module.css";
 
 const PROVIDERS = [
   { value: "deepseek", label: "DeepSeek" },
@@ -61,6 +63,7 @@ function formatDate(value: string | null): string {
 }
 
 export default function AiChannelsPage() {
+  const { target: secondarySidebarTarget } = useSecondarySidebar();
   const { user, loading } = useAuth();
   const isAdmin = isAdminUser(user);
   const channels = useAiChannels(!loading && isAdmin);
@@ -111,8 +114,8 @@ export default function AiChannelsPage() {
       ? MASKED_SECRET
       : "";
 
-  if (loading) return <Box sx={{ p: 4 }}><Spinner size="medium" /></Box>;
-  if (!isAdmin) return <Box sx={{ p: 4, display: "flex", gap: 2, alignItems: "center" }}><ShieldAlert size={22} /><Box><Heading order={2}>无权访问</Heading><Text sx={{ color: "fg.muted" }}>AI Provider 配置仅管理员可用。</Text></Box></Box>;
+  if (loading) return <Box className={sxStyles.sx1}><Spinner size="medium" /></Box>;
+  if (!isAdmin) return <Box className={sxStyles.sx2}><ShieldAlert size={22} /><Box><Heading order={2}>无权访问</Heading><Text className={sxStyles.sx3}>AI Provider 配置仅管理员可用。</Text></Box></Box>;
 
   function resetCredentialDraft() {
     setSecretDraft("");
@@ -334,8 +337,8 @@ export default function AiChannelsPage() {
 
   const showEditor = creating || selected;
   return (
-    <div className={styles.channelWorkspace}>
-      <ChannelRail
+    <>
+      {secondarySidebarTarget ? createPortal(<ChannelRail
         channels={items}
         busy={busy}
         reorderBusy={mutations.reorder.isPending}
@@ -346,7 +349,8 @@ export default function AiChannelsPage() {
         onReorder={(channelIds) => void reorderChannelList(channelIds)}
         onSelect={choose}
         onToggle={toggleEnabled}
-      />
+      />, secondarySidebarTarget) : null}
+      <div className={styles.channelWorkspace}>
       <section className={styles.channelDetail} aria-label="AI 渠道详情">
         {!showEditor ? (
           <div className={styles.emptyState} style={{ minHeight: "100%" }}>
@@ -360,7 +364,8 @@ export default function AiChannelsPage() {
             <header className={styles.detailHeader}>
               <div className={styles.detailIdentity}>
                 <div className={styles.detailIconAnchor}>
-                  <button
+                  <Button
+                    variant="invisible"
                     type="button"
                     className={styles.detailIconButton}
                     aria-label="更换供应商图标"
@@ -368,7 +373,7 @@ export default function AiChannelsPage() {
                     onClick={() => setIconPickerOpen((open) => !open)}
                   >
                     <ProviderMark provider={activeDraft.provider} icon={activeDraft.icon} size={46} />
-                  </button>
+                  </Button>
                   <ProviderIconPicker
                     open={iconPickerOpen}
                     provider={activeDraft.provider}
@@ -426,9 +431,9 @@ export default function AiChannelsPage() {
                         onFocus={(event) => { if (!secretRevealed && !secretDirty && selected?.has_secret) event.currentTarget.select(); }}
                         onChange={(event) => changeSecret(event.currentTarget.value)}
                         onVisibilityChange={changeSecretVisibility}
+                        error={credentialError || undefined}
                       />
                     </div>
-                    {credentialError && <div className={styles.formError} role="alert">{credentialError}</div>}
                   </div>
                 </div>
                 {selected && <div className={styles.formRow}>
@@ -465,6 +470,7 @@ export default function AiChannelsPage() {
           </>
         )}
       </section>
-    </div>
+      </div>
+    </>
   );
 }

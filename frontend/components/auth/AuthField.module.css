@@ -1,0 +1,47 @@
+.field { display: grid; gap: var(--oops-space-2); }
+
+.labelRow { display: flex; align-items: baseline; gap: var(--oops-space-2); }
+.label { color: var(--fgColor-default); font-size: 13px; font-weight: 600; line-height: 1.35; }
+.description { margin: 0; color: var(--fgColor-muted); font-size: var(--oops-text-xs); line-height: 1.45; }
+
+.control {
+  display: flex;
+  min-height: var(--oops-control-height-lg);
+  align-items: center;
+  gap: var(--oops-space-3);
+  padding: 0 var(--oops-space-3);
+  border: 1px solid var(--borderColor-default);
+  border-radius: var(--oops-radius-md);
+  color: var(--fgColor-muted);
+  background: var(--bgColor-default);
+  transition: border-color var(--oops-transition-fast), box-shadow var(--oops-transition-fast);
+}
+
+.control:focus-within { border-color: var(--fgColor-info); box-shadow: var(--oops-focus-ring); }
+.control[data-error="true"] { border-color: var(--fgColor-danger); }
+.control[data-error="true"]:focus-within { box-shadow: 0 0 0 3px color-mix(in srgb, var(--fgColor-danger) 20%, transparent); }
+
+.icon { display: inline-flex; flex: none; color: var(--fgColor-muted); }
+.control > *:not(.icon) { flex: 1 1 auto; min-width: 0; }
+
+.control :global(input) {
+  width: 100%;
+  min-width: 0;
+  height: var(--oops-control-height-lg);
+  padding: 0;
+  border: 0;
+  outline: 0;
+  color: var(--fgColor-default);
+  background: transparent;
+  font: inherit;
+  font-weight: 400;
+}
+
+.control :global(input)::placeholder { color: var(--fgColor-muted); opacity: 1; }
+
+.error { margin: 0; color: var(--fgColor-danger); font-size: var(--oops-text-xs); line-height: 1.45; }
+
+@media (pointer: coarse) {
+  .control { min-height: var(--oops-touch-target); }
+  .control :global(input) { height: var(--oops-touch-target); }
+}

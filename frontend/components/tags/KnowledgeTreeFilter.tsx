@@ -2,6 +2,7 @@
 
 import { Box, Button, IconButton, Label, Spinner, Text } from "@/components/ui/primitives";
 import { ChevronDownIcon, ChevronRightIcon } from "@/components/ui/icons";
+import sxStyles from "./KnowledgeTreeFilter.sx.module.css";
 
 type ChapterTree = Record<string, Record<string, number>>;
 
@@ -33,16 +34,11 @@ export function KnowledgeTreeFilter({
   onToggleChapterExpand,
 }: KnowledgeTreeFilterProps) {
   const renderTitleWithCount = (title: string, count: number) => (
-    <Box sx={{ display: "inline-flex", alignItems: "center", gap: 2 }}>
+    <Box className={sxStyles.sx1}>
       <span>{title}</span>
       <Label
         size="small"
-        sx={{
-          minWidth: 22,
-          justifyContent: "center",
-          borderRadius: 999,
-          fontVariantNumeric: "tabular-nums",
-        }}
+        className={sxStyles.sx2}
       >
         {count}
       </Label>
@@ -50,11 +46,11 @@ export function KnowledgeTreeFilter({
   );
 
   return (
-    <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
-      <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+    <Box className={sxStyles.sx3}>
+      <Box className={sxStyles.sx4}>
         <Box>
-          <Text sx={{ fontWeight: 600 }}>知识点目录</Text>
-          <Text sx={{ color: "fg.muted", fontSize: 1 }}>先选目录，再看右边对应的标签</Text>
+          <Text className={sxStyles.sx5}>知识点目录</Text>
+          <Text className={sxStyles.sx6}>先选目录，再看右边对应的标签</Text>
         </Box>
         {loading ? <Spinner size="small" /> : null}
       </Box>
@@ -68,15 +64,15 @@ export function KnowledgeTreeFilter({
         全部知识点
       </Button>
 
-      <Box sx={{ display: "flex", flexDirection: "column", gap: 1, maxHeight: 640, overflowY: "auto" }}>
+      <Box className={sxStyles.sx7}>
         {chapters.map((chapter) => {
           const isChapterSelected = chapterFilter === chapter && !knowledgeFilter;
           const isChapterExpanded = expandedChapters[chapter] ?? (chapterFilter === chapter);
           const knowledgeCount = Object.keys(tree[chapter] || {}).length;
 
           return (
-            <Box key={chapter} sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
-              <Box sx={{ display: "grid", gridTemplateColumns: "32px 1fr", gap: 1 }}>
+            <Box key={chapter} className={sxStyles.sx8}>
+              <Box className={sxStyles.sx9}>
                 <IconButton
                   size="small"
                   icon={isChapterExpanded ? ChevronDownIcon : ChevronRightIcon}
@@ -88,14 +84,14 @@ export function KnowledgeTreeFilter({
                   size="small"
                   variant={isChapterSelected ? "primary" : "default"}
                   onClick={() => onPickChapter(chapter)}
-                  sx={{ justifyContent: "space-between" }}
+                  className={sxStyles.sx10}
                 >
                   {renderTitleWithCount(chapter, knowledgeCount)}
                 </Button>
               </Box>
 
               {isChapterExpanded ? (
-                <Box sx={{ pl: 2, display: "flex", flexDirection: "column", gap: 1 }}>
+                <Box className={sxStyles.sx11}>
                   {getKnowledgeByChapter(chapter).map((knowledge) => (
                     <Button
                       key={`${chapter}:${knowledge}`}
@@ -105,7 +101,7 @@ export function KnowledgeTreeFilter({
                         chapterFilter === chapter && knowledgeFilter === knowledge ? "primary" : "default"
                       }
                       onClick={() => onPickKnowledge(chapter, knowledge)}
-                      sx={{ justifyContent: "space-between" }}
+                      className={sxStyles.sx12}
                     >
                       {renderTitleWithCount(knowledge, tree[chapter]?.[knowledge] || 0)}
                     </Button>

@@ -7,6 +7,7 @@ import { RenameDialog } from "@/components/ui/RenameDialog";
 import { PencilIcon, TrashIcon } from "@/components/ui/icons";
 import { confirmAction } from "@/lib/confirm";
 import type { TagItem } from "@/types/api";
+import sxStyles from "./TagsResultList.sx.module.css";
 
 type TagsResultListProps = {
   loading: boolean;
@@ -100,7 +101,7 @@ export function TagsResultList({
 
   if (loading || isLoadingDims) {
     return (
-      <Box sx={{ py: 6, display: "flex", justifyContent: "center" }}>
+      <Box className={sxStyles.sx1}>
         <Spinner size="large" />
       </Box>
     );
@@ -111,7 +112,7 @@ export function TagsResultList({
   }
 
   return (
-    <Box sx={{ display: "flex", flexDirection: "column", gap: 3 }}>
+    <Box className={sxStyles.sx2}>
       <RenameDialog
         opened={editingItem !== null}
         title="重命名标签"
@@ -123,23 +124,17 @@ export function TagsResultList({
         loading={editingItem ? pendingId === editingItem.id : false}
       />
       <Box
-        sx={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "flex-start",
-          gap: 2,
-          flexWrap: "wrap",
-        }}
+        className={sxStyles.sx3}
       >
         <Box>
-          <Text sx={{ fontWeight: 600, fontSize: 2 }}>结果列表</Text>
-          <Text sx={{ color: "fg.muted", fontSize: 1, mt: 1 }}>
+          <Text className={sxStyles.sx4}>结果列表</Text>
+          <Text className={sxStyles.sx5}>
             正在查看 {activeScope} 下的 {activeDimensionLabel}
           </Text>
         </Box>
 
-        <Box sx={{ display: "flex", alignItems: "center", gap: 2, flexWrap: "wrap" }}>
-          <Text sx={{ color: "fg.muted", fontSize: 1 }}>
+        <Box className={sxStyles.sx6}>
+          <Text className={sxStyles.sx7}>
             共 {totalCount} 条，当前第 {safePage} / {pageCount} 页
           </Text>
           <Button size="small" disabled={safePage <= 1} onClick={onPrevPage}>
@@ -153,15 +148,15 @@ export function TagsResultList({
 
       {pagedItems.length === 0 ? (
         <Box className="oops-empty-state">
-          <Text as="p" sx={{ fontWeight: 600, fontSize: 2 }}>
+          <Text as="p" className={sxStyles.sx8}>
             没有找到匹配的标签
           </Text>
-          <Text as="p" sx={{ fontSize: 1 }}>
+          <Text as="p" className={sxStyles.sx9}>
             可以换个关键词，或者调整左侧目录和维度。
           </Text>
         </Box>
       ) : (
-        <Box sx={{ display: "flex", flexDirection: "column", borderTop: "1px solid", borderColor: "border.muted" }}>
+        <Box className={sxStyles.sx10}>
           {pagedItems.map((item, index) => {
             const shouldShowDimLabel = dimFilter === "all" || item.dimension !== "knowledge";
             const knowledgeContext = getKnowledgeContext(item);
@@ -170,36 +165,28 @@ export function TagsResultList({
             return (
               <Box
                 key={item.id}
-                className="oops-list-item"
-                sx={{
-                  display: "grid",
-                  gridTemplateColumns: ["1fr", "minmax(0, 1fr) auto"],
-                  gap: 2,
-                  alignItems: "start",
-                  py: 2,
-                  borderBottom: "1px solid",
-                  borderColor: index < pagedItems.length - 1 ? "border.muted" : "transparent",
-                }}
+                className={["oops-list-item", sxStyles.resultItem].join(" ")}
+                data-last={index === pagedItems.length - 1 ? "true" : undefined}
               >
-                <Box sx={{ minWidth: 0, display: "flex", flexDirection: "column", gap: 1 }}>
-                  <Box sx={{ display: "flex", alignItems: "center", gap: 2, flexWrap: "wrap" }}>
+                <Box className={sxStyles.sx11}>
+                  <Box className={sxStyles.sx12}>
                     {shouldShowDimLabel ? (
                       <Label variant={getDimVariant(item.dimension)}>{getDimLabel(item.dimension)}</Label>
                     ) : null}
-                    <Text sx={{ fontWeight: 600, fontSize: 2, wordBreak: "break-word" }}>{item.value}</Text>
+                    <Text className={sxStyles.sx13}>{item.value}</Text>
                   </Box>
 
-                  <Box sx={{ display: "flex", alignItems: "center", gap: 2, flexWrap: "wrap" }}>
-                    <Text sx={{ color: "fg.muted", fontSize: 1 }}>引用 {item.ref_count || 0}</Text>
-                    {item.subject ? <Text sx={{ color: "fg.muted", fontSize: 1 }}>{toPlainSubject(item.subject)}</Text> : null}
+                  <Box className={sxStyles.sx14}>
+                    <Text className={sxStyles.sx15}>引用 {item.ref_count || 0}</Text>
+                    {item.subject ? <Text className={sxStyles.sx16}>{toPlainSubject(item.subject)}</Text> : null}
                   </Box>
 
                   {knowledgeContext ? (
-                    <Text sx={{ color: "fg.muted", fontSize: 1 }}>归属：{knowledgeContext}</Text>
+                    <Text className={sxStyles.sx17}>归属：{knowledgeContext}</Text>
                   ) : null}
 
                   {aliases.length > 0 ? (
-                    <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap" }}>
+                    <Box className={sxStyles.sx18}>
                       {aliases.slice(0, 4).map((alias) => (
                         <Label key={alias} variant="secondary">
                           {alias}
@@ -209,7 +196,7 @@ export function TagsResultList({
                   ) : null}
                 </Box>
 
-                <Box sx={{ display: "flex", alignItems: "center", gap: 1, justifyContent: ["flex-start", "flex-end"] }}>
+                <Box className={sxStyles.sx19}>
                   <IconButton
                     aria-label="重命名"
                     icon={PencilIcon}

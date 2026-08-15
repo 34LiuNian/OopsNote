@@ -8,6 +8,7 @@ import { ProblemCard } from "@/components/ProblemCard";
 import { fetchJson } from "@/lib/api";
 import { confirmAction } from "@/lib/confirm";
 import type { TaskResponse } from "@/types/api";
+import sxStyles from "./ProblemStudyPanel.sx.module.css";
 
 type DuplicateCandidate = { task: TaskResponse["task"]; source: string };
 type VariationTask = { task: TaskResponse["task"] };
@@ -107,10 +108,10 @@ export function ProblemStudyPanel({ taskId, problem, mergedInto, onStatusMessage
 
   if (mergedInto && section === "duplicates") {
     return (
-      <Box className="oops-card" sx={{ p: 3 }}>
-        <Text sx={{ fontWeight: 600 }}>此题已并入另一题</Text>
+      <Box className={["oops-card", sxStyles.sx1].filter(Boolean).join(" ")} >
+        <Text className={sxStyles.sx2}>此题已并入另一题</Text>
         <Link href={`/tasks/${mergedInto.task_id}`} style={{ textDecoration: "none" }}>
-          <Button size="small" variant="secondary" sx={{ mt: 2 }}>跳转查看</Button>
+          <Button size="small" variant="secondary" className={sxStyles.sx3}>跳转查看</Button>
         </Link>
       </Box>
     );
@@ -119,23 +120,23 @@ export function ProblemStudyPanel({ taskId, problem, mergedInto, onStatusMessage
   if (section === "duplicates" && candidates.length === 0) return null;
 
   return (
-    <Box sx={{ display: "flex", flexDirection: "column", gap: 3 }}>
+    <Box className={sxStyles.sx4}>
       {section === "duplicates" && candidates.length > 0 && (
-        <Box className="oops-card" sx={{ p: 3 }}>
-          <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 2 }}>
-            <Text sx={{ fontWeight: 600 }}>疑似相同题（{candidates.length}）</Text>
+        <Box className={["oops-card", sxStyles.sx5].filter(Boolean).join(" ")} >
+          <Box className={sxStyles.sx6}>
+            <Text className={sxStyles.sx7}>疑似相同题（{candidates.length}）</Text>
             <Button size="small" variant="secondary" onClick={() => setIsExpanded((value) => !value)}>
               {isExpanded ? "收起" : "展开"}
             </Button>
           </Box>
           {isExpanded && (
-            <Box sx={{ display: "flex", flexDirection: "column", gap: 3, mt: 3 }}>
+            <Box className={sxStyles.sx8}>
               {candidates.map(({ task, source }) => {
                 const candidate = task.problem;
                 if (!candidate) return null;
                 return (
-                  <Box key={task.id} sx={{ borderTop: "1px solid var(--borderColor-muted)", pt: 3 }}>
-                    <Text sx={{ color: "fg.muted", fontSize: 1, mb: 2 }}>来源：{source || "未标注"}</Text>
+                  <Box key={task.id} className={sxStyles.sx9}>
+                    <Text className={sxStyles.sx10}>来源：{source || "未标注"}</Text>
                     <ProblemCard
                       problemText={candidate.problem_text}
                       contentFormat={candidate.content_format}
@@ -156,12 +157,12 @@ export function ProblemStudyPanel({ taskId, problem, mergedInto, onStatusMessage
                       showTitle={false}
                       showMeta={false}
                     />
-                    <Box sx={{ display: "flex", alignItems: "flex-start", gap: 1, mt: 3 }}>
+                    <Box className={sxStyles.sx11}>
                       <Button size="small" disabled={isMerging} onClick={() => requestMerge(task.id, "into_current")}>并入此当前题</Button>
                       <IconButton size="small" variant="secondary" icon={ChevronDown} aria-label="展开反向并入操作" title="展开反向并入操作" disabled={isMerging} onClick={() => setReverseOpenFor((value) => value === task.id ? "" : task.id)} />
                     </Box>
                     {reverseOpenFor === task.id && (
-                      <Box sx={{ mt: 2 }}>
+                      <Box className={sxStyles.sx12}>
                         <Button size="small" variant="secondary" disabled={isMerging} onClick={() => requestMerge(task.id, "into_candidate")}>并入候选题</Button>
                       </Box>
                     )}
@@ -174,8 +175,8 @@ export function ProblemStudyPanel({ taskId, problem, mergedInto, onStatusMessage
       )}
 
       {section === "variations" && <Box>
-        <Text sx={{ fontWeight: 600, mb: 3 }}>举一反三</Text>
-        <Box sx={{ display: "grid", gridTemplateColumns: ["1fr", "1fr 1fr"], gap: 2 }}>
+        <Text className={sxStyles.sx13}>举一反三</Text>
+        <Box className={sxStyles.sx14}>
           <Select value={direction} onValueChange={setDirection} aria-label="变式方向" block>
             <Select.Option value="change_conditions">改变条件</Select.Option>
             <Select.Option value="add_distractors">增加干扰条件</Select.Option>
@@ -185,17 +186,17 @@ export function ProblemStudyPanel({ taskId, problem, mergedInto, onStatusMessage
           </Select>
           <TextInput type="number" min="1" max="5" value={count} onChange={(event) => setCount(event.currentTarget.value)} aria-label="题量" />
         </Box>
-        <TextInput value={difficulty} onChange={(event) => setDifficulty(event.currentTarget.value)} placeholder="目标难度（可选）" sx={{ mt: 2 }} />
-        <Textarea value={customRequest} onChange={(event) => setCustomRequest(event.currentTarget.value)} placeholder="自定义要求（可选）" rows={3} maxLength={2000} sx={{ mt: 2 }} />
-        <Text sx={{ fontSize: 0, color: "fg.muted", mt: 2 }}>针对错因：{problem.error_tags?.join("、") || "未标注"}</Text>
-        <Button size="small" disabled={isGenerating} onClick={() => void generate()} sx={{ mt: 3 }}>
+        <TextInput value={difficulty} onChange={(event) => setDifficulty(event.currentTarget.value)} placeholder="目标难度（可选）" className={sxStyles.sx15} />
+        <Textarea value={customRequest} onChange={(event) => setCustomRequest(event.currentTarget.value)} placeholder="自定义要求（可选）" rows={3} maxLength={2000} className={sxStyles.sx16} />
+        <Text className={sxStyles.sx17}>针对错因：{problem.error_tags?.join("、") || "未标注"}</Text>
+        <Button size="small" disabled={isGenerating} onClick={() => void generate()} className={sxStyles.sx18}>
           {isGenerating ? "正在提交..." : "生成变式"}
         </Button>
         {variationTasks.length > 0 && (
-          <Box sx={{ display: "flex", flexDirection: "column", gap: 1, mt: 3 }}>
+          <Box className={sxStyles.sx19}>
             {variationTasks.map(({ task }) => (
               <Link key={task.id} href={`/tasks/${task.id}`} style={{ textDecoration: "none" }}>
-                <Text sx={{ color: "accent.fg" }}>查看举一反三题</Text>
+                <Text className={sxStyles.sx20}>查看举一反三题</Text>
               </Link>
             ))}
           </Box>

@@ -6,6 +6,7 @@ import { Box, Text } from "@/components/ui/primitives";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
 import { loadDerivedSvg, storeDerivedSvg } from "@/lib/derived-svg-cache";
 import { sanitizeSvgMarkup, SvgMarkup } from "./SvgMarkup";
+import sxStyles from "./MoleculeRenderer.sx.module.css";
 
 const RDKIT_SCRIPT = "/vendor/rdkit/RDKit_minimal.js";
 const RDKIT_WASM = "/vendor/rdkit/RDKit_minimal.wasm";
@@ -107,16 +108,15 @@ export function MoleculeRenderer({ code }: { code: string }) {
 
   if (error) {
     return (
-      <Box sx={{ p: 2, border: "1px solid", borderColor: "danger.emphasis", borderRadius: 1, bg: "danger.subtle" }}>
+      <Box className={sxStyles.sx1}>
         <ErrorBanner message={error} title="分子结构渲染失败" />
-        <Text sx={{ color: "danger.fg", fontSize: 1 }}>{error}</Text>
-        <Box as="pre" sx={{ mt: 2, mb: 0, whiteSpace: "pre-wrap", fontFamily: "mono", fontSize: 0 }}>
+        <Box as="pre" className={sxStyles.sx3}>
           {source}
         </Box>
       </Box>
     );
   }
 
-  if (!svg) return <Text sx={{ color: "fg.muted", fontSize: 1 }}>正在加载分子结构...</Text>;
+  if (!svg) return <Text className={sxStyles.sx4}>正在加载分子结构...</Text>;
   return <SvgMarkup svg={svg} label="分子结构" colorMode="themed" />;
 }

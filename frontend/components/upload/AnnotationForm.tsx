@@ -11,6 +11,7 @@ import {
 import { TagSelectorRow } from "@/components/TagSelectorRow";
 import type { TagDimensionStyle } from "@/types/api";
 import { SUBJECT_OPTIONS } from "@/config/subjects";
+import sxStyles from "./AnnotationForm.sx.module.css";
 
 type AnnotationFormProps = {
     subject: string;
@@ -76,22 +77,12 @@ export function AnnotationForm({
     onSkip,
 }: AnnotationFormProps) {
     return (
-        <Box className="capture-annotation" sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-            <Box className="capture-annotation__details" sx={{ display: 'grid', gridTemplateColumns: ['1fr', '1fr 1fr'], gap: 3 }}>
+        <Box className={["capture-annotation", sxStyles.sx1].filter(Boolean).join(" ")} >
+            <Box className={["capture-annotation__details", sxStyles.sx2].filter(Boolean).join(" ")} >
                 <FormControl>
                     <FormControl.Label>分值</FormControl.Label>
                     <Box
-                        sx={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            border: '1px solid',
-                            borderColor: 'border.default',
-                            borderRadius: 2,
-                            overflow: 'hidden',
-                            ':focus-within': {
-                                boxShadow: '0 0 0 2px var(--borderColor-accent-emphasis)',
-                            },
-                        }}
+                        className={sxStyles.sx3}
                     >
                         <TextInput
                             placeholder="得分"
@@ -114,28 +105,10 @@ export function AnnotationForm({
                                     difficultyRightRef?.current?.focus();
                                 }
                             }}
-                            sx={{
-                                flex: 1,
-                                border: 'none',
-                                borderRadius: 0,
-                                input: {
-                                    textAlign: 'center',
-                                },
-                                ':focus': {
-                                    boxShadow: 'none',
-                                    border: 'none',
-                                },
-                            }}
+                            className={sxStyles.sx4}
                         />
                         <Box
-                            sx={{
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                px: 2,
-                                color: 'fg.muted',
-                                userSelect: 'none',
-                            }}
+                            className={sxStyles.sx5}
                         >
                             /
                         </Box>
@@ -144,18 +117,7 @@ export function AnnotationForm({
                             value={difficultyRight}
                             onChange={(e) => onDifficultyRightChange(e.target.value)}
                             ref={difficultyRightRef}
-                            sx={{
-                                flex: 1,
-                                border: '0px solid',
-                                borderRadius: 0,
-                                input: {
-                                    textAlign: 'center',
-                                    outline: 'none',
-                                },
-                                ':focus': {
-                                    boxShadow: 'none',
-                                },
-                            }}
+                            className={sxStyles.sx6}
                         />
                     </Box>
                 </FormControl>
@@ -181,7 +143,7 @@ export function AnnotationForm({
                 styles={tagStyles}
             />
 
-            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end' }}>
+            <Box className={sxStyles.sx7}>
                 <Button
                     size="small"
                     variant="invisible"
@@ -192,8 +154,8 @@ export function AnnotationForm({
             </Box>
 
             {showAdvanced && (
-                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-                    <Box sx={{ display: 'grid', gridTemplateColumns: ['1fr', '1fr 1fr'], gap: 3 }}>
+                <Box className={sxStyles.sx8}>
+                    <Box className={sxStyles.sx9}>
                         <FormControl>
                             <FormControl.Label>题号</FormControl.Label>
                             <TextInput
@@ -229,13 +191,13 @@ export function AnnotationForm({
                 </Box>
             )}
 
-            <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
+            <Box className={sxStyles.sx10}>
                 <Button
                     variant="primary"
                     onClick={onSubmit}
                     disabled={isLoading}
                 >
-                    {isLoading ? <><Spinner size="small" sx={{ mr: 1 }} />入队中...</> : "提交并入队"}
+                    {isLoading ? <><Spinner size="small" className={sxStyles.sx11} />入队中...</> : "提交并入队"}
                 </Button>
                 <Button onClick={onSkip} disabled={isLoading}>
                     跳过

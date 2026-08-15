@@ -1,7 +1,6 @@
 import { useMemo, useState } from "react";
-import { Drawer } from "@mantine/core";
 import { Check, Eye, Search } from "lucide-react";
-import { TextInput } from "@/components/ui/primitives";
+import { Button, Drawer, TextInput } from "@/components/ui/primitives";
 import {
   findPolicyModel,
   policyModelUnavailableReason,
@@ -40,7 +39,8 @@ export function PolicyStageCard({
 
   return (
     <div className={styles.stageWrap}>
-      <button
+      <Button
+        variant="default"
         type="button"
         className={`${styles.stageCard}${unavailableReason ? ` ${styles.stageCardInvalid}` : ""}`}
         onClick={onClick}
@@ -50,24 +50,24 @@ export function PolicyStageCard({
             <span className={styles.stageTitleLine}><Icon size={17} />{definition.label}</span>
             <span className={styles.stageHint}>{definition.hint}</span>
           </span>
-          <span className={styles.modelIdTag}>{definition.capabilityLabel}</span>
+          <span className={styles.stageCapability}>{definition.capabilityLabel}</span>
         </span>
 
         <span className={styles.stageSelection}>
           {selected ? <ProviderMark provider={selected.channel.provider} icon={selected.channel.icon} size={42} /> : <span className={styles.stageSelectionPlaceholder} aria-hidden="true"><Icon size={20} /></span>}
-          <span style={{ minWidth: 0 }}>
+          <span className={styles.stageSelectionText}>
             <span className={styles.stageChannel}>{selected ? selected.channel.display_name : "等待配置"}</span>
             <span className={styles.stageModel}>{selected ? selected.model.id : "选择阶段模型"}</span>
           </span>
         </span>
 
         <span className={styles.stageAction}>
-          <span style={{ color: unavailableReason ? "var(--fgColor-danger)" : undefined }}>
+          <span className={unavailableReason ? styles.stageStatusInvalid : undefined}>
             {unavailableReason ?? "模型可用"}
           </span>
           <span>{selected ? "更换模型" : "选择模型"}</span>
         </span>
-      </button>
+      </Button>
     </div>
   );
 }
@@ -127,18 +127,19 @@ export function ModelPickerDrawer({
           {models.map((model) => {
             const selected = selection.channel_id === channel.id && selection.model_id === model.id;
             return (
-              <button
+              <Button
+                variant="default"
                 key={model.id}
                 type="button"
                 className={`${styles.pickerOption}${selected ? ` ${styles.pickerOptionSelected}` : ""}`}
                 onClick={() => onSelect({ channel_id: channel.id, model_id: model.id })}
               >
-                <span style={{ minWidth: 0 }}>
+                <span className={styles.stageSelectionText}>
                   <span className={styles.modelName}>{model.id}</span>
                   <span className={styles.pickerReason}>{model.source} · {definition.capabilityLabel}</span>
                 </span>
                 {selected ? <Check size={17} /> : null}
-              </button>
+              </Button>
             );
           })}
         </section>

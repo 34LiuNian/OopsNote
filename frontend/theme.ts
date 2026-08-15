@@ -58,6 +58,7 @@ export const oopsTheme: MantineThemeOverride = createTheme({
     },
     TextInput: {
       defaultProps: {
+        size: "sm",
         radius: "md",
       },
     },
@@ -69,6 +70,23 @@ export const oopsTheme: MantineThemeOverride = createTheme({
     Select: {
       defaultProps: {
         radius: "md",
+      },
+    },
+    PasswordInput: {
+      defaultProps: {
+        size: "sm",
+        radius: "md",
+      },
+    },
+    Modal: {
+      defaultProps: {
+        radius: "lg",
+        overlayProps: { backgroundOpacity: 0.48, blur: 2 },
+      },
+    },
+    Drawer: {
+      defaultProps: {
+        radius: "lg",
       },
     },
   },

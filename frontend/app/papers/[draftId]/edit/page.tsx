@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { Download, Eye, GripVertical, MoreHorizontal, Plus, Trash2, X } from "lucide-react";
-import { Box, Button, FormControl, Spinner, Text, TextInput } from "@/components/ui/primitives";
+import { Box, Button, Checkbox, FormControl, IconButton, NativeInput, NativeSelect, Spinner, Text, TextInput } from "@/components/ui/primitives";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
 import { notify } from "@/lib/notify";
 import { PageHeader } from "@/components/layout/PageHeader";
@@ -11,6 +11,7 @@ import { ProblemCard } from "@/components/ProblemCard";
 import { compilePaperDraft, getPaper, listPaperCandidates, updatePaper } from "@/features/papers";
 import type { PaperDraft, PaperDraftItem, ProblemSummary } from "@/types/api";
 import styles from "../../paperWorkflow.module.css";
+import sxStyles from "./page.sx.module.css";
 
 const QUESTION_TYPE_ORDER: Record<string, number> = {
   单选题: 0,
@@ -235,23 +236,23 @@ export default function PaperEditorPage() {
     }
   }
 
-  if (loading) return <Box sx={{ p: 6, textAlign: "center" }}><Spinner /></Box>;
+  if (loading) return <Box className={sxStyles.sx1}><Spinner /></Box>;
   if (!paper) {
     return (
-      <Box sx={{ p: 6, textAlign: "center" }}>
+      <Box className={sxStyles.sx2}>
         <ErrorBanner message={error || "试卷不存在"} title="加载试卷失败" />
-        <Text sx={{ color: "fg.muted" }}>试卷当前不可用。</Text>
+        <Text className={sxStyles.sx3}>试卷当前不可用。</Text>
       </Box>
     );
   }
 
   return (
-    <Box sx={{ display: "flex", flexDirection: "column", gap: 3 }}>
+    <Box className={sxStyles.sx4}>
       <PageHeader
         title="编辑试卷"
         description="题目内容来自题库；此处只调整试卷结构和排版属性"
         action={(
-          <Box sx={{ display: "flex", gap: 2 }}>
+          <Box className={sxStyles.sx5}>
             <Button size="small" onClick={() => router.push("/papers")}>返回草稿</Button>
             <Button
               size="small"
@@ -266,7 +267,7 @@ export default function PaperEditorPage() {
         )}
       />
 
-      <Box sx={{ display: "grid", gridTemplateColumns: ["1fr", "minmax(0, 1fr) auto"], gap: 2, alignItems: "end" }}>
+      <Box className={sxStyles.sx6}>
         <FormControl>
           <FormControl.Label>试卷标题</FormControl.Label>
           <TextInput
@@ -294,14 +295,13 @@ export default function PaperEditorPage() {
               <a className={styles.previewDownload} href={previewUrl} download={`${paper.title || "试卷"}.pdf`}>
                 <Download size={15} /> 下载 PDF
               </a>
-              <button
+              <IconButton
+                icon={X}
                 type="button"
                 className={styles.previewClose}
                 aria-label="关闭正式预览"
                 onClick={clearFormalPreview}
-              >
-                <X size={17} />
-              </button>
+              />
             </div>
           </div>
           <iframe title="试卷 PDF 正式预览" src={previewUrl} className={styles.previewFrame} />
@@ -312,8 +312,8 @@ export default function PaperEditorPage() {
         <div className={styles.paperList}>
           {!paper.items.length ? (
             <div className={styles.emptyPaper}>
-              <Text sx={{ display: "block", fontWeight: 650 }}>这是一份空试卷</Text>
-              <Text sx={{ display: "block", mt: 1 }}>点击“添加题目”，从题库手动选择。</Text>
+              <Text className={sxStyles.sx7}>这是一份空试卷</Text>
+              <Text className={sxStyles.sx8}>点击“添加题目”，从题库手动选择。</Text>
             </div>
           ) : paper.items.map((item, index) => (
             <article
@@ -325,14 +325,14 @@ export default function PaperEditorPage() {
               onDragOver={(event) => event.preventDefault()}
               onDrop={() => dropOn(item.id)}
             >
-              <button type="button" className={styles.dragHandle} aria-label={`拖动第${index + 1}题`}><GripVertical size={17} /></button>
+              <IconButton icon={GripVertical} type="button" className={styles.dragHandle} aria-label={`拖动第${index + 1}题`} />
               <div>
                 <div className={styles.itemToolbar}>
                   <strong>{index + 1}. {item.question_type}</strong>
                   <span className={styles.coefficient}>{difficultyLabel(item.difficulty_coefficient)}</span>
                   <label>
                     <span className={styles.coefficient}>分值</span>{" "}
-                    <input
+                    <NativeInput
                       className={styles.pointsInput}
                       type="number"
                       min={0}
@@ -346,7 +346,7 @@ export default function PaperEditorPage() {
                   </label>
                   <label>
                     <span className={styles.coefficient}>答题空间</span>{" "}
-                    <select
+                    <NativeSelect
                       className={styles.pointsInput}
                       value={item.answer_space}
                       onChange={(event) => void saveItems(paper.items.map((candidate) => (
@@ -356,7 +356,7 @@ export default function PaperEditorPage() {
                       <option value="compact">紧凑</option>
                       <option value="standard">标准</option>
                       <option value="large">宽裕</option>
-                    </select>
+                    </NativeSelect>
                   </label>
                   <div className={styles.itemToolbarActions}>
                     <Button size="small" onClick={() => router.push(`/tasks/${item.task_id}`)}>编辑原题</Button>
@@ -390,7 +390,6 @@ export default function PaperEditorPage() {
                 ) : (
                   <>
                     <ErrorBanner message="原题已不存在，请替换或移除此题。" title="试卷内容异常" />
-                    <Text sx={{ color: "danger.fg" }}>原题已不存在，请替换或移除此题。</Text>
                   </>
                 )}
               </div>
@@ -405,17 +404,17 @@ export default function PaperEditorPage() {
           </div>
           <div className={styles.asideBody}>
             {pickerMode ? (
-              candidateLoading ? <Box sx={{ p: 3, textAlign: "center" }}><Spinner size="small" /></Box> : (
+              candidateLoading ? <Box className={sxStyles.sx10}><Spinner size="small" /></Box> : (
                 <div className={styles.candidateList}>
                   {availableCandidates.map((candidate) => (
-                    <button type="button" className={styles.candidate} key={candidate.problem_id} onClick={() => chooseCandidate(candidate)}>
+                    <Button type="button" variant="invisible" className={styles.candidate} key={candidate.problem_id} onClick={() => chooseCandidate(candidate)}>
                       <div className={styles.candidateMeta}>
                         {candidate.question_type || "题目"} · {difficultyLabel(candidate.difficulty_coefficient)}
                       </div>
                       <div className={styles.candidateText}>{candidate.problem_text || "（无题干）"}</div>
-                    </button>
+                    </Button>
                   ))}
-                  {!availableCandidates.length ? <Text sx={{ color: "fg.muted" }}>没有更多符合范围的题目。</Text> : null}
+                  {!availableCandidates.length ? <Text className={sxStyles.sx11}>没有更多符合范围的题目。</Text> : null}
                 </div>
               )
             ) : (
@@ -424,18 +423,15 @@ export default function PaperEditorPage() {
                   <strong>正式导出</strong>
                   <label>
                     <span>副标题</span>
-                    <input value={subtitle} onChange={(event) => {
+                    <NativeInput value={subtitle} onChange={(event) => {
                       clearFormalPreview();
                       setSubtitle(event.target.value);
                     }} placeholder="可选" />
                   </label>
-                  <label className={styles.answerToggle}>
-                    <input type="checkbox" checked={showAnswers} onChange={(event) => {
+                  <Checkbox className={styles.answerToggle} label="包含答案与解析" checked={showAnswers} onChange={(event) => {
                       clearFormalPreview();
                       setShowAnswers(event.target.checked);
                     }} />
-                    <span>包含答案与解析</span>
-                  </label>
                   <Button
                     size="small"
                     leadingVisual={Eye}
@@ -454,7 +450,7 @@ export default function PaperEditorPage() {
                 </div>
                 <details style={{ marginTop: 16 }}>
                   <summary style={{ cursor: "pointer", color: "var(--fgColor-muted)", fontSize: 13 }}><MoreHorizontal size={14} /> 更多操作</summary>
-                  <Box sx={{ display: "flex", flexDirection: "column", gap: 2, mt: 2 }}>
+                  <Box className={sxStyles.sx12}>
                     <Button size="small" onClick={sortByDifficulty}>按难度重新排序</Button>
                     <Button size="small" leadingVisual={Trash2} onClick={() => void saveItems([])}>清空试卷</Button>
                   </Box>

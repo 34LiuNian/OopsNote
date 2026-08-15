@@ -1,10 +1,20 @@
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync, statSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const read = (file) => readFileSync(resolve(root, file), "utf8");
 const failures = [];
+
+function collectSourceFiles(directory) {
+  const files = [];
+  for (const entry of readdirSync(directory)) {
+    const absolute = resolve(directory, entry);
+    if (statSync(absolute).isDirectory()) files.push(...collectSourceFiles(absolute));
+    else if (/\.(tsx?|jsx?)$/.test(entry)) files.push(absolute);
+  }
+  return files;
+}
 
 const notifySource = read("lib/notify.ts");
 const policySource = read("lib/notificationPolicy.ts");
@@ -15,15 +25,26 @@ const notificationHost = read("components/ui/MantineNotifications.tsx");
 
 if (!/color === "red" \? false/.test(policySource)) failures.push("red notification policy must force autoClose=false");
 if (!/errorNotificationId/.test(notifySource)) failures.push("notify.error must use stable error IDs");
-if (!/notify\.error/.test(bannerSource) || !/return null/.test(bannerSource)) failures.push("ErrorBanner must bridge to notify.error without a second inline renderer");
-if (!/QueryCache/.test(querySource) || !/MutationCache/.test(querySource)) failures.push("React Query cache failures must report globally");
-if (!/addEventListener\("error"/.test(monitorSource) || !/unhandledrejection/.test(monitorSource)) failures.push("browser-level failures must report globally");
+if (/notify\.error/.test(bannerSource) || !/role="alert"/.test(bannerSource)) failures.push("ErrorBanner must render the owning page error without creating a notification");
+if (!/queryCache:\s*new QueryCache\(\)/.test(querySource) || !/mutationCache:\s*new MutationCache\(\)/.test(querySource)) failures.push("React Query cache failures must stay in the owning page state");
+if (!/addEventListener\("error"/.test(monitorSource) || !/unhandledrejection/.test(monitorSource) || !/console\.error/.test(monitorSource)) failures.push("browser-level failures must preserve console evidence without notification duplication");
 const notificationLimit = Number(notificationHost.match(/limit=\{(\d+)\}/)?.[1] || 0);
 if (notificationLimit < 6) failures.push("notification host must keep enough persistent errors visible");
 
 for (const file of ["app/login/page.tsx", "app/register/page.tsx"]) {
   const source = read(file);
   if (/role=["']alert["']/.test(source) || /styles\.error/.test(source)) failures.push(`${file} duplicates the persistent error notification with a page-level red banner`);
+}
+
+for (const directory of ["app", "components", "features", "hooks", "lib"]) {
+  for (const absolute of collectSourceFiles(resolve(root, directory))) {
+    const relativeFile = absolute.slice(root.length + 1).replaceAll("\\", "/");
+    if (relativeFile.startsWith("components/ui/")) continue;
+    const source = readFileSync(absolute, "utf8");
+    if (/role\s*=\s*["']alert["']/.test(source)) {
+      failures.push(`${relativeFile} renders a business-level alert DOM; use ErrorBanner or a field error prop so the global notification remains authoritative`);
+    }
+  }
 }
 
 const silentCatchAllowlist = new Set([

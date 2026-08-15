@@ -1,0 +1,59 @@
+.stack,
+.inline {
+  display: flex;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.stack { flex-direction: column; }
+.inline { flex-direction: row; }
+.wrap { flex-wrap: wrap; }
+
+.gapXs { gap: var(--oops-space-1); }
+.gapSm { gap: var(--oops-space-2); }
+.gapMd { gap: var(--oops-space-3); }
+.gapLg { gap: var(--oops-space-4); }
+.gapXl { gap: var(--oops-space-5); }
+
+.alignStart { align-items: flex-start; }
+.alignCenter { align-items: center; }
+.alignEnd { align-items: flex-end; }
+.alignStretch { align-items: stretch; }
+.alignBaseline { align-items: baseline; }
+
+.justifyStart { justify-content: flex-start; }
+.justifyCenter { justify-content: center; }
+.justifyEnd { justify-content: flex-end; }
+.justifyBetween { justify-content: space-between; }
+
+.surface { max-width: 100%; min-width: 0; }
+.surfaceBordered { border: var(--oops-border-width) solid var(--borderColor-default); }
+.surfaceMuted { background: var(--bgColor-muted); }
+.surfaceElevated {
+  border: var(--oops-border-width) solid var(--borderColor-default);
+  background: var(--bgColor-default);
+  box-shadow: var(--oops-shadow-sm);
+}
+
+.paddingSm { padding: var(--oops-space-2); }
+.paddingMd { padding: var(--oops-space-3); }
+.paddingLg { padding: var(--oops-space-4); }
+.radiusSm { border-radius: var(--oops-radius-sm); }
+.radiusMd { border-radius: var(--oops-radius-md); }
+.radiusLg { border-radius: var(--oops-radius-lg); }
+
+.textXs { font-size: var(--oops-text-xs); }
+.textSm { font-size: var(--oops-text-sm); }
+.textMd { font-size: var(--oops-text-md); }
+.textLg { font-size: var(--oops-text-lg); }
+.textXl { font-size: var(--oops-text-xl); }
+.toneMuted { color: var(--fgColor-muted); }
+.toneAccent { color: var(--fgColor-accent); }
+.toneSuccess { color: var(--fgColor-success); }
+.toneDanger { color: var(--fgColor-danger); }
+.toneAttention { color: var(--fgColor-attention); }
+.weightMedium { font-weight: 500; }
+.weightSemibold { font-weight: 600; }
+.weightBold { font-weight: 700; }
+.familyMono { font-family: var(--font-mono); }
+.truncate { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

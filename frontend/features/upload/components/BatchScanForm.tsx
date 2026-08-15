@@ -32,7 +32,8 @@ import {
 import { ImageSelectionStage, NormalizedRectEditor } from "@/components/image-selection";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { useTheme } from "@/components/providers/ThemeProvider";
-import { Box, Button, IconButton, Spinner, Text } from "@/components/ui/primitives";
+import { Box, Button, GeometryButton, IconButton, NativeInput, NativeSelect, Spinner, Text } from "@/components/ui/primitives";
+import { ErrorBanner } from "@/components/ui/ErrorBanner";
 import { RenameDialog } from "@/components/ui/RenameDialog";
 import { notify } from "@/lib/notify";
 import { confirmAction } from "@/lib/confirm";
@@ -102,6 +103,7 @@ export function BatchScanForm() {
   const [imageUrls, setImageUrls] = useState<Record<number, string>>({});
   const [currentSession, setCurrentSession] = useState<BatchSession | null>(null);
   const [savedSessions, setSavedSessions] = useState<BatchSession[]>([]);
+  const [savedSessionsError, setSavedSessionsError] = useState("");
   const [crop, setCrop] = useState<DocumentCropRect>(FULL_CROP);
   const [columnLayout, setColumnLayout] = useState<ColumnLayout>({ ...DEFAULT_COLUMN_LAYOUT });
   const [excludedPageIndices, setExcludedPageIndices] = useState<number[]>([]);
@@ -151,12 +153,13 @@ export function BatchScanForm() {
     try {
       return await listBatchSessions();
     } catch (reason) {
-      notify.error({ title: "批量扫描记录加载失败", description: reason instanceof Error ? reason.message : "无法读取已保存记录" });
+      setSavedSessionsError(reason instanceof Error ? reason.message : "无法读取已保存记录");
       return null;
     }
   }, []);
 
   const refreshSavedSessions = useCallback(async () => {
+    setSavedSessionsError("");
     const sessions = await loadSavedSessions();
     if (sessions) setSavedSessions(sessions);
   }, [loadSavedSessions]);
@@ -196,6 +199,8 @@ export function BatchScanForm() {
 
   useEffect(() => {
     let cancelled = false;
+    // The initial session request owns its loading/error state transition.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void loadSavedSessions().then((sessions) => {
       if (!cancelled && sessions) setSavedSessions(sessions);
     });
@@ -830,7 +835,7 @@ export function BatchScanForm() {
         onCancel={() => setDeleteTarget(null)}
         onConfirm={deleteBatch}
       />
-      <input
+      <NativeInput
         ref={inputRef}
         className="batch-scan-toolbar__input"
         type="file"
@@ -845,6 +850,7 @@ export function BatchScanForm() {
       {!pages.length ? (
         <>
           <PageHeader title="批量扫描" description="先统一裁剪页面，再在连续文档上框选题目" />
+          <ErrorBanner message={savedSessionsError} title="批量扫描记录加载失败" />
           <Box className="batch-scan-toolbar">
             <Button variant="primary" leadingVisual={Upload} onClick={() => inputRef.current?.click()} disabled={isImporting}>
               {isImporting ? "正在载入" : "选择 PDF 或图片"}
@@ -873,14 +879,14 @@ export function BatchScanForm() {
             {!cropConfirmed && (
               <label className="batch-column-count">
                 <span>分栏</span>
-                <select
+                <NativeSelect
                   aria-label="分栏数量"
                   value={columnLayout.columnCount}
                   onChange={(event) => setColumnLayout({ columnCount: Number(event.target.value), overlapRatio: 0.5 })}
                 >
                   <option value={1}>不分栏</option>
                   {[2, 3, 4, 5, 6].map((count) => <option key={count} value={count}>{count} 栏</option>)}
-                </select>
+                </NativeSelect>
               </label>
             )}
             <span className="batch-workflow-toolbar__spacer" />
@@ -919,7 +925,7 @@ export function BatchScanForm() {
                   const active = !excluded && (renderDocument ? visiblePageIndex : activePageIndex) === page.pageIndex;
                   return (
                     <div key={page.id} className={`batch-page-rail__item${active ? " is-active" : ""}${excluded ? " is-excluded" : ""}`}>
-                      <button
+                      <GeometryButton
                         type="button"
                         className="batch-page-rail__page"
                         aria-label={`第 ${page.pageIndex + 1} 页${excluded ? "，已删除" : ""}`}
@@ -929,8 +935,8 @@ export function BatchScanForm() {
                       >
                         <span>{page.pageIndex + 1}</span>
                         {excluded && <small>已删除</small>}
-                      </button>
-                      <button
+                      </GeometryButton>
+                      <GeometryButton
                         type="button"
                         className="batch-page-rail__action"
                         aria-label={excluded ? `恢复第 ${page.pageIndex + 1} 页` : `删除第 ${page.pageIndex + 1} 页`}
@@ -939,7 +945,7 @@ export function BatchScanForm() {
                         onClick={() => excluded ? restorePage(page.pageIndex) : deletePage(page.pageIndex)}
                       >
                         {excluded ? <RefreshCw size={14} /> : <Trash2 size={14} />}
-                      </button>
+                      </GeometryButton>
                     </div>
                   );
                 })}</nav>
@@ -952,7 +958,7 @@ export function BatchScanForm() {
                 <span>{Math.round(zoom * 100)}%</span>
                 <IconButton icon={Plus} size="small" variant="invisible" aria-label="放大" title="放大" onClick={() => setZoomAroundPointer(zoom + 0.1)} />
                 <IconButton icon={Maximize2} size="small" variant="invisible" aria-label="适合宽度" title="适合宽度" onClick={fitWidth} />
-                <label className="batch-page-input"><input value={pageInput} inputMode="numeric" onChange={(event) => setPageInput(event.target.value)} onBlur={() => goToPage(Number(pageInput) - 1)} onKeyDown={(event) => { if (event.key === "Enter") event.currentTarget.blur(); }} /><span>/ {pages.length}</span></label>
+                <label className="batch-page-input"><NativeInput value={pageInput} inputMode="numeric" onChange={(event) => setPageInput(event.target.value)} onBlur={() => goToPage(Number(pageInput) - 1)} onKeyDown={(event) => { if (event.key === "Enter") event.currentTarget.blur(); }} /><span>/ {pages.length}</span></label>
               </Box>
               <div
                 ref={viewportRef}

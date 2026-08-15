@@ -2,6 +2,7 @@
 
 import { memo, useEffect, useRef } from "react";
 import { Box, Spinner, Text } from "@/components/ui/primitives";
+import sxStyles from "./TagSuggestionList.sx.module.css";
 
 type SuggestionItem =
   | { type: "existing"; id: string; value: string; ref_count?: number }
@@ -47,9 +48,9 @@ export const TagSuggestionList = memo(function TagSuggestionList({
           onPointerEnter={() => onHighlight(index)}
           onClick={() => onSelect(item.value)}
         >
-          <Text sx={{ fontSize: 1 }}>{item.type === "create" ? item.label : item.value}</Text>
+          <Text className={sxStyles.sx1}>{item.type === "create" ? item.label : item.value}</Text>
           {item.type === "existing" && typeof item.ref_count === "number" ? (
-            <Text sx={{ color: "fg.muted", fontSize: 0 }}>{item.ref_count}</Text>
+            <Text className={sxStyles.sx2}>{item.ref_count}</Text>
           ) : null}
         </Box>
       ))}

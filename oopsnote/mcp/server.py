@@ -1,6 +1,6 @@
 """OopsNote MCP Server — the restricted AI ↔ Core boundary.
 
-FastMCP stdio server，暴露 CRUD 工具供 the managed Pi pipeline 调用。
+FastMCP stdio server，暴露 CRUD 工具供 the managed LangChain pipeline 调用。
 纯数据操作，不涉及 AI；AI 流水线由 managed runner 编排。
 """
 

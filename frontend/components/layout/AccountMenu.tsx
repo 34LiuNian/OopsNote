@@ -1,12 +1,12 @@
 "use client";
 
-import { Menu } from "@mantine/core";
 import { Gauge, LogOut, UserRound } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useAuth } from "@/components/providers";
 import { InitialAvatar } from "@/components/ui/InitialAvatar";
-import { notify } from "@/lib/notify";
+import { ErrorBanner } from "@/components/ui/ErrorBanner";
+import { Button, Menu } from "@/components/ui/primitives";
 
 type QuotaSummary = {
   daily_success_limit: number;
@@ -18,25 +18,29 @@ export function AccountMenu() {
   const router = useRouter();
   const displayName = user?.displayName ?? "登录";
   const [quota, setQuota] = useState<QuotaSummary | null>(null);
+  const [quotaError, setQuotaError] = useState("");
+  const AccountVisual = () => user
+    ? <InitialAvatar name={displayName} image={user.picture} size={28} />
+    : <UserRound size={16} />;
 
   async function loadQuota() {
+    setQuotaError("");
     try {
       const response = await fetch("/api/backend/me/quota", { cache: "no-store" });
       if (!response.ok) throw new Error("无法读取账户额度");
       const payload = await response.json() as { quota?: QuotaSummary };
       setQuota(payload.quota || null);
     } catch (reason) {
-      notify.error({ title: "账户额度加载失败", description: reason instanceof Error ? reason.message : "额度服务暂时不可用" });
+      setQuotaError(reason instanceof Error ? reason.message : "额度服务暂时不可用");
     }
   }
 
   return (
     <Menu position="bottom-end" offset={8} shadow="md" width={224} withinPortal onOpen={() => void loadQuota()}>
       <Menu.Target>
-        <button type="button" className="oops-account-trigger" aria-label="账户菜单">
-          {user ? <InitialAvatar name={displayName} image={user.picture} size={28} /> : <UserRound size={16} />}
+        <Button type="button" variant="default" className="oops-account-trigger" aria-label="账户菜单" leadingVisual={AccountVisual}>
           <span className="oops-account-trigger__name">{displayName}</span>
-        </button>
+        </Button>
       </Menu.Target>
       <Menu.Dropdown>
         <div className="oops-account-menu__identity">
@@ -50,6 +54,7 @@ export function AccountMenu() {
             <strong>{Math.max(0, quota.daily_success_limit - quota.used_units)} / {quota.daily_success_limit}</strong>
           </div>
         )}
+        <ErrorBanner message={quotaError} title="账户额度加载失败" />
         <Menu.Divider />
         <Menu.Item leftSection={<UserRound size={15} />} onClick={() => router.push("/settings/account")}>
           个人账号

@@ -1,6 +1,7 @@
-"use client";
+﻿"use client";
 
 import { Box, FormControl, Select, Text, TextInput, ToggleSwitch } from "@/components/ui/primitives";
+import sxStyles from "./AgentSettingsRow.sx.module.css";
 
 type AgentDescriptor = {
   key: string;
@@ -49,24 +50,15 @@ export function AgentSettingsRow({
 }: AgentSettingsRowProps) {
   return (
     <Box
-      className="oops-list-item"
-      sx={{
-        display: "grid",
-        gridTemplateColumns: ["1fr", "180px 1fr auto"],
-        gap: 3,
-        alignItems: "start",
-        px: 3,
-        py: 3,
-        borderBottom: "1px solid",
-        borderColor: "border.muted",
-      }}
+      className={["oops-list-item", sxStyles.sx1].filter(Boolean).join(" ")}
+
     >
       <Box>
-        <Text sx={{ fontWeight: 600, display: "block", fontSize: 1 }}>[{agent.label}]</Text>
-        <Text sx={{ fontSize: 0, color: "fg.muted" }}>{agent.description}</Text>
+        <Text className={sxStyles.sx2}>[{agent.label}]</Text>
+        <Text className={sxStyles.sx3}>{agent.description}</Text>
       </Box>
 
-      <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
+      <Box className={sxStyles.sx4}>
         <FormControl>
           <FormControl.Label visuallyHidden>Model</FormControl.Label>
           <Select
@@ -93,14 +85,14 @@ export function AgentSettingsRow({
         {onChangeTemperature && (
           <FormControl>
             <FormControl.Label visuallyHidden>Temperature</FormControl.Label>
-            <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
-              <Text sx={{ fontSize: 1, color: "fg.muted", whiteSpace: "nowrap" }}>Temperature</Text>
+            <Box className={sxStyles.sx5}>
+              <Text className={sxStyles.sx6}>Temperature</Text>
               <TextInput
                 type="number"
                 value={temperature}
                 onChange={(e) => onChangeTemperature(agent.key, e.target.value)}
                 placeholder="Default"
-                sx={{ width: "80px" }}
+                className={sxStyles.sx7}
                 min={0}
                 max={2}
                 step={0.1}
@@ -110,19 +102,16 @@ export function AgentSettingsRow({
         )}
       </Box>
 
-      <Box sx={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 3, pt: [0, 1] }}>
-        <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
-          <Text sx={{ fontSize: 0, color: locked ? "fg.muted" : "fg.default", whiteSpace: "nowrap" }}>
+      <Box className={sxStyles.sx8}>
+        <Box className={sxStyles.sx9}>
+          <Text className={sxStyles.agentState} data-status={locked ? "locked" : "enabled"}>
             {locked ? "Required" : "Enabled"}
           </Text>
           <ToggleSwitch
             size="small"
             checked={enabled}
             disabled={locked || isSaving}
-            sx={{
-              "& > span[aria-hidden=\"true\"]": { display: "none" },
-              "& button svg": { display: "none" },
-            }}
+            className={sxStyles.sx10}
             onClick={(event) => {
               event.preventDefault();
               if (locked) return;
@@ -132,16 +121,13 @@ export function AgentSettingsRow({
           />
         </Box>
 
-        <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
-          <Text sx={{ fontSize: 0, color: "fg.default", whiteSpace: "nowrap" }}>Thinking</Text>
+        <Box className={sxStyles.sx11}>
+          <Text className={sxStyles.sx12}>Thinking</Text>
           <ToggleSwitch
             size="small"
             checked={thinkingEnabled}
             disabled={isSaving}
-            sx={{
-              "& > span[aria-hidden=\"true\"]": { display: "none" },
-              "& button svg": { display: "none" },
-            }}
+            className={sxStyles.sx13}
             onClick={(event) => {
               event.preventDefault();
               onToggleThinking(agent.key, !thinkingEnabled);

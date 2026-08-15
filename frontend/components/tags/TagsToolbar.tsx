@@ -3,6 +3,7 @@
 import { Box, Button, Label, Select, TextInput } from "@/components/ui/primitives";
 import { SearchIcon } from "@/components/ui/icons";
 import type { TagDimension } from "@/types/api";
+import sxStyles from "./TagsToolbar.sx.module.css";
 
 type DimFilter = "all" | TagDimension;
 
@@ -32,8 +33,8 @@ export function TagsToolbar({
   onResetKnowledgeScope,
 }: TagsToolbarProps) {
   return (
-    <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
-      <Box sx={{ display: "grid", gridTemplateColumns: ["1fr", "1fr 220px"], gap: 2 }}>
+    <Box className={sxStyles.sx1}>
+      <Box className={sxStyles.sx2}>
         <TextInput
           leadingVisual={SearchIcon}
           placeholder="搜索标签名或别名，默认按引用次数排序"
@@ -51,7 +52,7 @@ export function TagsToolbar({
         </Select>
       </Box>
 
-      <Box sx={{ display: "flex", alignItems: "center", gap: 1, flexWrap: "wrap" }}>
+      <Box className={sxStyles.sx3}>
         {activePathParts.length > 0 ? (
           activePathParts.map((part, index) => (
             <Label key={`${part}-${index}`} variant={index === activePathParts.length - 1 ? "accent" : "secondary"}>

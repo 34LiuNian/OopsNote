@@ -15,6 +15,16 @@
   gap: 16px;
 }
 
+.title {
+  font-size: var(--oops-text-lg);
+}
+
+.subtitle {
+  margin-top: 4px;
+  color: var(--fgColor-muted);
+  font-size: var(--oops-text-xs);
+}
+
 .viewport {
   width: 100%;
   overflow: auto;

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { GripVertical, Plus, Search } from "lucide-react";
-import { IconButton, TextInput, ToggleSwitch, Tooltip } from "@/components/ui/primitives";
+import { Button, IconButton, TextInput, ToggleSwitch, Tooltip } from "@/components/ui/primitives";
 import type { ProviderChannel } from "@/features/settings/types";
 import { ProviderMark } from "./ProviderMark";
 import styles from "./aiSettings.module.css";
@@ -131,18 +131,19 @@ export function ChannelRail({
                   onReorder(next);
                 }}
               />
-              <button
+              <Button
+                variant="default"
                 type="button"
                 className={styles.channelSelect}
                 aria-current={selected ? "true" : undefined}
                 onClick={() => onSelect(channel)}
               >
                 <ProviderMark provider={channel.provider} icon={channel.icon} size={34} />
-                <span style={{ minWidth: 0 }}>
+                <span className={styles.channelText}>
                   <span className={styles.channelItemName}>{channel.display_name}</span>
                   <span className={styles.channelItemMeta}>{channel.models.length} 个模型 · {channel.id}</span>
                 </span>
-              </button>
+              </Button>
               <span className={styles.channelSwitchWrap}>
                 <Tooltip text={statusText}>
                   <span>

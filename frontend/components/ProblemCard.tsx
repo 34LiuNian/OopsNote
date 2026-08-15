@@ -4,6 +4,7 @@ import { memo } from "react";
 import { Box, Text } from "@/components/ui/primitives";
 import { ProblemContent } from "./ProblemContent";
 import type { ContentFormat, DiagramImageTone } from "@/types/api";
+import sxStyles from "./ProblemCard.sx.module.css";
 
 type ProblemOption = {
   key: string;
@@ -75,24 +76,14 @@ export const ProblemCard = memo(function ProblemCard({
 
   return (
     <Box
-      sx={{
-        width: "100%",
-        fontFamily: "'Times New Roman','SimSun','宋体',serif",
-        "& *": { fontFamily: "'Times New Roman','SimSun','宋体',serif" },
-      }}
+      className={sxStyles.sx1}
     >
       {showTitle && resolvedTitle ? (
-        <Text sx={{ fontWeight: "bold", display: "block", mb: 1, fontSize: 2 }}>{resolvedTitle}</Text>
+        <Text className={sxStyles.sx2}>{resolvedTitle}</Text>
       ) : null}
       {metaParts.length > 0 ? (
         <Text
-          sx={{
-            color: "fg.muted",
-            fontSize: 0,
-            display: "block",
-            mb: 2,
-            fontFamily: "Inter, 'Noto Sans SC', 'Microsoft YaHei UI', 'Microsoft YaHei', sans-serif",
-          }}
+          className={sxStyles.sx3}
         >
           {metaParts.join(" · ")}
         </Text>

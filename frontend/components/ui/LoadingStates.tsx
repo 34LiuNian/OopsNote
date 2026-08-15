@@ -1,6 +1,7 @@
 "use client";
 
 import { Box, Spinner, Text } from "@/components/ui/primitives";
+import styles from "./LoadingStates.module.css";
 
 /**
  * 统一的加载动画组件
@@ -23,24 +24,10 @@ export function LoadingSpinner({
   const spinnerSize = size === "small" ? "small" : size === "large" ? "large" : "medium";
   
   const content = (
-    <Box
-      sx={{
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        justifyContent: "center",
-        gap: 3,
-      }}
-    >
+    <Box className={styles.content}>
       <Spinner size={spinnerSize} />
       {text && (
-        <Text
-          sx={{
-            fontSize: size === "large" ? 3 : 2,
-            color: "fg.muted",
-            textAlign: "center",
-          }}
-        >
+        <Text className={size === "large" ? styles.textLarge : styles.text}>
           {text}
         </Text>
       )}
@@ -49,36 +36,14 @@ export function LoadingSpinner({
 
   if (fullScreen) {
     return (
-      <Box
-        sx={{
-          position: "fixed",
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          bg: "canvas.subtle",
-          zIndex: 9999,
-        }}
-      >
+      <Box className={styles.fullScreen}>
         {content}
       </Box>
     );
   }
 
   return (
-    <Box
-      sx={{
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        flex: 1,
-        minHeight: 200,
-        p: 5,
-      }}
-    >
+    <Box className={styles.loadingState}>
       {content}
     </Box>
   );
@@ -103,22 +68,9 @@ export function LoadingSkeleton({
   gap?: number;
 }) {
   return (
-    <Box sx={{ display: "flex", flexDirection: "column", gap }}>
+    <Box className={styles.column} style={{ "--oops-geometry-gap": `${gap * 4}px` } as React.CSSProperties}>
       {Array.from({ length: count }).map((_, index) => (
-        <Box
-          key={index}
-          sx={{
-            height,
-            borderRadius: 2,
-            bg: "canvas.subtle",
-            animation: "pulse 1.5s ease-in-out infinite",
-            "@keyframes pulse": {
-              "0%": { opacity: 0.6 },
-              "50%": { opacity: 1 },
-              "100%": { opacity: 0.6 },
-            },
-          }}
-        />
+        <Box key={index} className={styles.skeleton} style={{ "--oops-geometry-height": `${height}px` } as React.CSSProperties} />
       ))}
     </Box>
   );
@@ -135,51 +87,23 @@ export function ListSkeleton({
   showAvatar?: boolean;
 }) {
   return (
-    <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
+    <Box className={styles.column}>
       {Array.from({ length: count }).map((_, index) => (
         <Box
           key={index}
-          sx={{
-            display: "flex",
-            alignItems: "center",
-            gap: 3,
-            p: 3,
-            borderRadius: 2,
-            bg: "canvas.subtle",
-            animation: "pulse 1.5s ease-in-out infinite",
-            "@keyframes pulse": {
-              "0%": { opacity: 0.6 },
-              "50%": { opacity: 1 },
-              "100%": { opacity: 0.6 },
-            },
-          }}
+          className={styles.listRow}
         >
           {showAvatar && (
             <Box
-              sx={{
-                width: 40,
-                height: 40,
-                borderRadius: "50%",
-                bg: "canvas.default",
-              }}
+              className={styles.avatarSkeleton}
             />
           )}
-          <Box sx={{ flex: 1, display: "flex", flexDirection: "column", gap: 2 }}>
+          <Box className={styles.listContent}>
             <Box
-              sx={{
-                height: 16,
-                width: "60%",
-                borderRadius: 2,
-                bg: "canvas.default",
-              }}
+              className={styles.lineWide}
             />
             <Box
-              sx={{
-                height: 12,
-                width: "40%",
-                borderRadius: 2,
-                bg: "canvas.default",
-              }}
+              className={styles.lineNarrow}
             />
           </Box>
         </Box>
@@ -199,59 +123,20 @@ export function CardSkeleton({
   columns?: number;
 }) {
   return (
-    <Box
-      sx={{
-        display: "grid",
-        gridTemplateColumns: {
-          _: "1fr",
-          narrow: (columns > 1 ? `repeat(${columns}, 1fr)` : "1fr") as any,
-          wide: (columns > 2 ? `repeat(${columns}, 1fr)` : "1fr") as any,
-        } as any,
-        gap: 3,
-      }}
-    >
+    <Box className={styles.cardGrid} data-columns={columns}>
       {Array.from({ length: count }).map((_, index) => (
         <Box
           key={index}
-          sx={{
-            display: "flex",
-            flexDirection: "column",
-            gap: 2,
-            p: 3,
-            borderRadius: 2,
-            border: "1px solid",
-            borderColor: "border.default",
-            bg: "canvas.subtle",
-            animation: "pulse 1.5s ease-in-out infinite",
-            "@keyframes pulse": {
-              "0%": { opacity: 0.6 },
-              "50%": { opacity: 1 },
-              "100%": { opacity: 0.6 },
-            },
-          }}
+          className={styles.card}
         >
           <Box
-            sx={{
-              height: 120,
-              borderRadius: 2,
-              bg: "canvas.default",
-            }}
+            className={styles.cardImage}
           />
           <Box
-            sx={{
-              height: 16,
-              width: "80%",
-              borderRadius: 2,
-              bg: "canvas.default",
-            }}
+            className={styles.cardLineWide}
           />
           <Box
-            sx={{
-              height: 12,
-              width: "60%",
-              borderRadius: 2,
-              bg: "canvas.default",
-            }}
+            className={styles.cardLineNarrow}
           />
         </Box>
       ))}

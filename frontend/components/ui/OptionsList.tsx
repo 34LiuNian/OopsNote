@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Box, Text } from "@/components/ui/primitives";
 import { optionLabel } from "@/lib/content/options";
+import styles from "./OptionsList.module.css";
 
 export type OptionItem = {
   key: string;
@@ -72,46 +73,19 @@ export function OptionsList(props: {
   return (
     <Box
       ref={containerRef}
-      sx={{
-        mt: 2,
-        display: "grid",
-        gridTemplateColumns: `repeat(${visibleOptionsColumns}, minmax(0, 1fr))`,
-        gap: 2,
-        "&[data-measuring='true'] [data-option-text='true']": {
-          whiteSpace: "nowrap",
-          overflowWrap: "normal",
-        },
-        "&[data-measuring='true'] [data-option-item='true']": {
-          width: "max-content",
-          justifySelf: "start",
-        },
-      }}
+      className={styles.optionsGrid}
+      data-columns={visibleOptionsColumns}
     >
       {options.map((opt, index) => (
         <Box
           key={`${itemKeyPrefix}-${opt.key}`}
           data-option-item="true"
-          sx={{
-            display: "inline-flex",
-            alignItems: "baseline",
-            gap: 1,
-            justifySelf: "start",
-            maxWidth: "100%",
-          }}
+          className={styles.optionItem}
         >
-          <Text sx={{ fontWeight: "bold" }}>{optionLabel(index)}.</Text>
+          <Text weight="bold">{optionLabel(index)}.</Text>
           <Box
             data-option-text="true"
-            sx={{
-              whiteSpace: forceWrap ? "normal" : "nowrap",
-              overflowWrap: forceWrap ? "anywhere" : "normal",
-              "& p": { 
-                display: "inline", 
-                margin: 0,
-                whiteSpace: forceWrap ? "normal" : "nowrap",
-                overflowWrap: forceWrap ? "anywhere" : "normal",
-              },
-            }}
+            className={forceWrap ? styles.optionTextWrap : styles.optionText}
           >
             {renderOptionText(opt, forceWrap)}
           </Box>

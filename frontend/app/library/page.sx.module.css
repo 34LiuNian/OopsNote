@@ -1,0 +1,57 @@
+/* Generated from app/library/page.tsx */
+.sx1{display:flex;flex-direction:column;gap:var(--oops-space-5);}
+
+/* Generated from app/library/page.tsx */
+.sx2{padding-inline:var(--oops-space-4);padding-block:var(--oops-space-2);}
+
+/* Generated from app/library/page.tsx */
+.sx3{display:flex;flex-direction:column;gap:var(--oops-space-2);}
+
+/* Generated from app/library/page.tsx */
+.sx4{display:flex;align-items:center;gap:var(--oops-space-2);flex-wrap:wrap;}
+
+/* Generated from app/library/page.tsx */
+.sx5{display:flex;gap:var(--oops-space-2);flex-wrap:wrap;}
+
+/* Generated from app/library/page.tsx */
+.sx6{position:relative;cursor:pointer;border-radius:var(--oops-radius-sm);overflow:hidden;border:1px solid;border-color:var(--borderColor-default);transition:all var(--oops-transition-fast);}.sx6:hover{box-shadow:var(--oops-shadow-md);transform:scale(1.05);}
+
+/* Generated from app/library/page.tsx */
+.sx7{width:100%;display:flex;justify-content:center;}
+
+/* Generated from app/library/page.tsx */
+.sx8{color:var(--fgColor-muted);font-size:var(--oops-text-sm);}
+
+/* Generated from app/library/page.tsx */
+.sx9{display:flex;justify-content:space-between;align-items:center;gap:var(--oops-space-2);flex-wrap:wrap;margin-bottom:var(--oops-space-2);}
+
+/* Generated from app/library/page.tsx */
+.sx10{display:flex;align-items:center;gap:var(--oops-space-2);}
+
+/* Generated from app/library/page.tsx */
+.sx11{font-weight:600;font-size:var(--oops-text-md);}
+
+/* Generated from app/library/page.tsx */
+.sx12{display:flex;align-items:center;gap:var(--oops-space-2);flex-wrap:wrap;}
+
+/* Generated from app/library/page.tsx */
+.sx13{font-size:var(--oops-text-sm);font-weight:600;}
+
+/* Generated from app/library/page.tsx */
+.sx14{display:flex;align-items:center;gap:var(--oops-space-2);flex-wrap:wrap;}
+
+/* Generated from app/library/page.tsx */
+.sx15{font-weight:600;font-size:var(--oops-text-md);}
+
+/* Generated from app/library/page.tsx */
+.sx16{font-size:var(--oops-text-sm);}
+
+/* Generated from app/library/page.tsx */
+.sx17{margin-top:var(--oops-space-2);}
+
+/* Generated from app/library/page.tsx */
+.sx18{display:flex;flex-direction:column;}
+.taskStripContent{display:flex;min-height:var(--oops-geometry-min-height);align-items:center;}
+.taskLink{color:inherit;text-decoration:none;}
+.problemItem{padding:var(--oops-space-2);border-bottom:var(--oops-border-width) solid var(--borderColor-muted);}
+.problemItem[data-last="true"]{border-bottom-width:0;}

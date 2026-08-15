@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Box, Text, ButtonGroup, Button } from "@/components/ui/primitives";
 import { CodeIcon, EyeIcon } from "@/components/ui/icons";
 import { MarkdownRenderer } from "./MarkdownRenderer";
+import sxStyles from "./LiveStreamRenderer.sx.module.css";
 
 function useThrottledValue<T>(value: T, delayMs: number): T {
   const [throttled, setThrottled] = useState(value);
@@ -119,9 +120,9 @@ export function LiveStreamRenderer({ text }: { text: string }) {
   }, [text, throttledText, mode]);
 
   return (
-    <Box sx={{ p: 2, bg: 'canvas.subtle', borderRadius: 2, mb: 3, display: 'flex', flexDirection: 'column' }}>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-        <Text sx={{ fontWeight: 'bold' }}>实时输出</Text>
+    <Box className={sxStyles.sx1}>
+      <Box className={sxStyles.sx2}>
+        <Text className={sxStyles.sx3}>实时输出</Text>
         <ButtonGroup>
           <Button 
             size="small" 
@@ -143,18 +144,10 @@ export function LiveStreamRenderer({ text }: { text: string }) {
       </Box>
 
       <Box 
-        sx={{ 
-          maxHeight: 400, 
-          overflowY: 'auto', 
-          bg: 'canvas.default', 
-          p: 2, 
-          borderRadius: 1, 
-          border: '1px solid', 
-          borderColor: 'border.default' 
-        }}
+        className={sxStyles.sx4}
       >
         {mode === 'raw' ? (
-          <Box as="pre" sx={{ whiteSpace: 'pre-wrap', fontFamily: 'mono', fontSize: 1, m: 0 }}>
+          <Box as="pre" className={sxStyles.sx5}>
             {text}
           </Box>
         ) : (

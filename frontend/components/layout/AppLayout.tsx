@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
-import { Box, Text } from "@/components/ui/primitives";
+import { Box, Button, GeometryButton, Text } from "@/components/ui/primitives";
 import {
   SidebarCollapseIcon,
   SidebarExpandIcon,
@@ -15,24 +15,30 @@ import {
   SecondarySidebarProvider,
   type SecondarySidebarView,
 } from "./SecondarySidebarContext";
+import sxStyles from "./AppLayout.sx.module.css";
 
-type DesktopSidebarView = "primary-expanded" | "primary-collapsed" | "context";
+type DesktopSidebarState = {
+  pathname: string;
+  primaryCollapsed: boolean;
+  secondaryOpen: boolean;
+};
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const isLibrary = pathname.startsWith("/library");
-  const defaultDesktopSidebarView: DesktopSidebarView = isLibrary
-    ? "context"
-    : "primary-expanded";
-  const [desktopSidebarState, setDesktopSidebarState] = useState<{
-    pathname: string;
-    view: DesktopSidebarView;
-  }>(() => ({ pathname, view: defaultDesktopSidebarView }));
-  const desktopSidebarView = desktopSidebarState.pathname === pathname
-    ? desktopSidebarState.view
-    : defaultDesktopSidebarView;
-  const sidebarCollapsed = desktopSidebarView !== "primary-expanded";
-  const secondaryView: SecondarySidebarView = isLibrary && desktopSidebarView === "context"
+  const isChannels = pathname.startsWith("/settings/channels");
+  const hasSecondarySidebar = isLibrary || isChannels;
+  const defaultDesktopSidebarState: DesktopSidebarState = {
+    pathname,
+    primaryCollapsed: isLibrary,
+    secondaryOpen: hasSecondarySidebar,
+  };
+  const [desktopSidebarState, setDesktopSidebarState] = useState<DesktopSidebarState>(defaultDesktopSidebarState);
+  const activeDesktopSidebarState = desktopSidebarState.pathname === pathname
+    ? desktopSidebarState
+    : defaultDesktopSidebarState;
+  const sidebarCollapsed = activeDesktopSidebarState.primaryCollapsed;
+  const secondaryView: SecondarySidebarView = hasSecondarySidebar && activeDesktopSidebarState.secondaryOpen
     ? "context"
     : "closed";
   const [secondaryTarget, setSecondaryTarget] = useState<HTMLDivElement | null>(null);
@@ -55,14 +61,22 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   }, [pathname]);
 
   const openContextSidebar = useCallback(() => {
-    setDesktopSidebarState({ pathname, view: "context" });
+    setDesktopSidebarState({
+      ...activeDesktopSidebarState,
+      pathname,
+      secondaryOpen: true,
+    });
     setMobileSecondaryState({ pathname, open: true });
-  }, [pathname]);
+  }, [activeDesktopSidebarState, pathname]);
 
   const closeSecondarySidebar = useCallback(() => {
-    setDesktopSidebarState({ pathname, view: "primary-expanded" });
+    setDesktopSidebarState({
+      ...activeDesktopSidebarState,
+      pathname,
+      secondaryOpen: false,
+    });
     setMobileSecondaryState({ pathname, open: false });
-  }, [pathname]);
+  }, [activeDesktopSidebarState, pathname]);
 
   const toggleContextSidebar = useCallback(() => {
     if (isMobileViewport ? mobileSecondaryOpen : secondaryView === "context") {
@@ -73,26 +87,26 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   }, [closeSecondarySidebar, isMobileViewport, mobileSecondaryOpen, openContextSidebar, secondaryView]);
 
   const handleNavigation = useCallback((href: string) => {
+    const nextIsLibrary = href.startsWith("/library");
+    const nextHasSecondarySidebar = nextIsLibrary || href.startsWith("/settings/channels");
     setDesktopSidebarState({
       pathname: href,
-      view: href.startsWith("/library") ? "context" : "primary-expanded",
+      primaryCollapsed: nextIsLibrary,
+      secondaryOpen: nextHasSecondarySidebar,
     });
     setMobileSecondaryState({ pathname: href, open: false });
   }, []);
 
   const togglePrimarySidebar = useCallback(() => {
     setDesktopSidebarState({
+      ...activeDesktopSidebarState,
       pathname,
-      view: isLibrary
-        ? desktopSidebarView === "context" ? "primary-expanded" : "context"
-        : desktopSidebarView === "primary-collapsed" ? "primary-expanded" : "primary-collapsed",
+      primaryCollapsed: !activeDesktopSidebarState.primaryCollapsed,
     });
-    setMobileSecondaryState({ pathname, open: false });
-  }, [desktopSidebarView, isLibrary, pathname]);
+  }, [activeDesktopSidebarState, pathname]);
 
-  const toggleLabel = isLibrary
-    ? desktopSidebarView === "context" ? "展开主导航" : "打开题库筛选"
-    : sidebarCollapsed ? "展开侧栏" : "收起侧栏";
+  const secondaryLabel = isLibrary ? "题库筛选" : "AI 渠道";
+  const toggleLabel = sidebarCollapsed ? "展开侧栏" : "收起侧栏";
   const ToggleIcon = sidebarCollapsed ? SidebarExpandIcon : SidebarCollapseIcon;
 
   return (
@@ -106,9 +120,10 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         closeSecondarySidebar,
       }}
     >
-      <Box className={`oops-app-shell${sidebarCollapsed ? " is-sidebar-collapsed" : ""}${secondaryView === "context" ? " is-secondary-open" : " is-secondary-closed"}`}>
+      <Box className={`oops-app-shell${sidebarCollapsed ? " is-sidebar-collapsed" : ""}${secondaryView === "context" ? " is-secondary-open" : " is-secondary-closed"}${isChannels ? " is-secondary-channels" : ""}`}>
         <Box as="header" className="oops-titlebar">
-          <button
+          <Button
+            variant="default"
             className="oops-titlebar__brand-toggle"
             type="button"
             onClick={togglePrimarySidebar}
@@ -124,38 +139,40 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
               </span>
             </span>
             <Text>OopsNote</Text>
-          </button>
+          </Button>
           <Text className="oops-titlebar__mobile-brand">OopsNote</Text>
-          <Box sx={{ display: "flex", alignItems: "center", gap: 3 }}>
+          <Box className="oops-titlebar__actions">
+            <Box className={sxStyles.sx1}>
             <BackendStatus />
             <AccountMenu />
+            </Box>
           </Box>
         </Box>
 
         <Box className="oops-app-body">
           <Sidebar collapsed={sidebarCollapsed} onNavigate={handleNavigation} />
-          {isLibrary ? (
+          {hasSecondarySidebar ? (
             <>
               <aside
                 id="oops-secondary-sidebar"
                 className={`oops-secondary-sidebar${secondaryView === "closed" ? " is-closed" : ""}${mobileSecondaryOpen ? " is-mobile-open" : ""}`}
-                aria-label="题库筛选"
+                aria-label={secondaryLabel}
               >
                 <div
                   ref={setSecondaryTarget}
                   className={`oops-secondary-sidebar__view oops-secondary-sidebar__view--context${secondaryView === "context" ? " is-active" : ""}`}
                 />
               </aside>
-              <button
+              <GeometryButton
                 type="button"
                 className={`oops-secondary-sidebar__backdrop${mobileSecondaryOpen ? " is-visible" : ""}`}
-                aria-label="关闭题库筛选"
+                aria-label={`关闭${secondaryLabel}`}
                 onClick={closeSecondarySidebar}
               />
             </>
           ) : null}
           <Box ref={contentSurfaceRef} className="oops-content-surface">
-            <Box as="main" sx={{ px: [3, 4, 5], py: [3, 4], flex: 1, width: "100%", pb: ["80px", 4] }}>
+            <Box as="main" className={sxStyles.sx2}>
               <div key={pathname} className="oops-page-enter">
                 {children}
               </div>

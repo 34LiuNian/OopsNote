@@ -5,6 +5,7 @@ import { memo } from "react";
 import { Box, Checkbox } from "@/components/ui/primitives";
 import type { ProblemSummary } from "../types/api";
 import { ProblemCard } from "./ProblemCard";
+import sxStyles from "./ProblemListItem.sx.module.css";
 
 export const ProblemListItem = memo(function ProblemListItem(props: {
   item: ProblemSummary;
@@ -17,8 +18,8 @@ export const ProblemListItem = memo(function ProblemListItem(props: {
   const isSelectable = Boolean(toggleKey && onToggleSelection);
 
   const cardContent = (
-    <Box sx={{ display: "flex", alignItems: "flex-start", gap: 3 }}>
-      <Box key="problem-content" sx={{ minWidth: 0, flex: 1 }}>
+    <Box className={sxStyles.sx1}>
+      <Box key="problem-content" className={sxStyles.sx2}>
         <ProblemCard
           questionNo={item.question_no}
           questionType={item.question_type}
@@ -47,18 +48,9 @@ export const ProblemListItem = memo(function ProblemListItem(props: {
 
   const shell = (children: React.ReactNode) => (
     <Box
-      sx={{
-        cursor: isSelectable || showViewLink ? "pointer" : "default",
-        borderRadius: 2,
-        outline: selected ? "1px solid var(--fgColor-accent)" : "none",
-        backgroundColor: selected ? "accent.subtle" : "transparent",
-        transition: "background-color 0.2s ease-in-out",
-        "&:hover": {
-          backgroundColor: selected ? "accent.subtle" : "canvas.subtle",
-        },
-        px: 2,
-        py: 2,
-      }}
+      className={sxStyles.shell}
+      data-interactive={isSelectable || showViewLink ? "true" : undefined}
+      data-selected={selected ? "true" : undefined}
     >
       {children}
     </Box>
@@ -71,14 +63,14 @@ export const ProblemListItem = memo(function ProblemListItem(props: {
     return shell(
       <Box
         as="label"
-        sx={{ display: "flex", alignItems: "flex-start", gap: 3, cursor: "pointer" }}
+        className={sxStyles.sx3}
       >
         <Checkbox
           aria-label={selectionLabel}
           checked={Boolean(selected)}
           onChange={() => onToggleSelection(toggleKey)}
         />
-        <Box sx={{ minWidth: 0, flex: 1 }}>{cardContent}</Box>
+        <Box className={sxStyles.sx4}>{cardContent}</Box>
       </Box>,
     );
   }
@@ -88,7 +80,7 @@ export const ProblemListItem = memo(function ProblemListItem(props: {
       <Link
         href={`/tasks/${item.task_id}`}
         aria-label="查看任务"
-        style={{ textDecoration: "none", color: "inherit" }}
+        className={sxStyles.link}
       >
         {shell(cardContent)}
       </Link>

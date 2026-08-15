@@ -1,13 +1,15 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import { KeyRound, LoaderCircle, LogIn, UserRound } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/primitives";
-import { ErrorBanner } from "@/components/ui/ErrorBanner";
 import { AuthenticationShell } from "@/components/auth/AuthenticationShell";
+import { AuthField } from "@/components/auth/AuthField";
+import { validateIdentifier, validatePassword } from "@/components/auth/validation";
 import styles from "@/components/auth/AuthenticationShell.module.css";
 import { authClient } from "@/lib/better-auth-client";
+import { notify } from "@/lib/notify";
 
 export default function LoginPage() {
   const [identifier, setIdentifier] = useState(() => {
@@ -15,16 +17,17 @@ export default function LoginPage() {
     return new URL(window.location.href).searchParams.get("identifier") || "";
   });
   const [password, setPassword] = useState("");
+  const [touched, setTouched] = useState({ identifier: false, password: false });
   const [registrationOpen, setRegistrationOpen] = useState(false);
   const [setupAvailable, setSetupAvailable] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const formRef = useRef<HTMLFormElement>(null);
 
   useEffect(() => {
     void authClient.$fetch<{ mode: "closed" | "invite" | "open" }>("/registration-policy").then((result) => {
       if (result.data) setRegistrationOpen(result.data.mode !== "closed");
     }).catch((reason) => {
-      setError(reason instanceof Error ? reason.message : "无法读取注册策略");
+      notify.error({ title: "无法读取注册策略", description: reason instanceof Error ? reason.message : undefined });
     });
     void fetch("/api/admin/setup").then((response) => {
       if (!response.ok) return null;
@@ -34,10 +37,21 @@ export default function LoginPage() {
     }).catch(() => {});
   }, []);
 
+  const identifierError = validateIdentifier(identifier);
+  const passwordError = validatePassword(password);
+  const formValid = !identifierError && !passwordError;
+
+  function focusFirstInvalid(field: "identifier" | "password") {
+    const control = formRef.current?.elements.namedItem(field);
+    if (control instanceof HTMLElement) control.focus();
+  }
+
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    setTouched({ identifier: true, password: true });
+    if (identifierError) return focusFirstInvalid("identifier");
+    if (passwordError) return focusFirstInvalid("password");
     setSubmitting(true);
-    setError(null);
     try {
       const returnTo = new URL(window.location.href).searchParams.get("returnTo") || "/library";
       const value = identifier.trim();
@@ -45,12 +59,12 @@ export default function LoginPage() {
         ? await authClient.signIn.email({ email: value, password })
         : await authClient.signIn.username({ username: value, password });
       if (result.error) {
-        setError(result.error.message || "用户名、邮箱或密码不正确");
+        notify.error({ title: "登录失败", description: result.error.message || "用户名、邮箱或密码不正确" });
         return;
       }
       window.location.replace(returnTo.startsWith("/") ? returnTo : "/library");
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "登录请求失败");
+      notify.error({ title: "登录失败", description: reason instanceof Error ? reason.message : "登录请求失败" });
     } finally {
       setSubmitting(false);
     }
@@ -58,25 +72,33 @@ export default function LoginPage() {
 
   return (
     <AuthenticationShell title="登录 OopsNote" description="进入你的独立题库。">
-      <ErrorBanner message={error ?? ""} title="登录失败" />
-      <form className={styles.form} onSubmit={submit}>
-        <label className={styles.field}>
-          用户名或邮箱
-          <div className={styles.input}>
-            <UserRound size={18} aria-hidden="true" />
-            <input type="text" autoComplete="username" value={identifier} onChange={(event) => setIdentifier(event.target.value)} required />
-          </div>
-        </label>
-        <label className={styles.field}>
-          密码
-          <div className={styles.input}>
-            <KeyRound size={18} aria-hidden="true" />
-            <input type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} minLength={12} required />
-          </div>
-        </label>
+      <form ref={formRef} className={styles.form} onSubmit={submit} noValidate>
+        <AuthField
+          label="用户名或邮箱"
+          icon={UserRound}
+          name="identifier"
+          autoComplete="username"
+          value={identifier}
+          onChange={setIdentifier}
+          onBlur={() => setTouched((prev) => ({ ...prev, identifier: true }))}
+          error={touched.identifier ? identifierError : null}
+          required
+        />
+        <AuthField
+          label="密码"
+          icon={KeyRound}
+          type="password"
+          name="password"
+          autoComplete="current-password"
+          value={password}
+          onChange={setPassword}
+          onBlur={() => setTouched((prev) => ({ ...prev, password: true }))}
+          error={touched.password ? passwordError : null}
+          required
+        />
         <div className={styles.footer}>
           {registrationOpen ? <Link className={styles.back} href="/register">创建账号</Link> : <span />}
-          <Button type="submit" variant="primary" leadingVisual={submitting ? LoaderCircle : LogIn} disabled={submitting}>
+          <Button type="submit" variant="primary" leadingVisual={submitting ? LoaderCircle : LogIn} disabled={submitting || !formValid}>
             {submitting ? "正在登录" : "登录"}
           </Button>
         </div>

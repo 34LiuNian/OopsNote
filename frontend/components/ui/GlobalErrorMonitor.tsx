@@ -1,7 +1,7 @@
 "use client";
 
 import { Component, useEffect, type ErrorInfo, type ReactNode } from "react";
-import { notify } from "@/lib/notify";
+import { ErrorBanner } from "@/components/ui/ErrorBanner";
 
 function errorMessage(value: unknown, fallback: string): string {
   if (value instanceof Error && value.message) return value.message;
@@ -9,20 +9,20 @@ function errorMessage(value: unknown, fallback: string): string {
   return fallback;
 }
 
-export class GlobalErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean }> {
-  state = { hasError: false };
+export class GlobalErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean; message?: string }> {
+  state: { hasError: boolean; message?: string } = { hasError: false };
 
-  static getDerivedStateFromError(): { hasError: boolean } {
-    return { hasError: true };
+  static getDerivedStateFromError(error: unknown): { hasError: boolean; message: string } {
+    return { hasError: true, message: errorMessage(error, "页面遇到未处理错误，请刷新后重试。") };
   }
 
   componentDidCatch(error: unknown, _info: ErrorInfo): void {
-    notify.error({ title: "页面渲染失败", description: errorMessage(error, "页面遇到未处理错误，请刷新后重试。") });
+    console.error("Unhandled page render error", error);
   }
 
   render(): ReactNode {
     if (this.state.hasError) {
-      return <div role="status" style={{ padding: "24px", color: "var(--fgColor-muted)" }}>页面当前不可用，请根据顶部错误通知处理或刷新重试。</div>;
+      return <ErrorBanner title="页面渲染失败" message={this.state.message ?? ""} />;
     }
     return this.props.children;
   }
@@ -35,10 +35,10 @@ export function GlobalErrorMonitor() {
 
 export function installGlobalErrorMonitor(): () => void {
   const report = (title: string, value: unknown, fallback: string) => {
-    notify.error({ title, description: errorMessage(value, fallback) });
+    console.error(title, errorMessage(value, fallback));
   };
-  const onError = (event: ErrorEvent) => report("未处理的页面错误", event.error || event.message, "页面脚本执行失败，请刷新后重试。");
-  const onRejection = (event: PromiseRejectionEvent) => report("异步操作失败", event.reason, "异步操作未完成，请重试。");
+  const onError = (event: ErrorEvent) => report("Unhandled page error", event.error || event.message, "页面脚本执行失败，请刷新后重试。");
+  const onRejection = (event: PromiseRejectionEvent) => report("Unhandled async error", event.reason, "异步操作未完成，请重试。");
   window.addEventListener("error", onError);
   window.addEventListener("unhandledrejection", onRejection);
   return () => {

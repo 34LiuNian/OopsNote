@@ -1,0 +1,8 @@
+/* Generated from components/tags/TagsToolbar.tsx */
+.sx1{display:flex;flex-direction:column;gap:var(--oops-space-2);}
+
+/* Generated from components/tags/TagsToolbar.tsx */
+.sx2{display:grid;grid-template-columns:1fr;gap:var(--oops-space-2);}@media (min-width: 544px){.sx2{grid-template-columns:1fr 220px;}}
+
+/* Generated from components/tags/TagsToolbar.tsx */
+.sx3{display:flex;align-items:center;gap:var(--oops-space-1);flex-wrap:wrap;}

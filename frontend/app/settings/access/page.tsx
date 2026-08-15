@@ -4,7 +4,8 @@ import { FormEvent, useEffect, useState } from "react";
 import { Save, ShieldAlert, ShieldCheck } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { useAuth } from "@/components/providers/AuthProvider";
-import { Button } from "@/components/ui/primitives";
+import { ErrorBanner } from "@/components/ui/ErrorBanner";
+import { Button, Select, TextInput } from "@/components/ui/primitives";
 import { isAdminUser } from "@/lib/auth";
 import { notify } from "@/lib/notify";
 import styles from "./access.module.css";
@@ -18,6 +19,7 @@ export default function RegistrationAccessPage() {
   const [openDailySuccessLimit, setOpenDailySuccessLimit] = useState(5);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [loadError, setLoadError] = useState("");
 
   useEffect(() => {
     if (authLoading || !isAdminUser(user)) return;
@@ -28,7 +30,7 @@ export default function RegistrationAccessPage() {
         setMode(payload.mode);
         setOpenDailySuccessLimit(payload.openDailySuccessLimit);
       })
-      .catch((reason) => notify.error({ title: "加载失败", description: reason instanceof Error ? reason.message : "无法读取注册策略" }))
+      .catch((reason) => setLoadError(reason instanceof Error ? reason.message : "无法读取注册策略"))
       .finally(() => setLoading(false));
   }, [authLoading, user]);
 
@@ -58,20 +60,21 @@ export default function RegistrationAccessPage() {
   return (
     <div className={styles.page}>
       <PageHeader title="注册与访问" description="控制新用户如何进入 OopsNote" />
+      <ErrorBanner message={loadError} title="注册策略加载失败" />
       <form className={styles.panel} onSubmit={save}>
         <div className={styles.heading}><ShieldCheck size={22} aria-hidden="true" /><div><h2>用户注册</h2><p>所有注册方式都要求唯一用户名、邮箱和密码。</p></div></div>
         <label className={styles.field}>
           注册模式
-          <select value={mode} onChange={(event) => setMode(event.target.value as RegistrationMode)} disabled={loading}>
-            <option value="closed">关闭注册</option>
-            <option value="invite">仅邀请码注册</option>
-            <option value="open">开放注册</option>
-          </select>
+          <Select value={mode} onValueChange={(value) => setMode(value as RegistrationMode)} disabled={loading} aria-label="注册模式">
+            <Select.Option value="closed">关闭注册</Select.Option>
+            <Select.Option value="invite">仅邀请码注册</Select.Option>
+            <Select.Option value="open">开放注册</Select.Option>
+          </Select>
           <span>{mode === "closed" ? "只有管理员可以创建新用户。" : mode === "invite" ? "用户必须持有未过期且仍有次数的邀请码。" : "任何人都可以创建用户账号。"}</span>
         </label>
         <label className={styles.field}>
           开放注册默认每日额度
-          <input type="number" min="0" max="1000000" value={openDailySuccessLimit} onChange={(event) => setOpenDailySuccessLimit(Number(event.target.value))} disabled={loading || mode !== "open"} required />
+          <TextInput type="number" min="0" max="1000000" value={openDailySuccessLimit} onChange={(event) => setOpenDailySuccessLimit(Number(event.target.value))} disabled={loading || mode !== "open"} required aria-label="开放注册默认每日额度" />
           <span>邀请码注册使用邀请码单独设置的额度。</span>
         </label>
         <div className={styles.emailPolicy}><strong>邮箱要求</strong><span>所有用户必须填写唯一邮箱；当前不发送验证邮件，保留后续验证升级空间。</span></div>

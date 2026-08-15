@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { Box, Button, Heading, Spinner, Text, ToggleSwitch } from "@/components/ui/primitives";
 import { BugIcon } from "@/components/ui/icons";
@@ -6,6 +6,7 @@ import { ErrorBanner } from "../ui/ErrorBanner";
 import { useEffect } from "react";
 import { notify } from "@/lib/notify";
 import type { DebugSettingsResponse } from "../../types/api";
+import sxStyles from "./SettingsDebugSection.sx.module.css";
 
 type SettingsDebugSectionProps = {
   settings: DebugSettingsResponse | null;
@@ -39,18 +40,18 @@ export function SettingsDebugSection({
   }, [statusMessage]);
 
   return (
-    <Box className="oops-card" sx={{ p: 3 }}>
-      <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", mb: 3 }}>
-        <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
+    <Box className={["oops-card", sxStyles.sx1].filter(Boolean).join(" ")} >
+      <Box className={sxStyles.sx2}>
+        <Box className={sxStyles.sx3}>
           <BugIcon size={16} />
           <Box>
             <Text className="oops-section-subtitle">Debug</Text>
-            <Heading as="h3" className="oops-section-title" sx={{ m: 0, fontSize: 2 }}>
+            <Heading as="h3" className={["oops-section-title", sxStyles.sx4].filter(Boolean).join(" ")} >
               Debug Options
             </Heading>
           </Box>
         </Box>
-        <Box sx={{ display: "flex", gap: 2 }}>
+        <Box className={sxStyles.sx5}>
           <Button onClick={onReset} disabled={!isDirty || isSaving || isLoading}>
             Reset
           </Button>
@@ -61,7 +62,7 @@ export function SettingsDebugSection({
       </Box>
 
       {isDirty && !isSaving && !isLoading && (
-        <Box className="oops-badge oops-badge-warning" sx={{ mb: 3 }}>
+        <Box className={["oops-badge oops-badge-warning", sxStyles.sx6].filter(Boolean).join(" ")} >
           Unsaved changes
         </Box>
       )}
@@ -69,26 +70,18 @@ export function SettingsDebugSection({
       <ErrorBanner message={errorMessage} />
 
       {isLoading ? (
-        <Box sx={{ display: "flex", justifyContent: "center", py: 4 }}>
+        <Box className={sxStyles.sx7}>
           <Spinner size="medium" />
         </Box>
       ) : settings && draft ? (
-        <Box sx={{ display: "flex", flexDirection: "column", gap: 0 }}>
+        <Box className={sxStyles.sx8}>
           <Box
-            className="oops-list-item"
-            sx={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              px: 3,
-              py: 3,
-              borderBottom: "1px solid",
-              borderColor: "border.muted",
-            }}
+            className={["oops-list-item", sxStyles.sx9].filter(Boolean).join(" ")}
+
           >
-            <Box sx={{ flex: 1 }}>
-              <Text sx={{ fontWeight: 600, display: "block", fontSize: 1 }}>LLM debug log</Text>
-              <Text sx={{ fontSize: 0, color: "fg.muted" }}>
+            <Box className={sxStyles.sx10}>
+              <Text className={sxStyles.sx11}>LLM debug log</Text>
+              <Text className={sxStyles.sx12}>
                 Record detailed LLM requests and responses for troubleshooting.
               </Text>
             </Box>
@@ -96,10 +89,7 @@ export function SettingsDebugSection({
               size="small"
               checked={draft.debug_llm_payload}
               disabled={isSaving}
-              sx={{
-                "& > span[aria-hidden=\"true\"]": { display: "none" },
-                "& button svg": { display: "none" },
-              }}
+              className={sxStyles.sx13}
               onClick={(event) => {
                 event.preventDefault();
                 onToggle("debug_llm_payload", !draft.debug_llm_payload);
@@ -109,18 +99,12 @@ export function SettingsDebugSection({
           </Box>
 
           <Box
-            className="oops-list-item"
-            sx={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              px: 3,
-              py: 3,
-            }}
+            className={["oops-list-item", sxStyles.sx14].filter(Boolean).join(" ")}
+
           >
-            <Box sx={{ flex: 1 }}>
-              <Text sx={{ fontWeight: 600, display: "block", fontSize: 1 }}>Task persistence</Text>
-              <Text sx={{ fontSize: 0, color: "fg.muted" }}>
+            <Box className={sxStyles.sx15}>
+              <Text className={sxStyles.sx16}>Task persistence</Text>
+              <Text className={sxStyles.sx17}>
                 Write task results to disk so they can be replayed and recovered later.
               </Text>
             </Box>
@@ -128,10 +112,7 @@ export function SettingsDebugSection({
               size="small"
               checked={draft.persist_tasks}
               disabled={isSaving}
-              sx={{
-                "& > span[aria-hidden=\"true\"]": { display: "none" },
-                "& button svg": { display: "none" },
-              }}
+              className={sxStyles.sx18}
               onClick={(event) => {
                 event.preventDefault();
                 onToggle("persist_tasks", !draft.persist_tasks);

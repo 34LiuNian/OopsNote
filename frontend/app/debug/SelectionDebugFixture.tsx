@@ -50,8 +50,8 @@ export function SelectionDebugFixture() {
     <section id="selection-component-fixture" className={styles.root}>
       <div className={styles.header}>
         <div>
-          <Heading as="h3" sx={{ fontSize: 2 }}>题目选区</Heading>
-          <Text sx={{ fontSize: 0, color: "fg.muted", mt: 1 }}>BatchSelectionOverlay · pending / completed</Text>
+          <Heading as="h3" className={styles.title}>题目选区</Heading>
+          <Text className={styles.subtitle}>BatchSelectionOverlay · pending / completed</Text>
         </div>
         <Button type="button" size="small" leadingVisual={RotateCcw} onClick={reset}>重置选区</Button>
       </div>

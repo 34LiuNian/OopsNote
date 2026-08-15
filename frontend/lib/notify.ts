@@ -1,7 +1,7 @@
-import { Button } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { createElement } from "react";
 import type { ComponentType, ReactNode } from "react";
+import { Button } from "@/components/ui/primitives";
 import { errorNotificationId, notificationAutoClose } from "./notificationPolicy";
 
 const NotificationButton = Button as unknown as ComponentType<{

@@ -6,6 +6,7 @@ import { ErrorBanner } from "../ui/ErrorBanner";
 import { useEffect } from "react";
 import { notify } from "@/lib/notify";
 import type { GatewaySettingsResponse, GatewayTestResponse } from "../../types/api";
+import sxStyles from "./SettingsGatewaySection.sx.module.css";
 
 type GatewayDraft = {
   base_url: string;
@@ -52,18 +53,18 @@ export function SettingsGatewaySection({
   }, [statusMessage]);
 
   return (
-    <Box className="oops-card" sx={{ p: 3 }}>
-      <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", mb: 3 }}>
-        <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
+    <Box className={["oops-card", sxStyles.sx1].filter(Boolean).join(" ")} >
+      <Box className={sxStyles.sx2}>
+        <Box className={sxStyles.sx3}>
           <PlugIcon size={16} />
           <Box>
             <Text className="oops-section-subtitle">Connection</Text>
-            <Heading as="h3" className="oops-section-title" sx={{ m: 0, fontSize: 2 }}>
+            <Heading as="h3" className={["oops-section-title", sxStyles.sx4].filter(Boolean).join(" ")} >
               连接配置
             </Heading>
           </Box>
         </Box>
-        <Box sx={{ display: "flex", gap: 2, alignItems: "center" }}>
+        <Box className={sxStyles.sx5}>
           {isDirty && !isSaving && (
             <Box className="oops-badge oops-badge-warning">有未保存更改</Box>
           )}
@@ -87,27 +88,24 @@ export function SettingsGatewaySection({
 
       {testResult && (
         <Box
-          sx={{
-            p: 2, mb: 3, borderRadius: "var(--oops-radius-sm)",
-            bg: testResult.success ? "success.subtle" : "danger.subtle",
-            display: "flex", alignItems: "center", gap: 2,
-          }}
+          className={sxStyles.testResult}
+          data-status={testResult.success ? "success" : "danger"}
         >
           {testResult.success ? (
             <CheckCircleFillIcon size={16} />
           ) : (
             <XCircleFillIcon size={16} />
           )}
-          <Text sx={{ fontSize: 1 }}>{testResult.message}</Text>
+          <Text className={sxStyles.sx6}>{testResult.message}</Text>
         </Box>
       )}
 
       {isLoading ? (
-        <Box sx={{ display: "flex", justifyContent: "center", py: 4 }}>
+        <Box className={sxStyles.sx7}>
           <Spinner size="medium" />
         </Box>
       ) : (
-        <Box sx={{ display: "grid", gridTemplateColumns: ["1fr", "1fr 1fr"], gap: 3 }}>
+        <Box className={sxStyles.sx8}>
           <FormControl>
             <FormControl.Label>API Base URL</FormControl.Label>
             <TextInput

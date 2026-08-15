@@ -1,0 +1,27 @@
+.matrix {
+  max-width: 1120px;
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  margin: 0 auto;
+  padding: var(--oops-space-6) var(--oops-space-4);
+  overflow: hidden;
+}
+
+.surface {
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+  padding: var(--oops-space-5);
+  border: var(--oops-border-width) solid var(--borderColor-default);
+  border-radius: var(--oops-radius-md);
+  background: var(--bgColor-default);
+}
+.controls > * { min-width: 0; max-width: 100%; flex: 1 1 220px; }
+.matrix h1,.matrix h2 { overflow-wrap: anywhere; }
+
+@media (max-width: 544px) {
+  .matrix {
+    padding: var(--oops-space-4) var(--oops-space-3);
+  }
+}

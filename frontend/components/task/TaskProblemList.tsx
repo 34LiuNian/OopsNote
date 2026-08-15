@@ -9,6 +9,7 @@ import { MarkdownRenderer } from "../renderers/MarkdownRenderer";
 import { ProblemCard } from "../ProblemCard";
 import { ProblemEditPanel } from "../ProblemEditPanel";
 import { rerenderProblemDiagram } from "@/features/tasks";
+import sxStyles from "./TaskProblemList.sx.module.css";
 
 type TaskProblem = {
   problem_id: string;
@@ -143,15 +144,15 @@ export function TaskProblemDetail({
   return (
     <Box>
       {(!problem || editingKey !== problem.problem_id) && (
-        <Heading as="h3" sx={{ fontSize: 2, m: 0, mb: 3 }}>
+        <Heading as="h3" className={sxStyles.sx1}>
           题目与解答
         </Heading>
       )}
 
       {!problem ? (
-        <Box className="oops-empty-state" sx={{ py: 5 }}>
-          <Text as="p" sx={{ fontWeight: 600, fontSize: 2 }}>尚未解析出题目</Text>
-          <Text as="p" sx={{ fontSize: 1 }}>如果任务仍在处理中，稍等片刻即可看到结果。</Text>
+        <Box className={["oops-empty-state", sxStyles.sx2].filter(Boolean).join(" ")} >
+          <Text as="p" className={sxStyles.sx3}>尚未解析出题目</Text>
+          <Text as="p" className={sxStyles.sx4}>如果任务仍在处理中，稍等片刻即可看到结果。</Text>
         </Box>
       ) : (
         <ProblemDetailCard
@@ -239,33 +240,23 @@ function ProblemDetailCard({
   }
 
   return (
-    <Box className="oops-card" sx={{ overflow: "hidden", animation: "slideUp 0.3s ease-out" }}>
+    <Box className={["oops-card", sxStyles.sx5].filter(Boolean).join(" ")} >
       <Box
-        sx={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          px: 3,
-          py: 2,
-          borderBottomWidth: 1,
-          borderBottomStyle: "solid",
-          borderBottomColor: "border.muted",
-          bg: "canvas.subtle",
-        }}
+        className={sxStyles.sx6}
       >
-        <Box sx={{ display: "flex", alignItems: "center", gap: 2, flexWrap: "wrap", flex: 1, minWidth: 0 }}>
-          <Text sx={{ fontWeight: 600, fontSize: 2 }}>
+        <Box className={sxStyles.sx7}>
+          <Text className={sxStyles.sx8}>
           {problem.question_no ? `题 ${problem.question_no}` : "题目"}
           </Text>
           {problem.question_type && <Box className="oops-badge oops-badge-accent">{problem.question_type}</Box>}
           {(problem.source || taskTrace?.source_file_name) && (
-            <Text sx={{ fontSize: 0, color: "fg.muted" }}>{problem.source || taskTrace?.source_file_name}</Text>
+            <Text className={sxStyles.sx9}>{problem.source || taskTrace?.source_file_name}</Text>
           )}
           {taskTrace?.kind === "batch_segment" && typeof taskTrace.page_index === "number" && (
-            <Text sx={{ fontSize: 0, color: "fg.muted" }}>第 {taskTrace.page_index + 1} 页</Text>
+            <Text className={sxStyles.sx10}>第 {taskTrace.page_index + 1} 页</Text>
           )}
-          {problem.chapter && <Text sx={{ fontSize: 0, color: "fg.muted" }}>章节：{problem.chapter}</Text>}
-          {taskDifficulty && <Text sx={{ fontSize: 0, color: "fg.muted" }}>难度：{taskDifficulty}</Text>}
+          {problem.chapter && <Text className={sxStyles.sx11}>章节：{problem.chapter}</Text>}
+          {taskDifficulty && <Text className={sxStyles.sx12}>难度：{taskDifficulty}</Text>}
           {taskTrace?.kind === "batch_segment" && taskTrace.source_file_hash && (
             taskTrace.batch_session_available === false ? (
               <span className="task-trace-link is-disabled" aria-disabled="true" title="原批量扫描记录已删除">
@@ -286,7 +277,7 @@ function ProblemDetailCard({
             </Button>
           )}
         </Box>
-        <Box sx={{ display: "flex", gap: 1, flexShrink: 0, alignItems: "center" }}>
+        <Box className={sxStyles.sx13}>
           {onOpenVariations && (
             <Button size="small" variant="secondary" onClick={onOpenVariations} leadingVisual={ZapIcon}>
               举一反三
@@ -301,7 +292,7 @@ function ProblemDetailCard({
         </Box>
       </Box>
 
-      <Box sx={{ px: 3, py: 3 }}>
+      <Box className={sxStyles.sx14}>
         <ProblemCard
           questionType={null}
           source={null}
@@ -328,44 +319,32 @@ function ProblemDetailCard({
       </Box>
 
       {allTags.length > 0 && (
-        <Box sx={{ px: 3, pb: 2, display: "flex", gap: 1, flexWrap: "wrap" }}>
+        <Box className={sxStyles.sx15}>
           {allTags.map((value) => (
-            <Label key={value} variant="secondary" sx={{ fontSize: "11px" }}>{value}</Label>
+            <Label key={value} variant="secondary" className={sxStyles.sx16}>{value}</Label>
           ))}
         </Box>
       )}
 
       {solution && (
-        <Box sx={{ borderTopWidth: 1, borderTopStyle: "solid", borderTopColor: "border.muted" }}>
+        <Box className={sxStyles.sx17}>
           <Box
             onClick={() => setShowAnswer(!showAnswer)}
-            sx={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              px: 3,
-              py: 2,
-              cursor: "pointer",
-              bg: "canvas.subtle",
-              "&:hover": { bg: "neutral.muted" },
-              "&:active": { bg: "neutral.muted" },
-              transition: "background-color var(--oops-transition-fast)",
-              userSelect: "none",
-            }}
+            className={sxStyles.sx18}
           >
-            <Text sx={{ fontWeight: 600, fontSize: 1, color: "fg.muted" }}>
+            <Text className={sxStyles.sx19}>
               {showAnswer ? "收起答案与解析" : "展开答案与解析"}
             </Text>
             {showAnswer ? <ChevronUpIcon size={16} /> : <ChevronDownIcon size={16} />}
           </Box>
           {showAnswer && (
-            <Box sx={{ px: 3, py: 3 }}>
-              <Box sx={{ mb: 3 }}>
-                <Text sx={{ fontWeight: 600, fontSize: 1, color: "accent.fg", display: "block", mb: 1 }}>答案</Text>
+            <Box className={sxStyles.sx20}>
+              <Box className={sxStyles.sx21}>
+                <Text className={sxStyles.sx22}>答案</Text>
                 <MarkdownRenderer text={solution.answer || ""} format={problem.content_format} />
               </Box>
               <Box>
-                <Text sx={{ fontWeight: 600, fontSize: 1, color: "accent.fg", display: "block", mb: 1 }}>解析</Text>
+                <Text className={sxStyles.sx23}>解析</Text>
                 <MarkdownRenderer text={solution.explanation || ""} format={problem.content_format} />
               </Box>
             </Box>

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Box, Text, Tooltip } from "@/components/ui/primitives";
 
 import { API_BASE } from "@/lib/api";
+import styles from "./BackendStatus.module.css";
 
 type BackendStatusState = "checking" | "connected" | "disconnected";
 
@@ -68,40 +69,11 @@ export function BackendStatus() {
     };
   }, []);
 
-  const dotColor =
-    status === "connected"
-      ? "var(--fgColor-success)"
-      : status === "disconnected"
-        ? "var(--fgColor-danger)"
-        : "var(--fgColor-muted)";
-
   return (
     <Tooltip text={label} direction="sw">
-      <Box
-        sx={{
-          display: "flex",
-          alignItems: "center",
-          gap: "6px",
-          cursor: "default",
-          px: 2,
-          py: 1,
-          borderRadius: "var(--oops-radius-full)",
-          fontSize: "12px",
-          color: "fg.muted",
-          transition: "all var(--oops-transition-fast)",
-          "&:hover": { bg: "canvas.subtle" },
-        }}
-      >
-        <Box
-          sx={{
-            width: 8,
-            height: 8,
-            borderRadius: "50%",
-            backgroundColor: dotColor,
-            transition: "all var(--oops-transition-normal)",
-          }}
-        />
-        <Text sx={{ fontSize: "12px", fontWeight: 500 }}>
+      <Box className={styles.status} data-status={status}>
+        <Box className={styles.dot} />
+        <Text className={styles.label}>
           {status === "connected" ? "已连接" : status === "disconnected" ? "离线" : "检测中"}
         </Text>
       </Box>

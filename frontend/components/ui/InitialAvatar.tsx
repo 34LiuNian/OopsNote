@@ -1,4 +1,4 @@
-import { Avatar } from "@mantine/core";
+import { Avatar } from "@/components/ui/primitives";
 
 function initials(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean);

@@ -3,6 +3,7 @@
 import { memo } from "react";
 import { Box, Button, IconButton, Tooltip } from "@/components/ui/primitives";
 import { SyncIcon, TrashIcon, XCircleIcon } from "@/components/ui/icons";
+import sxStyles from "./TaskActions.sx.module.css";
 
 type TaskActionsProps = {
   status?: string | null;
@@ -26,7 +27,7 @@ export const TaskActions = memo(function TaskActions({
   onDelete,
 }: TaskActionsProps) {
   return (
-    <Box sx={{ display: "flex", gap: 2, alignItems: "center", flexWrap: "wrap" }}>
+    <Box className={sxStyles.sx1}>
       {(status === "pending" || status === "processing") && (
         <Button
           variant="danger"
@@ -67,7 +68,7 @@ export const TaskActions = memo(function TaskActions({
           onClick={onDelete}
           disabled={isLoading || isCancelling}
           variant="invisible"
-          sx={{ color: "danger.fg" }}
+          className={sxStyles.sx2}
         />
       </Tooltip>
     </Box>

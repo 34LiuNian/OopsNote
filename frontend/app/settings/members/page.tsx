@@ -1,13 +1,13 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useState } from "react";
-import { Collapse, Modal } from "@mantine/core";
-import { useReducedMotion } from "@mantine/hooks";
+import { useReducedMotion } from "@/components/ui/primitives";
 import { Ban, Check, Copy, KeyRound, LoaderCircle, RefreshCcw, RotateCcw, ShieldAlert, Ticket, UserPlus, UsersRound } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { InitialAvatar } from "@/components/ui/InitialAvatar";
-import { Button, IconButton } from "@/components/ui/primitives";
+import { ErrorBanner } from "@/components/ui/ErrorBanner";
+import { Button, Collapse, IconButton, Modal, PasswordInput, Select, TextInput } from "@/components/ui/primitives";
 import { fetchJson } from "@/lib/api";
 import { isAdminUser } from "@/lib/auth";
 import { notify } from "@/lib/notify";
@@ -62,6 +62,7 @@ export default function MembersPage() {
   const [invitations, setInvitations] = useState<Invitation[]>([]);
   const [quotaAvailable, setQuotaAvailable] = useState(true);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [invitationModalOpen, setInvitationModalOpen] = useState(false);
@@ -69,6 +70,7 @@ export default function MembersPage() {
 
   const load = useCallback(async () => {
     setLoading(true);
+    setLoadError("");
     try {
       const response = await fetch("/api/admin/members", { cache: "no-store" });
       const payload = await response.json() as MembersResponse & { error?: string };
@@ -77,7 +79,7 @@ export default function MembersPage() {
       setInvitations(payload.invitations || []);
       setQuotaAvailable(payload.quotaAvailable);
     } catch (reason) {
-      notify.error({ title: "成员加载失败", description: reason instanceof Error ? reason.message : "无法加载成员列表" });
+      setLoadError(reason instanceof Error ? reason.message : "无法加载成员列表");
     } finally {
       setLoading(false);
     }
@@ -218,15 +220,16 @@ export default function MembersPage() {
           </div>
         )}
       />
+      <ErrorBanner message={loadError} title="成员加载失败" />
 
       <Collapse expanded={showCreateForm} transitionDuration={reducedMotion ? 0 : 180}>
         <section className={styles.panel}>
           <div className={styles.panelHeading}><UserPlus size={22} aria-hidden="true" /><div><h2>添加用户</h2><p>直接创建的账号固定为用户角色，之后可以在成员列表中提升为管理员。</p></div></div>
           <form className={styles.toolbar} onSubmit={createMember}>
-            <label className={styles.field}>用户名<input name="username" minLength={3} maxLength={32} pattern="[A-Za-z0-9_.]+" autoComplete="off" required /></label>
-            <label className={styles.field}>邮箱<input name="email" type="email" autoComplete="off" required /></label>
-            <label className={styles.field}>初始密码<input name="password" type="password" minLength={12} maxLength={128} autoComplete="new-password" required /></label>
-            <label className={styles.field}>每日额度<input name="dailySuccessLimit" type="number" min="0" max="1000000" defaultValue="20" required /></label>
+            <TextInput className={styles.field} label="用户名" name="username" minLength={3} maxLength={32} pattern="[A-Za-z0-9_.]+" autoComplete="off" required />
+            <TextInput className={styles.field} label="邮箱" name="email" type="email" autoComplete="off" required />
+            <PasswordInput className={styles.field} label="初始密码" name="password" minLength={12} maxLength={128} autoComplete="new-password" required />
+            <TextInput className={styles.field} label="每日额度" name="dailySuccessLimit" type="number" min="0" max="1000000" defaultValue="20" required />
             <Button type="submit" variant="primary" leadingVisual={busy === "create-user" ? LoaderCircle : UserPlus} disabled={busy === "create-user"}>创建用户</Button>
           </form>
         </section>
@@ -247,8 +250,8 @@ export default function MembersPage() {
                   <tr key={member.id}>
                     <td><div className={styles.memberIdentity}><InitialAvatar name={displayName} image={member.image} size={32} /><div className={styles.identity}><strong>{displayName}</strong><span>{member.email}</span></div></div></td>
                     <td><span className={`${styles.status}${member.banned ? ` ${styles.statusBanned}` : ""}`}><span className={styles.statusDot} />{member.banned ? "已禁用" : "可用"}</span></td>
-                    <td><select className={styles.role} aria-label={`${displayName} 的角色`} value={member.role || "user"} disabled={isBusy || isCurrentUser} title={isCurrentUser ? "不能降级当前管理员" : undefined} onChange={(event) => void memberAction(member, "set-role", event.target.value)}><option value="user">用户</option><option value="admin">管理员</option></select></td>
-                    <td>{member.quota ? <div className={styles.quota}><span>{member.quota.used_units} /</span><input aria-label={`${member.email} 每日额度`} type="number" min="0" defaultValue={member.quota.daily_success_limit} onBlur={(event) => void updateQuota(member, event.target.value)} /></div> : quotaLabel}</td>
+                    <td><Select className={styles.role} aria-label={`${displayName} 的角色`} value={member.role || "user"} disabled={isBusy || isCurrentUser} onValueChange={(value) => void memberAction(member, "set-role", value)}><Select.Option value="user">用户</Select.Option><Select.Option value="admin">管理员</Select.Option></Select></td>
+                    <td>{member.quota ? <div className={styles.quota}><span>{member.quota.used_units} /</span><TextInput aria-label={`${member.email} 每日额度`} type="number" min="0" defaultValue={member.quota.daily_success_limit} onBlur={(event) => void updateQuota(member, event.target.value)} /></div> : quotaLabel}</td>
                     <td>{member.quota ? `${member.quota.active_runs} / ${member.quota.max_concurrent_runs}` : "-"}</td>
                     <td>{new Date(member.createdAt).toLocaleDateString("zh-CN")}</td>
                     <td><div className={styles.actions}>
@@ -290,9 +293,9 @@ export default function MembersPage() {
           </div>
         ) : (
           <form className={styles.modalForm} onSubmit={createInvitation}>
-            <label className={styles.field}>使用次数<input name="maxUses" type="number" min="1" max="100" defaultValue="1" required /></label>
-            <label className={styles.field}>过期时间<input name="expiresAt" type="datetime-local" defaultValue={defaultExpiry()} required /></label>
-            <label className={styles.field}>每位用户每日额度<input name="dailySuccessLimit" type="number" min="0" max="1000000" defaultValue="20" required /></label>
+            <TextInput className={styles.field} label="使用次数" name="maxUses" type="number" min="1" max="100" defaultValue="1" required />
+            <TextInput className={styles.field} label="过期时间" name="expiresAt" type="datetime-local" defaultValue={defaultExpiry()} required />
+            <TextInput className={styles.field} label="每位用户每日额度" name="dailySuccessLimit" type="number" min="0" max="1000000" defaultValue="20" required />
             <div className={styles.roleSummary}><KeyRound size={16} aria-hidden="true" /><span>通过邀请码注册的账号固定为“用户”角色。</span></div>
             <div className={styles.modalActions}><Button type="button" variant="secondary" onClick={() => setInvitationModalOpen(false)}>取消</Button><Button type="submit" variant="primary" leadingVisual={busy === "create-invitation" ? LoaderCircle : Ticket} disabled={busy === "create-invitation"}>生成</Button></div>
           </form>

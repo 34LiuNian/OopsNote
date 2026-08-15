@@ -4,6 +4,7 @@ import { FormEvent, useState } from "react";
 import { AtSign, KeyRound, LoaderCircle, ShieldCheck, UserRound } from "lucide-react";
 import Link from "next/link";
 import { AuthenticationShell } from "@/components/auth/AuthenticationShell";
+import { AuthField } from "@/components/auth/AuthField";
 import styles from "@/components/auth/AuthenticationShell.module.css";
 import { Button } from "@/components/ui/primitives";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
@@ -51,10 +52,10 @@ export function SetupForm() {
     >
       <ErrorBanner message={error ?? ""} title="初始化失败" />
       <form className={styles.form} onSubmit={submit}>
-        <label className={styles.field}>显示名称<div className={styles.input}><UserRound size={18} aria-hidden="true" /><input type="text" autoComplete="name" value={name} onChange={(event) => setName(event.target.value)} required /></div></label>
-        <label className={styles.field}>邮箱<div className={styles.input}><AtSign size={18} aria-hidden="true" /><input type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} required /></div></label>
-        <label className={styles.field}>密码<div className={styles.input}><KeyRound size={18} aria-hidden="true" /><input type="password" autoComplete="new-password" minLength={12} maxLength={128} value={password} onChange={(event) => setPassword(event.target.value)} required /></div><span className={styles.hint}>至少 12 个字符。</span></label>
-        <label className={styles.field}>确认密码<div className={styles.input}><KeyRound size={18} aria-hidden="true" /><input type="password" autoComplete="new-password" minLength={12} maxLength={128} value={confirm} onChange={(event) => setConfirm(event.target.value)} required /></div></label>
+        <AuthField label="显示名称" icon={UserRound} name="name" autoComplete="name" value={name} onChange={setName} required />
+        <AuthField label="邮箱" icon={AtSign} type="email" name="email" autoComplete="email" value={email} onChange={setEmail} required />
+        <AuthField label="密码" icon={KeyRound} type="password" name="password" autoComplete="new-password" description="至少 12 个字符。" minLength={12} maxLength={128} value={password} onChange={setPassword} required />
+        <AuthField label="确认密码" icon={KeyRound} type="password" name="confirm" autoComplete="new-password" minLength={12} maxLength={128} value={confirm} onChange={setConfirm} required />
         <div className={styles.footer}><Link className={styles.back} href="/login">返回登录</Link><Button type="submit" variant="primary" leadingVisual={submitting ? LoaderCircle : ShieldCheck} disabled={submitting}>{submitting ? "正在初始化" : "创建管理员"}</Button></div>
       </form>
     </AuthenticationShell>

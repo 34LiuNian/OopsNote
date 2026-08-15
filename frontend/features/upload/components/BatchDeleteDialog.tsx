@@ -2,8 +2,7 @@
 
 import { Trash2 } from "lucide-react";
 import React from "react";
-import { Button, Checkbox, Text } from "@/components/ui/primitives";
-import { Group, Modal, Stack } from "@mantine/core";
+import { Button, Checkbox, Group, Modal, Stack, Text } from "@/components/ui/primitives";
 import type { BatchDeleteSelection } from "../api";
 
 type Props = {
@@ -81,7 +80,7 @@ export function BatchDeleteDialog({
         />
         <Text size="xs" className="batch-delete-dialog__description">删除已提交的题目任务及其题目内容。</Text>
       </Stack>
-      <Group justify="flex-end" mt="xl">
+      <Group justify="end" className="batch-delete-dialog__actions">
         <Button variant="default" onClick={cancel} disabled={loading}>取消</Button>
         <Button
           variant="danger"

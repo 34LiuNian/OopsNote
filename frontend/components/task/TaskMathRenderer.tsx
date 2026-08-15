@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useRef } from "react";
 import { Box, Spinner, Text } from "@/components/ui/primitives";
-import { notify } from "@/lib/notify";
 import type { TaskResponse } from "@/types/api";
 
 interface TaskMathRendererProps {
@@ -63,7 +62,7 @@ export function TaskMathRenderer({ data }: TaskMathRendererProps) {
           throwOnError: false,
         });
       } catch (reason) {
-        notify.error({ title: "数学公式渲染失败", description: reason instanceof Error ? reason.message : "无法加载公式渲染器" });
+        console.error("Math renderer failed", reason);
       }
     }, 0);
 

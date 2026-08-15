@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 from uuid import NAMESPACE_URL, uuid5
 
@@ -161,7 +161,8 @@ def _parse_iso(value: str | None) -> datetime | None:
     if not value:
         return None
     try:
-        return datetime.fromisoformat(value)
+        parsed = datetime.fromisoformat(value)
+        return parsed if parsed.tzinfo is not None else parsed.replace(tzinfo=UTC)
     except ValueError as error:
         raise HTTPException(status_code=422, detail="Invalid ISO datetime") from error
 

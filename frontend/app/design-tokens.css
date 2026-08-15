@@ -40,6 +40,16 @@
   --oops-transition-normal: 250ms cubic-bezier(0.4, 0, 0.2, 1);
   --oops-transition-slow: 400ms cubic-bezier(0.4, 0, 0.2, 1);
 
+  --oops-control-height-sm: 32px;
+  --oops-control-height-md: 36px;
+  --oops-control-height-lg: 40px;
+  --oops-touch-target: 44px;
+  --oops-focus-width: 3px;
+  --oops-border-width: 1px;
+  --oops-z-dropdown: 1000;
+  --oops-z-modal: 1100;
+  --oops-z-notification: 1200;
+
   --oops-shadow-sm: 0 1px 2px rgb(0 0 0 / 6%), 0 1px 3px rgb(0 0 0 / 10%);
   --oops-shadow-md: 0 4px 6px -1px rgb(0 0 0 / 8%), 0 2px 4px -2px rgb(0 0 0 / 6%);
   --oops-shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 8%), 0 4px 6px -4px rgb(0 0 0 / 4%);
@@ -79,6 +89,9 @@
   --oops-media-ink: #ffffff;
   --oops-media-ink-muted: var(--oops-graphite-3);
   --oops-media-text-shadow: 0 1px 3px rgb(0 0 0 / 80%);
+  --oops-table-header-bg: var(--bgColor-muted);
+  --oops-table-row-hover: var(--bgColor-muted);
+  --oops-control-disabled-opacity: 0.55;
   --oops-data-easy: #527a5c;
   --oops-data-medium: #526f96;
   --oops-data-hard: #9b5555;

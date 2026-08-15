@@ -13,7 +13,7 @@ from enum import StrEnum
 from typing import Any, Literal
 from uuid import uuid4
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from oopsnote.content import (
     normalize_oopsmark,
@@ -216,6 +216,14 @@ class Problem(BaseModel):
     source: str = ""  # 如 "2024-10 月考"
     source_page: int | None = None  # PDF 页码
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+
+    @field_validator("created_at", mode="after")
+    @classmethod
+    def normalize_created_at(cls, value: Any) -> Any:
+        # Legacy JSON may contain naive timestamps; persisted timestamps are UTC.
+        if isinstance(value, datetime) and value.tzinfo is None:
+            return value.replace(tzinfo=UTC)
+        return value
 
     @model_validator(mode="after")
     def validate_versioned_content(self) -> Problem:

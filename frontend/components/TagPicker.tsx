@@ -1,13 +1,14 @@
 "use client";
 
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Box, Text } from "@/components/ui/primitives";
+import { Box, NativeInput, Text } from "@/components/ui/primitives";
 import { TagChip } from "@/components/tags/TagChip";
 import { TagSuggestionList } from "@/components/tags/TagSuggestionList";
+import { ErrorBanner } from "@/components/ui/ErrorBanner";
 import type { TagDimension, TagDimensionStyle, TagItem } from "@/types/api";
 import { searchTags } from "@/features/tags/api";
-import { notify } from "@/lib/notify";
 import { sortTagItemsByQuery } from "@/features/tags/ranking";
+import sxStyles from "./TagPicker.sx.module.css";
 
 export type { TagDimension, TagDimensionStyle };
 
@@ -55,6 +56,7 @@ export const TagPicker = memo(function TagPicker({
   const [input, setInput] = useState("");
   const [suggestions, setSuggestions] = useState<TagItem[]>([]);
   const [loading, setLoading] = useState(false);
+  const [searchError, setSearchError] = useState("");
   const [open, setOpen] = useState(false);
   const [highlightIndex, setHighlightIndex] = useState(0);
   const lastRequest = useRef(0);
@@ -104,6 +106,7 @@ export const TagPicker = memo(function TagPicker({
     const requestId = ++lastRequest.current;
     setLoading(true);
     const timer = window.setTimeout(async () => {
+      setSearchError("");
       try {
         const data = await searchTags({
           dimension,
@@ -115,7 +118,7 @@ export const TagPicker = memo(function TagPicker({
         }
       } catch (reason) {
         if (lastRequest.current === requestId) setSuggestions([]);
-        notify.error({ title: "标签建议加载失败", description: reason instanceof Error ? reason.message : "无法搜索标签" });
+        if (lastRequest.current === requestId) setSearchError(reason instanceof Error ? reason.message : "无法搜索标签");
       } finally {
         if (lastRequest.current === requestId) setLoading(false);
       }
@@ -136,7 +139,7 @@ export const TagPicker = memo(function TagPicker({
   return (
     <Box className="tag-picker" data-dimension={dimension}>
       <Text className="tag-picker__title">{title}</Text>
-      <Box sx={{ position: "relative" }}>
+      <Box className={sxStyles.sx1}>
         <Box
           className={`tag-picker__field${open ? " is-focused" : ""}`}
           onClick={() => inputRef.current?.focus()}
@@ -150,7 +153,7 @@ export const TagPicker = memo(function TagPicker({
               onRemove={() => removeTag(tag)}
             />
           ))}
-          <input
+          <NativeInput
             ref={inputRef}
             className="tag-picker__input"
             aria-label={`${title}标签输入`}
@@ -192,6 +195,7 @@ export const TagPicker = memo(function TagPicker({
             }}
           />
         </Box>
+        <ErrorBanner message={searchError} title="标签建议加载失败" />
 
         {enableRemoteSearch && open && (loading || filteredSuggestions.length > 0) ? (
           <TagSuggestionList
