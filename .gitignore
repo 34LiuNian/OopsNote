@@ -6,15 +6,6 @@ oopsnote/storage/
 /vaults/
 /oopsnote/vaults/
 
-# Server-only Pi runtime configuration
-/deploy/pi/extensions.json
-/deploy/pi-rust/bin/
-/deploy/pi-rust/runtime.json
-/deploy/pi-rust/extensions.json
-/deploy/pi-rust/agent/
-/deploy/pi-rust/sessions/
-/deploy/pi-rust/cache/
-
 # Server-only OopsNote Compose secrets（只提交 *.example 模板与 README）
 /deploy/oopsnote/secrets/*
 !/deploy/oopsnote/secrets/*.example
@@ -29,6 +20,7 @@ __pycache__/
 *.egg-info/
 .coverage
 .pytest_cache/
+.pytest-*/
 .pytest-tmp*/
 *.pytest-tmp*/
 .mypy_cache/
@@ -68,23 +60,8 @@ venv/
 /frontend/.turbo/
 /frontend/coverage/
 /frontend/data/
+/.pnpm-store/
 *.tsbuildinfo
-
-# Local Pi credentials and installed JavaScript packages
-/.pi/extensions.json
-/.pi/runtime.json
-/.pi/node_modules/
-/.pi/skills/
-/.pi/self-learning-memory/
-
-# Local pi_agent_rust runtime, credentials, caches, and generated state
-/.pi-rust/bin/
-/.pi-rust/runtime.json
-/.pi-rust/extensions.json
-/.pi-rust/agent/
-/.pi-rust/sessions/
-/.pi-rust/cache/
-
 
 /.agents/
 

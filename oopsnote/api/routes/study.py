@@ -108,7 +108,7 @@ def create_variations(task_id: str, payload: VariationPayload) -> dict[str, Any]
         custom_request=payload.custom_request.strip(),
         difficulty=payload.difficulty.strip() if payload.difficulty else None,
     )
-    runner = api._runner_for(api._configured_backend())
+    runner = api._runner()
     created = []
     for _ in range(payload.count):
         task = api.TASK_STORE.create(

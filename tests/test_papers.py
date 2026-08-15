@@ -370,13 +370,14 @@ def test_paper_bundle_copies_managed_diagram_as_content_addressed_asset(tmp_path
     task = TaskRecord(
         id="task-1",
         problem=problem,
-        metadata={
-            "diagram_detected": True,
-            "diagram_kind": "image",
-            "diagram_image_path": "/assets/figure.png",
-            "diagram_position": "left",
-            "diagram_scale_percent": 80,
-        },
+        diagram_items=[
+            DiagramItem(
+                fallback_image_path="/assets/figure.png",
+                position="left",
+                scale_percent=80,
+                status=DiagramStatus.READY_IMAGE,
+            )
+        ],
     )
     draft = PaperDraft(
         items=[

@@ -1,4 +1,3 @@
-import { accessTokenOrRedirect } from "./auth";
 import { isBetterAuthMode } from "./auth-mode";
 import type { ApiErrorCategory } from "../types/api";
 
@@ -108,10 +107,6 @@ export async function apiErrorFromResponse(response: Response): Promise<ApiError
 
 export async function fetchApi(path: string, init?: ApiRequestInit): Promise<Response> {
   const headers = new Headers(init?.headers);
-  if (!init?.skipAuth) {
-    const token = await accessTokenOrRedirect();
-    if (token) headers.set("Authorization", `Bearer ${token}`);
-  }
   return requestBackend(`${API_BASE}${path}`, {
     ...init,
     headers,
@@ -122,10 +117,6 @@ export async function fetchApi(path: string, init?: ApiRequestInit): Promise<Res
 // the request before forwarding it to FastAPI.
 export async function fetchRawUpload(path: string, init?: ApiRequestInit): Promise<Response> {
   const headers = new Headers(init?.headers);
-  if (!init?.skipAuth) {
-    const token = await accessTokenOrRedirect();
-    if (token) headers.set("Authorization", `Bearer ${token}`);
-  }
   const base = isBetterAuthMode() ? API_BASE : directBackendBase() ?? API_BASE;
   return requestBackend(`${base}${path}`, {
     ...init,

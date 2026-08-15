@@ -151,18 +151,15 @@ export function BatchContinuousSurface({
   }, [columnLayout.columnCount, metrics, totalHeight]);
   const overlayScaleStyle = {
     "--batch-selection-stroke": `${2 * zoom}px`,
+    "--batch-selection-muted-stroke": `${Math.max(1, zoom)}px`,
     "--batch-selection-offset": `${zoom}px`,
     "--batch-selection-negative-stroke": `${-2 * zoom}px`,
-    "--batch-selection-radius": `${5 * zoom}px`,
-    "--batch-handle-stroke": `${3 * zoom}px`,
-    "--batch-handle-offset": `${1.5 * zoom}px`,
-    "--batch-handle-negative-offset": `${-1.5 * zoom}px`,
-    "--batch-handle-hit": `${16 * zoom}px`,
-    "--batch-handle-side-hit": `${44 * zoom}px`,
-    "--batch-handle-length": `${36 * zoom}px`,
-    "--batch-corner-hit": `${32 * zoom}px`,
-    "--batch-corner-length": `${22 * zoom}px`,
-    "--batch-corner-radius": `${5 * zoom}px`,
+    "--batch-selection-radius": `${3 * zoom}px`,
+    "--batch-handle-hit": `${24 * zoom}px`,
+    "--batch-handle-side-hit": `${40 * zoom}px`,
+    "--batch-handle-size": `${10 * zoom}px`,
+    "--batch-handle-border": "2px",
+    "--batch-handle-radius": `${2 * zoom}px`,
   } as React.CSSProperties;
   return (
     <div

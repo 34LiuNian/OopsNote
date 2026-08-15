@@ -1,23 +1,11 @@
-"""Backward-compatible imports for the split AI runtime modules.
-
-New code should import shared lifecycle types from ``oopsnote.ai.managed`` and
-process implementations from ``oopsnote.ai.backends``. This module remains the
-stable public surface used by existing integrations and tests.
-"""
+"""Public AI runtime surface."""
 
 from __future__ import annotations
 
-import subprocess
-
-from oopsnote.ai.backends import HermesRunner, LangChainRunner, PiRpcBackend, PiRpcRunner
-from oopsnote.ai.managed import AgentBackend, ManagedAiRunner
+from oopsnote.ai.backends import LangChainRunner
+from oopsnote.ai.managed import ManagedAiRunner
 
 __all__ = [
-    "AgentBackend",
-    "HermesRunner",
     "LangChainRunner",
     "ManagedAiRunner",
-    "PiRpcBackend",
-    "PiRpcRunner",
-    "subprocess",
 ]

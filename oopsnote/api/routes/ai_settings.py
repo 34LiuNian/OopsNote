@@ -198,34 +198,9 @@ def _catalog_validation(channel: ProviderChannel, started: float) -> ProviderVal
     )
 
 
-def _retire_legacy() -> None:
-    """Delete retired Profile metadata and secrets unless an active run still references them."""
-    api = _api()
-    old_references = api.APP_SETTINGS_STORE.retire_legacy_provider_secrets()
-    if not old_references:
-        return
-    vault = _vault()
-    for credential_ref in old_references:
-        if any(
-            _active_snapshot_contains(run.provider_profile_snapshot, credential_ref=credential_ref)
-            for run in api.RUN_STORE.list_all()
-            if run.status in {RunStatus.QUEUED, RunStatus.RUNNING}
-        ):
-            continue
-        with contextlib.suppress(KeyError):
-            vault.delete(credential_ref)
-
-
-def retire_legacy_provider_configuration() -> None:
-    """Run bounded startup migrations for legacy settings."""
-    _api().APP_SETTINGS_STORE.migrate_legacy_diagram_policy()
-    _retire_legacy()
-
-
 @router.get("/channels")
 def list_channels(request: Request) -> dict[str, Any]:
     _require_admin(request)
-    _retire_legacy()
     api = _api()
     policy = api.APP_SETTINGS_STORE.langchain_model_policy()
     return {
@@ -492,4 +467,4 @@ def update_runtime(payload: RuntimeUpdate, request: Request) -> dict[str, Any]:
     return {"max_concurrency": payload.max_concurrency, "restart_required": True}
 
 
-__all__ = ["retire_legacy_provider_configuration", "router"]
+__all__ = ["router"]

@@ -243,10 +243,8 @@ def process_batch_session(
 ) -> dict[str, Any]:
     """Render, create, bind, and enqueue every persisted pending segment."""
     api = _api()
-    # Batch admission uses the same process-wide backend as individual tasks;
-    # callers cannot split one batch across runtime backends.
     selected_backend = api._configured_backend()
-    runner = api._runner_for(selected_backend)
+    runner = api._runner()
     try:
         return run_batch_process(
             BatchProcessingContext(
@@ -282,7 +280,7 @@ def retry_batch_segment(
     """Retry one batch selection, recreating its task if its link is stale."""
     api = _api()
     selected_backend = api._configured_backend()
-    runner = api._runner_for(selected_backend)
+    runner = api._runner()
     try:
         return run_batch_process(
             BatchProcessingContext(

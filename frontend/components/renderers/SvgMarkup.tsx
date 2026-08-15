@@ -8,6 +8,22 @@ const BLOCKED_ELEMENTS = "script,foreignObject,iframe,object,embed,link,meta,aud
 const UNSAFE_CSS = /(?:expression\s*\(|javascript:|vbscript:|data:text\/html|-moz-binding)/i;
 const THEMED_COLOR_ATTRIBUTES = new Set(["color", "fill", "flood-color", "lighting-color", "stop-color", "stroke"]);
 const CSS_COLOR_DECLARATION = /(^|[;{])(\s*(?:color|fill|flood-color|lighting-color|stop-color|stroke)\s*:\s*)(#[0-9a-f]{3,6}\b|[a-z]+\b|rgba?\([^)]*\))(?=\s*(?:!important)?\s*(?:[;}\n]|$))/gim;
+// Elements that paint with the SVG default `fill: black` when they carry no
+// explicit fill. dvisvgm renders glyph outlines (and TikZJax its `<text>` nodes)
+// without a fill attribute, so themed mode must rewrite that implicit black too.
+const PAINT_ELEMENTS = new Set([
+  "circle",
+  "ellipse",
+  "line",
+  "path",
+  "polygon",
+  "polyline",
+  "rect",
+  "text",
+  "textpath",
+  "tspan",
+  "use",
+]);
 
 export type SvgColorMode = "preserve" | "themed";
 
@@ -84,6 +100,19 @@ export function sanitizeSvgMarkup(markup: string, colorMode: SvgColorMode = "pre
         element.remove();
       } else if (colorMode === "themed") {
         element.textContent = themeCssColors(css);
+      }
+    }
+
+    // dvisvgm emits glyph outlines (and other filled primitives) without an
+    // explicit fill, relying on the SVG default `fill: black`. The attribute
+    // loop above only rewrites declared colors, so without this those shapes
+    // stay black in dark mode. Map the implicit black to currentColor exactly
+    // like an explicit `fill="#000"` would be, unless the element declares its
+    // own fill through an inline style.
+    if (colorMode === "themed" && PAINT_ELEMENTS.has(element.tagName.toLowerCase()) && !element.hasAttribute("fill")) {
+      const inlineStyle = element.getAttribute("style") || "";
+      if (!/(?:^|[;{])\s*fill\s*:/i.test(inlineStyle)) {
+        element.setAttribute("fill", "currentColor");
       }
     }
   });

@@ -1,55 +1,67 @@
 # OopsNote architecture
 
-状态：LangChain 默认运行时，RustPi 隔离评测后待删除
-更新：2026-08-04
+状态：LangChain 单一运行时，Better Auth 单一生产认证
+更新：2026-08-15
 
 ## 1. 产品边界
 
-OopsNote 是本地单用户错题系统。Web 是主入口与主浏览界面，Obsidian 是开放数据出口；CLI 和脚本只用于开发、运维与基准验证。
-
-当前输入包括单题图片、手动题目和 Web 手动批量框选。自动页面分割不属于当前可靠链路。
+OopsNote 是本地优先的多用户错题系统。Web 是主入口，Obsidian 是开放数据出口；
+CLI 和脚本只用于开发、运维与评测。输入包括单题图片、手动题目和 Web 手动批量
+框选。自动页面分割不属于当前可靠链路。
 
 ## 2. 运行架构
 
 ```text
-Frontend
-   | REST
+Browser
+   | Better Auth session
+Next.js BFF
+   | signed internal identity
 FastAPI
-   | enqueue / run / cancel / retry / recover_stale
+   | enqueue / run / cancel / retry / recover stale
 ManagedAiRunner
-   |-------------------------|
-LangChainRunner (default)       PiRpcRunner / HermesRunner
-explicit provider + 24 turns    diagnostic / migration only
-   |
-ProviderClientFactory -> SecretStore
-                         | Windows Credential Manager
-                         | Linux encrypted vault + mounted master key
-   |
+   | immutable provider policy snapshot
+LangChainRunner
+   | bounded 24-round restricted tool loop
 restricted MCP HTTP -> OCR + pipeline tools -> Core stores
 ```
 
-共享生命周期只由 `ManagedAiRunner` 管理：run 所有权、heartbeat、timeout、abort、陈旧任务恢复、日志、重试资格和 finalize 后检查。Backend 只负责模型调用与受控工具循环，并通过 `ActiveRunControl` 暴露可取消执行句柄。
+系统不提供 AI backend 选择。`LangChainRunner` 是唯一模型运行时；
+`ManagedAiRunner` 是唯一生命周期所有者，负责 run 所有权、heartbeat、timeout、
+取消、陈旧任务恢复、日志、重试资格和 finalize 后检查。LangChain 只负责显式
+provider 调用和受限工具循环。
 
-默认运行时是 LangChain 的显式 provider adapter。普通 run 固定其三阶段 channel/model policy snapshot，题图重建额外固定独立的 TikZ channel/model 选择；solver 与 verifier 使用独立上下文，最多 24 轮受限 MCP tool loop。Vision/OCR 从普通 run snapshot 解析模型，TikZ run 只从题图策略快照解析模型，二者不得隐式互相回退。Pi 与 Hermes 仅可由显式 backend 选择用于诊断，任一 run 都不得自动切换。
+普通 run 在入队时冻结 `vision`、`agent`、`review` 三阶段 channel/model policy；
+题图重建冻结独立的 `diagram` 选择。OCR 只能从当前 run 的不可变 Vision 快照解析
+模型和 SecretStore 凭证，不读取第二份配置。失败不会切换 provider 或模型。
 
-LangChain run 使用受管 asyncio task；完整模型与工具循环受同一个超时约束，取消时只取消当前 run。Pi 诊断后端仍复用有界 worker 进程并通过 RPC `abort` 取消。持久化队列先写入 `TaskRun`，应用重启后恢复 `queued` run，遗失的 `running` run 以 fresh retry 处理。
+## 3. 身份与工作区
 
-## 3. 数据与写入边界
+Better Auth 是生产身份真源，数据库由 Next.js 独占。BFF 验证 session 后向 FastAPI
+发送短时 HMAC 签名身份封套；FastAPI 从控制库解析不可变 workspace 映射。浏览器
+不能直接指定 workspace 路径或资源 owner。
+
+`local` 模式只允许回环开发，跳过登录并映射固定本地管理员。生产没有外部身份
+提供商兼容路径，也没有 bearer token/JWKS 分支。
+
+## 4. 数据与写入边界
 
 ```text
-AI runtime -> restricted MCP -> Core -> storage/*.json
-                                    -> storage/assets/
-                                    -> vaults/ (explicit sync)
-Frontend   -> REST ----------> Core
+LangChain -> restricted MCP -> Core -> storage/workspaces/<id>/
+                                      -> assets/
+                                      -> Obsidian vault (explicit sync)
+Frontend  -> signed BFF REST -----> Core
 ```
 
 - AI 不能直接读写 `storage/`。
-- AI 只开放 `ocr_image`、`get_task`、`get_asset_path`、`list_tags`、`create_tag`、`report_task_stage`、`submit_solution_candidate`、`finalize_task`、`fail_task`。`submit_solution_candidate` 只写入当前 `TaskRun` 的未提交候选，必须由新会话复核后才可 `finalize_task`。
-- `run_id` 必须属于当前任务；finalize 必须幂等且最多成功一次。
-- 同一 run 不允许从 Pi 自动切换到 Hermes。
-- 仅瞬时网络、429 或明确 5xx 最多产生两个全新 retry run；401/403、无效模型、schema/validation 与未 finalize 均不可重试。retry 保留原 run 的三阶段 strategy snapshot，且不会切换 backend。
+- MCP capability 绑定 `workspace_id`、`task_id` 和 `run_id`。
+- `submit_solution_candidate` 只写当前 run 的未提交候选；新 review 上下文验证后才能
+  `finalize_task`。
+- finalize 幂等且最多成功一次。
+- 仅瞬时网络、429 或明确 5xx 最多产生两个 fresh retry；401/403、模型配置、schema、
+  validation 和未 finalize 都不可重试。
+- 历史 `storage/` 记录是本地证据，不定义当前架构，也不触发旧运行时加载。
 
-## 4. 内容协议
+## 5. 内容协议
 
 题干、选项、答案和解析只有一份可编辑源：OopsMark v1。
 
@@ -59,37 +71,30 @@ OCR / AI / manual edit -> OopsMark v1 -> Web renderer
                                      -> LaTeX adapter
 ```
 
-协议定义见 [oopsmark-v1.md](oopsmark-v1.md)。渲染端不得悄悄重写 v1 原文；历史内容使用显式 legacy 格式兼容。
+协议定义见 [oopsmark-v1.md](oopsmark-v1.md)。渲染端不得悄悄重写 v1 原文；历史
+内容使用显式 legacy 内容格式适配，这与运行时兼容无关。
 
-## 5. 源码职责
+## 6. 源码职责
 
-| 区域                | 职责                                        |
-| ------------------- | ------------------------------------------- |
-| `oopsnote/core`     | Pydantic 模型、JSON store、资产、标签和搜索 |
-| `oopsnote/content`  | OopsMark 解析、验证和导出适配               |
-| `oopsnote/ai`       | 共享受管生命周期和 backend 协议             |
-| `oopsnote/api`      | REST DTO、路由与应用组合                    |
-| `oopsnote/mcp`      | AI 可调用的数据工具和 pipeline 写入边界     |
-| `oopsnote/obsidian` | Core 到 Vault 的同步                        |
-| `oopsnote/paper`    | 试卷模板与导出支持                          |
-| `frontend`          | Next.js UI，只经 REST 访问 Core             |
-| `skills`            | OCR、解题、验证、标签和编排指令的唯一源码   |
+| 区域 | 职责 |
+| --- | --- |
+| `oopsnote/core` | Pydantic 模型、JSON store、资产、标签和搜索 |
+| `oopsnote/content` | OopsMark 解析、验证和导出适配 |
+| `oopsnote/ai` | 共享生命周期、LangChain adapter、provider 与 SecretStore |
+| `oopsnote/api` | REST DTO、路由与应用组合 |
+| `oopsnote/mcp` | AI 可调用的数据工具和 pipeline 写入边界 |
+| `oopsnote/obsidian` | Core 到 Vault 的同步 |
+| `oopsnote/paper` | 试卷模板与导出支持 |
+| `frontend` | Next.js UI、Better Auth 与 BFF |
+| `skills` | OCR、解题、验证、标签和编排指令的唯一源码 |
 
-## 6. 配置与密钥
+## 7. 配置与密钥
 
-AppSettings 只保存非敏感 provider channel、模型目录、三阶段普通策略、独立 TikZ 题图策略与 opaque credential reference。Windows 使用 Credential Manager；Linux/容器使用由只读挂载 master key 加密的持久化 vault。密钥明文绝不写入 `storage/`、TaskRun、日志、环境变量或 REST 响应。`.pi/extensions.json` 只为显式旧 Pi 后端保留；LangChain 与 OCR 不会把它作为 vault 失败的回退。
+AppSettings 只保存非敏感 provider channel、模型目录、四阶段策略和 opaque
+credential reference。Windows 使用 Credential Manager；Linux/容器使用由只读挂载
+master key 加密的持久化 vault。密钥明文绝不写入 `storage/`、TaskRun、日志、环境
+变量或 REST 响应。
 
-`.pi/skills/` 是 `skills/` 的生成镜像。修改 skill 后运行 `scripts/setup/setup_pi.py --sync`。
-
-## 7. 两套阶段名称
-
-为避免混淆，项目只使用以下两个命名空间：
-
-- 产品里程碑：Core、Web、Obsidian、复习与出卷能力。
-- AI 迁移阶段：Pi PoC、生产化、质量优化、Hermes 下线。
-
-当前已完成 LangChain 受管执行路径与 SecretStore 迁移实现。运行证据由 RunStore 按 run 保留并由 REST 暴露非敏感索引；RustPi 删除仍等待隔离的真实任务评测门槛。
-
-## 8. RustPi 删除门槛
-
-LangChain 在隔离 storage 中完成至少 30 个真实任务且无丢失、重复 finalize 或无法取消；完成率不低于 95%，质量相对 RustPi 基线下降不超过 2 个百分点，P95 延迟恶化不超过 20%，成本门槛经实测 provider usage 批准后，才删除 `.pi-rust`、Pi auth 复制、RPC worker、JS bridge、安装脚本、相关 benchmark 与文档。Hermes 是否退役另行决定，Python MCP 与 `ManagedAiRunner` 继续保留。
+当前运行架构不读取隐藏 runtime 目录、外部 agent 配置或外部身份提供商配置。
+退役历史仅见 [retired-runtime-history.md](archive/retired-runtime-history.md)，不得作为
+实现或评测门槛依据。

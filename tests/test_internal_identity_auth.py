@@ -159,6 +159,30 @@ def test_better_auth_app_startup_rejects_short_bff_secret():
         pass
 
 
+def test_local_app_startup_does_not_read_the_better_auth_secret():
+    environment = {
+        "OOPSNOTE_AUTH_MODE": "local",
+        "OOPSNOTE_BFF_HMAC_SECRET_FILE": "",
+        "OOPSNOTE_BFF_HMAC_SECRET": "",
+    }
+
+    with patch.dict("os.environ", environment, clear=False), TestClient(main.app) as client:
+        response = client.get("/tasks")
+
+    assert response.status_code == 200
+
+
+def test_local_mode_rejects_non_loopback_clients():
+    with (
+        patch.dict("os.environ", {"OOPSNOTE_AUTH_MODE": "local"}, clear=False),
+        TestClient(main.app, client=("203.0.113.10", 50_000)) as client,
+    ):
+        response = client.get("/tasks")
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "Local auth mode accepts only loopback requests"
+
+
 def test_better_auth_requests_use_the_authenticated_user_workspace(monkeypatch, tmp_path):
     registry = WorkspaceRegistry(
         ControlDatabase(tmp_path / "control" / "app.sqlite"),

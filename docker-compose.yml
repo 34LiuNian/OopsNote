@@ -34,7 +34,6 @@ services:
     environment:
       OOPSNOTE_STORAGE_DIR: /data
       OOPSNOTE_LATEX_RENDERER_URL: http://latex-renderer:8080
-      OOPSNOTE_RPC_MAX_WORKERS: "1"
       OOPSNOTE_AUTH_MODE: ${OOPSNOTE_AUTH_MODE:-better-auth}
       OOPSNOTE_BFF_HMAC_SECRET_FILE: /run/secrets/oopsnote_bff_hmac_secret
       OOPSNOTE_SECRET_STORE_PATH: /vault/credentials.json
@@ -42,8 +41,6 @@ services:
     volumes:
       - oopsnote-data:/data
       - oopsnote-vault:/vault
-      - ./deploy/pi:/app/.pi:ro
-      - ./deploy/pi-rust:/app/.pi-rust:ro
     secrets:
       - oopsnote_secret_store_key
       - oopsnote_bff_hmac_secret

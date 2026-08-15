@@ -27,9 +27,7 @@ at frontend/public/fonts/Gloock-OFL.txt; see THIRD-PARTY-NOTICES.md. -->
 ```text
 Web / REST
     -> ManagedAiRunner
-       -> LangChainRunner（默认，显式 provider adapter）
-       -> Pi RPC / pi_agent_rust（仅显式诊断）
-       -> Hermes（迁移期显式诊断）
+       -> LangChainRunner（唯一运行时，显式 provider adapter）
     -> 受限 Python MCP
     -> OopsNote Core
        -> JSON / Assets / Obsidian
@@ -37,8 +35,8 @@ Web / REST
 
 `ManagedAiRunner` 是唯一任务生命周期所有者。LangChain 只负责 provider
 调用和最多 24 轮的受限 MCP tool loop；每个 run 在入队时冻结三阶段 channel/model
-策略快照，失败只能按共享策略创建同一 backend 的新 run，绝不自动切换
-provider、Pi 或 Hermes。模型与 OCR 凭证只通过 OopsNote SecretStore 解析，
+策略快照，失败只能按共享策略创建新的 LangChain run，绝不自动切换
+provider 或模型。模型与 OCR 凭证只通过 OopsNote SecretStore 解析，
 不会写入环境变量、TaskRun、日志或响应。Core 负责数据、状态竞争保护和原子
 finalize；AI 运行时不直接写仓库文件。题目正文统一使用
 [OopsMark v1](docs/oopsmark-v1.md)。
@@ -139,7 +137,7 @@ docker compose -f docker-compose.yml -f deploy/compose.bootstrap.yml up -d front
 - LangChain、SecretStore 和管理员 provider 管理已接入，具备受管运行、取消、超时、恢复、统计和受限工具。
 - OopsMark v1 已接入 Core、AI 输出与 Web 渲染。
 - 下一步是在管理员 Provider 页面配置渠道、模型能力和三阶段策略，并在隔离 storage 完成至少 30 个真实任务评测。
-- RustPi 仅在完成率、质量、P95、成本、取消和重复 finalize 门槛全部有证据后删除；Hermes 退役另行决定。
+- LangChain 是唯一 AI 运行时；旧 agent/RPC 运行时及外部身份提供商兼容链路已退役。
 
 具体优先级见 [项目 backlog](docs/todo.md)。
 

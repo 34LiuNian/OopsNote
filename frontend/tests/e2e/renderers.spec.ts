@@ -95,9 +95,11 @@ test("diagram renderers follow dark theme without destroying semantic colors", a
   const axis = fixture.locator("#theme-axis");
   const background = fixture.locator("#theme-background");
   const coloredSeries = fixture.locator("#theme-series");
+  const glyph = fixture.locator("#theme-glyph");
   await expect(axis).toHaveAttribute("stroke", "currentColor");
   await expect(background).toHaveAttribute("fill", "var(--oops-svg-background)");
   await expect(coloredSeries).toHaveAttribute("stroke", "#0ea5e9");
+  await expect(glyph).toHaveAttribute("fill", "currentColor");
   await expect(page.locator('[data-mermaid-theme="light"]')).toBeVisible({ timeout: 30_000 });
 
   await page.emulateMedia({ colorScheme: "dark" });

@@ -7,7 +7,6 @@ underlying execution is still live and how to request its cancellation.
 from __future__ import annotations
 
 import asyncio
-import subprocess
 import threading
 from abc import ABC, abstractmethod
 from typing import Any
@@ -25,28 +24,6 @@ class ActiveRunControl(ABC):
     @property
     def exit_code(self) -> int | None:
         return None
-
-
-class ProcessRunControl(ActiveRunControl):
-    def __init__(self, process: subprocess.Popen[Any]) -> None:
-        self.process = process
-
-    def cancel(self) -> None:
-        if self.process.poll() is not None:
-            return
-        self.process.terminate()
-        try:
-            self.process.wait(timeout=5)
-        except subprocess.TimeoutExpired:
-            self.process.kill()
-            self.process.wait(timeout=5)
-
-    def is_active(self) -> bool:
-        return self.process.poll() is None
-
-    @property
-    def exit_code(self) -> int | None:
-        return self.process.poll()
 
 
 class AsyncioTaskRunControl(ActiveRunControl):
@@ -105,4 +82,4 @@ class AsyncioTaskRunControl(ActiveRunControl):
         return self._cancelled.is_set()
 
 
-__all__ = ["ActiveRunControl", "AsyncioTaskRunControl", "ProcessRunControl"]
+__all__ = ["ActiveRunControl", "AsyncioTaskRunControl"]

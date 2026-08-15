@@ -11,12 +11,10 @@ import pymupdf
 import pytest
 from fastapi.testclient import TestClient
 from PIL import Image
-from starlette.requests import Request
 
-from oopsnote.ai import HermesRunner
+from oopsnote.ai import ManagedAiRunner
 from oopsnote.ai.diagram_renderer import TikzRenderBundle, TikzRenderClient
 from oopsnote.api import auth, main
-from oopsnote.api.auth import AuthConfig, AuthenticatedUser, AuthenticationError
 from oopsnote.core import (
     AssetStore,
     BatchProcessJobStore,
@@ -70,6 +68,13 @@ class RecordingStudyRunner:
         return run
 
 
+class StubManagedRunner(ManagedAiRunner):
+    backend_name = "langchain"
+
+    def run(self, task_id: str, run_id: str) -> None:
+        del task_id, run_id
+
+
 def png_base64(color: str = "white") -> str:
     buffer = BytesIO()
     Image.new("RGB", (4, 4), color).save(buffer, format="PNG")
@@ -102,29 +107,10 @@ def test_run_view_exposes_evidence_index_without_model_output():
     assert "provider-only-output" not in str(view)
 
 
-def test_health_stays_public_when_oidc_is_configured():
+def test_explicit_local_auth_mode_bypasses_authentication_for_application_routes():
     with patch.dict(
         "os.environ",
-        {
-            "OOPSNOTE_AUTH_ISSUER": "https://auth.example.com",
-            "OOPSNOTE_AUTH_AUDIENCE": "client-id",
-        },
-        clear=False,
-    ):
-        response = TestClient(main.app).get("/health")
-
-    assert response.status_code == 200
-
-
-def test_explicit_local_auth_mode_bypasses_oidc_for_application_routes():
-    with patch.dict(
-        "os.environ",
-        {
-            "OOPSNOTE_AUTH_MODE": "local",
-            "OOPSNOTE_AUTH_ISSUER": "",
-            "OOPSNOTE_AUTH_AUDIENCE": "",
-            "OOPSNOTE_AUTH_JWKS_URL": "",
-        },
+        {"OOPSNOTE_AUTH_MODE": "local"},
         clear=False,
     ):
         response = TestClient(main.app).get("/tasks")
@@ -175,26 +161,6 @@ def test_unauthenticated_request_is_rejected_by_better_auth_default(monkeypatch)
     assert response.status_code == 401
 
 
-def test_enabled_runner_registry_does_not_construct_disabled_backends(monkeypatch):
-    langchain_runner = object()
-
-    monkeypatch.setattr(main, "_new_langchain_runner", lambda: langchain_runner)
-    monkeypatch.setattr(
-        main,
-        "_new_pi_runner",
-        lambda: pytest.fail("disabled Pi backend must not be constructed"),
-    )
-    monkeypatch.setattr(
-        main,
-        "_new_hermes_runner",
-        lambda: pytest.fail("disabled Hermes backend must not be constructed"),
-    )
-
-    runners = main._build_enabled_runners(frozenset({"langchain"}))
-
-    assert runners == {"langchain": langchain_runner}
-
-
 def test_batch_projection_preserves_admission_failure_for_pending_task(monkeypatch):
     task = TaskRecord(
         id="task-1",
@@ -230,76 +196,6 @@ def test_batch_projection_preserves_admission_failure_for_pending_task(monkeypat
     assert projected.segments[0].error == "selected LangChain channel has no credential"
 
 
-def test_task_routes_require_bearer_token_when_oidc_is_configured():
-    with patch.dict(
-        "os.environ",
-        {
-            "OOPSNOTE_AUTH_MODE": "oidc",
-            "OOPSNOTE_AUTH_ISSUER": "https://auth.example.com",
-            "OOPSNOTE_AUTH_AUDIENCE": "client-id",
-        },
-        clear=False,
-    ):
-        response = TestClient(main.app).get("/tasks")
-
-    assert response.status_code == 401
-    assert response.json()["detail"] == "Missing bearer token"
-
-
-def test_task_routes_accept_verified_bearer_token_when_oidc_is_configured():
-    fake_user = AuthenticatedUser(subject="user-1", claims={"sub": "user-1"})
-    with (
-        patch.dict(
-            "os.environ",
-            {
-                "OOPSNOTE_AUTH_MODE": "oidc",
-                "OOPSNOTE_AUTH_ISSUER": "https://auth.example.com",
-                "OOPSNOTE_AUTH_AUDIENCE": "client-id",
-            },
-            clear=False,
-        ),
-        patch("oopsnote.api.main.authenticate_request", return_value=fake_user),
-    ):
-        response = TestClient(main.app).get(
-            "/tasks",
-            headers={"Authorization": "Bearer test-token"},
-        )
-
-    assert response.status_code == 200
-
-
-def test_provider_settings_require_an_administrator_role_when_oidc_is_enabled():
-    from oopsnote.ai.secrets import MemorySecretStore
-
-    ordinary = AuthenticatedUser(subject="user-1", claims={"sub": "user-1", "roles": ["student"]})
-    admin = AuthenticatedUser(subject="admin-1", claims={"sub": "admin-1", "roles": ["admin"]})
-    environment = {
-        "OOPSNOTE_AUTH_MODE": "oidc",
-        "OOPSNOTE_AUTH_ISSUER": "https://auth.example.com",
-        "OOPSNOTE_AUTH_AUDIENCE": "client-id",
-    }
-    with (
-        patch.dict("os.environ", environment, clear=False),
-        patch("oopsnote.api.main.authenticate_request", return_value=ordinary),
-        patch("oopsnote.api.main.get_secret_store", return_value=MemorySecretStore()),
-    ):
-        rejected = TestClient(main.app).get(
-            "/settings/ai/channels", headers={"Authorization": "Bearer test-token"}
-        )
-    with (
-        patch.dict("os.environ", environment, clear=False),
-        patch("oopsnote.api.main.authenticate_request", return_value=admin),
-        patch("oopsnote.api.main.get_secret_store", return_value=MemorySecretStore()),
-    ):
-        allowed = TestClient(main.app).get(
-            "/settings/ai/channels", headers={"Authorization": "Bearer test-token"}
-        )
-
-    assert rejected.status_code == 403
-    assert rejected.json()["detail"] == "Administrator role is required"
-    assert allowed.status_code == 200
-
-
 def test_cors_does_not_allow_an_arbitrary_origin():
     response = TestClient(main.app).options(
         "/settings/ai/profiles",
@@ -307,54 +203,6 @@ def test_cors_does_not_allow_an_arbitrary_origin():
     )
 
     assert response.headers.get("access-control-allow-origin") is None
-
-
-def test_authentication_uses_explicit_jwks_url_when_configured():
-    with patch.dict(
-        "os.environ",
-        {
-            "OOPSNOTE_AUTH_MODE": "oidc",
-            "OOPSNOTE_AUTH_ISSUER": "https://auth.example.com",
-            "OOPSNOTE_AUTH_AUDIENCE": "client-id",
-            "OOPSNOTE_AUTH_JWKS_URL": "http://pocket-id:1411/.well-known/jwks.json",
-        },
-        clear=False,
-    ):
-        config = auth.auth_config_from_env()
-
-    assert config == AuthConfig(
-        issuer="https://auth.example.com",
-        audience="client-id",
-        jwks_url="http://pocket-id:1411/.well-known/jwks.json",
-        mode="oidc",
-    )
-
-
-def test_authentication_returns_503_when_jwks_service_is_unavailable():
-    request = Request(
-        {
-            "type": "http",
-            "headers": [(b"authorization", b"Bearer test-token")],
-        }
-    )
-    config = AuthConfig(
-        issuer="https://auth.example.com",
-        audience="client-id",
-        jwks_url="http://pocket-id:1411/.well-known/jwks.json",
-        mode="oidc",
-    )
-
-    with (
-        patch(
-            "oopsnote.api.auth._jwk_client",
-            side_effect=auth.jwt.PyJWKClientConnectionError("connection refused"),
-        ),
-        pytest.raises(AuthenticationError) as error,
-    ):
-        auth.authenticate_request(request, config)
-
-    assert error.value.status_code == 503
-    assert error.value.detail == "Authentication service is temporarily unavailable"
 
 
 def test_duplicate_candidates_merge_without_removing_source_task(tmp_path, monkeypatch):
@@ -409,8 +257,8 @@ def test_variation_request_carries_parent_error_and_custom_constraints(tmp_path,
     monkeypatch.setattr(main, "STORAGE_DIR", storage)
     monkeypatch.setattr(main, "TASK_STORE", task_store)
     monkeypatch.setattr(main, "RUN_STORE", RunStore(storage / "runs"))
-    monkeypatch.setattr(main, "_runner_for", lambda _backend: runner)
-    monkeypatch.setattr(main, "_configured_backend", lambda: "pi")
+    monkeypatch.setattr(main, "_runner", lambda: runner)
+    monkeypatch.setattr(main, "_configured_backend", lambda: "langchain")
 
     parent = task_store.create(TaskCreateRequest(subject="math"))
     parent = task_store.set_problem(
@@ -796,18 +644,26 @@ def test_batch_session_deduplicates_source_and_persists_progress(tmp_path, monke
             "segments": [
                 {
                     "id": "region-1",
-                    "page_index": 3,
-                    "x": 0.1,
-                    "y": 0.2,
-                    "width": 0.3,
-                    "height": 0.4,
-                    "continuation": {
-                        "page_index": 4,
-                        "x": 0.1,
-                        "y": 0,
-                        "width": 0.3,
-                        "height": 0.25,
-                    },
+                    "parts": [
+                        {
+                            "page_index": 3,
+                            "column_index": 0,
+                            "x": 0.1,
+                            "y": 0.2,
+                            "width": 0.3,
+                            "height": 0.4,
+                            "order": 0,
+                        },
+                        {
+                            "page_index": 4,
+                            "column_index": 0,
+                            "x": 0.1,
+                            "y": 0,
+                            "width": 0.3,
+                            "height": 0.25,
+                            "order": 1,
+                        },
+                    ],
                 }
             ],
         },
@@ -834,8 +690,6 @@ def test_batch_session_deduplicates_source_and_persists_progress(tmp_path, monke
     assert restored["filename"] == "renamed.pdf"
     assert restored["active_page"] == 4
     assert restored["excluded_page_indices"] == [2]
-    assert restored["segments"][0]["page_index"] == 3
-    assert restored["segments"][0]["continuation"]["page_index"] == 4
     assert [part["page_index"] for part in restored["segments"][0]["parts"]] == [3, 4]
     assert restored["crop_rect"] == {"x": 0.0, "y": 0.0, "width": 1.0, "height": 1.0}
     assert restored["crop_confirmed"] is False
@@ -1132,7 +986,7 @@ def test_batch_process_renders_all_pending_segments_and_enqueues_once(tmp_path, 
     monkeypatch.setattr(
         main, "BATCH_PROCESS_JOB_STORE", BatchProcessJobStore(storage / "batch_jobs")
     )
-    monkeypatch.setattr(main, "_runner_for", lambda _backend: runner)
+    monkeypatch.setattr(main, "_runner", lambda: runner)
     client = TestClient(main.app)
 
     document = pymupdf.open()
@@ -1293,7 +1147,6 @@ def test_batch_session_rejects_invalid_segment_pages_before_persistence(tmp_path
     monkeypatch.setattr(
         main, "BATCH_PROCESS_JOB_STORE", BatchProcessJobStore(storage / "batch_jobs")
     )
-    monkeypatch.setattr(main, "PI_RUNNER", RecordingBatchRunner(task_store))
     client = TestClient(main.app)
     image = base64.b64decode(
         "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
@@ -1357,7 +1210,7 @@ def test_batch_process_marks_invalid_question_numbers_for_review_and_queues_vali
     monkeypatch.setattr(
         main, "BATCH_PROCESS_JOB_STORE", BatchProcessJobStore(storage / "batch_jobs")
     )
-    monkeypatch.setattr(main, "_runner_for", lambda _backend: runner)
+    monkeypatch.setattr(main, "_runner", lambda: runner)
     client = TestClient(main.app)
     image = base64.b64decode(
         "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
@@ -1420,7 +1273,7 @@ def test_process_endpoint_creates_observable_run(tmp_path, monkeypatch):
     storage = tmp_path / "storage"
     task_store = TaskStore(storage)
     run_store = RunStore(storage / "runs")
-    runner = HermesRunner(
+    runner = StubManagedRunner(
         project_root=tmp_path,
         task_store=task_store,
         run_store=run_store,
@@ -1428,7 +1281,7 @@ def test_process_endpoint_creates_observable_run(tmp_path, monkeypatch):
     monkeypatch.setattr(main, "STORAGE_DIR", storage)
     monkeypatch.setattr(main, "TASK_STORE", task_store)
     monkeypatch.setattr(main, "RUN_STORE", run_store)
-    monkeypatch.setattr(main, "_runner_for", lambda _backend: runner)
+    monkeypatch.setattr(main, "_runner", lambda: runner)
 
     def fake_run(task_id, run_id):
         task_store.update(task_id, status=TaskStatus.COMPLETED, active_run_id=None)

@@ -36,35 +36,7 @@ def channel(vault: MemorySecretStore) -> ProviderChannel:
     )
 
 
-def test_legacy_policy_migration_persists_an_independent_diagram_selection(tmp_path: Path):
-    vault = MemorySecretStore()
-    settings = AppSettingsStore(tmp_path / "settings.json")
-    configured = channel(vault)
-    settings.upsert_provider_channel(configured)
-    selection = {"channel_id": configured.id, "model_id": "text"}
-    settings.update(
-        {
-            "langchain_model_policy": {
-                "version": 1,
-                "vision": selection,
-                "agent": selection,
-                "review": selection,
-            }
-        }
-    )
-
-    assert settings.langchain_model_policy() is None
-    assert settings.migrate_legacy_diagram_policy() is True
-    policy = settings.langchain_model_policy()
-
-    assert policy is not None
-    assert policy.diagram.channel_id == configured.id
-    assert policy.diagram.model_id == "text"
-    assert settings.get()["langchain_model_policy"]["version"] == 2
-    assert settings.migrate_legacy_diagram_policy() is False
-
-
-def test_incomplete_policy_never_infers_diagram_from_vision(tmp_path: Path):
+def test_incomplete_policy_is_not_runnable(tmp_path: Path):
     vault = MemorySecretStore()
     settings = AppSettingsStore(tmp_path / "settings.json")
     configured = channel(vault)
@@ -109,6 +81,24 @@ def test_discovery_groups_by_provider_source_and_defaults_tool_calling_capabilit
     assert all(not item.enabled for item in models)
     assert all(item.capability.tool_calling for item in models)
     assert all(not item.capability.vision for item in models)
+
+
+def test_disabled_channel_can_discover_models_for_configuration():
+    vault = MemorySecretStore()
+    configured = channel(vault).model_copy(update={"enabled": False})
+    response = type(
+        "Response",
+        (),
+        {
+            "raise_for_status": lambda self: None,
+            "json": lambda self: {"data": [{"id": "text", "owned_by": "Gateway"}]},
+        },
+    )()
+
+    with patch("httpx.get", return_value=response):
+        models = ProviderClientFactory(vault).discover_models(configured)
+
+    assert [item.id for item in models] == ["text"]
 
 
 def test_openai_catalog_normalizes_an_origin_to_v1():
@@ -237,23 +227,6 @@ def test_store_rejects_persisting_a_policy_with_missing_capability(tmp_path: Pat
                 diagram=selection,
             )
         )
-
-
-def test_retiring_legacy_profile_shape_returns_only_opaque_references(tmp_path: Path):
-    store = AppSettingsStore(tmp_path / "settings.json")
-    store.update(
-        {
-            "provider_profiles": [
-                {"id": "old", "credential_ref": "opaque-old", "version": 1},
-                {"id": "without-secret", "version": 1},
-            ],
-            "ai_provider_profile_id": "old",
-        }
-    )
-
-    assert store.retire_legacy_provider_secrets() == ["opaque-old"]
-    assert "provider_profiles" not in store.get()
-    assert "ai_provider_profile_id" not in store.get()
 
 
 def test_secret_collection_retains_current_channel_reference(tmp_path: Path):

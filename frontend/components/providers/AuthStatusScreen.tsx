@@ -7,27 +7,16 @@ import styles from "@/components/auth/AuthenticationShell.module.css";
 import { useEffect } from "react";
 import { notify } from "@/lib/notify";
 
-type AuthStatusScreenProps = {
-  phase: "signin" | "callback";
-  error?: string | null;
-};
+type AuthStatusScreenProps = { error?: string | null };
 
-export function AuthStatusScreen({ phase, error }: AuthStatusScreenProps) {
+export function AuthStatusScreen({ error }: AuthStatusScreenProps) {
   useEffect(() => {
     if (error) notify.error({ title: "登录失败", description: error });
   }, [error]);
 
   const isError = Boolean(error);
-  const title = isError
-    ? "登录未完成"
-    : phase === "signin"
-      ? "正在前往登录"
-      : "正在完成登录";
-  const detail = isError
-    ? error
-    : phase === "signin"
-      ? "正在打开登录页面"
-      : "正在验证身份信息";
+  const title = isError ? "登录未完成" : "正在前往登录";
+  const detail = isError ? error : "正在打开登录页面";
 
   return <AuthenticationShell title={title} description={detail || ""}>
     <section className={styles.status} aria-live="polite" aria-busy={!isError}>

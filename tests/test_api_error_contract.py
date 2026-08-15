@@ -1,9 +1,16 @@
 from fastapi.testclient import TestClient
 
-from oopsnote.ai.backends.hermes import HermesRunner
+from oopsnote.ai import ManagedAiRunner
 from oopsnote.api import main
 from oopsnote.api.errors import ApiErrorCategory, category_for_error_code
 from oopsnote.core import RunStore, TaskCreateRequest, TaskStatus, TaskStore
+
+
+class StubManagedRunner(ManagedAiRunner):
+    backend_name = "langchain"
+
+    def run(self, task_id: str, run_id: str) -> None:
+        del task_id, run_id
 
 
 def test_persisted_error_codes_have_stable_api_categories() -> None:
@@ -43,7 +50,7 @@ def test_process_conflict_is_classified_by_lifecycle_owner(tmp_path, monkeypatch
     storage = tmp_path / "storage"
     task_store = TaskStore(storage)
     run_store = RunStore(storage / "runs")
-    runner = HermesRunner(
+    runner = StubManagedRunner(
         project_root=tmp_path,
         task_store=task_store,
         run_store=run_store,
@@ -52,7 +59,7 @@ def test_process_conflict_is_classified_by_lifecycle_owner(tmp_path, monkeypatch
     task_store.update(task.id, status=TaskStatus.PROCESSING)
     monkeypatch.setattr(main, "TASK_STORE", task_store)
     monkeypatch.setattr(main, "RUN_STORE", run_store)
-    monkeypatch.setattr(main, "_runner_for", lambda _backend: runner)
+    monkeypatch.setattr(main, "_runner", lambda: runner)
 
     response = TestClient(main.app).post(f"/tasks/{task.id}/process")
 

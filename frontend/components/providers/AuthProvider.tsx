@@ -1,19 +1,9 @@
 "use client";
 
-import { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { createContext, useContext, useEffect, useMemo, useRef } from "react";
 import { usePathname } from "next/navigation";
 import { authClient } from "@/lib/better-auth-client";
-import { notify } from "@/lib/notify";
-import {
-  beginSignin,
-  beginSignout,
-  currentUser,
-  hasAccessToken,
-  isBetterAuthMode,
-  isLocalAuthMode,
-  refreshCurrentUser,
-  type AuthUser,
-} from "@/lib/auth";
+import { isLocalAuthMode, LOCAL_USER, type AuthUser } from "@/lib/auth";
 
 type AuthContextValue = {
   authenticated: boolean;
@@ -33,20 +23,15 @@ const AuthContext = createContext<AuthContextValue>({
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const localMode = isLocalAuthMode();
   const isPublicAuthPage =
     pathname === "/login" || pathname === "/register" || pathname === "/invite" || pathname === "/setup";
-  const betterAuthEnabled = isBetterAuthMode();
   const betterSession = authClient.useSession();
-  const isCallback = pathname === "/auth/callback";
-  const initialAuthenticated = !betterAuthEnabled && !isCallback && hasAccessToken();
-  const [loading, setLoading] = useState(betterAuthEnabled || (!isCallback && !initialAuthenticated));
-  const [authenticated, setAuthenticated] = useState(initialAuthenticated);
-  const [error, setError] = useState<string | null>(null);
-  const [user, setUser] = useState<AuthUser | null>(() => initialAuthenticated ? currentUser() : null);
   const signinStarted = useRef(false);
 
   const sessionUser = betterSession.data?.user;
-  const betterAuthUser = useMemo<AuthUser | null>(() => {
+  const user = useMemo<AuthUser | null>(() => {
+    if (localMode) return LOCAL_USER;
     if (!sessionUser) return null;
     const role = (sessionUser as typeof sessionUser & { role?: string | string[] | null }).role;
     return {
@@ -60,61 +45,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           ? role.split(",").map((item) => item.trim()).filter(Boolean)
           : [],
     };
-  }, [sessionUser]);
+  }, [localMode, sessionUser]);
 
   useEffect(() => {
-    if (!betterAuthEnabled || betterSession.isPending || betterAuthUser || isPublicAuthPage) return;
-    if (signinStarted.current) return;
+    if (localMode || betterSession.isPending || user || isPublicAuthPage || signinStarted.current) return;
     signinStarted.current = true;
-    void beginSignin(pathname + window.location.search);
-  }, [betterAuthEnabled, betterAuthUser, betterSession.isPending, isPublicAuthPage, pathname]);
+    const url = new URL("/login", window.location.origin);
+    url.searchParams.set("returnTo", pathname + window.location.search);
+    window.location.assign(url.toString());
+  }, [betterSession.isPending, isPublicAuthPage, localMode, pathname, user]);
 
-  useEffect(() => {
-    if (betterAuthEnabled || isLocalAuthMode() || isCallback || authenticated || signinStarted.current) return;
-    signinStarted.current = true;
-    void beginSignin(pathname).catch((reason: unknown) => {
-      const message = reason instanceof Error ? reason.message : "Unable to start OIDC sign-in";
-      console.error("Unable to start OIDC sign-in", reason);
-      setError(message);
-      notify.error({ title: "无法开始登录", description: message });
-      setLoading(false);
-    });
-  }, [authenticated, betterAuthEnabled, isCallback, pathname]);
-
-  useEffect(() => {
-    if (betterAuthEnabled || isLocalAuthMode() || !authenticated || user) return;
-    void refreshCurrentUser().then(setUser).catch((reason: unknown) => {
-      console.warn("Unable to load the current OIDC user", reason);
-      notify.error({ title: "用户信息加载失败", description: reason instanceof Error ? reason.message : "无法读取当前用户信息" });
-    });
-  }, [authenticated, betterAuthEnabled, user]);
-
-  const value = useMemo<AuthContextValue>(() => {
-    if (betterAuthEnabled) {
-      return {
-        authenticated: Boolean(betterAuthUser),
-        loading: betterSession.isPending || (!betterAuthUser && !isPublicAuthPage),
-        error: betterSession.error?.message || null,
-        user: betterAuthUser,
-        signOut: () => {
-          void authClient.signOut().then(() => window.location.assign("/login"));
-        },
-      };
-    }
-    return {
-      authenticated,
-      loading,
-      error,
-      user,
-      signOut: () => {
-        setAuthenticated(false);
-        setLoading(true);
-        setError(null);
-        setUser(null);
-        void Promise.resolve().then(beginSignout);
-      },
-    };
-  }, [authenticated, betterAuthEnabled, betterAuthUser, betterSession.error, betterSession.isPending, error, isPublicAuthPage, loading, user]);
+  const value = useMemo<AuthContextValue>(() => ({
+    authenticated: Boolean(user),
+    loading: localMode ? false : betterSession.isPending || (!user && !isPublicAuthPage),
+    error: localMode ? null : betterSession.error?.message || null,
+    user,
+    signOut: () => {
+      if (localMode) {
+        window.location.reload();
+        return;
+      }
+      void authClient.signOut().then(() => window.location.assign("/login"));
+    },
+  }), [betterSession.error, betterSession.isPending, isPublicAuthPage, localMode, user]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

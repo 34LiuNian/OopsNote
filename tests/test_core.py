@@ -169,7 +169,7 @@ class TestRunStore:
     def test_persists_attempts_and_stage_transitions(self, tmp_path):
         store = RunStore(tmp_path / "runs")
         first = store.create("task-1")
-        assert first.backend == "pi"
+        assert first.backend == "langchain"
         store.start(first.id, pid=123, log_path="runs/first.log")
         store.observe_stage(first.id, TaskStage.OCR, "提取题面")
         store.observe_stage(first.id, TaskStage.SOLVING, "生成解析")
@@ -250,7 +250,7 @@ class TestRunStore:
 class TestBatchProcessJobStore:
     def test_save_revalidates_caller_supplied_model_copy(self, tmp_path):
         store = BatchProcessJobStore(tmp_path / "batch-jobs")
-        job = BatchProcessJob(file_hash="abc123", backend="pi-rust")
+        job = BatchProcessJob(file_hash="abc123", backend="langchain")
         store.save(job)
 
         invalid = job.model_copy(update={"status": "not-a-job-status"})

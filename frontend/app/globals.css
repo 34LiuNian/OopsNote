@@ -531,20 +531,21 @@ html[data-oopsnote-paper-compose="active"] .oops-page-enter {
 .problem-content__lead.has-illustration {
   display: grid;
   grid-template-areas: "text illustration";
-  grid-template-columns: minmax(0, 1fr) fit-content(38%);
+  /* Keep the illustration track independent from the measured text height. */
+  grid-template-columns: minmax(0, 1fr) minmax(160px, 38%);
   align-items: start;
   gap: clamp(16px, 3vw, 36px);
 }
 
 .problem-content__lead.is-left.has-illustration {
   grid-template-areas: "illustration text";
-  grid-template-columns: fit-content(38%) minmax(0, 1fr);
+  grid-template-columns: minmax(160px, 38%) minmax(0, 1fr);
 }
 
 .problem-content__body { grid-area: text; min-width: 0; }
 .problem-content__illustration {
   grid-area: illustration;
-  width: auto;
+  width: 100%;
   max-width: 100%;
   min-width: 0;
   justify-self: end;

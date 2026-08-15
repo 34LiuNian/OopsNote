@@ -57,6 +57,10 @@ async function openWorkspace(page: Page, options: {
   await page.route(/\/batch-sessions(?:\/.*)?$/, async (route) => {
     const request = route.request();
     const pathname = new URL(request.url()).pathname;
+    if (request.method() === "GET" && pathname.endsWith("/upload-limits")) {
+      await route.fulfill({ json: { source_max_bytes: 64 * 1024 * 1024 } });
+      return;
+    }
     if (request.method() === "POST" && pathname.endsWith("/process")) {
       options.onProcess?.();
       const command = request.postDataJSON() as { expected_revision: number };
@@ -100,7 +104,13 @@ async function openWorkspace(page: Page, options: {
         await route.fulfill({ json: { session } });
         return;
       }
-      await route.fulfill({ status: 404, json: { detail: "not found" } });
+      await route.fulfill({ status: 404, json: { detail: {
+        category: "request",
+        code: "batch_session_not_found",
+        message: "not found",
+        retryable: false,
+        scope: "batch_session",
+      } } });
       return;
     }
     if (request.method() === "PATCH") {
@@ -590,7 +600,7 @@ test("one crop produces a lazy, single-column, gapless selection surface", async
     const style = getComputedStyle(element);
     return { frameStroke: style.getPropertyValue("--batch-selection-stroke"), borderRadius: style.borderTopLeftRadius };
   });
-  expect(selectionStyle).toEqual({ frameStroke: "2px", borderRadius: "5px" });
+  expect(selectionStyle).toEqual({ frameStroke: "2px", borderRadius: "3px" });
   const handleAlignment = await page.locator("[data-selection-id]").evaluate((element) => {
     const selection = element.getBoundingClientRect();
     const border = Number.parseFloat(getComputedStyle(element).getPropertyValue("--batch-selection-stroke"));
@@ -610,14 +620,14 @@ test("one crop produces a lazy, single-column, gapless selection surface", async
   expect(handleAlignment.eastCenterOffset).toBeLessThanOrEqual(0.5);
   expect(handleAlignment.southEastXOffset).toBeLessThanOrEqual(0.5);
   expect(handleAlignment.southEastYOffset).toBeLessThanOrEqual(0.5);
-  expect(handleAlignment.northRadius).toBe("999px");
+  expect(handleAlignment.northRadius).toBe("2px");
   const baseHandleStyle = await page.locator("[data-selection-id]").evaluate((element) => {
     const north = element.querySelector<HTMLElement>(".batch-selection-handle.is-n")!;
     const northWest = element.querySelector<HTMLElement>(".batch-selection-handle.is-nw")!;
     return {
       frameStroke: Number.parseFloat(getComputedStyle(element).getPropertyValue("--batch-selection-stroke")),
       sideLength: Number.parseFloat(getComputedStyle(north, "::before").width),
-      cornerStroke: Number.parseFloat(getComputedStyle(northWest, "::before").paddingTop),
+      cornerStroke: Number.parseFloat(getComputedStyle(northWest, "::before").borderTopWidth),
       cornerRadius: Number.parseFloat(getComputedStyle(northWest, "::before").borderTopLeftRadius),
     };
   });
@@ -628,13 +638,13 @@ test("one crop produces a lazy, single-column, gapless selection surface", async
     return {
       frameStroke: Number.parseFloat(getComputedStyle(element).getPropertyValue("--batch-selection-stroke")),
       sideLength: Number.parseFloat(getComputedStyle(north, "::before").width),
-      cornerStroke: Number.parseFloat(getComputedStyle(northWest, "::before").paddingTop),
+      cornerStroke: Number.parseFloat(getComputedStyle(northWest, "::before").borderTopWidth),
       cornerRadius: Number.parseFloat(getComputedStyle(northWest, "::before").borderTopLeftRadius),
     };
   });
   expect(enlargedHandleStyle.frameStroke / baseHandleStyle.frameStroke).toBeCloseTo(1.1, 1);
   expect(enlargedHandleStyle.sideLength / baseHandleStyle.sideLength).toBeCloseTo(1.1, 1);
-  expect(enlargedHandleStyle.cornerStroke / baseHandleStyle.cornerStroke).toBeCloseTo(1.1, 1);
+  expect(enlargedHandleStyle.cornerStroke).toBe(baseHandleStyle.cornerStroke);
   expect(enlargedHandleStyle.cornerRadius / baseHandleStyle.cornerRadius).toBeCloseTo(1.1, 1);
   await expect(page.locator(".batch-selection-list__item")).toHaveCount(1);
   await expect(page.locator(".batch-selection-list__item button button")).toHaveCount(0);
@@ -648,14 +658,14 @@ test("one crop produces a lazy, single-column, gapless selection surface", async
   await expect(page.locator("[data-selection-id]")).not.toHaveClass(/is-needs_review/);
 });
 
-test("resizing a pending selection persists its corrected page-local geometry", async ({ page }) => {
-  let persistedParts: Array<{ width: number; height: number }> = [];
+test("resizing and moving a pending selection persist corrected page-local geometry", async ({ page }) => {
+  let persistedParts: Array<{ x: number; y: number; width: number; height: number }> = [];
   await page.setViewportSize({ width: 1440, height: 900 });
   await openWorkspace(page, {
     onPatch: (payload) => {
       const segments = payload.segments;
       if (!Array.isArray(segments) || !segments.length) return;
-      const first = segments[0] as { parts?: Array<{ width: number; height: number }> };
+      const first = segments[0] as { parts?: Array<{ x: number; y: number; width: number; height: number }> };
       persistedParts = first.parts?.map((part) => ({ ...part })) ?? [];
     },
   });
@@ -684,6 +694,21 @@ test("resizing a pending selection persists its corrected page-local geometry", 
   const after = (await selection.boundingBox())!;
   expect(after.width).toBeGreaterThan(before.width);
   expect(after.height).toBeGreaterThan(before.height);
+
+  const beforeMovePart = { ...persistedParts[0] };
+  await page.mouse.move(after.x + after.width / 2, after.y + after.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(after.x + after.width / 2 + 60, after.y + after.height / 2 + 45, { steps: 6 });
+  await page.mouse.up();
+  await expect.poll(() => persistedParts[0]?.x ?? 0).toBeGreaterThan(beforeMovePart.x);
+  await expect.poll(() => persistedParts[0]?.y ?? 0).toBeGreaterThan(beforeMovePart.y);
+  expect(persistedParts[0].width).toBeCloseTo(beforeMovePart.width);
+  expect(persistedParts[0].height).toBeCloseTo(beforeMovePart.height);
+  const afterMove = (await selection.boundingBox())!;
+  expect(afterMove.x).toBeGreaterThan(after.x);
+  expect(afterMove.y).toBeGreaterThan(after.y);
+  expect(afterMove.width).toBeCloseTo(after.width, 0);
+  expect(afterMove.height).toBeCloseTo(after.height, 0);
 });
 
 test("viewer zoom uses Ctrl+wheel and page navigation has no previous/next controls", async ({ page }) => {

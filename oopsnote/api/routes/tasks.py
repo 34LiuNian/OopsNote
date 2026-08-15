@@ -43,8 +43,9 @@ class DiagramCandidateRequest(BaseModel):
 
 def _diagram_runner(*, task_id: str | None = None, item_id: str | None = None):
     api = _api()
-    runner = api.LANGCHAIN_RUNNER
-    if runner is None:
+    try:
+        return api._runner()
+    except RuntimeError as error:
         raise api_error(
             503,
             code="diagram_runner_unavailable",
@@ -54,8 +55,7 @@ def _diagram_runner(*, task_id: str | None = None, item_id: str | None = None):
             scope="diagram",
             task_id=task_id,
             diagram_item_id=item_id,
-        )
-    return runner
+        ) from error
 
 
 def _diagram_item(task: Any, item_id: str) -> DiagramItem:
@@ -170,9 +170,8 @@ def cancel_task(task_id: str) -> dict[str, Any]:
         raise api_error(
             404, code="task_not_found", message="题目不存在", task_id=task_id, scope="task"
         ) from error
-    run = api.RUN_STORE.active_for_task(task_id)
     try:
-        api._runner_for(run.backend if run else api._configured_backend()).cancel(task_id)
+        api._runner().cancel(task_id)
     except RuntimeError as error:
         code = getattr(error, "code", "task_cancel_conflict")
         raise api_error(
@@ -193,10 +192,7 @@ def _enqueue(task_id: str) -> dict[str, Any]:
         raise api_error(
             404, code="task_not_found", message="题目不存在", task_id=task_id, scope="task"
         ) from error
-    # Backend choice is process-wide configuration, never task input. The
-    # admitted run records the resolved backend for audit and retry identity.
-    selected_backend = api._configured_backend()
-    runner = api._runner_for(selected_backend)
+    runner = api._runner()
     runner.recover_stale()
     try:
         run = runner.submit(task_id)

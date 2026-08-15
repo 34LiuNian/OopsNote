@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { waitForAppReady } from "./app-ready";
 
-test("completed task stays compact and editing replaces the reading card", async ({ page }) => {
+test("completed task keeps a scaled diagram stable while editing replaces the reading card", async ({ page }) => {
   const taskId = "task-ui-test";
   const task = {
     id: taskId,
@@ -64,7 +64,7 @@ test("completed task stays compact and editing replaces the reading card", async
       diagram_image_crop: null as { x: number; y: number; width: number; height: number } | null,
       diagram_image_tone: "auto",
       diagram_position: "right",
-      diagram_scale_percent: null,
+      diagram_scale_percent: 200,
       diagram_render_status: null,
       diagram_error: null,
       diagram_needs_review: false,
@@ -205,7 +205,19 @@ test("completed task stays compact and editing replaces the reading card", async
     };
   });
   expect(readingLayout.optionsInsideBody).toBe(true);
-  expect(Math.abs(readingLayout.figureHeight - readingLayout.bodyHeight)).toBeLessThan(1);
+  expect(Math.abs(readingLayout.figureHeight - readingLayout.bodyHeight * 2)).toBeLessThan(1);
+
+  const layoutSamples = await page.locator(".problem-content__lead.has-illustration").evaluate(async (element) => {
+    const figure = element.querySelector<HTMLElement>(".problem-content__illustration")!;
+    const samples: string[] = [];
+    for (let index = 0; index < 3; index += 1) {
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+      const rect = figure.getBoundingClientRect();
+      samples.push(`${rect.width}:${rect.height}`);
+    }
+    return samples;
+  });
+  expect(new Set(layoutSamples).size).toBe(1);
 
   await page.getByRole("button", { name: "编辑" }).click();
   await page.locator("textarea").first().fill("尚未保存的题干");

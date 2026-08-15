@@ -135,7 +135,7 @@ class DiagramCandidate(BaseModel):
     id: str = Field(default_factory=lambda: uuid4().hex)
     ordinal: int = Field(ge=1)
     parent_candidate_id: str | None = None
-    source_kind: Literal["ai", "human", "legacy"] = "ai"
+    source_kind: Literal["ai", "human"] = "ai"
     tikz_source: str = Field(min_length=1)
     source_sha256: str = ""
     svg_path: str | None = None
@@ -308,77 +308,6 @@ class TaskRecord(BaseModel):
     stage_message: str | None = None
     active_run_id: str | None = None
 
-    @model_validator(mode="before")
-    @classmethod
-    def migrate_legacy_diagram_metadata(cls, value: Any) -> Any:
-        """Move the former singular metadata fields into the canonical item list."""
-        if not isinstance(value, dict) or value.get("diagram_items"):
-            return value
-        metadata = value.get("metadata")
-        if not isinstance(metadata, dict) or not metadata.get("diagram_detected"):
-            return value
-        legacy_keys = {
-            "diagram_detected",
-            "diagram_kind",
-            "diagram_tikz_source",
-            "diagram_svg",
-            "diagram_image_path",
-            "diagram_image_crop",
-            "diagram_image_tone",
-            "diagram_position",
-            "diagram_scale_percent",
-            "diagram_render_status",
-            "diagram_error",
-            "diagram_needs_review",
-        }
-        clean_metadata = {key: item for key, item in metadata.items() if key not in legacy_keys}
-        kind = metadata.get("diagram_kind")
-        source = str(metadata.get("diagram_tikz_source") or "").strip()
-        candidates: list[dict[str, Any]] = []
-        selected_candidate_id = None
-        if kind == "tikz" and source:
-            digest = hashlib.sha256(source.encode("utf-8")).hexdigest()
-            selected_candidate_id = f"legacy-{digest[:20]}"
-            candidates.append(
-                {
-                    "id": selected_candidate_id,
-                    "ordinal": 1,
-                    "source_kind": "legacy",
-                    "tikz_source": source,
-                    "decision": "revise",
-                    "review_reason": "Legacy TikZ requires same-source SVG/PDF/PNG rendering",
-                }
-            )
-        crop = metadata.get("diagram_image_crop")
-        item_digest = hashlib.sha256(
-            f"{value.get('id', '')}\0{value.get('asset_path', '')}\0legacy-diagram-0".encode()
-        ).hexdigest()[:20]
-        item = {
-            "id": f"legacy-item-{item_digest}",
-            "ordinal": 0,
-            "source_asset_path": value.get("asset_path"),
-            "source_region": crop if isinstance(crop, dict) else None,
-            "fallback_image_path": metadata.get("diagram_image_path"),
-            "image_tone": metadata.get("diagram_image_tone") or "auto",
-            "position": metadata.get("diagram_position") or "right",
-            "scale_percent": metadata.get("diagram_scale_percent") or 100,
-            "status": (
-                "needs_review"
-                if selected_candidate_id
-                else "ready_image"
-                if kind == "image" and metadata.get("diagram_image_path")
-                else "needs_review"
-                if metadata.get("diagram_needs_review")
-                else "detected"
-            ),
-            "selected_candidate_id": selected_candidate_id,
-            "candidates": candidates,
-            "needs_review": bool(metadata.get("diagram_needs_review") or selected_candidate_id),
-            "last_error": metadata.get("diagram_error")
-            or ("Legacy TikZ requires same-source rendering" if selected_candidate_id else None),
-        }
-        return {**value, "metadata": clean_metadata, "diagram_items": [item]}
-
     def effective_question_no(self) -> str | None:
         raw = self.metadata.get("question_no")
         if raw is None:
@@ -444,7 +373,7 @@ class SolutionCandidate(BaseModel):
 
 
 class TaskRun(BaseModel):
-    """One managed AI process execution for a task."""
+    """One managed AI execution for a task."""
 
     id: str = Field(default_factory=lambda: uuid4().hex)
     task_id: str
@@ -464,10 +393,7 @@ class TaskRun(BaseModel):
     pid: int | None = None
     exit_code: int | None = None
     log_path: str | None = None
-    backend: str = "pi"
-    runtime_kind: str | None = None
-    runtime_version: str | None = None
-    worker_id: str | None = None
+    backend: str = "langchain"
     provider: str | None = None
     model: str | None = None
     # Immutable, non-secret provider metadata selected at admission.  The
@@ -480,7 +406,6 @@ class TaskRun(BaseModel):
     stats_sessions: int = Field(default=0, ge=0)
     duration_ms: int | None = None
     peak_memory_bytes: int | None = Field(default=None, ge=0)
-    rpc_log_path: str | None = None
     retry_count: int = 0
     retry_of_run_id: str | None = None
     retry_root_run_id: str | None = None
@@ -511,16 +436,6 @@ class TaskRun(BaseModel):
 
 
 # ── 批量扫描会话 ────────────────────────────────────────
-
-
-class BatchSegmentContinuation(BaseModel):
-    """同一道题在紧邻下一页中的延续裁剪区域。"""
-
-    page_index: int = Field(ge=0)
-    x: float = Field(ge=0, le=1)
-    y: float = Field(ge=0, le=1)
-    width: float = Field(gt=0, le=1)
-    height: float = Field(gt=0, le=1)
 
 
 class BatchCropRect(BaseModel):
@@ -568,13 +483,6 @@ class BatchSegment(BaseModel):
 
     id: str = Field(default_factory=lambda: uuid4().hex)
     parts: list[BatchSegmentPart] = Field(default_factory=list)
-    # Legacy fields remain readable while old sessions migrate to parts[].
-    page_index: int | None = Field(default=None, ge=0)
-    x: float | None = Field(default=None, ge=0, le=1)
-    y: float | None = Field(default=None, ge=0, le=1)
-    width: float | None = Field(default=None, gt=0, le=1)
-    height: float | None = Field(default=None, gt=0, le=1)
-    continuation: BatchSegmentContinuation | None = None
     question_no: int | None = Field(default=None, ge=1)
     status: Literal["pending", "processing", "completed", "failed", "needs_review"] = "pending"
     review_reason: Literal["unreadable", "incomplete", "multiple_questions", "other"] | None = None
@@ -583,29 +491,6 @@ class BatchSegment(BaseModel):
     task_id: str | None = None
     problem_ids: list[str] = Field(default_factory=list)
     error: str | None = None
-
-    @model_validator(mode="before")
-    @classmethod
-    def migrate_legacy_parts(cls, value: Any) -> Any:
-        if not isinstance(value, dict) or value.get("parts"):
-            return value
-        required = ("page_index", "x", "y", "width", "height")
-        if not all(value.get(key) is not None for key in required):
-            return value
-        parts = [
-            {
-                "page_index": value["page_index"],
-                "x": value["x"],
-                "y": value["y"],
-                "width": value["width"],
-                "height": value["height"],
-                "order": 0,
-            }
-        ]
-        continuation = value.get("continuation")
-        if continuation:
-            parts.append({**continuation, "order": 1})
-        return {**value, "parts": parts}
 
     @model_validator(mode="after")
     def validate_parts(self) -> BatchSegment:

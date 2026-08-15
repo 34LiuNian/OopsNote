@@ -45,8 +45,7 @@ class TaskEvaluation(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     task_id: str = Field(min_length=1)
-    langchain_quality_pass: bool
-    baseline_quality_pass: bool
+    quality_pass: bool
 
 
 class CancellationTrial(BaseModel):
@@ -95,9 +94,9 @@ class EvaluationEvidence(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    schema_version: Literal[2]
+    schema_version: Literal[3]
     strategy: LangChainStrategy
-    baseline_p95_ms: PositiveInt
+    maximum_p95_ms: PositiveInt
     task_results: list[TaskEvaluation]
     cancellation_trials: list[CancellationTrial]
     cost_approval: CostApproval
@@ -233,13 +232,12 @@ def build_report(
     latency_gate: bool | None = None
     cost_gate: bool | None = None
     if evidence is not None:
-        quality_count = sum(item.langchain_quality_pass for item in evidence.task_results)
-        baseline_quality_count = sum(item.baseline_quality_pass for item in evidence.task_results)
+        quality_count = sum(item.quality_pass for item in evidence.task_results)
         denominator = len(evidence.task_results)
         quality_gate = bool(
             exact_cohort
             and denominator
-            and (baseline_quality_count - quality_count) / denominator <= 0.02
+            and quality_count / denominator >= 0.95
         )
         integrity_gate = bool(
             exact_cohort
@@ -264,7 +262,7 @@ def build_report(
         latency_gate = bool(
             exact_cohort
             and measured_p95 is not None
-            and measured_p95 <= evidence.baseline_p95_ms * 1.2
+            and measured_p95 <= evidence.maximum_p95_ms
         )
         cost_coverage = sum(cost is not None for cost in costs) / total if total else None
         total_cost = sum(float(cost or 0) for cost in costs)
@@ -279,8 +277,8 @@ def build_report(
         "completion_rate_at_least_95_percent": total > 0 and completed / total >= 0.95,
         "no_lost_or_duplicate_finalize": integrity_gate,
         "all_runs_cancellable": cancellation_gate,
-        "quality_not_more_than_2pp_below_baseline": quality_gate,
-        "p95_not_more_than_20_percent_above_baseline": latency_gate,
+        "quality_review_pass_rate_at_least_95_percent": quality_gate,
+        "p95_within_approved_limit": latency_gate,
         "cost_threshold_approved_from_measured_usage": cost_gate,
     }
     return {
@@ -307,7 +305,7 @@ def build_report(
             "schema_version": evidence.schema_version,
             "strategy": evidence.strategy.model_dump(mode="json"),
             "cohort_matches_persisted_runs": exact_cohort,
-            "baseline_p95_ms": evidence.baseline_p95_ms,
+            "maximum_p95_ms": evidence.maximum_p95_ms,
             "cost_currency": evidence.cost_approval.currency,
             "cost_limit": evidence.cost_approval.maximum_total_cost,
             "cost_approved_by": evidence.cost_approval.approved_by,
@@ -341,7 +339,7 @@ def markdown_report(report: dict[str, Any]) -> str:
         f"| P95 duration | {p95_cell} |",
         f"| total measured provider cost | {metrics['total_cost']:.6f} |",
         "",
-        "| RustPi deletion gate | result |",
+        "| LangChain production gate | result |",
         "| --- | --- |",
     ]
     for name, value in report["gates"].items():
@@ -354,14 +352,13 @@ def markdown_report(report: dict[str, Any]) -> str:
 def evidence_template(report: dict[str, Any], *, strategy: LangChainStrategy) -> dict[str, Any]:
     """Create an intentionally incomplete review manifest for one persisted cohort."""
     return {
-        "schema_version": 2,
+        "schema_version": 3,
         "strategy": strategy.model_dump(mode="json"),
-        "baseline_p95_ms": None,
+        "maximum_p95_ms": None,
         "task_results": [
             {
                 "task_id": outcome["task_id"],
-                "langchain_quality_pass": None,
-                "baseline_quality_pass": None,
+                "quality_pass": None,
             }
             for outcome in report["outcomes"]
         ],

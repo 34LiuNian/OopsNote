@@ -4,6 +4,7 @@ import {
   compareDocumentRects,
   documentRectFromSlices,
   mapCroppedRectToOriginalSource,
+  moveDocumentRect,
   resizeDocumentRect,
   splitSelectionAcrossPages,
 } from "../../components/batch-continuous/batchContinuousGeometry";
@@ -142,4 +143,21 @@ test("resize changes one logical rectangle and ordering is top then left", () =>
     { left: 300, top: 100, right: 400, bottom: 200 },
     { left: 100, top: 100, right: 200, bottom: 200 },
   )).toBeGreaterThan(0);
+});
+
+test("move preserves selection size and clamps the rectangle to document bounds", () => {
+  const original = { left: 100, top: 200, right: 500, bottom: 600 };
+  const bounds = { left: 0, top: 0, right: 1000, bottom: 900 };
+  expect(moveDocumentRect(original, { x: 120, y: -80 }, bounds)).toEqual({
+    left: 220,
+    top: 120,
+    right: 620,
+    bottom: 520,
+  });
+  expect(moveDocumentRect(original, { x: 800, y: 800 }, bounds)).toEqual({
+    left: 600,
+    top: 500,
+    right: 1000,
+    bottom: 900,
+  });
 });

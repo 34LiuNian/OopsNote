@@ -1,17 +1,13 @@
-"""Managed AI execution for OopsNote."""
+"""Managed LangChain execution for OopsNote."""
 
 from __future__ import annotations
 
 from typing import Any
 
 __all__ = [
-    "AgentBackend",
-    "HermesRunner",
     "LangChainRunner",
     "ManagedAiRunner",
     "ManagedWorkItem",
-    "PiRpcBackend",
-    "PiRpcRunner",
 ]
 
 

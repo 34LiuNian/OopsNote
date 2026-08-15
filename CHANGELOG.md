@@ -18,10 +18,10 @@
 
 ### Changed
 
-- 认证默认模式改为 Better Auth；移除 Pocket ID 部署配置（compose 服务、
-  oidc-rollback override、Caddy auth 反代、OIDC 构建参数）。
-- Compose 参数化：域名/OIDC/管理员 subject 全部改为环境变量，仓库不再包含
-  私有部署值。
+- AI 运行时收敛为唯一 LangChain backend；移除旧 agent/RPC runner、配置、
+  部署挂载、setup、benchmark、诊断和兼容测试。
+- 认证收敛为 Better Auth（生产）与 local（回环开发）；移除外部身份提供商
+  的 bearer/JWKS、前端回调和 sessionStorage 兼容代码。
 
 ### Fixed
 

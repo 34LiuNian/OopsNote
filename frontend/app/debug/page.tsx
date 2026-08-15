@@ -9,6 +9,7 @@ import { TaskProgressBar } from "../../components/task/TaskProgressBar";
 import { useTaskProgress, ProgressStepKey } from "../../hooks/useTaskProgress";
 import { confirmAction } from "@/lib/confirm";
 import { notify } from "@/lib/notify";
+import { SelectionDebugFixture } from "./SelectionDebugFixture";
 
 const DEFAULT_TEXT = [
   "# Debug 页面",
@@ -177,6 +178,8 @@ export default function DebugPage() {
         />
       </Box>
 
+      <SelectionDebugFixture />
+
       <Box sx={{ display: "flex", gap: 2 }}>
         <Button size="small" onClick={() => setText(DEFAULT_TEXT)}>恢复默认示例</Button>
       </Box>
@@ -190,7 +193,7 @@ export default function DebugPage() {
             options={[{ key: "A", text: "$1$" }, { key: "B", text: "$2$" }, { key: "C", text: "$3$" }, { key: "D", text: "$4$" }]}
             diagramDetected
             diagramKind="tikz"
-            diagramSvg={'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 80"><rect id="theme-background" width="120" height="80" fill="#fff"/><path id="theme-axis" d="M10 70H110M20 75V5" fill="none" stroke="#000" stroke-width="3"/><path id="theme-series" d="M25 65Q55 60 100 15" fill="none" stroke="#0ea5e9" stroke-width="3"/></svg>'}
+            diagramSvg={'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 80"><rect id="theme-background" width="120" height="80" fill="#fff"/><path id="theme-axis" d="M10 70H110M20 75V5" fill="none" stroke="#000" stroke-width="3"/><path id="theme-series" d="M25 65Q55 60 100 15" fill="none" stroke="#0ea5e9" stroke-width="3"/><path id="theme-glyph" d="M50 40L60 40L55 50Z"/></svg>'}
           />
         </Box>
         <Box id="problem-illustration-custom" sx={{ p: 3, border: "1px solid", borderColor: "border.default", borderRadius: 2 }}>

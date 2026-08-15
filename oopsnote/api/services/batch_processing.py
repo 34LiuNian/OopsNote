@@ -133,7 +133,7 @@ def _bootstrap_tasks(
     record: BatchSessionRecord,
     job: BatchProcessJob,
 ) -> dict[str, Any]:
-    """Use persisted links normally; scan tasks only to recover an interrupted legacy write."""
+    """Use persisted links normally; scan tasks only after an interrupted cross-store write."""
     task_ids = {segment.id: segment.task_id for segment in record.segments if segment.task_id}
     task_ids.update({state.segment_id: state.task_id for state in job.segments if state.task_id})
     tasks: dict[str, Any] = {}

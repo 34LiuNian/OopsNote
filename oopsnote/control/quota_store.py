@@ -31,9 +31,7 @@ class QuotaAwareRunStore(RunStore):
         task_id: str,
         prompt_version: str = "unversioned",
         *,
-        backend: str = "pi",
-        runtime_kind: str | None = None,
-        runtime_version: str | None = None,
+        backend: str = "langchain",
         provider: str | None = None,
         model: str | None = None,
         provider_profile_snapshot: dict[str, Any] | None = None,
@@ -78,8 +76,6 @@ class QuotaAwareRunStore(RunStore):
                 task_id,
                 prompt_version,
                 backend=backend,
-                runtime_kind=runtime_kind,
-                runtime_version=runtime_version,
                 provider=provider,
                 model=model,
                 provider_profile_snapshot=provider_profile_snapshot,
@@ -144,13 +140,11 @@ class QuotaAwareRunStore(RunStore):
         run_id: str,
         pid: int | None,
         log_path: str,
-        *,
-        worker_id: str | None = None,
     ) -> TaskRun:
         if not self.claim_execution(run_id):
             raise QuotaError("concurrency_exceeded", "Concurrent run limit exceeded")
         try:
-            return super().start(run_id, pid, log_path, worker_id=worker_id)
+            return super().start(run_id, pid, log_path)
         except Exception:
             self.defer_execution(run_id)
             raise

@@ -131,10 +131,6 @@ class LangChainRunner(ManagedAiRunner):
         # runs created before immutable rules moved to the system message.
         self.prompt_version = skill_pack_version(f"langchain-role-v2\n{self._skill_pack}")
 
-    def build_command(self, task_id: str, run_id: str) -> list[str]:
-        del task_id, run_id
-        return []
-
     def _selected_policy(self) -> LangChainModelPolicy:
         policy = self.settings_store.langchain_model_policy()
         if policy is None:

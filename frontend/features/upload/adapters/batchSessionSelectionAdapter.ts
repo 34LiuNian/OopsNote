@@ -10,17 +10,12 @@ export function sessionSegmentsToSelections(
   metrics: PageMetric[],
 ): SelectionModel[] {
   return segments.flatMap((segment) => {
-    const slices = (segment.parts?.length ? segment.parts : [
-      segment.page_index !== null && segment.page_index !== undefined && segment.x !== null && segment.x !== undefined
-        ? { page_index: segment.page_index, column_index: 0, x: segment.x, y: segment.y ?? 0, width: segment.width ?? 0, height: segment.height ?? 0, order: 0 }
-        : null,
-      segment.continuation ? { ...segment.continuation, column_index: 0, order: 1 } : null,
-    ].filter(Boolean)).map((part) => ({
-      pageId: metrics.find((metric) => metric.pageIndex === part!.page_index && metric.columnIndex === (part!.column_index ?? 0))?.sourcePageId ?? `page-${part!.page_index}`,
-      pageIndex: part!.page_index,
-      columnIndex: part!.column_index ?? 0,
-      rect: { x: part!.x, y: part!.y, width: part!.width, height: part!.height },
-      order: part!.order,
+    const slices = segment.parts.map((part) => ({
+      pageId: metrics.find((metric) => metric.pageIndex === part.page_index && metric.columnIndex === part.column_index)?.sourcePageId ?? `page-${part.page_index}`,
+      pageIndex: part.page_index,
+      columnIndex: part.column_index,
+      rect: { x: part.x, y: part.y, width: part.width, height: part.height },
+      order: part.order,
     }));
     const rect = documentRectFromSlices(slices, metrics);
     if (!rect) return [];

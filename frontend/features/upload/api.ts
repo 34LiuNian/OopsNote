@@ -51,18 +51,6 @@ export type BatchSessionSegment = {
     height: number;
     order: number;
   }>;
-  page_index?: number | null;
-  x?: number | null;
-  y?: number | null;
-  width?: number | null;
-  height?: number | null;
-  continuation?: {
-    page_index: number;
-    x: number;
-    y: number;
-    width: number;
-    height: number;
-  } | null;
   question_no?: number;
   status: "pending" | "processing" | "completed" | "failed" | "needs_review";
   review_reason?: "unreadable" | "incomplete" | "multiple_questions" | "other" | null;

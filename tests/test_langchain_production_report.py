@@ -131,14 +131,13 @@ def _passing_cohort():
     )
     evidence = EvaluationEvidence.model_validate(
         {
-            "schema_version": 2,
+            "schema_version": 3,
             "strategy": _strategy(),
-            "baseline_p95_ms": 1000,
+            "maximum_p95_ms": 1000,
             "task_results": [
                 {
                     "task_id": task.id,
-                    "langchain_quality_pass": True,
-                    "baseline_quality_pass": True,
+                    "quality_pass": True,
                 }
                 for task in tasks[:30]
             ],
@@ -162,7 +161,7 @@ def _passing_cohort():
     return tasks, runs, evidence
 
 
-def test_explicit_evidence_can_prove_every_rustpi_deletion_gate():
+def test_explicit_evidence_can_prove_every_langchain_production_gate():
     tasks, runs, evidence = _passing_cohort()
 
     report = build_report(tasks, runs, evidence=evidence)
@@ -267,8 +266,8 @@ def test_generated_evidence_template_requires_explicit_human_review():
     )
 
     assert len(template["task_results"]) == 30
-    assert template["task_results"][0]["langchain_quality_pass"] is None
-    assert template["baseline_p95_ms"] is None
+    assert template["task_results"][0]["quality_pass"] is None
+    assert template["maximum_p95_ms"] is None
     assert template["cost_approval"]["maximum_total_cost"] is None
     with pytest.raises(ValueError):
         EvaluationEvidence.model_validate(template)

@@ -335,8 +335,8 @@ class ProviderClientFactory:
             **kwargs,
         )
 
-    def create_vision_json_model(self, profile: ProviderProfile) -> Any:
-        """Build a Vision model with the provider's native JSON-output mode.
+    def create_vision_ocr_model(self, profile: ProviderProfile) -> Any:
+        """Build the OCR Vision model with the provider's native JSON-output mode.
 
         OCR is a structured extraction boundary. OpenAI-compatible providers
         expose a JSON-object response mode, which prevents otherwise valid
@@ -356,10 +356,6 @@ class ProviderClientFactory:
                 temperature=0,
             )
         return model
-
-    def create_vision_ocr_model(self, profile: ProviderProfile) -> Any:
-        """Compatibility name for the shared structured Vision adapter."""
-        return self.create_vision_json_model(profile)
 
     @staticmethod
     def _catalog_url(channel: ProviderChannel) -> str:
@@ -384,8 +380,6 @@ class ProviderClientFactory:
         """Read the provider model catalogue without persisting secrets or guessing capabilities."""
         if not channel.credential_ref:
             raise ValueError("channel has no credential")
-        if not channel.enabled:
-            raise ValueError("channel is disabled")
         try:
             import httpx
         except ImportError as error:

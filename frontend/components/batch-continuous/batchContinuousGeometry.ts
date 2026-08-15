@@ -168,6 +168,18 @@ export function resizeDocumentRect(
   return next;
 }
 
+export function moveDocumentRect(
+  original: DocumentRect,
+  delta: DocumentPoint,
+  bounds: DocumentRect,
+): DocumentRect {
+  const width = original.right - original.left;
+  const height = original.bottom - original.top;
+  const left = clamp(original.left + delta.x, bounds.left, bounds.right - width);
+  const top = clamp(original.top + delta.y, bounds.top, bounds.bottom - height);
+  return { left, top, right: left + width, bottom: top + height };
+}
+
 export function documentRectFromSlices(slices: SelectionSlice[], metrics: PageMetric[]): DocumentRect | null {
   const rects = slices.flatMap((slice) => {
     const page = metrics.find((metric) => metric.pageIndex === slice.pageIndex && metric.columnIndex === slice.columnIndex)

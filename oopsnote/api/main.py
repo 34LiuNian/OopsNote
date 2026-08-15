@@ -21,7 +21,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 
-from oopsnote.ai import HermesRunner, LangChainRunner, PiRpcBackend, PiRpcRunner
+from oopsnote.ai import LangChainRunner
 from oopsnote.ai.langchain_tools import McpHttpToolClient
 from oopsnote.ai.providers import ProviderClientFactory, ProviderProfile
 from oopsnote.ai.secrets import SecretStore, secret_store_from_environment
@@ -29,7 +29,7 @@ from oopsnote.api.auth import (
     AuthenticationError,
     auth_config_from_env,
     authenticate_internal_request,
-    authenticate_request,
+    authorize_local_request,
     internal_identity_config_from_env,
 )
 from oopsnote.api.context import (
@@ -81,9 +81,8 @@ from oopsnote.core import (
 from oopsnote.mcp.context import current_capability
 from oopsnote.mcp.http_runtime import SharedMcpHttpRuntime
 from oopsnote.mcp.ocr import (
+    clear_ocr_results,
     clear_ocr_run_model_resolver,
-    clear_ocr_vault,
-    close_ocr_client,
     configure_ocr_run_model_resolver,
 )
 from oopsnote.paper import difficulty_review_reason
@@ -150,21 +149,6 @@ def request_api():
 
 
 MCP_HTTP_RUNTIME = SharedMcpHttpRuntime()
-_SUPPORTED_AI_BACKENDS = frozenset({"hermes", "langchain", "pi"})
-_DEFAULT_AI_BACKEND = os.getenv("OOPSNOTE_AI_BACKEND", "langchain").strip().lower()
-_ENABLED_AI_BACKENDS = frozenset(
-    name.strip().lower()
-    for name in os.getenv("OOPSNOTE_ENABLED_AI_BACKENDS", _DEFAULT_AI_BACKEND).split(",")
-    if name.strip()
-)
-if _DEFAULT_AI_BACKEND not in _SUPPORTED_AI_BACKENDS:
-    raise RuntimeError(f"Unsupported OOPSNOTE_AI_BACKEND: {_DEFAULT_AI_BACKEND}")
-if _DEFAULT_AI_BACKEND not in _ENABLED_AI_BACKENDS:
-    raise RuntimeError("OOPSNOTE_AI_BACKEND must be included in OOPSNOTE_ENABLED_AI_BACKENDS")
-if unsupported_backends := _ENABLED_AI_BACKENDS - _SUPPORTED_AI_BACKENDS:
-    raise RuntimeError(
-        f"Unsupported OOPSNOTE_ENABLED_AI_BACKENDS: {', '.join(sorted(unsupported_backends))}"
-    )
 
 
 def _runner_settings() -> dict[str, int]:
@@ -178,45 +162,6 @@ def _runner_settings() -> dict[str, int]:
 def get_secret_store() -> SecretStore:
     """Return the process-wide platform vault selected at the composition root."""
     return secret_store_from_environment()
-
-
-def _new_hermes_runner(stores: WorkspaceStores | None = None) -> HermesRunner:
-    return HermesRunner(
-        project_root=PROJECT_ROOT,
-        task_store=stores.task_store if stores else TASK_STORE,
-        run_store=stores.run_store if stores else RUN_STORE,
-        **_runner_settings(),
-    )
-
-
-def _new_pi_runner(
-    stores: WorkspaceStores | None = None,
-    workspace_id: WorkspaceId | None = None,
-) -> PiRpcRunner:
-    runner = PiRpcRunner(
-        backend=PiRpcBackend(
-            PROJECT_ROOT,
-            runtime=os.getenv("OOPSNOTE_RPC_RUNTIME", "pi-rust"),
-        ),
-        project_root=PROJECT_ROOT,
-        task_store=stores.task_store if stores else TASK_STORE,
-        run_store=stores.run_store if stores else RUN_STORE,
-        max_concurrent_tasks=int(
-            APP_SETTINGS_STORE.get().get(
-                "pi_concurrency",
-                os.getenv(
-                    "OOPSNOTE_RPC_MAX_WORKERS", os.getenv("OOPSNOTE_PI_MAX_CONCURRENT_TASKS", "3")
-                ),
-            )
-        ),
-        **_runner_settings(),
-    )
-    if stores is not None and workspace_id is not None:
-        MCP_HTTP_RUNTIME.start()
-        runner.set_child_environment_provider(
-            lambda: MCP_HTTP_RUNTIME.environment_for(workspace_id, stores)
-        )
-    return runner
 
 
 def _langchain_provider_factory() -> ProviderClientFactory:
@@ -262,40 +207,24 @@ def _langchain_vision_model(run_id: str) -> Any | None:
     return _langchain_provider_factory().create_vision_ocr_model(profile)
 
 
-def _build_enabled_runners(enabled: frozenset[str]) -> dict[str, Any]:
-    factories = {
-        "hermes": _new_hermes_runner,
-        "langchain": _new_langchain_runner,
-        "pi": _new_pi_runner,
-    }
-    return {name: factories[name]() for name in sorted(enabled)}
-
-
-_RUNNERS = _build_enabled_runners(_ENABLED_AI_BACKENDS)
-HERMES_RUNNER = _RUNNERS.get("hermes")
-PI_RUNNER = _RUNNERS.get("pi")
-LANGCHAIN_RUNNER = _RUNNERS.get("langchain")
+_RUNNERS = {"langchain": _new_langchain_runner()}
+LANGCHAIN_RUNNER = _RUNNERS["langchain"]
 
 
 class WorkspaceRunnerPool:
-    """Own one durable dispatcher/runtime set per workspace and backend."""
+    """Own one durable LangChain dispatcher per workspace."""
 
     def __init__(self) -> None:
         self._lock = threading.RLock()
-        self._runners: dict[tuple[WorkspaceId, str], Any] = {}
+        self._runners: dict[WorkspaceId, Any] = {}
 
-    def get(self, workspace_id: WorkspaceId, stores: WorkspaceStores, backend: str):
-        key = (WorkspaceId.parse(workspace_id), backend)
+    def get(self, workspace_id: WorkspaceId, stores: WorkspaceStores):
+        key = WorkspaceId.parse(workspace_id)
         with self._lock:
             existing = self._runners.get(key)
             if existing is not None:
                 return existing
-            factories = {
-                "hermes": lambda: _new_hermes_runner(stores),
-                "langchain": lambda: _new_langchain_runner(stores, key[0]),
-                "pi": lambda: _new_pi_runner(stores, key[0]),
-            }
-            runner = factories[backend]()
+            runner = _new_langchain_runner(stores, key)
             reconcile = getattr(stores.run_store, "reconcile_control_runs", None)
             if callable(reconcile):
                 reconcile()
@@ -312,8 +241,6 @@ class WorkspaceRunnerPool:
             self._runners.clear()
         for runner in runners:
             runner.shutdown_dispatcher()
-            if isinstance(runner, PiRpcRunner):
-                runner.shutdown()
 
 
 WORKSPACE_RUNNER_POOL = WorkspaceRunnerPool()
@@ -705,11 +632,7 @@ def _run_view(run: Any) -> dict[str, Any]:
         "pid": run.pid,
         "exit_code": run.exit_code,
         "log_path": run.log_path,
-        "rpc_log_path": run.rpc_log_path,
         "backend": run.backend,
-        "runtime_kind": run.runtime_kind,
-        "runtime_version": run.runtime_version,
-        "worker_id": run.worker_id,
         "provider": run.provider,
         "model": run.model,
         "input_tokens": run.input_tokens,
@@ -850,32 +773,21 @@ def _problem_summary(task: TaskRecord, problem: Problem) -> dict[str, Any]:
     }
 
 
-def _runner_for(backend: str):
-    if backend not in _SUPPORTED_AI_BACKENDS:
-        raise HTTPException(status_code=422, detail="backend must be pi, langchain, or hermes")
+def _runner():
+    """Return the only AI runner, scoped to the active workspace when present."""
     context = current_request_context()
     if context is not None:
-        if backend not in _ENABLED_AI_BACKENDS:
-            raise HTTPException(status_code=422, detail=f"backend {backend} is not enabled")
-        return WORKSPACE_RUNNER_POOL.get(context.workspace.workspace_id, context.stores, backend)
-    try:
-        return _RUNNERS[backend]
-    except KeyError as error:
-        raise HTTPException(status_code=422, detail=f"backend {backend} is not enabled") from error
+        return WORKSPACE_RUNNER_POOL.get(context.workspace.workspace_id, context.stores)
+    return LANGCHAIN_RUNNER
 
 
 def _configured_backend() -> str:
-    """Return the process-wide backend selected by deployment configuration."""
-    return _DEFAULT_AI_BACKEND
-
-
-def _run_managed(task_id: str, run_id: str, backend: str) -> None:
-    _runner_for(backend).run(task_id, run_id)
+    """Return the only supported AI backend."""
+    return "langchain"
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    ai_settings.retire_legacy_provider_configuration()
     auth_config = auth_config_from_env()
     if auth_config.better_auth:
         internal_identity_config_from_env()
@@ -883,8 +795,6 @@ async def lifespan(_: FastAPI):
     for runner in runners:
         runner.recover_orphaned_running()
         runner.recover_stale()
-    if PI_RUNNER is not None and not auth_config.better_auth:
-        PI_RUNNER.set_child_environment(MCP_HTTP_RUNTIME.start())
     for runner in runners:
         runner.start_dispatcher()
         runner.recover_queued()
@@ -894,13 +804,10 @@ async def lifespan(_: FastAPI):
     finally:
         for runner in runners:
             runner.shutdown_dispatcher()
-        if PI_RUNNER is not None and not auth_config.better_auth:
-            PI_RUNNER.shutdown()
         WORKSPACE_RUNNER_POOL.shutdown()
         MCP_HTTP_RUNTIME.shutdown()
-        clear_ocr_vault()
         clear_ocr_run_model_resolver()
-        close_ocr_client()
+        clear_ocr_results()
 
 
 app = FastAPI(title="OopsNote", version="0.3.0", lifespan=lifespan)
@@ -948,15 +855,13 @@ async def internal_server_error(request: Request, error: Exception) -> JSONRespo
 @app.middleware("http")
 async def authentication(request, call_next):
     config = auth_config_from_env()
-    if (
-        request.url.path == "/health"
-        or config.local
-        or (not config.enabled and not config.better_auth)
-    ):
+    if request.url.path == "/health":
         return await call_next(request)
     context_token = None
     try:
-        if config.better_auth:
+        if config.local:
+            authorize_local_request(request)
+        else:
             principal = authenticate_internal_request(
                 request,
                 internal_identity_config_from_env(),
@@ -972,8 +877,6 @@ async def authentication(request, call_next):
             )
             request.state.oopsnote_context = request_context
             context_token = activate_request_context(request_context)
-        else:
-            request.state.auth = authenticate_request(request, config)
     except AuthenticationError as error:
         return JSONResponse(status_code=error.status_code, content={"detail": error.detail})
     try:
@@ -1007,25 +910,18 @@ def get_asset(asset_name: str):
 @app.get("/health")
 def health() -> dict[str, Any]:
     auth_config = auth_config_from_env()
-    runner = _RUNNERS[_DEFAULT_AI_BACKEND]
+    runner = LANGCHAIN_RUNNER
     ai_status = {
         "backend": runner.backend_name,
         **runner.dispatcher_status(),
     }
-    if PI_RUNNER is not None and runner is PI_RUNNER:
-        ai_status.update(
-            {
-                "runtime": PI_RUNNER.backend.runtime_kind,
-                "runtime_version": PI_RUNNER.backend.runtime_version,
-            }
-        )
     return {
         "status": "ok",
         "version": "0.3.0",
         "auth": {
             "mode": (
                 auth_config.mode
-                if (auth_config.enabled or auth_config.local or auth_config.better_auth)
+                if (auth_config.local or auth_config.better_auth)
                 else "disabled"
             ),
         },
@@ -1049,10 +945,8 @@ __all__ = [
     "APP_SETTINGS_STORE",
     "ASSET_STORE",
     "BATCH_SESSION_STORE",
-    "HERMES_RUNNER",
     "LANGCHAIN_RUNNER",
     "PAPER_DRAFT_STORE",
-    "PI_RUNNER",
     "PROBLEM_MERGE_STORE",
     "RUN_STORE",
     "STORAGE_DIR",

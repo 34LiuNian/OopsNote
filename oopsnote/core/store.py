@@ -370,9 +370,7 @@ class RunStore:
         run_id: str | None = None,
         workspace_id: Any | None = None,
         quota_reservation_id: str | None = None,
-        backend: str = "pi",
-        runtime_kind: str | None = None,
-        runtime_version: str | None = None,
+        backend: str = "langchain",
         provider: str | None = None,
         model: str | None = None,
         provider_profile_snapshot: dict[str, Any] | None = None,
@@ -407,8 +405,6 @@ class RunStore:
                 attempt=attempt,
                 prompt_version=prompt_version,
                 backend=backend,
-                runtime_kind=runtime_kind,
-                runtime_version=runtime_version,
                 provider=provider,
                 model=model,
                 provider_profile_snapshot=provider_profile_snapshot,
@@ -577,8 +573,6 @@ class RunStore:
         run_id: str,
         pid: int | None,
         log_path: str,
-        *,
-        worker_id: str | None = None,
     ) -> TaskRun:
         now = datetime.now(UTC)
         return self.update(
@@ -586,7 +580,6 @@ class RunStore:
             status=RunStatus.RUNNING,
             pid=pid,
             log_path=log_path,
-            worker_id=worker_id,
             started_at=self.get(run_id).started_at or now,
             heartbeat_at=now,
         )
@@ -608,7 +601,6 @@ class RunStore:
         return self.update(
             run_id,
             status=RunStatus.QUEUED,
-            worker_id=None,
             heartbeat_at=datetime.now(UTC),
         )
 

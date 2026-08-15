@@ -9,12 +9,11 @@ export function AuthBoundary({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const { authenticated, error, loading } = useAuth();
   if (
-    pathname === "/auth/callback"
-    || pathname === "/login"
+    pathname === "/login"
     || pathname === "/register"
     || pathname === "/invite"
     || pathname === "/setup"
   ) return <>{children}</>;
-  if (loading || !authenticated) return <AuthStatusScreen phase="signin" error={error} />;
+  if (loading || !authenticated) return <AuthStatusScreen error={error} />;
   return <AppLayout>{children}</AppLayout>;
 }

@@ -393,9 +393,9 @@ def test_workspace_runner_pool_is_scoped_and_reuses_only_within_workspace(tmp_pa
     second_stores = factory.for_context(second_context)
     pool = main.WorkspaceRunnerPool()
     try:
-        first = pool.get(first_context.workspace_id, first_stores, "hermes")
-        repeated = pool.get(first_context.workspace_id, first_stores, "hermes")
-        second = pool.get(second_context.workspace_id, second_stores, "hermes")
+        first = pool.get(first_context.workspace_id, first_stores)
+        repeated = pool.get(first_context.workspace_id, first_stores)
+        second = pool.get(second_context.workspace_id, second_stores)
         assert repeated is first
         assert second is not first
         assert first.task_store.base_dir == first_context.root / "tasks"
@@ -408,8 +408,8 @@ def test_workspace_run_store_queues_beyond_concurrency_and_claims_one_execution_
     registry = _registry(tmp_path)
     context = registry.get_or_create(Principal("auth-run-quota", UserRole.USER))
     stores = WorkspaceStoreFactory().for_context(context)
-    first = stores.run_store.create("task-1", backend="hermes")
-    second = stores.run_store.create("task-2", backend="hermes")
+    first = stores.run_store.create("task-1", backend="langchain")
+    second = stores.run_store.create("task-2", backend="langchain")
     stores.run_store.start(first.id, None, "runs/first.log")
 
     with pytest.raises(QuotaError, match="Concurrent"):
@@ -463,9 +463,9 @@ def test_workspace_retry_reuses_one_reservation_and_consumes_it_once(tmp_path):
     registry = _registry(tmp_path)
     context = registry.get_or_create(Principal("auth-run-retry", UserRole.USER))
     stores = WorkspaceStoreFactory().for_context(context)
-    first = stores.run_store.create("task-1", backend="hermes")
+    first = stores.run_store.create("task-1", backend="langchain")
     stores.run_store.finish(first.id, RunStatus.FAILED, error_code="provider_unavailable")
-    retry = stores.run_store.create("task-1", backend="hermes", retry_of=first)
+    retry = stores.run_store.create("task-1", backend="langchain", retry_of=first)
 
     assert retry.quota_reservation_id == first.quota_reservation_id
     stores.run_store.finish(retry.id, RunStatus.COMPLETED)
@@ -589,8 +589,8 @@ def test_consumed_daily_limit_blocks_the_next_workspace_run(tmp_path):
             (str(context.workspace_id),),
         )
     stores = WorkspaceStoreFactory().for_context(context)
-    first = stores.run_store.create("task-1", backend="hermes")
+    first = stores.run_store.create("task-1", backend="langchain")
     stores.run_store.finish(first.id, RunStatus.COMPLETED)
 
     with pytest.raises(QuotaError, match="Daily"):
-        stores.run_store.create("task-2", backend="hermes")
+        stores.run_store.create("task-2", backend="langchain")

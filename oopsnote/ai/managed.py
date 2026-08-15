@@ -7,10 +7,10 @@ import threading
 from abc import ABC, abstractmethod
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any
 
 from oopsnote.ai.dispatcher import ManagedTaskDispatcher
-from oopsnote.ai.run_control import ActiveRunControl, ProcessRunControl
+from oopsnote.ai.run_control import ActiveRunControl
 from oopsnote.core import (
     DiagramRunMode,
     DiagramRunStep,
@@ -24,14 +24,6 @@ from oopsnote.core import (
     TaskStatus,
     TaskStore,
 )
-
-
-class AgentBackend(Protocol):
-    """The process-specific command contract used by a managed task runner."""
-
-    name: str
-
-    def build_command(self, task_id: str, run_id: str) -> list[str]: ...
 
 
 class LifecycleAdmissionError(RuntimeError):
@@ -87,9 +79,6 @@ class ManagedAiRunner(ABC):
         self.heartbeat_seconds = max(0.05, heartbeat_seconds)
         self.poll_seconds = max(0.05, poll_seconds)
         self._active_controls: dict[str, ActiveRunControl] = {}
-        # Kept as a compatibility view for process backends and old local
-        # diagnostics. Lifecycle decisions use _active_controls exclusively.
-        self._processes: dict[str, Any] = {}
         self._lock = threading.RLock()
         worker_count = max(1, int(getattr(self, "max_concurrent_tasks", 1)))
         self._dispatcher = ManagedTaskDispatcher(self, worker_count)
@@ -340,11 +329,6 @@ class ManagedAiRunner(ABC):
         return self._dispatcher.status()
 
     @abstractmethod
-    def build_command(self, task_id: str, run_id: str) -> list[str]:
-        """Build the backend command for one managed run."""
-        ...
-
-    @abstractmethod
     def run(self, task_id: str, run_id: str) -> None:
         """Execute one managed run and persist its terminal state."""
         ...
@@ -426,18 +410,15 @@ class ManagedAiRunner(ABC):
             )
 
     def recover_stale(self) -> int:
-        """Fail abandoned runs and legacy processing tasks after the stale window."""
+        """Fail abandoned managed runs after the stale window."""
         cutoff = datetime.now(UTC) - timedelta(seconds=self.stale_seconds)
         recovered = 0
-        active_task_ids: set[str] = set()
         for run in self.run_store.list_all():
             if run.backend != self.backend_name or run.status not in {
                 RunStatus.QUEUED,
                 RunStatus.RUNNING,
             }:
                 continue
-            if run.purpose == RunPurpose.PROBLEM:
-                active_task_ids.add(run.task_id)
             try:
                 task = self.task_store.get(run.task_id)
             except KeyError:
@@ -506,27 +487,14 @@ class ManagedAiRunner(ABC):
                 )
             recovered += 1
 
-        for task in self.task_store.list_all():
-            if (
-                task.status == TaskStatus.PROCESSING
-                and task.id not in active_task_ids
-                and task.updated_at < cutoff
-            ):
-                self.task_store.mark_status(
-                    task.id,
-                    TaskStatus.FAILED,
-                    "Legacy processing task expired",
-                    error_code="legacy_stale",
-                )
-                recovered += 1
         return recovered
 
     def recover_orphaned_running(self) -> int:
         """Close runs whose worker process disappeared with the last app process.
 
         QUEUED runs remain durable and are rescheduled separately. A RUNNING
-        run cannot be resumed safely because its RPC session and subprocess no
-        longer exist; retries must always get a fresh run id and clean session.
+        run cannot be resumed safely because its provider request state no
+        longer exists; retries must always get a fresh run id.
         """
         recovered = 0
         for run in self.run_store.list_all():
@@ -728,14 +696,6 @@ class ManagedAiRunner(ABC):
         del message
         return (error_code or "").lower() in ManagedAiRunner._RETRYABLE_ERROR_CODES
 
-    def _register_process(self, task_id: str, process: Any) -> ProcessRunControl:
-        """Register legacy process execution through the neutral control API."""
-        control = ProcessRunControl(process)
-        with self._lock:
-            self._active_controls[task_id] = control
-            self._processes[task_id] = process
-        return control
-
     def _register_control(self, task_id: str, control: ActiveRunControl) -> None:
         with self._lock:
             self._active_controls[task_id] = control
@@ -744,18 +704,6 @@ class ManagedAiRunner(ABC):
         with self._lock:
             if self._active_controls.get(task_id) is control:
                 self._active_controls.pop(task_id, None)
-            process = getattr(control, "process", None)
-            if self._processes.get(task_id) is process:
-                self._processes.pop(task_id, None)
-
-    @staticmethod
-    def _terminate(process: Any) -> None:
-        """Compatibility helper for process-runtime internals.
-
-        Managed cancellation itself is control-based; this remains for worker
-        replacement where there is no task lifecycle transition to perform.
-        """
-        ProcessRunControl(process).cancel()
 
 
-__all__ = ["AgentBackend", "ManagedAiRunner"]
+__all__ = ["ManagedAiRunner"]

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   clampDocumentPoint,
+  moveDocumentRect,
   normalizeRect,
   resizeDocumentRect,
   splitSelectionAcrossPages,
@@ -35,6 +36,7 @@ export function BatchSelectionOverlay({
 }: Props) {
   const rootRef = useRef<HTMLDivElement | null>(null);
   const [draft, setDraft] = useState<{ pointerId: number; start: DocumentPoint; end: DocumentPoint } | null>(null);
+  const [movingSelectionId, setMovingSelectionId] = useState<string>();
 
   const clientToDocument = useCallback((clientX: number, clientY: number) => {
     const bounds = rootRef.current?.getBoundingClientRect();
@@ -84,6 +86,16 @@ export function BatchSelectionOverlay({
     onActiveSelectionChange(id);
   }, [draft, metrics, onActiveSelectionChange, onCreate, onTooSmall]);
 
+  const changeRect = useCallback((selection: SelectionModel, rect: SelectionModel["rect"]) => {
+    onChange({
+      ...selection,
+      rect,
+      start: { x: rect.left, y: rect.top },
+      end: { x: rect.right, y: rect.bottom },
+      slices: splitSelectionAcrossPages(rect, metrics),
+    });
+  }, [metrics, onChange]);
+
   const startResize = useCallback((event: React.PointerEvent, selection: SelectionModel, handle: ResizeHandle) => {
     if (selection.status !== "pending") return;
     event.preventDefault();
@@ -100,7 +112,7 @@ export function BatchSelectionOverlay({
         clientToDocument(moveEvent.clientX, moveEvent.clientY),
         { left: 0, top: 0, right: metrics[0]?.displayWidth ?? 1000, bottom: totalHeight },
       );
-      onChange({ ...selection, rect, start: { x: rect.left, y: rect.top }, end: { x: rect.right, y: rect.bottom }, slices: splitSelectionAcrossPages(rect, metrics) });
+      changeRect(selection, rect);
     };
     const stop = (stopEvent: PointerEvent) => {
       if (stopEvent.pointerId !== pointerId) return;
@@ -111,7 +123,42 @@ export function BatchSelectionOverlay({
     window.addEventListener("pointermove", move, true);
     window.addEventListener("pointerup", stop, true);
     window.addEventListener("pointercancel", stop, true);
-  }, [clientToDocument, metrics, onActiveSelectionChange, onChange]);
+  }, [changeRect, clientToDocument, metrics, onActiveSelectionChange]);
+
+  const startMove = useCallback((event: React.PointerEvent, selection: SelectionModel) => {
+    if (selection.status !== "pending") return;
+    event.preventDefault();
+    event.stopPropagation();
+    onActiveSelectionChange(selection.id);
+    setMovingSelectionId(selection.id);
+    const pointerId = event.pointerId;
+    const origin = clientToDocument(event.clientX, event.clientY);
+    const original = selection.rect;
+    const bounds = {
+      left: 0,
+      top: 0,
+      right: metrics[0]?.displayWidth ?? 1000,
+      bottom: metrics.at(-1)?.documentBottom ?? 0,
+    };
+    const move = (moveEvent: PointerEvent) => {
+      if (moveEvent.pointerId !== pointerId) return;
+      const point = clientToDocument(moveEvent.clientX, moveEvent.clientY);
+      changeRect(selection, moveDocumentRect(original, {
+        x: point.x - origin.x,
+        y: point.y - origin.y,
+      }, bounds));
+    };
+    const stop = (stopEvent: PointerEvent) => {
+      if (stopEvent.pointerId !== pointerId) return;
+      setMovingSelectionId((current) => current === selection.id ? undefined : current);
+      window.removeEventListener("pointermove", move, true);
+      window.removeEventListener("pointerup", stop, true);
+      window.removeEventListener("pointercancel", stop, true);
+    };
+    window.addEventListener("pointermove", move, true);
+    window.addEventListener("pointerup", stop, true);
+    window.addEventListener("pointercancel", stop, true);
+  }, [changeRect, clientToDocument, metrics, onActiveSelectionChange]);
 
   const totalHeight = metrics.at(-1)?.documentBottom ?? 1;
   const documentWidth = metrics[0]?.displayWidth ?? 1000;
@@ -152,13 +199,15 @@ export function BatchSelectionOverlay({
         const rect = selection.rect;
         const compactWidth = rect.right - rect.left < COMPACT_HANDLE_THRESHOLD;
         const compactHeight = rect.bottom - rect.top < COMPACT_HANDLE_THRESHOLD;
+        const labelInside = rect.top < 40;
         return (
           <button
             type="button"
             key={selection.id}
-            className={`batch-selection is-${selection.status}${active ? " is-active" : ""}${compactWidth ? " is-compact-width" : ""}${compactHeight ? " is-compact-height" : ""}`}
+            className={`batch-selection is-${selection.status}${active ? " is-active" : ""}${movingSelectionId === selection.id ? " is-moving" : ""}${labelInside ? " is-label-inside" : ""}${compactWidth ? " is-compact-width" : ""}${compactHeight ? " is-compact-height" : ""}`}
             data-selection-id={selection.id}
-            onPointerDown={(event) => event.stopPropagation()}
+            aria-label={`第 ${selection.questionNo} 题选区`}
+            onPointerDown={(event) => startMove(event, selection)}
             onClick={(event) => { event.stopPropagation(); onActiveSelectionChange(selection.id); }}
             style={{
               left: `${rect.left / documentWidth * 100}%`,

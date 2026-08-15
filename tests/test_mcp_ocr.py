@@ -20,38 +20,6 @@ from oopsnote.mcp.ocr_contract import OCR_INSTRUCTION, normalize_ocr_result
 from oopsnote.mcp.restricted import AI_TOOL_NAMES, managed_ocr_image
 
 
-class FakeResponse:
-    def raise_for_status(self) -> None:
-        return None
-
-    def json(self):
-        return {
-            "choices": [
-                {
-                    "message": {
-                        "content": json.dumps(
-                            {
-                                "content_format": "oopsmark-v1",
-                                "subject": "math",
-                                "question_type": "填空题",
-                                "printed_question_no": 6,
-                                "printed_chapter": "函数",
-                                "problem_text": "求 $1+1$。",
-                                "options": [],
-                                "has_diagram": False,
-                                "student_response_status": "unanswered",
-                                "student_response": "",
-                                "uncertain_regions": [],
-                                "confidence": 1,
-                            },
-                            ensure_ascii=False,
-                        )
-                    }
-                }
-            ]
-        }
-
-
 def _vision_ocr_payload() -> dict[str, object]:
     return {
         "content_format": "oopsmark-v1",
@@ -119,7 +87,7 @@ def test_restricted_surface_contains_exactly_ocr_and_pipeline_tools():
     }
 
 
-def test_ocr_image_reads_local_config_and_returns_object(tmp_path, monkeypatch):
+def test_ocr_image_uses_the_frozen_langchain_vision_snapshot(tmp_path, monkeypatch):
     storage = tmp_path / "storage"
     image = storage / "assets" / "question.png"
     image.parent.mkdir(parents=True)
@@ -131,33 +99,24 @@ def test_ocr_image_reads_local_config_and_returns_object(tmp_path, monkeypatch):
     monkeypatch.setattr(server, "TASK_STORE", task_store)
     monkeypatch.setattr(server, "ASSET_STORE", asset_store)
     run_store = RunStore(storage / "runs")
-    run_store._write(TaskRun(id="run-1", task_id=task.id, status=RunStatus.RUNNING))
-    monkeypatch.setattr(server, "RUN_STORE", run_store)
-    config = tmp_path / "extensions.json"
-    config.write_text(
-        json.dumps(
-            {
-                "ocr_image": {
-                    "dashscope_api_key": "local-test-key",
-                    "model": "test-vision-model",
-                }
-            }
-        ),
-        encoding="utf-8",
+    run_store._write(
+        TaskRun(
+            id="run-1",
+            task_id=task.id,
+            status=RunStatus.RUNNING,
+            provider_profile_snapshot={"vision": {"provider": "test", "model": "vision"}},
+        )
     )
-    monkeypatch.setenv("OOPSNOTE_OCR_CONFIG", str(config))
-    captured = {}
+    monkeypatch.setattr(server, "RUN_STORE", run_store)
+    calls = []
 
-    class FakeClient:
-        def post(self, url, **kwargs):
-            captured["url"] = url
-            captured.update(kwargs)
-            return FakeResponse()
+    class VisionModel:
+        def invoke(self, messages):
+            calls.append(messages)
+            return SimpleNamespace(content=json.dumps(_vision_ocr_payload(), ensure_ascii=False))
 
-    def fake_client():
-        return FakeClient()
-
-    monkeypatch.setattr(ocr, "_ocr_client", fake_client)
+    model = VisionModel()
+    monkeypatch.setattr(ocr, "_RUN_MODEL_RESOLVER", lambda run_id: model if run_id == "run-1" else None)
 
     result = ocr.ocr_image(task.id, "run-1")
 
@@ -173,10 +132,7 @@ def test_ocr_image_reads_local_config_and_returns_object(tmp_path, monkeypatch):
     assert artifact.kind == "ocr"
     assert json.loads(artifact.raw_output)["printed_question_no"] == 6
     assert artifact.parsed_output == result
-    assert captured["url"] == ocr.OCR_ENDPOINT
-    assert captured["json"]["model"] == "test-vision-model"
-    assert captured["headers"]["Authorization"] == "Bearer local-test-key"
-    assert "local-test-key" not in json.dumps(captured["json"], ensure_ascii=False)
+    assert len(calls) == 1
     assert "review_reason" in OCR_INSTRUCTION
     assert "independent top-level question" in OCR_INSTRUCTION
 
@@ -195,10 +151,18 @@ def test_cancelled_run_does_not_attach_stale_ocr_context(tmp_path, monkeypatch):
     monkeypatch.setattr(server, "TASK_STORE", task_store)
     monkeypatch.setattr(server, "ASSET_STORE", AssetStore(storage / "assets"))
     run_store = RunStore(storage / "runs")
-    run_store._write(TaskRun(id="run-1", task_id=task.id, status=RunStatus.RUNNING))
+    run_store._write(
+        TaskRun(
+            id="run-1",
+            task_id=task.id,
+            status=RunStatus.RUNNING,
+            provider_profile_snapshot={"vision": {"provider": "test", "model": "vision"}},
+        )
+    )
     monkeypatch.setattr(server, "RUN_STORE", run_store)
+    monkeypatch.setattr(ocr, "_RUN_MODEL_RESOLVER", lambda _run_id: object())
 
-    def cancel_during_ocr(_image_path):
+    def cancel_during_ocr(_image_path, _vision_model):
         task_store.mark_status(task.id, TaskStatus.CANCELLED)
         return {
             "content_format": "oopsmark-v1",
@@ -231,43 +195,29 @@ def test_cancelled_run_does_not_attach_stale_ocr_context(tmp_path, monkeypatch):
     [
         (429, "ocr_rate_limit"),
         (503, "ocr_provider_unavailable"),
-        (401, "ocr_provider_error"),
+        (401, "ocr_authorization"),
         ("timeout", "ocr_timeout"),
         ("network", "ocr_network_error"),
     ],
 )
-def test_ocr_provider_failures_have_stable_codes(
-    tmp_path,
-    monkeypatch,
-    failure,
-    expected_code,
-):
+def test_ocr_provider_failures_have_stable_codes(tmp_path, failure, expected_code):
     image = tmp_path / "question.png"
     image.write_bytes(b"image")
-    request = httpx.Request("POST", ocr.OCR_ENDPOINT)
+    class ProviderFailure(RuntimeError):
+        def __init__(self, status_code):
+            super().__init__(f"HTTP {status_code}")
+            self.status_code = status_code
 
-    class FailingClient:
-        def post(self, *_args, **_kwargs):
+    class FailingModel:
+        def invoke(self, _messages):
             if failure == "timeout":
-                raise httpx.ReadTimeout("slow", request=request)
+                raise httpx.ReadTimeout("slow")
             if failure == "network":
-                raise httpx.ConnectError("offline", request=request)
-            response = httpx.Response(failure, request=request)
-            raise httpx.HTTPStatusError(
-                f"HTTP {failure}",
-                request=request,
-                response=response,
-            )
-
-    monkeypatch.setattr(
-        ocr,
-        "_load_ocr_config",
-        lambda: {"dashscope_api_key": "test", "model": "vision"},
-    )
-    monkeypatch.setattr(ocr, "_ocr_client", lambda: FailingClient())
+                raise httpx.ConnectError("offline")
+            raise ProviderFailure(failure)
 
     with pytest.raises(ocr.OcrProviderError) as captured:
-        ocr._ocr_image_path(image)
+        ocr._ocr_image_path(image, FailingModel())
 
     assert captured.value.code == expected_code
 
@@ -461,7 +411,7 @@ def test_ocr_and_asset_resolution_reject_wrong_run_and_unmanaged_paths(tmp_path,
         server.get_asset_path(task.id, "run-1")
 
 
-def test_langchain_ocr_never_falls_back_to_legacy_pi_configuration(tmp_path, monkeypatch):
+def test_ocr_requires_the_frozen_langchain_vision_resolver(tmp_path, monkeypatch):
     """A staged LangChain run must require its frozen Vision model."""
     storage = tmp_path / "storage"
     image = storage / "assets" / "question.png"
@@ -482,15 +432,7 @@ def test_langchain_ocr_never_falls_back_to_legacy_pi_configuration(tmp_path, mon
     monkeypatch.setattr(server, "TASK_STORE", task_store)
     monkeypatch.setattr(server, "ASSET_STORE", AssetStore(storage / "assets"))
     monkeypatch.setattr(server, "RUN_STORE", run_store)
-    legacy = tmp_path / "extensions.json"
-    legacy.write_text(
-        '{"ocr_image":{"dashscope_api_key":"legacy","model":"legacy"}}', encoding="utf-8"
-    )
-    monkeypatch.setenv("OOPSNOTE_OCR_CONFIG", str(legacy))
     monkeypatch.setattr(ocr, "_RUN_MODEL_RESOLVER", None)
-    monkeypatch.setattr(
-        ocr, "_load_ocr_config", lambda: pytest.fail("legacy OCR configuration was read")
-    )
 
     with pytest.raises(RuntimeError, match="LangChain Vision resolver is unavailable"):
         ocr.ocr_image(task.id, "run-1")

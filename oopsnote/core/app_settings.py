@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import threading
-from datetime import UTC
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
@@ -112,7 +111,7 @@ class AppSettingsStore:
         return True
 
     def provider_channels(self) -> list[Any]:
-        """Read channels; legacy single-model profiles are intentionally excluded."""
+        """Read the configured provider channels."""
         from oopsnote.ai.providers import ProviderChannel
 
         channels = self.get().get("provider_channels", [])
@@ -148,40 +147,7 @@ class AppSettingsStore:
         try:
             return LangChainModelPolicy.model_validate(value)
         except ValueError:
-            # An incomplete legacy policy is not runnable. Startup migration
-            # gets one bounded chance to persist its independent diagram slot;
-            # runtime reads never infer one from Vision.
             return None
-
-    def migrate_legacy_diagram_policy(self) -> bool:
-        """Persist the old Vision selection into the new independent slot once."""
-        from datetime import datetime
-
-        from oopsnote.ai.providers import LangChainModelPolicy, StageModelSelection
-
-        with self._lock:
-            current = self.get()
-            raw = current.get("langchain_model_policy")
-            if not isinstance(raw, dict) or "diagram" in raw:
-                return False
-            try:
-                diagram = StageModelSelection.model_validate(raw["vision"])
-                policy = LangChainModelPolicy.model_validate(
-                    {**raw, "diagram": diagram.model_dump(mode="json")}
-                )
-            except ValueError:
-                return False
-            migrated = policy.model_copy(
-                update={
-                    "version": policy.version + 1,
-                    "updated_at": datetime.now(UTC),
-                }
-            )
-            current["langchain_model_policy"] = migrated.model_dump(mode="json")
-            if not self._policy_is_runnable(current):
-                return False
-            self._write(current)
-            return True
 
     def reorder_provider_channels(self, channel_ids: list[str]) -> None:
         """Persist one complete, validated channel order atomically."""
@@ -212,22 +178,3 @@ class AppSettingsStore:
                 raise ValueError("LangChain policy references an unavailable channel or model")
             self._write(current)
             return policy
-
-    def retire_legacy_provider_secrets(self) -> list[str]:
-        """Remove retired profile-shaped settings and return their opaque refs."""
-        with self._lock:
-            current = self.get()
-            raw = current.get("provider_profiles", [])
-            if not isinstance(raw, list) or not raw:
-                return []
-            references = [
-                item.get("credential_ref")
-                for item in raw
-                if isinstance(item, dict) and isinstance(item.get("credential_ref"), str)
-            ]
-            current.pop("provider_profiles", None)
-            current.pop("provider_validation_results", None)
-            current.pop("ai_provider_profile_id", None)
-            current.pop("ocr_profile_id", None)
-            self._write(current)
-            return references

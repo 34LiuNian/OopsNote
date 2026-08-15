@@ -40,7 +40,6 @@ from oopsnote.core import (
     TaskStatus,
     TaskStore,
 )
-from oopsnote.mcp import ocr
 from oopsnote.mcp.contracts import load_tool_contract
 
 
@@ -674,54 +673,6 @@ def test_secret_store_key_initialization_is_idempotent(tmp_path):
         assert path.stat().st_mode & 0o777 == 0o600
 
 
-def test_legacy_model_and_ocr_import_create_channels_without_persisting_secrets(tmp_path):
-    from scripts.migrate_local_secrets import import_model_channel, import_ocr_channel
-
-    auth = tmp_path / "auth.json"
-    auth.write_text(json.dumps({"deepseek": {"key": "model-secret"}}), encoding="utf-8")
-    extensions = tmp_path / "extensions.json"
-    extensions.write_text(
-        json.dumps(
-            {
-                "ocr_image": {
-                    "dashscope_api_key": "ocr-secret",
-                    "model": "vision-model",
-                    "endpoint": "https://ocr.example/v1",
-                }
-            }
-        ),
-        encoding="utf-8",
-    )
-    settings = AppSettingsStore(tmp_path / "settings.json")
-    vault = MemorySecretStore()
-
-    model_channel = import_model_channel(
-        auth,
-        store=vault,
-        settings=settings,
-        channel_id="primary",
-        provider="deepseek",
-        model="chat-model",
-        base_url="https://provider.example/v1",
-    )
-    ocr_channel = import_ocr_channel(
-        extensions,
-        store=vault,
-        settings=settings,
-        channel_id="ocr",
-    )
-
-    persisted = (tmp_path / "settings.json").read_text(encoding="utf-8")
-    assert "model-secret" not in persisted
-    assert "ocr-secret" not in persisted
-    assert vault.get(model_channel.credential_ref) == "model-secret"
-    assert vault.get(ocr_channel.credential_ref) == "ocr-secret"
-    assert settings.provider_channels() == [model_channel, ocr_channel]
-    assert all(
-        not item.enabled for channel in settings.provider_channels() for item in channel.models
-    )
-
-
 def test_reference_collection_waits_for_active_runs_then_deletes_old_secret(tmp_path):
     vault = MemorySecretStore()
     old_reference = vault.put("old")
@@ -927,35 +878,6 @@ def test_contract_dispatcher_uses_canonical_barriers_for_all_state_writes():
 
     assert events.index(("end", "get_task")) < events.index(("start", "create_tag"))
     assert events.index(("end", "create_tag")) < events.index(("start", "list_tags"))
-
-
-def test_ocr_vault_configuration_does_not_fall_back_to_legacy_file(monkeypatch):
-    vault = MemorySecretStore()
-    reference = vault.put("vault-only-secret")
-    ocr.configure_ocr_vault(vault, reference, model="vision", endpoint="https://ocr.example/v1")
-    monkeypatch.delenv("OOPSNOTE_OCR_CONFIG", raising=False)
-
-    try:
-        config = ocr._load_ocr_config()
-        assert config == {
-            "dashscope_api_key": "vault-only-secret",
-            "model": "vision",
-            "endpoint": "https://ocr.example/v1",
-        }
-    finally:
-        ocr.clear_ocr_vault()
-
-
-def test_ocr_vault_state_is_explicit():
-    ocr.clear_ocr_vault()
-    assert not ocr.ocr_vault_is_configured()
-    vault = MemorySecretStore()
-    reference = vault.put("key")
-    ocr.configure_ocr_vault(vault, reference, model="vision")
-    try:
-        assert ocr.ocr_vault_is_configured()
-    finally:
-        ocr.clear_ocr_vault()
 
 
 def test_stage_snapshot_is_durable_when_channel_rotates(tmp_path):
@@ -1287,14 +1209,10 @@ def test_langchain_places_immutable_rules_in_system_message(tmp_path):
     from langchain_core.messages import HumanMessage, SystemMessage
 
     model = ScriptedModel([model_response(1)])
-    runner, task_store, _run_store, vault, profile = langchain_runner_fixture(tmp_path, model)
+    runner, task_store, _run_store, _vault, _profile = langchain_runner_fixture(tmp_path, model)
     task = task_store.create(TaskCreateRequest(subject="math", metadata={"notes": "untrusted"}))
     run = runner.enqueue(task.id)
-    ocr.configure_ocr_vault(vault, profile.credential_ref, model="ocr")
-    try:
-        runner.run(task.id, run.id)
-    finally:
-        ocr.clear_ocr_vault()
+    runner.run(task.id, run.id)
 
     assert isinstance(model.messages[0][0], SystemMessage)
     assert "submit_solution_candidate exactly once" in model.messages[0][0].content
@@ -1420,14 +1338,10 @@ def test_langchain_no_tool_event_does_not_persist_model_content(tmp_path):
             )
         ]
     )
-    runner, task_store, run_store, vault, profile = langchain_runner_fixture(tmp_path, model)
+    runner, task_store, run_store, _vault, _profile = langchain_runner_fixture(tmp_path, model)
     task = task_store.create(TaskCreateRequest(subject="math"))
     run = runner.enqueue(task.id)
-    ocr.configure_ocr_vault(vault, profile.credential_ref, model="ocr")
-    try:
-        runner.run(task.id, run.id)
-    finally:
-        ocr.clear_ocr_vault()
+    runner.run(task.id, run.id)
 
     event_text = (run_store.base_dir / f"{run.id}.events.jsonl").read_text(encoding="utf-8")
     assert '"event": "model_no_tool_call"' in event_text
@@ -1450,14 +1364,10 @@ def test_langchain_invalid_tool_call_has_bounded_in_run_recovery(tmp_path):
         additional_kwargs={},
     )
     model = ScriptedModel([invalid])
-    runner, task_store, run_store, vault, profile = langchain_runner_fixture(tmp_path, model)
+    runner, task_store, run_store, _vault, _profile = langchain_runner_fixture(tmp_path, model)
     task = task_store.create(TaskCreateRequest(subject="math"))
     run = runner.enqueue(task.id)
-    ocr.configure_ocr_vault(vault, profile.credential_ref, model="ocr")
-    try:
-        runner.run(task.id, run.id)
-    finally:
-        ocr.clear_ocr_vault()
+    runner.run(task.id, run.id)
 
     events = (run_store.base_dir / f"{run.id}.events.jsonl").read_text(encoding="utf-8")
     assert events.count('"event": "invalid_tool_recovery"') == 2
@@ -1481,14 +1391,10 @@ def test_langchain_invalid_tool_calls_are_acknowledged_before_next_model_request
         additional_kwargs={"tool_calls": raw_calls},
     )
     model = ScriptedModel([invalid])
-    runner, task_store, run_store, vault, profile = langchain_runner_fixture(tmp_path, model)
+    runner, task_store, run_store, _vault, _profile = langchain_runner_fixture(tmp_path, model)
     task = task_store.create(TaskCreateRequest(subject="math"))
     run = runner.enqueue(task.id)
-    ocr.configure_ocr_vault(vault, profile.credential_ref, model="ocr")
-    try:
-        runner.run(task.id, run.id)
-    finally:
-        ocr.clear_ocr_vault()
+    runner.run(task.id, run.id)
 
     second_request = model.messages[1]
     assert [
@@ -1521,14 +1427,10 @@ def test_langchain_truncated_tool_call_is_removed_even_when_ids_are_complete(tmp
         },
     )
     model = ScriptedModel([invalid])
-    runner, task_store, run_store, vault, profile = langchain_runner_fixture(tmp_path, model)
+    runner, task_store, run_store, _vault, _profile = langchain_runner_fixture(tmp_path, model)
     task = task_store.create(TaskCreateRequest(subject="math"))
     run = runner.enqueue(task.id)
-    ocr.configure_ocr_vault(vault, profile.credential_ref, model="ocr")
-    try:
-        runner.run(task.id, run.id)
-    finally:
-        ocr.clear_ocr_vault()
+    runner.run(task.id, run.id)
 
     assert invalid not in model.messages[1]
     assert not any(hasattr(message, "tool_call_id") for message in model.messages[1])
@@ -1553,14 +1455,10 @@ def test_langchain_invalid_tool_call_without_id_is_removed_from_history(tmp_path
         },
     )
     model = ScriptedModel([invalid])
-    runner, task_store, run_store, vault, profile = langchain_runner_fixture(tmp_path, model)
+    runner, task_store, run_store, _vault, _profile = langchain_runner_fixture(tmp_path, model)
     task = task_store.create(TaskCreateRequest(subject="math"))
     run = runner.enqueue(task.id)
-    ocr.configure_ocr_vault(vault, profile.credential_ref, model="ocr")
-    try:
-        runner.run(task.id, run.id)
-    finally:
-        ocr.clear_ocr_vault()
+    runner.run(task.id, run.id)
 
     assert invalid not in model.messages[1]
     events = (run_store.base_dir / f"{run.id}.events.jsonl").read_text(encoding="utf-8")
@@ -1574,18 +1472,14 @@ def test_langchain_tool_execution_error_adds_bounded_current_binding_recovery(tm
             raise ValueError("deterministic pipeline validation error")
 
     model = ScriptedModel([model_response(1, tool="mcp__oopsnote_pipeline_report_task_stage")])
-    runner, task_store, run_store, vault, profile = langchain_runner_fixture(
+    runner, task_store, run_store, _vault, _profile = langchain_runner_fixture(
         tmp_path,
         model,
         ErrorToolClient(),
     )
     task = task_store.create(TaskCreateRequest(subject="math"))
     run = runner.enqueue(task.id)
-    ocr.configure_ocr_vault(vault, profile.credential_ref, model="ocr")
-    try:
-        runner.run(task.id, run.id)
-    finally:
-        ocr.clear_ocr_vault()
+    runner.run(task.id, run.id)
 
     assert any(
         "emit exactly one call to the tool currently bound" in message.content
@@ -1604,14 +1498,10 @@ def test_langchain_runner_enforces_24_round_limit_and_accumulates_usage(tmp_path
         output_tokens=3,
     )
     model = ScriptedModel([response])
-    runner, task_store, run_store, vault, profile = langchain_runner_fixture(tmp_path, model)
+    runner, task_store, run_store, _vault, _profile = langchain_runner_fixture(tmp_path, model)
     task = task_store.create(TaskCreateRequest(subject="math"))
     run = runner.enqueue(task.id)
-    ocr.configure_ocr_vault(vault, profile.credential_ref, model="ocr")
-    try:
-        runner.run(task.id, run.id)
-    finally:
-        ocr.clear_ocr_vault()
+    runner.run(task.id, run.id)
 
     completed = run_store.get(run.id)
     assert model.calls == 24
@@ -1648,16 +1538,12 @@ def test_langchain_timeout_covers_inflight_tool_call(tmp_path):
             )
         ]
     )
-    runner, task_store, run_store, vault, profile = langchain_runner_fixture(
+    runner, task_store, run_store, _vault, _profile = langchain_runner_fixture(
         tmp_path, model, BlockingToolClient(), timeout_seconds=1
     )
     task = task_store.create(TaskCreateRequest(subject="math"))
     run = runner.enqueue(task.id)
-    ocr.configure_ocr_vault(vault, profile.credential_ref, model="ocr")
-    try:
-        runner.run(task.id, run.id)
-    finally:
-        ocr.clear_ocr_vault()
+    runner.run(task.id, run.id)
 
     assert started.is_set()
     assert run_store.get(run.id).status == RunStatus.TIMED_OUT
@@ -1685,20 +1571,16 @@ def test_langchain_cancel_stops_active_async_work_without_overwriting_terminal_s
 
     model = BlockingModel([model_response(1, tool="mcp__oopsnote_pipeline_report_task_stage")])
     tool_client = BlockingToolClient() if phase == "tool" else ReturningToolClient()
-    runner, task_store, run_store, vault, profile = langchain_runner_fixture(
+    runner, task_store, run_store, _vault, _profile = langchain_runner_fixture(
         tmp_path, model, tool_client, timeout_seconds=10
     )
     task = task_store.create(TaskCreateRequest(subject="math"))
     run = runner.enqueue(task.id)
-    ocr.configure_ocr_vault(vault, profile.credential_ref, model="ocr")
     thread = threading.Thread(target=runner.run, args=(task.id, run.id))
-    try:
-        thread.start()
-        assert started.wait(timeout=3)
-        runner.cancel(task.id)
-        thread.join(timeout=3)
-    finally:
-        ocr.clear_ocr_vault()
+    thread.start()
+    assert started.wait(timeout=3)
+    runner.cancel(task.id)
+    thread.join(timeout=3)
 
     assert not thread.is_alive()
     assert task_store.get(task.id).status == TaskStatus.CANCELLED

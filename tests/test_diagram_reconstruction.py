@@ -278,29 +278,6 @@ def test_candidate_limit_never_creates_a_fifth_candidate(tmp_path: Path):
     assert renderer.calls == 1
 
 
-def test_legacy_singular_metadata_migrates_to_one_authoritative_item():
-    from oopsnote.core import TaskRecord
-
-    task = TaskRecord.model_validate(
-        {
-            "id": "legacy",
-            "asset_path": "/assets/source.png",
-            "metadata": {
-                "diagram_detected": True,
-                "diagram_kind": "tikz",
-                "diagram_tikz_source": "\\draw (0,0)--(1,0);",
-                "diagram_svg": "<svg/>",
-                "source": "exam",
-            },
-        }
-    )
-
-    assert len(task.diagram_items) == 1
-    assert task.diagram_items[0].status == DiagramStatus.NEEDS_REVIEW
-    assert task.diagram_items[0].candidates[0].source_kind == "legacy"
-    assert task.metadata == {"source": "exam"}
-
-
 def test_dispatcher_orders_primary_work_before_queued_background_diagram(tmp_path: Path):
     runs = RunStore(tmp_path / "runs")
     low = runs.create(

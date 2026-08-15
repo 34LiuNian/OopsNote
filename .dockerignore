@@ -1,8 +1,6 @@
 .git
 .agents
 .codex
-.pi
-.pi-rust
 .pytest-tmp*
 .venv
 _tmp
@@ -15,8 +13,5 @@ storage
 vaults
 frontend
 deploy/oopsnote/secrets
-deploy/pocket-id
-deploy/pi
-deploy/pi-rust
 docs
 tests
