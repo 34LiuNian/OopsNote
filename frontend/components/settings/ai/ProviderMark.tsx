@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
-import { Cable } from "lucide-react";
-import { Button, NativeInput } from "@/components/ui/primitives";
+import { Cable, X } from "lucide-react";
+import { IconButton, NativeInput } from "@/components/ui/primitives";
 import styles from "./aiSettings.module.css";
 
 type ProviderMarkMeta = { label: string; icon?: string; fallback: string };
@@ -68,14 +68,26 @@ export function ProviderIconPicker({
 }) {
   const [icons, setIcons] = useState<ProviderIcon[]>([]);
   const [query, setQuery] = useState("");
+  const [loadError, setLoadError] = useState("");
 
   useEffect(() => {
     if (!open) return;
     let active = true;
     void fetch("/provider-icons/index.json")
-      .then((response) => response.json() as Promise<ProviderIcon[]>)
-      .then((items) => { if (active) setIcons(items); })
-      .catch(() => { if (active) setIcons([]); });
+      .then((response) => {
+        if (!response.ok) throw new Error(`图标资源请求失败（${response.status}）`);
+        return response.json() as Promise<ProviderIcon[]>;
+      })
+      .then((items) => {
+        if (!active) return;
+        setLoadError("");
+        setIcons(items);
+      })
+      .catch((reason: unknown) => {
+        if (!active) return;
+        setIcons([]);
+        setLoadError(reason instanceof Error ? reason.message : "图标资源加载失败");
+      });
     return () => { active = false; };
   }, [open]);
 
@@ -98,10 +110,10 @@ export function ProviderIconPicker({
           onChange={(event) => setQuery(event.currentTarget.value)}
           autoFocus
         />
-        <Button type="button" variant="invisible" className={styles.providerIconClose} aria-label="关闭图标选择" onClick={onClose}>×</Button>
+        <IconButton type="button" variant="invisible" icon={X} className={styles.providerIconClose} aria-label="关闭图标选择" onClick={onClose} />
       </div>
       <div className={styles.providerIconGrid} role="radiogroup" aria-label="供应商图标素材库">
-      <Button
+      <IconButton
         variant="invisible"
         type="button"
         className={`${styles.providerIconOption}${value === null ? ` ${styles.providerIconOptionSelected}` : ""}`}
@@ -112,9 +124,9 @@ export function ProviderIconPicker({
         onClick={() => { onChange(null); onClose(); }}
       >
         <ProviderMark provider={provider} size={30} />
-      </Button>
+      </IconButton>
       {visibleIcons.map((item) => (
-        <Button
+        <IconButton
           variant="invisible"
           type="button"
           key={item.id}
@@ -126,10 +138,12 @@ export function ProviderIconPicker({
           onClick={() => { onChange(item.id); onClose(); }}
         >
           <ProviderMark provider={provider} icon={item.id} size={30} />
-        </Button>
+        </IconButton>
       ))}
       </div>
-      {!visibleIcons.length && <span className={styles.providerIconEmpty}>没有匹配的图标</span>}
+      {loadError
+        ? <span className={styles.providerIconEmpty} role="alert">{loadError}</span>
+        : !visibleIcons.length && <span className={styles.providerIconEmpty}>没有匹配的图标</span>}
     </div>
   );
 }

@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { fetchJson } from "../lib/api";
+import { isRetryableApiError } from "../lib/api";
+import { getTask } from "../features/tasks";
 import type { TaskResponse } from "../types/api";
 import { queryKeys } from "../lib/queryClient";
 
@@ -44,7 +45,7 @@ export function useTaskStream({ taskId, onStatusMessage }: UseTaskStreamParams):
   // Use React Query with polling
   const { data, isLoading, error } = useQuery({
     queryKey: queryKeys.tasks.detail(taskId),
-    queryFn: () => fetchJson<TaskResponse>(`/tasks/${taskId}`),
+    queryFn: () => getTask(taskId),
     enabled: !!taskId,
     // 轮询配置
     refetchInterval: (query) => {
@@ -64,8 +65,8 @@ export function useTaskStream({ taskId, onStatusMessage }: UseTaskStreamParams):
     },
     // 不缓存，总是获取最新
     staleTime: 0,
-    // 网络错误时重试
-    retry: 3,
+    // The backend error contract, not this polling hook, classifies transience.
+    retry: (failureCount, error) => failureCount < 3 && isRetryableApiError(error),
     retryDelay: 1000,
   });
 

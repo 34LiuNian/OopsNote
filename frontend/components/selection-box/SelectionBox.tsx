@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useState } from "react";
-import type { ReactNode, RefObject } from "react";
+import type { CSSProperties, ReactNode, RefObject } from "react";
 import {
   clampPoint,
   moveSelectionRect,
@@ -119,6 +119,12 @@ export function SelectionBox({
     moving ? "is-moving" : "",
     className,
   ].filter(Boolean).join(" ");
+  const geometryStyle = {
+    "--oops-geometry-left": `${value.x * 100}%`,
+    "--oops-geometry-top": `${value.y * 100}%`,
+    "--oops-geometry-width": `${value.width * 100}%`,
+    "--oops-geometry-height": `${value.height * 100}%`,
+  } as CSSProperties;
 
   return (
     <div
@@ -136,11 +142,16 @@ export function SelectionBox({
           onActivate?.();
         }
       }}
-      style={{ left: `${value.x * 100}%`, top: `${value.y * 100}%`, width: `${value.width * 100}%`, height: `${value.height * 100}%` }}
+      style={geometryStyle}
     >
       {label}
       {Array.from({ length: Math.max(0, guides - 1) }, (_, index) => (
-        <span key={index} className="selection-box__guide" style={{ left: `${(index + 1) / guides * 100}%` }} aria-hidden="true" />
+        <span
+          key={index}
+          className="selection-box__guide"
+          style={{ "--oops-geometry-guide-left": `${(index + 1) / guides * 100}%` } as CSSProperties}
+          aria-hidden="true"
+        />
       ))}
       {showHandles && !disabled && HANDLES.map((handle) => (
         <span

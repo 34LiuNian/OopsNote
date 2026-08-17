@@ -113,6 +113,9 @@ for (const absolute of sourceRoots.flatMap((root) => collectFiles(join(frontendR
   const file = relativeFile(absolute);
   const source = readFileSync(absolute, "utf8");
   if (file.includes("components/ui/")) continue;
+  if (/<Button\b(?:(?!<\/Button>)[\s\S])*?<Spinner\b(?:(?!<\/Button>)[\s\S])*?<\/Button>/.test(source)) {
+    failures.push(`${file}: Button loading visuals belong to the shared loading prop`);
+  }
   const sxMatches = source.match(/\bsx=\{/g)?.length ?? 0;
   inventory.sx += sxMatches;
   inventory.nativeControls += source.match(/<(?:button|input|select|textarea)\b/g)?.length ?? 0;
@@ -124,7 +127,11 @@ for (const absolute of sourceRoots.flatMap((root) => collectFiles(join(frontendR
   }
   const inlineStyleMatches = source.match(/\bstyle=\{\{/g)?.length ?? 0;
   if (inlineStyleMatches > 0 && !inlineStyleAllowlist.has(file)) {
-    failures.push(`${file}: inline style is forbidden; use CSS Module or --oops-geometry-* variables`);
+    const geometryOnly = [...source.matchAll(/\bstyle=\{\{([\s\S]*?)\}\}/g)].every((match) => {
+      const properties = [...match[1].matchAll(/(?:["']?)(--[\w-]+)(?:["']?)\s*:/g)].map((item) => item[1]);
+      return properties.length > 0 && properties.every((property) => property.startsWith("--oops-geometry-"));
+    });
+    if (!geometryOnly) failures.push(`${file}: inline style is forbidden; use CSS Module or --oops-geometry-* variables`);
   }
 }
 

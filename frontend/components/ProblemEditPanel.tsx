@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Image from "next/image";
-import { Box, Button, Collapse, FormControl, GeometryButton, IconButton, NativeInput, NativeSelect, Spinner, Text, TextInput, Textarea, useReducedMotion } from "@/components/ui/primitives";
+import { Box, Button, Collapse, FormControl, GeometryButton, IconButton, NativeInput, NativeSelect, Text, TextInput, Textarea, useReducedMotion } from "@/components/ui/primitives";
 import { PlusIcon, TrashIcon } from "@/components/ui/icons";
 import { Check, ChevronDown, ChevronRight, CircleStop, Code2, Crop, Eye, History, Image as ImageIcon, ImageMinus, ImagePlus, PanelRight, RefreshCw, Save, Sparkles, Trash2, WandSparkles } from "lucide-react";
 import { optionLabel } from "@/lib/content/options";
@@ -893,7 +893,7 @@ export function ProblemEditPanel({ taskId, taskAssetPath, problem, tagStyles, on
                             {diagramCompileError ? <Box className={sxStyles.diagramCompileError}><Text className={sxStyles.diagramCompileErrorTitle}>{diagramCompileErrorCategory === "human_review" ? "需要人工介入" : "编译错误"}</Text><Text className={sxStyles.diagramCompileErrorBody}>{diagramCompileError}</Text></Box> : null}
                             <Box className={sxStyles.diagramSourceActions}>
                               <Button size="small" variant="invisible" onClick={requestLeaveDiagramSource}>放弃修改</Button>
-                              <Button size="small" variant="primary" leadingVisual={Save} onClick={() => void compileAndSaveDiagram()} disabled={isCompilingDiagram}>{isCompilingDiagram ? <><Spinner size="small" className={sxStyles.sx35} />编译中…</> : "编译并保存"}</Button>
+                              <Button size="small" variant="primary" leadingVisual={Save} loading={isCompilingDiagram} onClick={() => void compileAndSaveDiagram()} disabled={isCompilingDiagram}>{isCompilingDiagram ? "编译中…" : "编译并保存"}</Button>
                             </Box>
                           </Box>
                         )}
@@ -926,15 +926,8 @@ export function ProblemEditPanel({ taskId, taskAssetPath, problem, tagStyles, on
 
         <Box className={sxStyles.sx41}>
           <Button size="small" variant="invisible" onClick={requestClose}>取消</Button>
-          <Button variant="primary" leadingVisual={Save} onClick={save} disabled={isSaving || !isDirty}>
-            {isSaving ? (
-              <>
-                <Spinner size="small" className={sxStyles.sx42} />
-                保存中…
-              </>
-            ) : (
-              "保存修改"
-            )}
+          <Button variant="primary" leadingVisual={Save} loading={isSaving} onClick={save} disabled={isSaving || !isDirty}>
+            {isSaving ? "保存中…" : "保存修改"}
           </Button>
         </Box>
       </Box>

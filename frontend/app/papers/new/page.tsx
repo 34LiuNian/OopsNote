@@ -3,8 +3,8 @@
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
-import { Minus, Plus, SlidersHorizontal } from "lucide-react";
-import { Box, Button, FormControl, IconButton, NativeInput, Spinner, Text, TextInput } from "@/components/ui/primitives";
+import { Minus, Plus, SlidersHorizontal, X } from "lucide-react";
+import { Box, Button, FormControl, IconButton, NativeInput, Text, TextInput } from "@/components/ui/primitives";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
 import { DEFAULT_SUBJECT, SUBJECT_OPTIONS } from "@/config/subjects";
 import { getKnowledgeTree } from "@/features/tags/api";
@@ -262,7 +262,7 @@ export default function NewPaperPage() {
                 {selectedItems.length ? selectedItems.map((node) => (
                   <span className={styles.chip} key={node.id}>
                     {node.title}
-                    <Button type="button" variant="invisible" onClick={() => toggleNode(node)} aria-label={`移除${node.title}`}>×</Button>
+                    <IconButton type="button" variant="invisible" icon={X} onClick={() => toggleNode(node)} aria-label={`移除${node.title}`} />
                   </span>
                 )) : <span className={styles.emptySelection}>未限定知识点时，将从该学科全部题目中选择。</span>}
               </div>
@@ -385,8 +385,8 @@ export default function NewPaperPage() {
             <Button variant="secondary" disabled={creating} onClick={() => void continueToEditor(false)}>
               跳过，手动选题
             </Button>
-            <Button variant="primary" disabled={creating} onClick={() => void continueToEditor(true)}>
-              {creating ? <><Spinner size="small" /> 正在创建</> : "生成试卷草稿"}
+            <Button variant="primary" loading={creating} disabled={creating} onClick={() => void continueToEditor(true)}>
+              {creating ? "正在创建" : "生成试卷草稿"}
             </Button>
           </div>
           </div>

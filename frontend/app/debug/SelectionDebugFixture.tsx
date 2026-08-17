@@ -103,7 +103,7 @@ export function SelectionDebugFixture() {
             alt="页面裁剪示例"
             layout="fixed"
             fallback={<div className={styles.cropPaper}>页面 / 题图原图</div>}
-            style={{ width: "100%", aspectRatio: "1000 / 650" }}
+            className={styles.cropStage}
           >
             <NormalizedRectEditor value={crop} onChange={setCrop} />
           </ImageSelectionStage>

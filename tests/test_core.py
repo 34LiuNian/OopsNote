@@ -102,6 +102,24 @@ class TestTaskStore:
             )
         assert store.get(task.id).status == TaskStatus.PROCESSING
 
+    def test_delete_diagram_candidate_rejects_active_run_atomically(self):
+        store = TaskStore(base_dir=Path(tempfile.mkdtemp()))
+        task = store.create(TaskCreateRequest(subject="math"))
+        candidate = DiagramCandidate(ordinal=1, tikz_source=r"\draw (0,0)--(1,0);")
+        item = DiagramItem(
+            active_run_id="diagram-run-1",
+            selected_candidate_id=candidate.id,
+            candidates=[candidate],
+        )
+        store.add_diagram_item(task.id, item)
+
+        with pytest.raises(StateConflict, match="cannot be edited"):
+            store.delete_diagram_candidate(task.id, item.id, candidate.id)
+
+        retained = store.get(task.id).diagram_items[0]
+        assert retained.active_run_id == "diagram-run-1"
+        assert [value.id for value in retained.candidates] == [candidate.id]
+
     def test_corrupt_task_is_reported_instead_of_silently_disappearing(self):
         base = Path(tempfile.mkdtemp())
         store = TaskStore(base_dir=base)

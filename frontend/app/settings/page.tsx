@@ -8,10 +8,10 @@ import { PageHeader } from "@/components/layout/PageHeader";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { SettingsRuntimeSection } from "@/components/settings/SettingsRuntimeSection";
 import { useAiRuntimeSettings } from "@/hooks/useSettings";
-import { fetchJson } from "@/lib/api";
 import { isAdminUser } from "@/lib/auth";
 import { queryKeys } from "@/lib/queryClient";
 import { notify } from "@/lib/notify";
+import { updateAiRuntimeSettings } from "@/features/settings/api";
 import sxStyles from "./page.sx.module.css";
 
 export default function SettingsPage() {
@@ -33,7 +33,7 @@ export default function SettingsPage() {
     setSaving(true);
     setMessage("");
     try {
-      await fetchJson("/settings/ai/runtime", { method: "PUT", body: JSON.stringify({ max_concurrency: maxConcurrency }) });
+      await updateAiRuntimeSettings(maxConcurrency);
       await queryClient.invalidateQueries({ queryKey: queryKeys.settings.aiRuntime() });
       setDraft(null);
       setMessage("已保存，重启 OopsNote 后生效");

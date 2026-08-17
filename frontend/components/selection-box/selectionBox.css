@@ -2,6 +2,10 @@
   --selection-box-color: var(--rect-editor-color, var(--fgColor-info));
   --selection-box-stroke: var(--rect-editor-stroke, 2px);
   position: absolute;
+  left: var(--oops-geometry-left);
+  top: var(--oops-geometry-top);
+  width: var(--oops-geometry-width);
+  height: var(--oops-geometry-height);
   z-index: 2;
   box-sizing: border-box;
   border: 0;
@@ -18,6 +22,7 @@
 .selection-box:focus-visible { outline: 2px solid var(--selection-box-color); outline-offset: 3px; }
 .selection-box__guide {
   position: absolute;
+  left: var(--oops-geometry-guide-left);
   z-index: 1;
   top: var(--selection-box-stroke);
   bottom: var(--selection-box-stroke);

@@ -5,13 +5,16 @@ import { useEffect, useState } from "react";
 import { ChevronDown } from "lucide-react";
 import { Box, Button, IconButton, Select, Text, TextInput, Textarea } from "@/components/ui/primitives";
 import { ProblemCard } from "@/components/ProblemCard";
-import { fetchJson } from "@/lib/api";
 import { confirmAction } from "@/lib/confirm";
 import type { TaskResponse } from "@/types/api";
+import {
+  generateTaskVariations,
+  listDuplicateCandidates,
+  mergeDuplicateCandidate,
+  type DuplicateCandidate,
+  type VariationTask,
+} from "@/features/tasks";
 import sxStyles from "./ProblemStudyPanel.sx.module.css";
-
-type DuplicateCandidate = { task: TaskResponse["task"]; source: string };
-type VariationTask = { task: TaskResponse["task"] };
 
 type Props = {
   taskId: string;
@@ -39,9 +42,7 @@ export function ProblemStudyPanel({ taskId, problem, mergedInto, onStatusMessage
     if (section !== "duplicates" || mergedInto) return;
 
     const controller = new AbortController();
-    void fetchJson<{ items: DuplicateCandidate[] }>(`/tasks/${taskId}/duplicates`, {
-      signal: controller.signal,
-    })
+    void listDuplicateCandidates(taskId, controller.signal)
       .then((data) => {
         if (!controller.signal.aborted) setCandidates(data.items);
       })
@@ -56,10 +57,7 @@ export function ProblemStudyPanel({ taskId, problem, mergedInto, onStatusMessage
   const merge = async (candidateTaskId: string, mergeDirection: "into_current" | "into_candidate") => {
     setIsMerging(true);
     try {
-      await fetchJson(`/tasks/${taskId}/duplicates/${candidateTaskId}/merge`, {
-        method: "POST",
-        body: JSON.stringify({ direction: mergeDirection }),
-      });
+      await mergeDuplicateCandidate(taskId, candidateTaskId, mergeDirection);
       setCandidates([]);
       setIsExpanded(false);
       await onRefresh();
@@ -88,14 +86,11 @@ export function ProblemStudyPanel({ taskId, problem, mergedInto, onStatusMessage
   const generate = async () => {
     setIsGenerating(true);
     try {
-      const data = await fetchJson<{ items: VariationTask[] }>(`/tasks/${taskId}/variations`, {
-        method: "POST",
-        body: JSON.stringify({
-          direction,
-          custom_request: customRequest,
-          difficulty: difficulty || null,
-          count: Number(count) || 1,
-        }),
+      const data = await generateTaskVariations(taskId, {
+        direction,
+        custom_request: customRequest,
+        difficulty: difficulty || null,
+        count: Number(count) || 1,
       });
       setVariationTasks(data.items);
       onStatusMessage(`已提交 ${data.items.length} 道举一反三题`);

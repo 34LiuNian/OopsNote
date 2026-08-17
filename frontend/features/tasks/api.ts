@@ -48,6 +48,50 @@ export async function getTask(taskId: string): Promise<TaskResponse> {
   return fetchJson<TaskResponse>(`/tasks/${encodeURIComponent(taskId)}`);
 }
 
+export async function processTask(taskId: string, background = true): Promise<TaskResponse> {
+  return fetchJson<TaskResponse>(
+    `/tasks/${encodeURIComponent(taskId)}/process?background=${background ? "true" : "false"}`,
+    { method: "POST" },
+  );
+}
+
+export type DuplicateCandidate = { task: TaskResponse["task"]; source: string };
+export type VariationTask = { task: TaskResponse["task"] };
+
+export function listDuplicateCandidates(taskId: string, signal?: AbortSignal) {
+  return fetchJson<{ items: DuplicateCandidate[] }>(
+    `/tasks/${encodeURIComponent(taskId)}/duplicates`,
+    { signal },
+  );
+}
+
+export function mergeDuplicateCandidate(
+  taskId: string,
+  candidateTaskId: string,
+  direction: "into_current" | "into_candidate",
+) {
+  return fetchJson<{ merge: Record<string, unknown> }>(
+    `/tasks/${encodeURIComponent(taskId)}/duplicates/${encodeURIComponent(candidateTaskId)}/merge`,
+    {
+      method: "POST",
+      body: JSON.stringify({ direction }),
+    },
+  );
+}
+
+export function generateTaskVariations(
+  taskId: string,
+  payload: { direction: string; custom_request: string; difficulty: string | null; count: number },
+) {
+  return fetchJson<{ items: VariationTask[] }>(
+    `/tasks/${encodeURIComponent(taskId)}/variations`,
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
+    },
+  );
+}
+
 export async function retryTask(taskId: string, background = true): Promise<TaskResponse> {
   return fetchJson<TaskResponse>(
     `/tasks/${encodeURIComponent(taskId)}/retry?background=${background ? "true" : "false"}`,
@@ -128,6 +172,12 @@ export async function cancelProblemDiagram(taskId: string, itemId: string): Prom
 
 export async function selectProblemDiagramCandidate(taskId: string, itemId: string, candidateId: string): Promise<TaskResponse> {
   return fetchJson<TaskResponse>(`/tasks/${encodeURIComponent(taskId)}/diagrams/${encodeURIComponent(itemId)}/candidates/${encodeURIComponent(candidateId)}/select`, {
+    method: "POST",
+  });
+}
+
+export async function cancelTask(taskId: string): Promise<TaskResponse> {
+  return fetchJson<TaskResponse>(`/tasks/${encodeURIComponent(taskId)}/cancel`, {
     method: "POST",
   });
 }

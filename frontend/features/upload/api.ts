@@ -1,5 +1,6 @@
 import { apiErrorFromResponse, fetchApi, fetchJson, fetchRawUpload, hasApiErrorCode } from "../../lib/api";
 import type { TaskResponse } from "../../types/api";
+import { processTask } from "../tasks";
 
 export type CreateUploadTaskPayload = {
   subject: string;
@@ -27,16 +28,10 @@ export async function createUploadTask(payload: CreateUploadTaskPayload): Promis
   });
 }
 
-export async function processTaskInBackground(taskId: string): Promise<TaskResponse> {
-  return fetchJson<TaskResponse>(`/tasks/${encodeURIComponent(taskId)}/process?background=true`, {
-    method: "POST",
-  });
-}
-
 export async function createUploadTaskAndProcess(payload: CreateUploadTaskPayload): Promise<TaskResponse> {
   const created = await createUploadTask(payload);
   const taskId = created.task.id;
-  await processTaskInBackground(taskId);
+  await processTask(taskId, true);
   return created;
 }
 

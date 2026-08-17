@@ -7,6 +7,19 @@ type ChannelDiscoveryResponse = {
   validation: ProviderValidation;
 };
 
+export type AiRuntimeSettings = { max_concurrency: number };
+
+export function getAiRuntimeSettings() {
+  return fetchJson<AiRuntimeSettings>("/settings/ai/runtime");
+}
+
+export function updateAiRuntimeSettings(maxConcurrency: number) {
+  return fetchJson<AiRuntimeSettings>("/settings/ai/runtime", {
+    method: "PUT",
+    body: JSON.stringify({ max_concurrency: maxConcurrency }),
+  });
+}
+
 export function getChannels() {
   return fetchJson<ChannelsResponse>("/settings/ai/channels");
 }

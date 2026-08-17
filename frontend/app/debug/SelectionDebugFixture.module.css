@@ -123,6 +123,11 @@
   font-size: var(--oops-text-sm);
 }
 
+.cropStage {
+  width: 100%;
+  aspect-ratio: 1000 / 650;
+}
+
 @media (max-width: 640px) {
   .root { padding: 12px; }
   .header { align-items: flex-start; }

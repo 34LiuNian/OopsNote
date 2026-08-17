@@ -11,13 +11,12 @@ import {
   Text,
   Spinner,
 } from "@/components/ui/primitives";
-import { fetchJson } from "@/lib/api";
 import { useAuthenticatedAssetUrl } from "@/hooks/useAuthenticatedAssetUrl";
 import { confirmAction } from "@/lib/confirm";
-import type { DiagramItem, TaskResponse, TaskRunSummary } from "@/types/api";
+import type { DiagramItem, TaskRunSummary } from "@/types/api";
 import { TaskActions } from "./task/TaskActions";
 import { TaskProblemDetail } from "./task/TaskProblemList";
-import { deleteTask } from "@/features/tasks";
+import { cancelTask as cancelTaskRequest, deleteTask, retryTask as retryTaskRequest } from "@/features/tasks";
 import { useTagDimensions } from "@/features/tags";
 import { useTaskStream } from "@/hooks/useTaskStream";
 import { DIAGRAM_PROGRESS_STEPS, PROGRESS_STEPS, useTaskProgress } from "@/hooks/useTaskProgress";
@@ -108,7 +107,7 @@ export function TaskLiveView({ taskId }: { taskId: string }) {
     setIsCancelling(true);
     setError("");
     try {
-      await fetchJson<TaskResponse>(`/tasks/${taskId}/cancel`, { method: "POST" });
+      await cancelTaskRequest(taskId);
       await loadOnce();
     } catch (err) {
       setError(err instanceof Error ? err.message : "作废任务失败");
@@ -128,10 +127,7 @@ export function TaskLiveView({ taskId }: { taskId: string }) {
     resetStream();
 
     try {
-      await fetchJson<TaskResponse>(
-        `/tasks/${taskId}/retry?background=true`,
-        { method: "POST" }
-      );
+      await retryTaskRequest(taskId, true);
       await loadOnce();
     } catch (err) {
       setError(err instanceof Error ? err.message : "重试失败");

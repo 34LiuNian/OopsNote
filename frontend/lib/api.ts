@@ -1,5 +1,13 @@
 import { isBetterAuthMode } from "./auth-mode";
-import type { ApiErrorCategory } from "../types/api";
+import { ApiError, type ApiErrorPayload } from "./apiError";
+
+export {
+  ApiError,
+  apiErrorCode,
+  hasApiErrorCode,
+  isRetryableApiError,
+  type ApiErrorPayload,
+} from "./apiError";
 
 // Better Auth requests must pass through the session-validating BFF.
 export const API_BASE = isBetterAuthMode() ? "/api/backend" : "/api";
@@ -14,38 +22,6 @@ function directBackendBase(): string | null {
 export type ApiRequestInit = RequestInit & {
   skipAuth?: boolean;
 };
-
-export type ApiErrorPayload = {
-  category: ApiErrorCategory;
-  code: string;
-  message: string;
-  retryable: boolean;
-  scope: string;
-  task_id?: string;
-  run_id?: string;
-  diagram_item_id?: string;
-  details?: Record<string, unknown>;
-};
-
-export class ApiError extends Error {
-  constructor(
-    message: string,
-    readonly status: number,
-    readonly payload?: ApiErrorPayload,
-  ) {
-    super(message);
-    this.name = "ApiError";
-  }
-}
-
-export function apiErrorCode(error: unknown): string | null {
-  return error instanceof ApiError ? error.payload?.code ?? null : null;
-}
-
-export function hasApiErrorCode(error: unknown, ...codes: string[]): boolean {
-  const code = apiErrorCode(error);
-  return code !== null && codes.includes(code);
-}
 
 async function requestBackend(input: RequestInfo | URL, init: RequestInit): Promise<Response> {
   try {

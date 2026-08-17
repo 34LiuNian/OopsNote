@@ -6,7 +6,6 @@ import {
     FormControl,
     TextInput,
     Select,
-    Spinner,
 } from "@/components/ui/primitives";
 import { TagSelectorRow } from "@/components/TagSelectorRow";
 import type { TagDimensionStyle } from "@/types/api";
@@ -196,8 +195,9 @@ export function AnnotationForm({
                     variant="primary"
                     onClick={onSubmit}
                     disabled={isLoading}
+                    loading={isLoading}
                 >
-                    {isLoading ? <><Spinner size="small" className={sxStyles.sx11} />入队中...</> : "提交并入队"}
+                    {isLoading ? "入队中..." : "提交并入队"}
                 </Button>
                 <Button onClick={onSkip} disabled={isLoading}>
                     跳过

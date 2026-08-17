@@ -98,9 +98,6 @@
 .sx34{margin-top:var(--oops-space-2);display:flex;gap:var(--oops-space-2);flex-wrap:wrap;}
 
 /* Generated from components/ProblemEditPanel.tsx */
-.sx35{margin-right:var(--oops-space-1);}
-
-/* Generated from components/ProblemEditPanel.tsx */
 .sx36{margin-top:var(--oops-space-4);}
 
 /* Generated from components/ProblemEditPanel.tsx */
@@ -118,8 +115,6 @@
 /* Generated from components/ProblemEditPanel.tsx */
 .sx41{display:flex;gap:var(--oops-space-2);justify-content:flex-end;padding-top:var(--oops-space-2);border-top-width:1px;border-top-style:solid;border-top-color:var(--borderColor-muted);position:sticky;bottom:0px;background-color:var(--bgColor-default);padding-bottom:var(--oops-space-2);z-index:10;}
 
-/* Generated from components/ProblemEditPanel.tsx */
-.sx42{margin-right:var(--oops-space-1);}
 .diagramStatus{font-size:var(--oops-text-xs);}
 .diagramStatus[data-status="danger"]{color:var(--fgColor-danger);}
 .diagramStatus[data-status="muted"]{color:var(--fgColor-muted);}

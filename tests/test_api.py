@@ -119,6 +119,18 @@ def test_diagram_settings_hide_without_deleting_and_candidate_delete_rolls_back(
     task_store.add_diagram_item(task.id, item)
     client = TestClient(main.app)
 
+    task_store.update_diagram_item(task.id, item.id, active_run_id="diagram-run-1")
+    blocked = client.delete(f"/tasks/{task.id}/diagrams/{item.id}/candidates/{second.id}")
+    assert blocked.status_code == 409
+    assert blocked.json()["detail"]["code"] == "diagram_run_active"
+    assert len(task_store.get(task.id).diagram_items[0].candidates) == 2
+    task_store.update_diagram_item(
+        task.id,
+        item.id,
+        expected_active_run_id="diagram-run-1",
+        active_run_id=None,
+    )
+
     hidden = client.patch(f"/tasks/{task.id}/problem/diagram", json={"enabled": False})
     assert hidden.status_code == 200
     hidden_problem = hidden.json()["task"]["problem"]

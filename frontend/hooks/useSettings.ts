@@ -2,11 +2,12 @@
 
 import { useQuery } from '@tanstack/react-query';
 import { fetchJson } from '../lib/api';
+import { getAiRuntimeSettings } from '../features/settings/api';
 import { queryKeys } from '../lib/queryClient';
 export function useAiRuntimeSettings() {
   return useQuery({
     queryKey: queryKeys.settings.aiRuntime(),
-    queryFn: () => fetchJson<{ max_concurrency: number }>('/settings/ai/runtime'),
+    queryFn: getAiRuntimeSettings,
   });
 }
 

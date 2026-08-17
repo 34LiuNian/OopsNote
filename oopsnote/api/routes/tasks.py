@@ -30,6 +30,7 @@ from oopsnote.core import (
     DiagramStatus,
     Problem,
     QuestionType,
+    StateConflict,
     TagDimension,
     TaskCreateRequest,
     TaskStatus,
@@ -95,6 +96,35 @@ def _diagram_item(task: Any, item_id: str) -> DiagramItem:
             diagram_item_id=item_id,
         )
     return item
+
+
+def _diagram_edit_conflict(task_id: str, item_id: str) -> HTTPException:
+    return api_error(
+        409,
+        code="diagram_run_active",
+        message="请先取消正在运行的题图任务",
+        task_id=task_id,
+        diagram_item_id=item_id,
+        scope="diagram",
+    )
+
+
+def _update_idle_diagram_item(
+    api: Any,
+    task_id: str,
+    item_id: str,
+    **fields: Any,
+):
+    """Apply a user edit only if no diagram run claimed the item in the meantime."""
+    try:
+        return api.TASK_STORE.update_diagram_item(
+            task_id,
+            item_id,
+            expected_active_run_id=None,
+            **fields,
+        )
+    except StateConflict as error:
+        raise _diagram_edit_conflict(task_id, item_id) from error
 
 
 def _problem_edit_error(
@@ -723,7 +753,7 @@ def update_problem_diagram_settings(
             }
         )
 
-    task = api.TASK_STORE.update_diagram_item(task_id, item.id, **fields)
+    task = _update_idle_diagram_item(api, task_id, item.id, **fields)
     return {"task": api._task_view(task)}
 
 
@@ -947,7 +977,8 @@ def select_problem_diagram_candidate(
             scope="diagram",
             details={"candidate_id": candidate_id},
         )
-    task = api.TASK_STORE.update_diagram_item(
+    task = _update_idle_diagram_item(
+        api,
         task_id,
         item_id,
         selected_candidate_id=candidate_id,
@@ -990,7 +1021,10 @@ def delete_problem_diagram_candidate(
             scope="diagram",
             details={"candidate_id": candidate_id},
         )
-    task = api.TASK_STORE.delete_diagram_candidate(task_id, item_id, candidate_id)
+    try:
+        task = api.TASK_STORE.delete_diagram_candidate(task_id, item_id, candidate_id)
+    except StateConflict as error:
+        raise _diagram_edit_conflict(task_id, item_id) from error
     return {"task": api._task_view(task)}
 
 
@@ -1044,7 +1078,8 @@ def create_problem_diagram_candidate(
         canvas_height_em=bundle.canvas_height_em,
         decision="accept",
     )
-    task = api.TASK_STORE.update_diagram_item(
+    task = _update_idle_diagram_item(
+        api,
         task_id,
         item_id,
         candidates=[*item.candidates, candidate],

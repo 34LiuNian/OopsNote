@@ -1,8 +1,8 @@
 "use client";
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { fetchJson } from '../lib/api';
-import type { TaskResponse, TasksResponse } from '../types/api';
+import { cancelTask, deleteTask, getTask, listTasks, retryTask } from '../features/tasks';
+import type { TaskStatus } from '../types/api';
 import { queryKeys } from '../lib/queryClient';
 
 /**
@@ -16,7 +16,7 @@ import { queryKeys } from '../lib/queryClient';
 export function useTask(taskId: string | null) {
   return useQuery({
     queryKey: queryKeys.tasks.detail(taskId || ''),
-    queryFn: () => fetchJson<TaskResponse>(`/tasks/${taskId}`),
+    queryFn: () => getTask(taskId ?? ''),
     enabled: !!taskId,
     // 任务数据不缓存，总是获取最新
     staleTime: 0,
@@ -31,16 +31,13 @@ export function useTask(taskId: string | null) {
  * const { data, isLoading } = useTaskList({ status: 'processing' });
  * ```
  */
-export function useTaskList(filters?: { status?: string; limit?: number }) {
+export function useTaskList(filters?: { status?: TaskStatus; limit?: number }) {
   return useQuery({
     queryKey: queryKeys.tasks.list(filters),
-    queryFn: async () => {
-      const params = new URLSearchParams();
-      if (filters?.status) params.set('status', filters.status);
-      if (filters?.limit) params.set('limit', filters.limit.toString());
-      const query = params.toString();
-      return fetchJson<TasksResponse>(`/tasks${query ? `?${query}` : ''}`);
-    },
+    queryFn: () => listTasks({
+      status: filters?.status,
+      limit: filters?.limit,
+    }),
     // 列表数据缓存 1 分钟
     staleTime: 60 * 1000,
   });
@@ -59,11 +56,7 @@ export function useCancelTask() {
   const queryClient = useQueryClient();
   
   return useMutation({
-    mutationFn: async (taskId: string) => {
-      return fetchJson<TaskResponse>(`/tasks/${taskId}/cancel`, {
-        method: 'POST',
-      });
-    },
+    mutationFn: cancelTask,
     // 取消成功后刷新任务详情和列表
     onSuccess: (data) => {
       const taskId = data.task.id;
@@ -86,11 +79,7 @@ export function useDeleteTask() {
   const queryClient = useQueryClient();
   
   return useMutation({
-    mutationFn: async (taskId: string) => {
-      return fetchJson<{ success: boolean }>(`/tasks/${taskId}`, {
-        method: 'DELETE',
-      });
-    },
+    mutationFn: deleteTask,
     // 删除成功后从缓存中移除
     onSuccess: (_, taskId) => {
       queryClient.removeQueries({ queryKey: queryKeys.tasks.detail(taskId) });
@@ -112,11 +101,7 @@ export function useRetryTask() {
   const queryClient = useQueryClient();
   
   return useMutation({
-    mutationFn: async (taskId: string) => {
-      return fetchJson<TaskResponse>(`/tasks/${taskId}/retry`, {
-        method: 'POST',
-      });
-    },
+    mutationFn: (taskId: string) => retryTask(taskId),
     // 重试成功后刷新任务详情和列表
     onSuccess: (data) => {
       const taskId = data.task.id;

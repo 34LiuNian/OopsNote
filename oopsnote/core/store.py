@@ -331,10 +331,20 @@ class TaskStore:
         """
         with self._lock:
             record = self.get(task_id)
-            item = next((value for value in record.diagram_items if value.id == item_id), None)
+            item = next(
+                (value for value in record.diagram_items if value.id == item_id),
+                None,
+            )
             if item is None:
                 raise KeyError(f"Diagram item {item_id} not found")
-            candidate = next((value for value in item.candidates if value.id == candidate_id), None)
+            if item.active_run_id:
+                raise StateConflict(
+                    f"Diagram item {item_id} cannot be edited while run {item.active_run_id} is active"
+                )
+            candidate = next(
+                (value for value in item.candidates if value.id == candidate_id),
+                None,
+            )
             if candidate is None:
                 raise KeyError(f"Diagram candidate {candidate_id} not found")
             remaining = [value for value in item.candidates if value.id != candidate_id]
