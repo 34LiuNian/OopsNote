@@ -12,7 +12,7 @@
     "design:migrate:sx": "node scripts/migrate-sx-static.mjs",
     "encoding:check": "node scripts/check-encoding.mjs",
     "errors:check": "node scripts/check-error-notifications.mjs",
-    "test:unit": "node --test features/settings/modelOptions.test.mjs lib/notificationPolicy.test.mjs",
+    "test:unit": "node --test features/settings/channelDefaults.test.mjs features/settings/modelOptions.test.mjs lib/notificationPolicy.test.mjs",
     "test:e2e": "playwright test",
     "test:e2e:credentialed": "playwright test --config playwright.credentialed.config.ts",
     "renderers:sync": "node scripts/sync-renderer-assets.mjs",

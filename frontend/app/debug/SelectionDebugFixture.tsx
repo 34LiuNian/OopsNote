@@ -3,6 +3,7 @@
 import { useRef, useState } from "react";
 import { RotateCcw } from "lucide-react";
 import { BatchSelectionOverlay } from "@/components/batch-continuous/BatchSelectionOverlay";
+import { ImageSelectionStage, NormalizedRectEditor } from "@/components/image-selection";
 import {
   buildPageMetrics,
   splitSelectionAcrossPages,
@@ -40,10 +41,12 @@ export function SelectionDebugFixture() {
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const [selections, setSelections] = useState<SelectionModel[]>(initialSelections);
   const [activeSelectionId, setActiveSelectionId] = useState<string | undefined>("debug-pending");
+  const [crop, setCrop] = useState({ x: 0.12, y: 0.16, width: 0.76, height: 0.66 });
 
   const reset = () => {
     setSelections(initialSelections());
     setActiveSelectionId("debug-pending");
+    setCrop({ x: 0.12, y: 0.16, width: 0.76, height: 0.66 });
   };
 
   return (
@@ -89,6 +92,25 @@ export function SelectionDebugFixture() {
             onChange={(changed) => setSelections((current) => current.map((item) => item.id === changed.id ? changed : item))}
             onTooSmall={() => undefined}
           />
+        </div>
+      </div>
+
+      <div className={styles.adapterGrid}>
+        <div className={styles.adapterPanel}>
+          <Text className={styles.adapterTitle}>页面 / 题图裁剪</Text>
+          <Text className={styles.adapterHint}>NormalizedRectEditor · 同一 SelectionBox</Text>
+          <ImageSelectionStage
+            alt="页面裁剪示例"
+            layout="fixed"
+            fallback={<div className={styles.cropPaper}>页面 / 题图原图</div>}
+            style={{ width: "100%", aspectRatio: "1000 / 650" }}
+          >
+            <NormalizedRectEditor value={crop} onChange={setCrop} />
+          </ImageSelectionStage>
+        </div>
+        <div className={styles.adapterNotes}>
+          <Text className={styles.adapterTitle}>适配边界</Text>
+          <Text className={styles.adapterHint}>框体、手柄、移动、缩放和最小尺寸由 SelectionBox 统一；裁剪只保存归一化矩形，批量扫描只负责文档坐标与题目状态。</Text>
         </div>
       </div>
     </section>

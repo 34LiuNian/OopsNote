@@ -95,6 +95,7 @@ bug fix, fallback, retry, compatibility layer, or reliability change.
 $env:PYTEST_ADDOPTS='--basetemp=D:/works/2026/OopsNote/.pytest-tmp'
 .\.venv\Scripts\python.exe -m pytest -q
 uv run ruff check .
+uv run ruff format --check .
 npm --prefix frontend run typecheck
 npm --prefix frontend run lint
 ```

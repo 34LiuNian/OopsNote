@@ -22,6 +22,9 @@ from oopsnote.core import (
     BatchSegmentPart,
     BatchSessionRecord,
     BatchSessionStore,
+    DiagramCandidate,
+    DiagramItem,
+    DiagramStatus,
     Problem,
     ProblemMergeStore,
     RunArtifact,
@@ -87,6 +90,182 @@ def test_search_rejects_invalid_since_query_at_http_boundary():
     assert response.status_code == 422
 
 
+def test_diagram_settings_hide_without_deleting_and_candidate_delete_rolls_back(
+    tmp_path, monkeypatch
+):
+    task_store = TaskStore(tmp_path / "tasks")
+    asset_store = AssetStore(tmp_path / "assets")
+    monkeypatch.setattr(main, "TASK_STORE", task_store)
+    monkeypatch.setattr(main, "ASSET_STORE", asset_store)
+    source_path = asset_store.save_bytes(b"source", "source.png", "source")
+    task = task_store.create(TaskCreateRequest(subject="math", asset_path=source_path))
+    task_store.update(
+        task.id,
+        status=TaskStatus.COMPLETED,
+        problem=Problem(problem_text="有图", has_diagram=True),
+    )
+    first = DiagramCandidate(ordinal=1, tikz_source=r"\draw (0,0)--(1,0);")
+    second = DiagramCandidate(
+        ordinal=2,
+        parent_candidate_id=first.id,
+        tikz_source=r"\draw[->] (0,0)--(1,0);",
+    )
+    item = DiagramItem(
+        source_asset_path=source_path,
+        status=DiagramStatus.READY_TIKZ,
+        selected_candidate_id=second.id,
+        candidates=[first, second],
+    )
+    task_store.add_diagram_item(task.id, item)
+    client = TestClient(main.app)
+
+    hidden = client.patch(f"/tasks/{task.id}/problem/diagram", json={"enabled": False})
+    assert hidden.status_code == 200
+    hidden_problem = hidden.json()["task"]["problem"]
+    assert hidden_problem["diagram_enabled"] is False
+    assert hidden_problem["diagram_kind"] is None
+    assert len(hidden_problem["diagram_items"][0]["candidates"]) == 2
+    assert hidden.json()["task"]["revision_count"] is None
+
+    shown = client.patch(
+        f"/tasks/{task.id}/problem/diagram",
+        json={"enabled": True, "kind": "tikz"},
+    )
+    assert shown.status_code == 200
+    assert shown.json()["task"]["problem"]["diagram_kind"] == "tikz"
+
+    removed = client.delete(f"/tasks/{task.id}/diagrams/{item.id}/candidates/{second.id}")
+    assert removed.status_code == 200
+    removed_item = removed.json()["task"]["problem"]["diagram_items"][0]
+    assert removed_item["selected_candidate_id"] == first.id
+    assert [candidate["ordinal"] for candidate in removed_item["candidates"]] == [1]
+
+    removed = client.delete(f"/tasks/{task.id}/diagrams/{item.id}/candidates/{first.id}")
+    assert removed.status_code == 200
+    empty_item = removed.json()["task"]["problem"]["diagram_items"][0]
+    assert empty_item["selected_candidate_id"] is None
+    assert empty_item["status"] == "detected"
+    assert removed.json()["task"]["problem"]["diagram_kind"] is None
+
+
+def test_rerender_backfills_authoritative_tikz_size_metrics(tmp_path, monkeypatch):
+    task_store = TaskStore(tmp_path / "tasks")
+    asset_store = AssetStore(tmp_path / "assets")
+    monkeypatch.setattr(main, "TASK_STORE", task_store)
+    monkeypatch.setattr(main, "ASSET_STORE", asset_store)
+    task = task_store.create(TaskCreateRequest(subject="math"))
+    task_store.update(
+        task.id,
+        status=TaskStatus.COMPLETED,
+        problem=Problem(problem_text="旧题图", has_diagram=True),
+    )
+    legacy = DiagramCandidate(
+        ordinal=1,
+        tikz_source=r"\begin{tikzpicture}\draw (0,0)--(1,0);\end{tikzpicture}",
+        pdf_path="/assets/legacy.pdf",
+    )
+    item = DiagramItem(
+        status=DiagramStatus.READY_TIKZ,
+        selected_candidate_id=legacy.id,
+        candidates=[legacy],
+    )
+    task_store.add_diagram_item(task.id, item)
+
+    def render_bundle(renderer: TikzRenderClient, source: str) -> TikzRenderBundle:
+        assert source == legacy.tikz_source
+        return TikzRenderBundle(
+            svg_path=renderer.asset_store.save_bytes(b"<svg/>", "diagram.svg", "rerender"),
+            pdf_path=renderer.asset_store.save_bytes(b"pdf", "diagram.pdf", "rerender"),
+            png_path=renderer.asset_store.save_bytes(b"png", "diagram.png", "rerender"),
+            renderer_profile_version="tikz-xelatex-v6-test",
+            base_font_size_pt=10,
+            canvas_width_em=12.5,
+            canvas_height_em=7.25,
+        )
+
+    monkeypatch.setattr(TikzRenderClient, "render", render_bundle)
+
+    response = TestClient(main.app).post(f"/tasks/{task.id}/problem/diagram")
+
+    assert response.status_code == 200
+    problem = response.json()["task"]["problem"]
+    assert problem["diagram_base_font_size_pt"] == 10
+    assert problem["diagram_canvas_width_em"] == 12.5
+    assert problem["diagram_canvas_height_em"] == 7.25
+    repaired = task_store.get(task.id).diagram_items[0].candidates[0]
+    assert repaired.renderer_profile_version == "tikz-xelatex-v6-test"
+    assert repaired.base_font_size_pt == 10
+    assert repaired.canvas_width_em == 12.5
+    assert repaired.canvas_height_em == 7.25
+
+
+def test_problem_view_migrates_legacy_svg_dimensions_for_web_sizing(tmp_path, monkeypatch):
+    task_store = TaskStore(tmp_path / "tasks")
+    asset_store = AssetStore(tmp_path / "assets")
+    monkeypatch.setattr(main, "TASK_STORE", task_store)
+    monkeypatch.setattr(main, "ASSET_STORE", asset_store)
+    task = task_store.create(TaskCreateRequest(subject="physics"))
+    task_store.update(
+        task.id,
+        status=TaskStatus.COMPLETED,
+        problem=Problem(problem_text="旧题图", has_diagram=True),
+    )
+    svg_path = asset_store.save_bytes(
+        b'<svg xmlns="http://www.w3.org/2000/svg" width="329.48pt" height="156.73pt" />',
+        "diagram.svg",
+        "legacy-web-sizing",
+    )
+    candidate = DiagramCandidate(
+        ordinal=1,
+        tikz_source=r"\draw (0,0)--(1,0);",
+        svg_path=svg_path,
+        renderer_profile_version="tikz-xelatex-v4-poppler",
+    )
+    item = DiagramItem.model_validate(
+        {
+            "status": DiagramStatus.READY_TIKZ,
+            "selected_candidate_id": candidate.id,
+            "candidates": [candidate],
+            "scale_percent": 200,
+        }
+    )
+    task_store.add_diagram_item(task.id, item)
+
+    view = main._problem_view(task_store.get(task.id), task_store.get(task.id).problem)
+
+    base_font_pdf_pt = 10 * 72 / 72.27
+    assert view["diagram_base_font_size_pt"] == 10
+    assert view["diagram_canvas_width_em"] == pytest.approx(329.48 / base_font_pdf_pt)
+    assert view["diagram_canvas_height_em"] == pytest.approx(156.73 / base_font_pdf_pt)
+    assert view["diagram_scale_adjustment_percent"] == 100
+
+
+def test_problem_view_keeps_materialized_image_crop_out_of_the_display_projection():
+    item = DiagramItem(
+        source_asset_path="/assets/source.png",
+        source_region={"x": 0.2, "y": 0.3, "width": 0.4, "height": 0.5},
+        fallback_image_path="/assets/diagram-crop.png",
+        status=DiagramStatus.READY_IMAGE,
+    )
+    task = TaskRecord(
+        status=TaskStatus.COMPLETED,
+        problem=Problem(problem_text="有裁剪题图", has_diagram=True),
+        diagram_items=[item],
+    )
+
+    view = main._problem_view(task, task.problem)
+
+    assert view["diagram_image_path"] == "/assets/diagram-crop.png"
+    assert "diagram_image_crop" not in view
+    assert view["diagram_items"][0]["source_asset_path"] == "/assets/source.png"
+    assert view["diagram_items"][0]["source_region"] == {
+        "x": 0.2,
+        "y": 0.3,
+        "width": 0.4,
+        "height": 0.5,
+    }
+
+
 def test_problem_created_at_normalizes_legacy_naive_timestamp():
     problem = Problem(created_at="2026-08-07T12:00:00")
 
@@ -112,6 +291,37 @@ def test_run_view_exposes_evidence_index_without_model_output():
     assert view["evidence"]["artifacts"][0]["kind"] == "ocr"
     assert view["evidence"]["validation_error_count"] == 0
     assert "provider-only-output" not in str(view)
+
+
+def test_failed_task_view_prefers_terminal_error_over_stale_stage_message(tmp_path, monkeypatch):
+    task_store = TaskStore(tmp_path / "tasks")
+    run_store = RunStore(tmp_path / "runs")
+    monkeypatch.setattr(main, "TASK_STORE", task_store)
+    monkeypatch.setattr(main, "RUN_STORE", run_store)
+
+    task = task_store.create(TaskCreateRequest(subject="math"))
+    run = run_store.create(task.id, backend="langchain")
+    task_store.update(
+        task.id,
+        status=TaskStatus.FAILED,
+        stage=TaskStage.STARTING,
+        stage_message="LangChain provider started",
+        active_run_id=None,
+        last_error="供应商返回 503",
+        last_error_code="provider_unavailable",
+    )
+    run_store.finish(
+        run.id,
+        RunStatus.FAILED,
+        error_code="provider_unavailable",
+        error_message="供应商返回 503",
+    )
+
+    view = main._task_view(task_store.get(task.id))
+    summary = main._task_summary(task_store.get(task.id))
+
+    assert view["stage_message"] == "供应商侧请求失败：供应商返回 503"
+    assert summary["stage_message"] == "供应商侧请求失败：供应商返回 503"
 
 
 def test_explicit_local_auth_mode_bypasses_authentication_for_application_routes():
@@ -201,6 +411,90 @@ def test_batch_projection_preserves_admission_failure_for_pending_task(monkeypat
 
     assert projected.segments[0].status == "failed"
     assert projected.segments[0].error == "selected LangChain channel has no credential"
+
+
+def test_batch_session_list_uses_one_task_snapshot_without_hashing_sources(monkeypatch):
+    file_hashes = ("a" * 64, "b" * 64)
+    tasks = [
+        TaskRecord(
+            id=f"task-{index}",
+            status=TaskStatus.COMPLETED,
+            metadata={
+                "selection_snapshot": {
+                    "source_file_hash": file_hash,
+                    "segment_id": f"segment-{index}",
+                    "question_no": index,
+                    "parts": [
+                        {
+                            "page_index": 0,
+                            "column_index": 0,
+                            "x": 0,
+                            "y": 0,
+                            "width": 1,
+                            "height": 1,
+                            "order": 0,
+                        }
+                    ],
+                }
+            },
+        )
+        for index, file_hash in enumerate(file_hashes, start=1)
+    ]
+    records = [
+        BatchSessionRecord(
+            file_hash=file_hash,
+            filename=f"questions-{index}.pdf",
+            asset_path=f"/assets/questions-{index}.pdf",
+            page_count=1,
+            segments=[
+                BatchSegment(
+                    id=f"segment-{index}",
+                    parts=[BatchSegmentPart(page_index=0, x=0, y=0, width=1, height=1)],
+                    question_no=index,
+                    status="processing",
+                    task_id=f"task-{index}",
+                )
+            ],
+        )
+        for index, file_hash in enumerate(file_hashes, start=1)
+    ]
+
+    class StubTaskStore:
+        list_calls = 0
+
+        def list_all(self) -> list[TaskRecord]:
+            self.list_calls += 1
+            return tasks
+
+        def get(self, task_id: str) -> TaskRecord:
+            pytest.fail(f"list projection read task {task_id} outside its snapshot")
+
+    class StubBatchSessionStore:
+        def list_all(self) -> list[BatchSessionRecord]:
+            return records
+
+    class StubAssetStore:
+        def exists(self, asset_path: str) -> bool:
+            return asset_path.startswith("/assets/")
+
+        def matches_sha256(self, asset_path: str, expected_sha256: str) -> bool:
+            pytest.fail(f"history list hashed {asset_path} as {expected_sha256}")
+
+    task_store = StubTaskStore()
+    monkeypatch.setattr(main, "TASK_STORE", task_store)
+    monkeypatch.setattr(main, "BATCH_SESSION_STORE", StubBatchSessionStore())
+    monkeypatch.setattr(main, "ASSET_STORE", StubAssetStore())
+
+    response = TestClient(main.app).get("/batch-sessions")
+
+    assert response.status_code == 200
+    assert task_store.list_calls == 1
+    assert [item["source_available"] for item in response.json()["items"]] == [True, True]
+    assert [item["segments"][0]["status"] for item in response.json()["items"]] == [
+        "completed",
+        "completed",
+    ]
+    assert [len(item["submitted_selections"]) for item in response.json()["items"]] == [1, 1]
 
 
 def test_cors_does_not_allow_an_arbitrary_origin():
@@ -346,6 +640,9 @@ def test_web_contract_uses_wrapped_collections_and_persisted_upload(tmp_path, mo
                 base64.b64decode(png_base64()), "diagram.png", "api-test"
             ),
             renderer_profile_version="test-v1",
+            base_font_size_pt=10,
+            canvas_width_em=12,
+            canvas_height_em=8,
         )
 
     monkeypatch.setattr(TikzRenderClient, "render", render_bundle)
@@ -431,8 +728,10 @@ def test_web_contract_uses_wrapped_collections_and_persisted_upload(tmp_path, mo
     assert edited_problem["diagram_tikz_source"] == "\\draw (0,0) -- (1,1);"
     assert edited_problem["diagram_render_status"] == "ready_tikz"
     assert edited_problem["diagram_image_path"] is None
-    assert edited_problem["diagram_position"] == "right"
-    assert edited_problem["diagram_scale_percent"] == 100
+    assert edited_problem["diagram_placement"] == {"kind": "side", "side": "right"}
+    assert edited_problem["diagram_scale_adjustment_percent"] == 100
+    assert edited_problem["diagram_canvas_width_em"] == 12
+    assert edited_problem["diagram_canvas_height_em"] == 8
 
     overridden_difficulty = client.patch(
         f"/tasks/{task['id']}/problem/override",
@@ -477,8 +776,8 @@ def test_web_contract_uses_wrapped_collections_and_persisted_upload(tmp_path, mo
             "diagram_tikz_source": "stale tikz must be cleared",
             "diagram_svg": "<svg>stale</svg>",
             "diagram_image_path": task["asset"]["path"],
-            "diagram_position": "left",
-            "diagram_scale_percent": 125,
+            "diagram_placement": {"kind": "side", "side": "left"},
+            "diagram_scale_adjustment_percent": 125,
         },
     )
     assert image_edited.status_code == 200
@@ -489,8 +788,8 @@ def test_web_contract_uses_wrapped_collections_and_persisted_upload(tmp_path, mo
     assert image_problem["diagram_image_path"] == task["asset"]["path"]
     assert image_problem["diagram_tikz_source"] is None
     assert image_problem["diagram_svg"] is None
-    assert image_problem["diagram_position"] == "left"
-    assert image_problem["diagram_scale_percent"] == 125
+    assert image_problem["diagram_placement"] == {"kind": "side", "side": "left"}
+    assert image_problem["diagram_scale_adjustment_percent"] == 125
 
     cropped = client.patch(
         f"/tasks/{task['id']}/problem/override",
@@ -505,7 +804,8 @@ def test_web_contract_uses_wrapped_collections_and_persisted_upload(tmp_path, mo
     cropped_problem = cropped.json()["task"]["problem"]
     assert cropped_problem["diagram_image_path"].startswith("/assets/diagram-")
     assert cropped_problem["diagram_image_path"] != task["asset"]["path"]
-    assert cropped_problem["diagram_image_crop"] == {
+    assert "diagram_image_crop" not in cropped_problem
+    assert cropped_problem["diagram_items"][0]["source_region"] == {
         "x": 0.5,
         "y": 0.0,
         "width": 0.5,
@@ -527,6 +827,10 @@ def test_web_contract_uses_wrapped_collections_and_persisted_upload(tmp_path, mo
     assert (
         repeated_crop.json()["task"]["problem"]["diagram_image_path"]
         == cropped_problem["diagram_image_path"]
+    )
+    assert (
+        repeated_crop.json()["task"]["problem"]["diagram_items"][0]["source_region"]
+        == cropped_problem["diagram_items"][0]["source_region"]
     )
 
     invalid_image = client.patch(
@@ -562,7 +866,27 @@ def test_web_contract_uses_wrapped_collections_and_persisted_upload(tmp_path, mo
     problem_summary = client.get("/problems").json()["items"][0]
     assert problem_summary["diagram_kind"] == "image"
     assert problem_summary["diagram_image_path"] == cropped_problem["diagram_image_path"]
-    assert problem_summary["diagram_image_crop"] == cropped_problem["diagram_image_crop"]
+    assert "diagram_image_crop" not in problem_summary
+    assert problem_summary["diagram_items"][0]["source_region"] == {
+        "x": 0.5,
+        "y": 0.0,
+        "width": 0.5,
+        "height": 1.0,
+    }
+
+    full_image = client.patch(
+        f"/tasks/{task['id']}/problem/override",
+        json={
+            "diagram_detected": True,
+            "diagram_kind": "image",
+            "diagram_image_crop": None,
+        },
+    )
+    assert full_image.status_code == 200
+    full_image_problem = full_image.json()["task"]["problem"]
+    assert full_image_problem["diagram_image_path"] == task["asset"]["path"]
+    assert full_image_problem["diagram_items"][0]["source_region"] is None
+    assert "diagram_image_crop" not in full_image_problem
 
 
 def test_tag_rename_and_merge_migrate_persisted_problem_references(tmp_path, monkeypatch):
@@ -702,6 +1026,47 @@ def test_batch_session_deduplicates_source_and_persists_progress(tmp_path, monke
     assert restored["crop_confirmed"] is False
     assert restored["column_layout"] == {"column_count": 1, "overlap_ratio": 0.5}
     assert client.get("/batch-sessions").json()["items"][0]["file_hash"] == digest
+
+
+def test_batch_source_integrity_failure_is_rejected_and_same_source_repairs_it(
+    tmp_path,
+    monkeypatch,
+):
+    storage = tmp_path / "storage"
+    asset_store = AssetStore(base_dir=storage / "assets")
+    monkeypatch.setattr(main, "ASSET_STORE", asset_store)
+    monkeypatch.setattr(main, "TASK_STORE", TaskStore(storage / "tasks"))
+    monkeypatch.setattr(
+        main,
+        "BATCH_SESSION_STORE",
+        BatchSessionStore(storage / "settings" / "batch_sessions.json"),
+    )
+    client = TestClient(main.app)
+    source = b"verified-batch-source"
+    digest = hashlib.sha256(source).hexdigest()
+
+    created = client.put(
+        f"/batch-sessions/{digest}/source",
+        content=source,
+        headers={"x-oopsnote-filename": "questions.pdf", "content-type": "application/pdf"},
+    )
+    assert created.status_code == 200
+    asset_store.resolve(created.json()["session"]["asset_path"]).write_bytes(b"tampered")
+
+    rejected = client.get(f"/batch-sessions/{digest}/source")
+
+    assert rejected.status_code == 404
+    assert rejected.json()["detail"]["code"] == "batch_source_unavailable"
+
+    repaired = client.put(
+        f"/batch-sessions/{digest}/source",
+        content=source,
+        headers={"x-oopsnote-filename": "questions.pdf", "content-type": "application/pdf"},
+    )
+    assert repaired.status_code == 200
+    restored = client.get(f"/batch-sessions/{digest}/source")
+    assert restored.status_code == 200
+    assert restored.content == source
 
 
 def test_batch_session_persists_parts_crop_and_deletes_without_tasks(tmp_path, monkeypatch):

@@ -6,11 +6,17 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Literal
 
-from oopsnote.core import ContentFormat, DiagramStatus, PaperDraft, Problem, TaskRecord
+from oopsnote.core import (
+    ContentFormat,
+    DiagramPlacement,
+    DiagramStatus,
+    PaperDraft,
+    Problem,
+    TaskRecord,
+)
 
 PaperAnswerSpace = Literal["compact", "standard", "large"]
 PaperDiagramKind = Literal["tikz", "image"]
-PaperDiagramPosition = Literal["left", "right"]
 
 
 class PaperDocumentError(ValueError):
@@ -26,8 +32,10 @@ class PaperDocumentError(ValueError):
 class PaperDiagram:
     kind: PaperDiagramKind
     source: str
-    position: PaperDiagramPosition = "right"
-    scale_percent: int = 100
+    placement: DiagramPlacement
+    scale_adjustment_percent: int = 100
+    canvas_width_em: float | None = None
+    canvas_height_em: float | None = None
 
 
 @dataclass(frozen=True)
@@ -54,6 +62,7 @@ class PaperDocument:
     subtitle: str
     subject: str
     show_answers: bool
+    diagram_scale_percent: int
     sections: tuple[PaperDocumentSection, ...]
 
     @property
@@ -80,6 +89,8 @@ def _paper_diagram(task: TaskRecord, *, item_id: str) -> PaperDiagram | None:
             item_id=item_id,
         )
     item = task.diagram_items[0]
+    if not item.enabled:
+        return None
     if item.needs_review or item.status == DiagramStatus.NEEDS_REVIEW:
         raise PaperDocumentError(
             "diagram-needs-review",
@@ -104,6 +115,12 @@ def _paper_diagram(task: TaskRecord, *, item_id: str) -> PaperDiagram | None:
         )
         source = str(candidate.pdf_path if candidate else "").strip()
         kind: PaperDiagramKind = "tikz"
+        if candidate is not None and not candidate.has_normalized_typography_metrics:
+            raise PaperDocumentError(
+                "diagram-size-metrics-missing",
+                f"Problem {problem.id} diagram predates normalized TikZ sizing; render it again before export",
+                item_id=item_id,
+            )
     else:
         source = str(item.fallback_image_path or "").strip()
         kind = "image"
@@ -117,8 +134,10 @@ def _paper_diagram(task: TaskRecord, *, item_id: str) -> PaperDiagram | None:
     return PaperDiagram(
         kind=kind,
         source=source,
-        position=item.position,
-        scale_percent=item.scale_percent,
+        placement=item.placement,
+        scale_adjustment_percent=item.scale_adjustment_percent,
+        canvas_width_em=candidate.canvas_width_em if kind == "tikz" and candidate else None,
+        canvas_height_em=candidate.canvas_height_em if kind == "tikz" and candidate else None,
     )
 
 
@@ -128,11 +147,17 @@ def build_paper_document(
     *,
     subtitle: str = "",
     show_answers: bool = False,
+    diagram_scale_percent: int = 60,
 ) -> PaperDocument:
     """Project one persistent draft into the only semantic export document."""
 
     if not draft.items:
         raise PaperDocumentError("empty-paper", "Paper draft has no questions")
+    if not 25 <= diagram_scale_percent <= 200:
+        raise PaperDocumentError(
+            "invalid-diagram-scale",
+            "Paper diagram scale must be between 25 and 200 percent",
+        )
 
     sections: list[PaperDocumentSection] = []
     current_type: str | None = None
@@ -194,6 +219,7 @@ def build_paper_document(
         subtitle=subtitle.strip(),
         subject=draft.subject,
         show_answers=show_answers,
+        diagram_scale_percent=diagram_scale_percent,
         sections=tuple(sections),
     )
 

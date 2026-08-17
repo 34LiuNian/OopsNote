@@ -1,3 +1,4 @@
+export * from "./AuthenticatedSvgMarkup";
 export * from "./KatexAutoRender";
 export * from "./LatexAssetRenderer";
 export * from "./LiveStreamRenderer";

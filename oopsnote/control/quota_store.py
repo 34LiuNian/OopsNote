@@ -5,13 +5,7 @@ from __future__ import annotations
 from typing import Any
 from uuid import uuid4
 
-from oopsnote.core.models import (
-    DiagramRunMode,
-    DiagramRunStep,
-    RunPurpose,
-    RunStatus,
-    TaskRun,
-)
+from oopsnote.core.models import RunPurpose, RunStatus, TaskRun
 from oopsnote.core.store import RunStore
 from oopsnote.core.workspace import WorkspaceId
 
@@ -30,20 +24,17 @@ class QuotaAwareRunStore(RunStore):
         self,
         task_id: str,
         prompt_version: str = "unversioned",
-        *,
-        backend: str = "langchain",
-        provider: str | None = None,
-        model: str | None = None,
-        provider_profile_snapshot: dict[str, Any] | None = None,
-        retry_of: TaskRun | None = None,
-        purpose: RunPurpose = RunPurpose.PROBLEM,
-        priority: int = 0,
-        diagram_item_id: str | None = None,
-        diagram_mode: DiagramRunMode | None = None,
-        diagram_instruction: str | None = None,
-        diagram_max_candidates: int | None = None,
-        diagram_step: DiagramRunStep | None = None,
+        **run_fields: Any,
     ) -> TaskRun:
+        # RunStore owns the run-field contract. This quota layer owns only the
+        # control-plane identity fields and forwards every content field intact.
+        reserved = {"run_id", "workspace_id", "quota_reservation_id"} & run_fields.keys()
+        if reserved:
+            names = ", ".join(sorted(reserved))
+            raise TypeError(f"QuotaAwareRunStore owns run field(s): {names}")
+        purpose = RunPurpose(run_fields.get("purpose", RunPurpose.PROBLEM))
+        diagram_item_id = run_fields.get("diagram_item_id")
+        retry_of = run_fields.get("retry_of")
         previous_runs = [
             run
             for run in self.list_for_task(task_id)
@@ -75,18 +66,7 @@ class QuotaAwareRunStore(RunStore):
             run = super().create(
                 task_id,
                 prompt_version,
-                backend=backend,
-                provider=provider,
-                model=model,
-                provider_profile_snapshot=provider_profile_snapshot,
-                retry_of=retry_of,
-                purpose=purpose,
-                priority=priority,
-                diagram_item_id=diagram_item_id,
-                diagram_mode=diagram_mode,
-                diagram_instruction=diagram_instruction,
-                diagram_max_candidates=diagram_max_candidates,
-                diagram_step=diagram_step,
+                **run_fields,
                 run_id=admission.run_id,
                 workspace_id=self.workspace_id,
                 quota_reservation_id=admission.reservation_id,

@@ -5,16 +5,69 @@ from __future__ import annotations
 import hashlib
 import time
 from collections.abc import Collection, Iterable
+from copy import deepcopy
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit, urlunsplit
 
 from pydantic import BaseModel, ConfigDict, Field, HttpUrl, field_validator
 
 from oopsnote.ai.secrets import SecretNotFoundError, SecretStore
+from oopsnote.ai.skills import load_skill_prompt
 from oopsnote.core.models import RunStatus
 
 SUPPORTED_PROVIDERS = frozenset({"deepseek", "openai", "anthropic", "google", "openai-compatible"})
+
+
+def provider_http_status(error: Exception) -> int | None:
+    """Extract an HTTP status exposed by provider SDK exception shapes."""
+
+    response = getattr(error, "response", None)
+    for value in (
+        getattr(error, "status_code", None),
+        getattr(error, "code", None),
+        getattr(response, "status_code", None),
+    ):
+        if isinstance(value, int) and not isinstance(value, bool):
+            return value
+    return None
+
+
+def _google_tool_schema(value: Any) -> Any:
+    """Return a Google-compatible view without changing canonical MCP schemas."""
+
+    if isinstance(value, dict):
+        return {
+            key: _google_tool_schema(item)
+            for key, item in value.items()
+            if key != "additionalProperties"
+        }
+    if isinstance(value, list):
+        return [_google_tool_schema(item) for item in value]
+    return deepcopy(value)
+
+
+def _provider_tool_schemas(
+    schemas: list[dict[str, Any]],
+    constants: dict[str, dict[str, Any]] | None,
+) -> list[dict[str, Any]]:
+    """Hide runner-owned constants from the model-facing tool contract."""
+
+    projected = deepcopy(schemas)
+    for schema in projected:
+        function = schema["function"]
+        managed = set((constants or {}).get(function["name"], {}))
+        if not managed:
+            continue
+        parameters = function["parameters"]
+        properties = parameters.get("properties", {})
+        for name in managed:
+            properties.pop(name, None)
+        parameters["required"] = [
+            name for name in parameters.get("required", []) if name not in managed
+        ]
+    return projected
 
 
 class ProviderCapabilities(BaseModel):
@@ -22,6 +75,7 @@ class ProviderCapabilities(BaseModel):
 
     tool_calling: bool = False
     vision: bool = False
+    tool_result_image: bool = False
 
 
 class ChannelModel(BaseModel):
@@ -75,6 +129,12 @@ class ProviderChannel(BaseModel):
             if item.id == model_id:
                 return item
         raise KeyError(model_id)
+
+    def validate_connection_configuration(self) -> None:
+        """Reject channel states that cannot resolve a provider endpoint."""
+
+        if self.provider == "openai-compatible" and self.base_url is None:
+            raise ValueError("openai-compatible provider requires base_url")
 
     def public_view(self, secret_store: SecretStore) -> dict[str, Any]:
         value = self.model_dump(mode="json")
@@ -183,8 +243,9 @@ class ProviderClientFactory:
     impose a competing per-request deadline.
     """
 
-    def __init__(self, secret_store: SecretStore) -> None:
+    def __init__(self, secret_store: SecretStore, project_root: Path | None = None) -> None:
         self.secret_store = secret_store
+        self.project_root = project_root or Path(__file__).resolve().parents[2]
 
     @staticmethod
     def _is_dashscope_compatible(profile: ProviderProfile) -> bool:
@@ -269,6 +330,14 @@ class ProviderClientFactory:
                 "api_key": api_key,
                 "max_retries": 0,
             }
+            if profile.capability.tool_result_image:
+                kwargs.update(
+                    {
+                        "use_responses_api": True,
+                        "output_version": "responses/v1",
+                        "store": False,
+                    }
+                )
             if self._is_dashscope_compatible(profile):
                 # DashScope Qwen thinking mode rejects required tool choice and
                 # may emit prose after a long tool history. Tool-driven OopsNote
@@ -314,35 +383,40 @@ class ProviderClientFactory:
         constants: dict[str, dict[str, Any]] | None = None,
         required_arguments: dict[str, Collection[str]] | None = None,
         parameter_overrides: dict[str, dict[str, dict[str, Any]]] | None = None,
+        require_call: bool = False,
     ) -> Any:
         """Bind phase-legal canonical tools with provider loop constraints."""
 
         from oopsnote.ai.langchain_tools import langchain_tool_schemas
 
         kwargs: dict[str, Any] = {}
-        if self._uses_managed_non_thinking_mode(profile):
+        if require_call or self._uses_managed_non_thinking_mode(profile):
             # Required calls are valid once thinking mode is disabled. Every
             # managed turn must either call a pipeline tool or reach a
             # lifecycle-owned terminal state; prose cannot complete a run.
-            kwargs = {"tool_choice": "required", "parallel_tool_calls": False}
-        return model.bind_tools(
-            langchain_tool_schemas(
-                tool_names,
-                constants=constants,
-                required_arguments=required_arguments,
-                parameter_overrides=parameter_overrides,
-            ),
-            **kwargs,
+            kwargs["tool_choice"] = "required"
+            if profile.provider != "google":
+                kwargs["parallel_tool_calls"] = False
+        schemas = langchain_tool_schemas(
+            tool_names,
+            constants=constants,
+            required_arguments=required_arguments,
+            parameter_overrides=parameter_overrides,
         )
+        schemas = _provider_tool_schemas(schemas, constants)
+        if profile.provider == "google":
+            schemas = _google_tool_schema(schemas)
+        return model.bind_tools(schemas, **kwargs)
+
+    def create_diagram_model(self, profile: ProviderProfile) -> Any:
+        """Build the tool-driven multimodal model from an immutable run profile."""
+
+        if not profile.capability.vision or not profile.capability.tool_calling:
+            raise ValueError("diagram model requires Vision and Tool Calling capabilities")
+        return self.create_chat_model(profile)
 
     def create_vision_ocr_model(self, profile: ProviderProfile) -> Any:
-        """Build the OCR Vision model with the provider's native JSON-output mode.
-
-        OCR is a structured extraction boundary. OpenAI-compatible providers
-        expose a JSON-object response mode, which prevents otherwise valid
-        prompts from intermittently producing Markdown or invalid escapes.
-        Other provider adapters keep their documented default response mode.
-        """
+        """Build the immutable-run OCR Vision model with native JSON output."""
 
         model = self.create_chat_model(profile)
         if profile.provider in {"deepseek", "openai", "openai-compatible"}:
@@ -365,11 +439,14 @@ class ProviderClientFactory:
                 ProviderClientFactory._openai_api_base(base_url) or "https://api.deepseek.com/v1"
             )
             return f"{base_url}/models"
-        if channel.provider in {"openai", "openai-compatible"}:
+        if channel.provider == "openai":
             base_url = (
                 ProviderClientFactory._openai_api_base(base_url) or "https://api.openai.com/v1"
             )
             return f"{base_url}/models"
+        if channel.provider == "openai-compatible":
+            channel.validate_connection_configuration()
+            return f"{ProviderClientFactory._openai_api_base(base_url)}/models"
         if channel.provider == "anthropic":
             return f"{base_url or 'https://api.anthropic.com'}/v1/models"
         if channel.provider == "google":
@@ -456,14 +533,12 @@ class ProviderClientFactory:
 
     @staticmethod
     def _error_code(error: Exception) -> str:
-        status = getattr(error, "status_code", None)
-        if status is None:
-            status = getattr(getattr(error, "response", None), "status_code", None)
+        status = provider_http_status(error)
         if status in {401, 403}:
             return "authentication_failed"
         if status == 429:
             return "rate_limited"
-        if status in {500, 502, 503, 504}:
+        if status is not None and 500 <= status <= 599:
             return "provider_unavailable"
         if isinstance(error, (ConnectionError, TimeoutError)):
             return "connection_failed"
@@ -478,7 +553,7 @@ class ProviderClientFactory:
         started = time.monotonic()
         try:
             model = self.create_chat_model(profile)
-            model.invoke("Reply with OK.")
+            model.invoke(load_skill_prompt(self.project_root, "oopsnote-provider-health"))
         except Exception as error:
             return ProviderValidationResult(
                 success=False,

@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from types import SimpleNamespace
 
 import httpx
 import pytest
 
+from oopsnote.ai.skills import load_skill_prompt
 from oopsnote.core import (
     AssetStore,
     RunStatus,
@@ -16,7 +18,7 @@ from oopsnote.core import (
     TaskStore,
 )
 from oopsnote.mcp import ocr, server
-from oopsnote.mcp.ocr_contract import OCR_INSTRUCTION, normalize_ocr_result
+from oopsnote.mcp.ocr_contract import normalize_ocr_result
 from oopsnote.mcp.restricted import AI_TOOL_NAMES, managed_ocr_image
 
 
@@ -75,12 +77,16 @@ def test_vision_ocr_rejects_json_surrounded_by_explanatory_prose(tmp_path):
 
 def test_restricted_surface_contains_exactly_ocr_and_pipeline_tools():
     assert set(AI_TOOL_NAMES) == {
+        "accept_tikz_candidate",
         "ocr_image",
         "get_task",
         "get_asset_path",
+        "keep_source_image",
         "list_tags",
         "create_tag",
         "report_task_stage",
+        "request_diagram_review",
+        "submit_tikz_revision",
         "submit_solution_candidate",
         "finalize_task",
         "fail_task",
@@ -116,7 +122,9 @@ def test_ocr_image_uses_the_frozen_langchain_vision_snapshot(tmp_path, monkeypat
             return SimpleNamespace(content=json.dumps(_vision_ocr_payload(), ensure_ascii=False))
 
     model = VisionModel()
-    monkeypatch.setattr(ocr, "_RUN_MODEL_RESOLVER", lambda run_id: model if run_id == "run-1" else None)
+    monkeypatch.setattr(
+        ocr, "_RUN_MODEL_RESOLVER", lambda run_id: model if run_id == "run-1" else None
+    )
 
     result = ocr.ocr_image(task.id, "run-1")
 
@@ -133,8 +141,9 @@ def test_ocr_image_uses_the_frozen_langchain_vision_snapshot(tmp_path, monkeypat
     assert json.loads(artifact.raw_output)["printed_question_no"] == 6
     assert artifact.parsed_output == result
     assert len(calls) == 1
-    assert "review_reason" in OCR_INSTRUCTION
-    assert "independent top-level question" in OCR_INSTRUCTION
+    project_root = Path(__file__).resolve().parents[1]
+    assert load_skill_prompt(project_root, "oopsnote-ocr-extract") == ocr.OCR_INSTRUCTION
+    assert calls[0][0].content[0]["text"] == ocr.OCR_INSTRUCTION
 
     cached = ocr.ocr_image(task.id, "run-1")
     assert cached == result
@@ -203,6 +212,7 @@ def test_cancelled_run_does_not_attach_stale_ocr_context(tmp_path, monkeypatch):
 def test_ocr_provider_failures_have_stable_codes(tmp_path, failure, expected_code):
     image = tmp_path / "question.png"
     image.write_bytes(b"image")
+
     class ProviderFailure(RuntimeError):
         def __init__(self, status_code):
             super().__init__(f"HTTP {status_code}")
@@ -351,7 +361,14 @@ def test_ocr_contract_normalizes_subquestions_and_option_bodies():
 
     assert result["problem_text"] == "题干\n\n（1）第一问\n（2）第二问"
     assert result["options"] == ["$x$", "$y$", "$z$", "$w$"]
-    assert "omit printed labels" in OCR_INSTRUCTION
+
+
+def test_ocr_skill_owns_choice_structure_and_inline_math_instructions():
+    prompt = load_skill_prompt(Path(__file__).resolve().parents[1], "oopsnote-ocr-extract")
+
+    assert "绝不把它们改写成 `（1）（2）（3）（4）`" in prompt
+    assert "`$\\sin\\theta$ 与电流 $I$ 成正比`" in prompt
+    assert "只有独占一行的展示公式才用 `$$...$$`" in prompt
 
 
 def test_ocr_contract_rejects_invalid_provider_shape():

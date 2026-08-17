@@ -4,7 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { Box, Button, Heading, IconButton, Label, Text, Tooltip } from "@/components/ui/primitives";
 import { PencilIcon, CopyIcon, ChevronDownIcon, ChevronUpIcon, ZapIcon } from "@/components/ui/icons";
-import type { ContentFormat, DiagramImageTone, NormalizedRect, SourceTrace, TagDimensionStyle } from "@/types/api";
+import type { ContentFormat, DiagramImageTone, DiagramPlacement, SourceTrace, TagDimensionStyle } from "@/types/api";
 import { MarkdownRenderer } from "../renderers/MarkdownRenderer";
 import { ProblemCard } from "../ProblemCard";
 import { ProblemEditPanel } from "../ProblemEditPanel";
@@ -21,14 +21,16 @@ type TaskProblem = {
   section_question_count?: number | null;
   difficulty_needs_review?: boolean;
   diagram_detected?: boolean;
+  diagram_enabled?: boolean;
   diagram_kind?: string | null;
   diagram_tikz_source?: string | null;
   diagram_svg?: string | null;
   diagram_image_path?: string | null;
-  diagram_image_crop?: NormalizedRect | null;
   diagram_image_tone?: DiagramImageTone;
-  diagram_position?: "left" | "right";
-  diagram_scale_percent?: number | null;
+  diagram_placement?: DiagramPlacement;
+  diagram_scale_adjustment_percent?: number | null;
+  diagram_canvas_width_em?: number | null;
+  diagram_canvas_height_em?: number | null;
   diagram_render_status?: string | null;
   diagram_error?: string | null;
   diagram_needs_review?: boolean;
@@ -305,8 +307,10 @@ function ProblemDetailCard({
           diagramSvg={problem.diagram_svg}
           diagramImagePath={problem.diagram_image_path}
           diagramImageTone={problem.diagram_image_tone}
-          diagramPosition={problem.diagram_position}
-          diagramScalePercent={problem.diagram_scale_percent}
+          diagramPlacement={problem.diagram_placement}
+          diagramScaleAdjustmentPercent={problem.diagram_scale_adjustment_percent}
+          diagramCanvasWidthEm={problem.diagram_canvas_width_em}
+          diagramCanvasHeightEm={problem.diagram_canvas_height_em}
           diagramRenderStatus={problem.diagram_render_status}
           diagramError={problem.diagram_error}
           diagramNeedsReview={problem.diagram_needs_review}

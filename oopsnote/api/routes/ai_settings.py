@@ -198,6 +198,22 @@ def _catalog_validation(channel: ProviderChannel, started: float) -> ProviderVal
     )
 
 
+def _provider_http_error(error: ProviderConnectionError) -> HTTPException:
+    return HTTPException(
+        status_code=422
+        if error.result.error_code in {"authentication_failed", "invalid_configuration"}
+        else 502,
+        detail={"code": error.result.error_code, "message": error.result.message},
+    )
+
+
+def _upsert_channel(channel: ProviderChannel) -> None:
+    try:
+        _api().APP_SETTINGS_STORE.upsert_provider_channel(channel)
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+
+
 @router.get("/channels")
 def list_channels(request: Request) -> dict[str, Any]:
     _require_admin(request)
@@ -217,7 +233,7 @@ def create_channel(payload: ChannelCreate, request: Request) -> dict[str, Any]:
         raise HTTPException(status_code=409, detail="provider channel already exists")
     now = datetime.now(UTC)
     channel = ProviderChannel(**payload.model_dump(), version=1, created_at=now, updated_at=now)
-    api.APP_SETTINGS_STORE.upsert_provider_channel(channel)
+    _upsert_channel(channel)
     return {"channel": _public(channel)}
 
 
@@ -236,7 +252,6 @@ def reorder_channels(payload: ChannelOrderUpdate, request: Request) -> dict[str,
 @router.patch("/channels/{channel_id}")
 def update_channel(channel_id: str, payload: ChannelPatch, request: Request) -> dict[str, Any]:
     _require_admin(request)
-    api = _api()
     previous = _channel(channel_id)
     updates = payload.model_dump(exclude_unset=True)
     candidate = ProviderChannel.model_validate(
@@ -247,7 +262,7 @@ def update_channel(channel_id: str, payload: ChannelPatch, request: Request) -> 
             "updated_at": datetime.now(UTC),
         }
     )
-    api.APP_SETTINGS_STORE.upsert_provider_channel(candidate)
+    _upsert_channel(candidate)
     return {"channel": _public(candidate)}
 
 
@@ -256,7 +271,6 @@ def update_credential(
     channel_id: str, payload: CredentialUpdate, request: Request
 ) -> dict[str, Any]:
     _require_admin(request)
-    api = _api()
     vault = _vault()
     previous = _channel(channel_id)
     reference = vault.put(payload.secret)
@@ -275,15 +289,10 @@ def update_credential(
         candidate = candidate.model_copy(
             update={"models": _merge_discovered_models(previous, models)}
         )
-        api.APP_SETTINGS_STORE.upsert_provider_channel(candidate)
+        _upsert_channel(candidate)
     except ProviderConnectionError as error:
         vault.delete(reference)
-        raise HTTPException(
-            status_code=422
-            if error.result.error_code in {"authentication_failed", "invalid_configuration"}
-            else 502,
-            detail={"code": error.result.error_code, "message": error.result.message},
-        ) from error
+        raise _provider_http_error(error) from error
     except Exception:
         vault.delete(reference)
         raise
@@ -325,12 +334,14 @@ def reveal_credential(channel_id: str, request: Request, response: Response) -> 
 @router.post("/channels/{channel_id}/models/sync")
 def sync_models(channel_id: str, request: Request) -> dict[str, Any]:
     _require_admin(request)
-    api = _api()
     channel = _channel(channel_id)
     if not channel.credential_ref or not _vault().has(channel.credential_ref):
         raise HTTPException(status_code=409, detail="channel has no credential")
     started = monotonic()
-    discovered = ProviderClientFactory(_vault()).discover_models(channel)
+    try:
+        discovered = ProviderClientFactory(_vault()).discover_models(channel)
+    except ProviderConnectionError as error:
+        raise _provider_http_error(error) from error
     validation = _catalog_validation(channel, started)
     merged = _merge_discovered_models(channel, discovered)
     candidate = channel.model_copy(
@@ -340,7 +351,7 @@ def sync_models(channel_id: str, request: Request) -> dict[str, Any]:
             "updated_at": datetime.now(UTC),
         }
     )
-    api.APP_SETTINGS_STORE.upsert_provider_channel(candidate)
+    _upsert_channel(candidate)
     return {
         "channel": _public(candidate),
         "discovery": {"count": len(merged), "capabilities_unknown": True},
@@ -369,7 +380,6 @@ def update_model(
     channel_id: str, model_id: str, payload: ModelPatch, request: Request
 ) -> dict[str, Any]:
     _require_admin(request)
-    api = _api()
     channel = _channel(channel_id)
     try:
         selected = channel.model(model_id)
@@ -381,7 +391,7 @@ def update_model(
     candidate = channel.model_copy(
         update={"version": channel.version + 1, "models": models, "updated_at": datetime.now(UTC)}
     )
-    api.APP_SETTINGS_STORE.upsert_provider_channel(candidate)
+    _upsert_channel(candidate)
     return {"channel": _public(candidate)}
 
 
@@ -425,7 +435,7 @@ def _validate_policy(payload: PolicyUpdate) -> LangChainModelPolicy:
             raise HTTPException(
                 status_code=409, detail=f"{stage} stage requires an enabled Vision model"
             )
-        if stage in {"agent", "review"} and not model.capability.tool_calling:
+        if stage in {"agent", "review", "diagram"} and not model.capability.tool_calling:
             raise HTTPException(status_code=409, detail=f"{stage} stage requires Tool Calling")
     previous = api.APP_SETTINGS_STORE.langchain_model_policy()
     return LangChainModelPolicy(

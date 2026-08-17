@@ -60,10 +60,11 @@ export const Heading = forwardRef<any, HeadingProps>(function Heading({ classNam
   return <Title ref={ref} component={component as any} order={order as any} className={["oops-heading", className].filter(Boolean).join(" ")} style={style} {...props as any} />;
 });
 
-type ButtonCompatProps = React.ButtonHTMLAttributes<HTMLButtonElement> & { leadingVisual?: React.ElementType; trailingVisual?: React.ElementType; block?: boolean; variant?: string; size?: "small" | "medium" | "large" | "small"; color?: string };
-export const Button = forwardRef<HTMLButtonElement, ButtonCompatProps>(function Button({ className, style, variant, size = "medium", leadingVisual: LeadingVisual, trailingVisual: TrailingVisual, block, color, ...props }, ref) {
+type ButtonCompatProps = React.ButtonHTMLAttributes<HTMLButtonElement> & { leadingVisual?: React.ElementType; trailingVisual?: React.ElementType; block?: boolean; contentAlign?: "start" | "center" | "end"; variant?: string; size?: "small" | "medium" | "large" | "small"; color?: string };
+export const Button = forwardRef<HTMLButtonElement, ButtonCompatProps>(function Button({ className, style, variant, size = "medium", leadingVisual: LeadingVisual, trailingVisual: TrailingVisual, block, contentAlign = "center", color, ...props }, ref) {
   const mappedVariant = variant === "primary" ? "filled" : variant === "invisible" ? "subtle" : variant === "danger" ? "filled" : variant === "secondary" ? "light" : variant === "default" ? "default" : variant;
-  return <MantineButton ref={ref} className={["oops-button", className].filter(Boolean).join(" ")} style={style} variant={mappedVariant as any} color={color ?? (variant === "danger" ? "red" : undefined)} size={size === "small" ? "xs" : size === "large" ? "md" : "sm"} fullWidth={block} leftSection={LeadingVisual ? <LeadingVisual size={15} /> : undefined} rightSection={TrailingVisual ? <TrailingVisual size={15} /> : undefined} {...props as any} />;
+  const justify = contentAlign === "start" ? "flex-start" : contentAlign === "end" ? "flex-end" : "center";
+  return <MantineButton ref={ref} className={["oops-button", className].filter(Boolean).join(" ")} style={style} variant={mappedVariant as any} color={color ?? (variant === "danger" ? "red" : undefined)} size={size === "small" ? "xs" : size === "large" ? "md" : "sm"} fullWidth={block} justify={justify} leftSection={LeadingVisual ? <LeadingVisual size={15} /> : undefined} rightSection={TrailingVisual ? <TrailingVisual size={15} /> : undefined} {...props as any} />;
 });
 
 type IconButtonCompatProps = React.ButtonHTMLAttributes<HTMLButtonElement> & { icon?: React.ElementType; as?: React.ElementType; href?: string; variant?: string; size?: "small" | "medium" | "large" };
@@ -117,6 +118,7 @@ type SelectCompatProps = {
   label?: React.ReactNode;
   description?: React.ReactNode;
   error?: React.ReactNode;
+  chevronColor?: string;
   name?: string;
   onBlur?: React.FocusEventHandler<HTMLInputElement>;
   onFocus?: React.FocusEventHandler<HTMLInputElement>;
@@ -130,6 +132,7 @@ type SelectCompatProps = {
 export const Select = Object.assign(forwardRef<HTMLInputElement, SelectCompatProps>(function Select({
   block,
   children,
+  chevronColor,
   className,
   onValueChange,
   style,
@@ -154,6 +157,7 @@ export const Select = Object.assign(forwardRef<HTMLInputElement, SelectCompatPro
       {...props}
       ref={ref}
       allowDeselect={false}
+      chevronColor={chevronColor ?? "var(--fgColor-default)"}
       className={["oops-select", className].filter(Boolean).join(" ")}
       classNames={{
         dropdown: "oops-select-dropdown",

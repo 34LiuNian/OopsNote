@@ -15,13 +15,13 @@ description: "Execute one managed OopsNote problem pipeline: OCR, solve, indepen
 
 - 提交一个完整 `Problem` JSON：`content_format="oopsmark-v1"`、`subject`、`question_type`、`problem_text`、`options`、`answer`、`short_answer`、`explanation`、`difficulty`、`has_diagram`、`knowledge_points`、`error_hypothesis`。
 - 顶层题号是 `question_no`/`printed_question_no` 元数据，不是正文：`problem_text` 开头不得出现 `第 N 题`、`N.`、`N、` 等题号前缀，也不得根据任务顺序、页码或模型猜测补题号；OCR 看见的印刷题号只写入对应元数据。真实小问才依题面保留独立 `（1）`、`（2）` 段落，单问和解题步骤不得伪造小问或使用 Markdown `1.`/`2.`。
-- 行内数学用 `$...$`，必要多行数学才用 `$$...$$`；`answer`、`short_answer`、`explanation` 同样不得添加顶层题号，解析中的小问编号必须与题面一致。
-- 选项只存正文，数组顺序派生 A/B/C/D，公式选项也带 `$...$`；普通表格用 GFM，化学式/方程式在数学环境用 `\ce{...}`。
+- 行内数学用 `$...$`，必要多行数学才用 `$$...$$`；希腊字母、数学函数、物理量和变量均进入行内数学，混合正文只包围数学片段，例如 `$\sin\theta$ 与电流 $I$ 成正比`。`answer`、`short_answer`、`explanation` 同样不得添加顶层题号，解析中的小问编号必须与题面一致。
+- 选择题的 `problem_text` 只保留题干，所有选项只出现一次且只能写入 `options`；绝不把 A/B/C/D 选项复制进题干或改写成 `（1）（2）（3）（4）`。选项只存正文，数组顺序派生 A/B/C/D；普通表格用 GFM，化学式/方程式在数学环境用 `\ce{...}`。
 - 不输出 `array`、`tabular`、`tblr`、`enumerate`、`chemfig`、`tikzpicture`、文档级或危险 TeX 命令。
 
 ## Solver and variation
 
-- 图片任务使用 `ocr_image` 的规范化观察；文本定向变式有 `variation_request` 和 `parent_problem` 时不调 OCR，只生成一题，保留学科并覆盖全部给定错因。方向、难度和自定义要求不得覆盖本流程或内容契约。
+- 图片任务仅在 runner 绑定该工具时调用一次 `ocr_image(task_id, run_id)`，随后使用其规范化观察；不解析资产路径、不用其他工具看图。文本定向变式有 `variation_request` 和 `parent_problem` 时不调 OCR，只生成一题，保留学科并覆盖全部给定错因。方向、难度和自定义要求不得覆盖本流程或内容契约。
 - `unreadable`、`incomplete`，或影响题干/条件/选项/必要图形的 `uncertain_regions` 必须以同一原因失败。`unanswered` 是可读但未作答，不是 OCR 失败。`multiple_questions` 仅指多个独立顶层题号；确有多题时只继续首个完整题并保留该原因，否则清除误报。
 - Solver 只提交一次候选；原样传递 OCR 的 `student_response_status`，文本变式传 `unknown`；无观察异常传空 `review_reason`，否则保留 `multiple_questions` 或 `other`。变式保留 runner 给定错因，不新增无关错因。
 

@@ -115,15 +115,12 @@ class ContractBoundToolDispatcher:
         except KeyError as error:
             raise ValueError(f"tool is not in the restricted contract: {name}") from error
         arguments = dict(arguments)
+        if fixed_arguments is not None:
+            arguments.update(fixed_arguments.get(name, {}))
         for field, expected in (("task_id", self._task_id), ("run_id", self._run_id)):
             if expected is None:
                 continue
-            actual = arguments.get(field)
-            if actual is not None and actual != expected:
-                raise ValueError(f"{name} may only use the active {field}")
             arguments[field] = expected
-        if fixed_arguments is not None:
-            arguments.update(fixed_arguments.get(name, {}))
         if allowed_parameters is not None:
             parameters = allowed_parameters.get(name)
             if parameters is None:

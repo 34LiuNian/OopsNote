@@ -2,7 +2,12 @@ from fastapi.testclient import TestClient
 
 from oopsnote.ai import ManagedAiRunner
 from oopsnote.api import main
-from oopsnote.api.errors import ApiErrorCategory, category_for_error_code
+from oopsnote.api.errors import (
+    ApiErrorCategory,
+    category_for_error_code,
+    public_error_code,
+    public_error_message,
+)
 from oopsnote.core import RunStore, TaskCreateRequest, TaskStatus, TaskStore
 
 
@@ -16,6 +21,7 @@ class StubManagedRunner(ManagedAiRunner):
 def test_persisted_error_codes_have_stable_api_categories() -> None:
     assert category_for_error_code("provider_unavailable") == ApiErrorCategory.MODEL_REQUEST
     assert category_for_error_code("renderer_failed") == ApiErrorCategory.TIKZ_COMPILE
+    assert category_for_error_code("renderer_environment_error") == ApiErrorCategory.HUMAN_REVIEW
     assert (
         category_for_error_code(
             "renderer_failed",
@@ -25,6 +31,24 @@ def test_persisted_error_codes_have_stable_api_categories() -> None:
     )
     assert category_for_error_code("runner_error") == ApiErrorCategory.INTERNAL
     assert category_for_error_code(None, needs_review=True) == ApiErrorCategory.HUMAN_REVIEW
+
+
+def test_model_contract_failure_is_not_reported_as_a_supplier_outage() -> None:
+    message = public_error_message(
+        "model_output_invalid",
+        "submit_tikz_revision may only use the active task_id",
+    )
+
+    assert message == (
+        "模型输出不符合工具协议：submit_tikz_revision may only use the active task_id"
+    )
+    assert (
+        public_error_code(
+            "runner_error",
+            "submit_tikz_revision may only use the active task_id",
+        )
+        == "model_output_invalid"
+    )
 
 
 def test_missing_task_error_contains_only_request_context(tmp_path, monkeypatch) -> None:

@@ -83,6 +83,7 @@ export function TaskLiveView({ taskId }: { taskId: string }) {
   const [isScreenshotOpen, setIsScreenshotOpen] = useState(false);
   const [isVariationOpen, setIsVariationOpen] = useState(false);
   const [showTaskDetails, setShowTaskDetails] = useState(false);
+  const [diagramDetailsOverride, setDiagramDetailsOverride] = useState<boolean | null>(null);
 
   const {
     data,
@@ -177,6 +178,23 @@ export function TaskLiveView({ taskId }: { taskId: string }) {
   });
   const diagramProgressVisible = Boolean(viewData?.task.problem?.has_diagram || diagramItem || diagramRun);
   const diagramNeedsReview = Boolean(diagramItem?.needs_review || diagramItem?.status === "needs_review");
+  const diagramDetailsOpen = diagramDetailsOverride ?? !diagramProgressState.isCompleted;
+  const diagramStatus = diagramNeedsReview
+    ? "待人工复核"
+    : diagramProgressState.isCompleted
+      ? "已完成"
+      : diagramProgressState.isFailed
+        ? "失败"
+        : diagramProgressState.isCancelled
+          ? "已取消"
+          : diagramProgressState.latestLine;
+  const diagramStatusTone = diagramNeedsReview || diagramProgressState.isFailed
+    ? "error"
+    : diagramProgressState.isCompleted
+      ? "success"
+      : diagramProgressState.isCancelled
+        ? "cancelled"
+        : "pending";
   const isCompleted = viewData?.task?.status === "completed";
   const duration = runDuration(viewData?.task?.run);
 
@@ -233,6 +251,21 @@ export function TaskLiveView({ taskId }: { taskId: string }) {
                   {PROGRESS_STEPS.length}/{PROGRESS_STEPS.length} 阶段完成{duration ? ` · ${duration}` : ""}
                 </Button>
               )}
+              {diagramProgressVisible && (
+                <Button
+                  size="small"
+                  variant="invisible"
+                  className={sxStyles.diagramDisclosure}
+                  data-status={diagramStatusTone}
+                  aria-expanded={diagramDetailsOpen}
+                  title={diagramStatus}
+                  onClick={() => setDiagramDetailsOverride(!diagramDetailsOpen)}
+                  leadingVisual={diagramProgressState.isCompleted ? CheckIcon : undefined}
+                  trailingVisual={diagramDetailsOpen ? ChevronUpIcon : ChevronDownIcon}
+                >
+                  TikZ 题图重建 · {diagramStatus}
+                </Button>
+              )}
             </Box>
             {(!isCompleted || showTaskDetails) && (
               <Box className={sxStyles.sx4}>
@@ -274,14 +307,8 @@ export function TaskLiveView({ taskId }: { taskId: string }) {
             />
           </Box>
         )}
-        {diagramProgressVisible && (
+        {diagramProgressVisible && diagramDetailsOpen && (
           <Box className={sxStyles.sx10}>
-            <Box className={sxStyles.sx11}>
-              <Text className={sxStyles.sx12}>TikZ 题图重建</Text>
-              <Text className={sxStyles.diagramStatus} data-status={diagramNeedsReview ? "review" : diagramProgressState.isCompleted ? "success" : "pending"}>
-                {diagramNeedsReview ? "待人工复核" : diagramProgressState.isCompleted ? "已完成" : diagramProgressState.latestLine}
-              </Text>
-            </Box>
             <TaskProgressBar
               progressState={diagramProgressState}
               latestLine={diagramProgressState.latestLine}

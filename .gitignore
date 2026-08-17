@@ -77,3 +77,7 @@ venv/
 # uv cache
 /.uv-cache/
 /.uv-cache-*/
+
+# playground
+/.playwright-cli/
+/output/

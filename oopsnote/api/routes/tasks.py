@@ -4,18 +4,28 @@ from __future__ import annotations
 
 import math
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, ConfigDict, Field
 
 from oopsnote.ai.diagram_renderer import TikzRenderClient, TikzRenderError
-from oopsnote.api.errors import ApiErrorCategory, api_error
+from oopsnote.api.errors import (
+    ApiErrorCategory,
+    api_error,
+    category_for_error_code,
+    public_error_message,
+)
 from oopsnote.api.schemas import UploadRequest
+from oopsnote.api.services.diagram_rendering import (
+    SelectedDiagramRenderError,
+    render_selected_tikz_candidate,
+)
 from oopsnote.core import (
     ContentFormat,
     DiagramCandidate,
     DiagramItem,
+    DiagramPlacement,
     DiagramRunMode,
     DiagramStatus,
     Problem,
@@ -33,12 +43,26 @@ class DiagramRunRequest(BaseModel):
 
     max_candidates: int = Field(default=4, ge=1, le=8)
     instruction: str | None = Field(default=None, max_length=2000)
+    tikz_only: bool = False
 
 
 class DiagramCandidateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     tikz_source: str = Field(min_length=1, max_length=80_000)
+
+
+class DiagramSettingsRequest(BaseModel):
+    """Immediate, diagram-only mutations used by the editor."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool | None = None
+    kind: Literal["tikz", "image"] | None = None
+    placement: DiagramPlacement | None = None
+    scale_adjustment_percent: int | None = Field(default=None, ge=50, le=200)
+    image_crop: dict[str, float] | None = None
+    image_tone: Literal["auto", "original"] | None = None
 
 
 def _diagram_runner(*, task_id: str | None = None, item_id: str | None = None):
@@ -341,14 +365,20 @@ def override_problem(
         "diagram_image_path",
         "diagram_image_crop",
         "diagram_image_tone",
-        "diagram_position",
-        "diagram_scale_percent",
+        "diagram_placement",
+        "diagram_scale_adjustment_percent",
         "diagram_render_status",
         "diagram_error",
         "diagram_needs_review",
+        "diagram_enabled",
     }
     if diagram_fields.intersection(payload):
-        diagram_detected = bool(payload.get("diagram_detected", problem.has_diagram))
+        diagram_detected = bool(
+            payload.get(
+                "diagram_enabled",
+                payload.get("diagram_detected", problem.has_diagram),
+            )
+        )
         current_item = diagram_items[0] if diagram_items else None
         diagram_kind = payload.get(
             "diagram_kind",
@@ -365,26 +395,30 @@ def override_problem(
                 task_id, "题图类型必须是 tikz、image 或 null", field="diagram_kind"
             )
 
-        diagram_position = payload.get(
-            "diagram_position", current_item.position if current_item else "right"
+        diagram_placement = payload.get(
+            "diagram_placement",
+            current_item.placement.model_dump()
+            if current_item
+            else {"kind": "side", "side": "right"},
         )
-        if diagram_position not in {"left", "right"}:
-            raise _problem_edit_error(
-                task_id, "题图位置必须是 left 或 right", field="diagram_position"
-            )
 
         diagram_scale = payload.get(
-            "diagram_scale_percent", current_item.scale_percent if current_item else 100
+            "diagram_scale_adjustment_percent",
+            current_item.scale_adjustment_percent if current_item else 100,
         )
         if diagram_scale is not None:
             if isinstance(diagram_scale, bool) or not isinstance(diagram_scale, (int, float)):
                 raise _problem_edit_error(
-                    task_id, "题图缩放比例必须是数字或 null", field="diagram_scale_percent"
+                    task_id,
+                    "题图缩放微调必须是数字或 null",
+                    field="diagram_scale_adjustment_percent",
                 )
             diagram_scale = round(diagram_scale)
             if diagram_scale < 50 or diagram_scale > 200:
                 raise _problem_edit_error(
-                    task_id, "题图缩放比例必须在 50 到 200 之间", field="diagram_scale_percent"
+                    task_id,
+                    "题图缩放微调必须在 50 到 200 之间",
+                    field="diagram_scale_adjustment_percent",
                 )
 
         if current_item and current_item.active_run_id:
@@ -399,8 +433,8 @@ def override_problem(
         if diagram_detected and current_item is None:
             current_item = DiagramItem(
                 source_asset_path=task.asset_path,
-                position=diagram_position,
-                scale_percent=diagram_scale or 100,
+                placement=diagram_placement,
+                scale_adjustment_percent=diagram_scale or 100,
             )
             diagram_items.append(current_item)
         elif current_item is not None:
@@ -408,8 +442,9 @@ def override_problem(
                 {
                     **current_item.model_dump(),
                     **{
-                        "position": diagram_position,
-                        "scale_percent": diagram_scale or 100,
+                        "placement": diagram_placement,
+                        "scale_adjustment_percent": diagram_scale or 100,
+                        "enabled": diagram_detected,
                         "updated_at": datetime.now(UTC),
                     },
                 }
@@ -450,6 +485,9 @@ def override_problem(
                     pdf_path=bundle.pdf_path if bundle else None,
                     png_path=bundle.png_path if bundle else None,
                     renderer_profile_version=bundle.renderer_profile_version if bundle else None,
+                    base_font_size_pt=bundle.base_font_size_pt if bundle else None,
+                    canvas_width_em=bundle.canvas_width_em if bundle else None,
+                    canvas_height_em=bundle.canvas_height_em if bundle else None,
                     decision="accept" if bundle else "revise",
                     review_reason=str(render_error) if render_error else None,
                 )
@@ -569,6 +607,126 @@ def override_problem(
     return {"task": api._task_view(task)}
 
 
+@router.patch("/tasks/{task_id}/problem/diagram")
+def update_problem_diagram_settings(
+    task_id: str,
+    payload: DiagramSettingsRequest,
+) -> dict[str, Any]:
+    """Persist display/layout changes without revising the problem body."""
+    api = _api()
+    try:
+        task = api.TASK_STORE.get(task_id)
+    except KeyError as error:
+        raise api_error(
+            404, code="task_not_found", message="题目不存在", task_id=task_id, scope="diagram"
+        ) from error
+    if not task.problem:
+        raise api_error(
+            404,
+            code="problem_not_found",
+            message="题目内容尚未提取",
+            task_id=task_id,
+            scope="diagram",
+        )
+
+    item = task.diagram_items[0] if task.diagram_items else None
+    if item and item.active_run_id:
+        raise api_error(
+            409,
+            code="diagram_run_active",
+            message="请先取消正在运行的题图任务",
+            task_id=task_id,
+            diagram_item_id=item.id,
+            scope="diagram",
+        )
+
+    kind = payload.kind
+    if kind is None and item:
+        kind = (
+            "tikz"
+            if item.status == DiagramStatus.READY_TIKZ or item.candidates
+            else "image"
+            if item.status == DiagramStatus.READY_IMAGE or item.fallback_image_path
+            else None
+        )
+    enabled = payload.enabled if payload.enabled is not None else (item.enabled if item else True)
+    placement = (
+        payload.placement
+        if payload.placement is not None
+        else (item.placement if item else {"kind": "side", "side": "right"})
+    )
+    scale_adjustment = (
+        payload.scale_adjustment_percent
+        if payload.scale_adjustment_percent is not None
+        else item.scale_adjustment_percent
+        if item
+        else 100
+    )
+    if item is None:
+        if not enabled and payload.kind is None:
+            return {"task": api._task_view(task)}
+        if payload.kind == "tikz":
+            raise _problem_edit_error(task_id, "尚无 TikZ 版本，请先开始 AI 生成", field="kind")
+        item = DiagramItem(
+            source_asset_path=task.asset_path,
+            enabled=enabled,
+            placement=placement,
+            scale_adjustment_percent=scale_adjustment,
+        )
+        task = api.TASK_STORE.add_diagram_item(task_id, item)
+
+    fields: dict[str, Any] = {
+        "enabled": enabled,
+        "placement": placement,
+        "scale_adjustment_percent": scale_adjustment,
+    }
+    if payload.image_tone is not None:
+        fields["image_tone"] = payload.image_tone
+
+    if payload.image_crop is not None:
+        if not task.asset_path:
+            raise _problem_edit_error(task_id, "图片题图需要题目原图", field="image_crop")
+        try:
+            image_path, normalized = api.ASSET_STORE.save_image_crop(
+                task.asset_path, payload.image_crop
+            )
+        except (FileNotFoundError, ValueError) as error:
+            raise _problem_edit_error(task_id, str(error), field="image_crop") from error
+        fields.update({"fallback_image_path": image_path, "source_region": normalized})
+        if kind is None:
+            kind = "image"
+
+    if kind == "image":
+        image_path = (
+            fields.get("fallback_image_path") or item.fallback_image_path or task.asset_path
+        )
+        if not image_path:
+            raise _problem_edit_error(task_id, "图片题图需要题目原图", field="kind")
+        fields.update(
+            {
+                "fallback_image_path": image_path,
+                "status": DiagramStatus.READY_IMAGE,
+                "needs_review": False,
+                "last_error": None,
+                "last_error_code": None,
+            }
+        )
+    elif kind == "tikz":
+        if not item.selected_candidate_id:
+            raise _problem_edit_error(task_id, "尚无 TikZ 版本，请先开始 AI 生成", field="kind")
+        fields.update(
+            {
+                "status": DiagramStatus.READY_TIKZ,
+                "needs_review": False,
+                "last_error": None,
+                "last_error_code": None,
+            }
+        )
+
+    task = api.TASK_STORE.update_diagram_item(task_id, item.id, **fields)
+    return {"task": api._task_view(task)}
+
+
 @router.post("/tasks/{task_id}/problem/diagram")
 def rerender_problem_diagram(task_id: str) -> dict[str, Any]:
     api = _api()
@@ -586,75 +744,33 @@ def rerender_problem_diagram(task_id: str) -> dict[str, Any]:
             task_id=task_id,
             scope="diagram",
         )
-    if not task.diagram_items:
-        raise api_error(
-            422,
-            code="diagram_item_not_found",
-            message="题目没有可重渲染的题图",
-            task_id=task_id,
-            scope="diagram",
-        )
-    item = task.diagram_items[0]
-    if item.active_run_id:
-        raise api_error(
-            409,
-            code="diagram_run_active",
-            message="题图重建正在运行",
-            task_id=task_id,
-            diagram_item_id=item.id,
-            scope="diagram",
-        )
-    candidate = next(
-        (candidate for candidate in item.candidates if candidate.id == item.selected_candidate_id),
-        None,
-    )
-    if candidate is None:
-        raise api_error(
-            422,
-            code="tikz_source_missing",
-            message="没有可重渲染的 TikZ 源码",
-            task_id=task_id,
-            diagram_item_id=item.id,
-            scope="diagram",
-        )
     try:
-        bundle = TikzRenderClient(api.ASSET_STORE).render(candidate.tikz_source)
+        task = render_selected_tikz_candidate(
+            api.TASK_STORE,
+            api.ASSET_STORE,
+            task_id,
+            force=True,
+        )
+    except SelectedDiagramRenderError as error:
+        raise api_error(
+            409 if error.code == "diagram_run_active" else 422,
+            code=error.code,
+            message=str(error),
+            task_id=task_id,
+            diagram_item_id=error.item_id,
+            scope="diagram",
+        ) from error
     except TikzRenderError as error:
         raise api_error(
             503 if error.retryable else 422,
             code=error.code,
-            message=str(error),
-            category=ApiErrorCategory.TIKZ_COMPILE,
+            message=public_error_message(error.code, str(error)) or str(error),
+            category=category_for_error_code(error.code),
             retryable=error.retryable,
             scope="diagram",
             task_id=task_id,
-            diagram_item_id=item.id,
+            diagram_item_id=task.diagram_items[0].id if task.diagram_items else None,
         ) from error
-    candidates = [
-        DiagramCandidate.model_validate(
-            {
-                **existing.model_dump(),
-                **{
-                    "svg_path": bundle.svg_path,
-                    "pdf_path": bundle.pdf_path,
-                    "png_path": bundle.png_path,
-                    "renderer_profile_version": bundle.renderer_profile_version,
-                },
-            }
-        )
-        if existing.id == candidate.id
-        else existing
-        for existing in item.candidates
-    ]
-    task = api.TASK_STORE.update_diagram_item(
-        task_id,
-        item.id,
-        candidates=candidates,
-        status=DiagramStatus.READY_TIKZ,
-        needs_review=False,
-        last_error=None,
-        last_error_code=None,
-    )
     return {"task": api._task_view(task)}
 
 
@@ -694,11 +810,13 @@ def reconstruct_problem_diagram(task_id: str, payload: DiagramRunRequest) -> dic
         )
     if task.diagram_items:
         item = task.diagram_items[0]
-        mode = DiagramRunMode.REBUILD if item.candidates else DiagramRunMode.AUTO
+        mode = (
+            DiagramRunMode.REBUILD if item.candidates or payload.tikz_only else DiagramRunMode.AUTO
+        )
     else:
         item = DiagramItem(source_asset_path=task.asset_path)
         task = api.TASK_STORE.add_diagram_item(task_id, item)
-        mode = DiagramRunMode.AUTO
+        mode = DiagramRunMode.REBUILD if payload.tikz_only else DiagramRunMode.AUTO
     try:
         run = _diagram_runner(task_id=task_id, item_id=item.id).submit_diagram(
             task_id,
@@ -841,6 +959,41 @@ def select_problem_diagram_candidate(
     return {"task": api._task_view(task)}
 
 
+@router.delete("/tasks/{task_id}/diagrams/{item_id}/candidates/{candidate_id}")
+def delete_problem_diagram_candidate(
+    task_id: str, item_id: str, candidate_id: str
+) -> dict[str, Any]:
+    api = _api()
+    try:
+        task = api.TASK_STORE.get(task_id)
+    except KeyError as error:
+        raise api_error(
+            404, code="task_not_found", message="题目不存在", task_id=task_id, scope="diagram"
+        ) from error
+    item = _diagram_item(task, item_id)
+    if item.active_run_id:
+        raise api_error(
+            409,
+            code="diagram_run_active",
+            message="请先取消正在运行的题图任务",
+            task_id=task_id,
+            diagram_item_id=item_id,
+            scope="diagram",
+        )
+    if not any(candidate.id == candidate_id for candidate in item.candidates):
+        raise api_error(
+            404,
+            code="candidate_not_found",
+            message="题图版本不存在",
+            task_id=task_id,
+            diagram_item_id=item_id,
+            scope="diagram",
+            details={"candidate_id": candidate_id},
+        )
+    task = api.TASK_STORE.delete_diagram_candidate(task_id, item_id, candidate_id)
+    return {"task": api._task_view(task)}
+
+
 @router.post("/tasks/{task_id}/diagrams/{item_id}/candidates")
 def create_problem_diagram_candidate(
     task_id: str,
@@ -870,8 +1023,8 @@ def create_problem_diagram_candidate(
         raise api_error(
             503 if error.retryable else 422,
             code=error.code,
-            message=str(error),
-            category=ApiErrorCategory.TIKZ_COMPILE,
+            message=public_error_message(error.code, str(error)) or str(error),
+            category=category_for_error_code(error.code),
             retryable=error.retryable,
             scope="diagram",
             task_id=task_id,
@@ -886,6 +1039,9 @@ def create_problem_diagram_candidate(
         pdf_path=bundle.pdf_path,
         png_path=bundle.png_path,
         renderer_profile_version=bundle.renderer_profile_version,
+        base_font_size_pt=bundle.base_font_size_pt,
+        canvas_width_em=bundle.canvas_width_em,
+        canvas_height_em=bundle.canvas_height_em,
         decision="accept",
     )
     task = api.TASK_STORE.update_diagram_item(

@@ -383,6 +383,222 @@
         "type": "object",
         "additionalProperties": false
       }
+    },
+    {
+      "name": "submit_tikz_revision",
+      "remoteName": "submit_tikz_revision",
+      "description": "Validate and persist one body-only TikZ revision for the active diagram run.",
+      "executionMode": "barrier",
+      "parameters": {
+        "properties": {
+          "task_id": {
+            "type": "string"
+          },
+          "run_id": {
+            "type": "string"
+          },
+          "tikz_source": {
+            "type": "string"
+          },
+          "hard_errors": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "soft_differences": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          }
+        },
+        "required": [
+          "task_id",
+          "run_id",
+          "tikz_source"
+        ],
+        "type": "object",
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "accept_tikz_candidate",
+      "remoteName": "accept_tikz_candidate",
+      "description": "Accept the active rendered TikZ candidate when no hard semantic error remains.",
+      "executionMode": "barrier",
+      "parameters": {
+        "properties": {
+          "task_id": {
+            "type": "string"
+          },
+          "run_id": {
+            "type": "string"
+          },
+          "soft_differences": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          }
+        },
+        "required": [
+          "task_id",
+          "run_id"
+        ],
+        "type": "object",
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "keep_source_image",
+      "remoteName": "keep_source_image",
+      "description": "Keep a normalized crop of the printed source diagram for an automatic diagram run.",
+      "executionMode": "barrier",
+      "parameters": {
+        "$defs": {
+          "DiagramSourceRegion": {
+            "description": "Normalized source region reserved for a future layout-analysis owner.",
+            "properties": {
+              "x": {
+                "maximum": 1,
+                "minimum": 0,
+                "type": "number"
+              },
+              "y": {
+                "maximum": 1,
+                "minimum": 0,
+                "type": "number"
+              },
+              "width": {
+                "exclusiveMinimum": 0,
+                "maximum": 1,
+                "type": "number"
+              },
+              "height": {
+                "exclusiveMinimum": 0,
+                "maximum": 1,
+                "type": "number"
+              }
+            },
+            "required": [
+              "x",
+              "y",
+              "width",
+              "height"
+            ],
+            "type": "object"
+          }
+        },
+        "properties": {
+          "task_id": {
+            "type": "string"
+          },
+          "run_id": {
+            "type": "string"
+          },
+          "source_region": {
+            "$ref": "#/$defs/DiagramSourceRegion"
+          },
+          "reason": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "task_id",
+          "run_id",
+          "source_region",
+          "reason"
+        ],
+        "type": "object",
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "request_diagram_review",
+      "remoteName": "request_diagram_review",
+      "description": "Finish the active diagram run for human review after its candidate limit is reached.",
+      "executionMode": "barrier",
+      "parameters": {
+        "properties": {
+          "task_id": {
+            "type": "string"
+          },
+          "run_id": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "hard_errors": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          }
+        },
+        "required": [
+          "task_id",
+          "run_id",
+          "reason"
+        ],
+        "type": "object",
+        "additionalProperties": false
+      }
     }
   ]
 }

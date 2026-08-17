@@ -1,0 +1,41 @@
+decisions_generate_auto: "Use only the currently bound submit, accept, or source-image tool."
+decisions_review_auto: "At the candidate limit use only the currently bound accept, source-image, or human-review tool."
+decisions_generate_tikz: "Use only the currently bound submit or accept tool."
+decisions_review_tikz: "At the candidate limit use only the currently bound accept or human-review tool."
+
+fallback_policy_auto: |-
+  Call `keep_source_image` for photos, essential complex shading, or diagrams unsuitable for reliable TikZ, and provide a normalized `source_region` with `x`, `y`, `width`, and `height`.
+
+fallback_policy_tikz: |-
+  This editor task is TikZ-only. The runner will not bind `keep_source_image`; never provide a `source_region`.
+
+source_region_policy_auto: |-
+  Only `keep_source_image` accepts `source_region`. Its four values must be normalized fractions from 0 to 1, never pixels, with `x + width <= 1` and `y + height <= 1`.
+
+source_region_policy_tikz: |-
+  No bound TikZ-only tool accepts `source_region`.
+
+tool_contract_suffix: |-
+  The runner binds only actions legal for the durable diagram state. Call exactly one bound tool. Do not repeat a completed tool call and do not emit a free-form answer.
+  Never include `task_id`, `run_id`, or other backend-managed identity or state constants. The runner injects them after the model call.
+
+user_instruction: |-
+  User instruction: @instruction
+
+initial_user: |-
+  Original full question image follows. Locate the printed diagram yourself.
+  @user_instruction
+  Call `submit_tikz_revision` with the first body-only TikZ candidate, or call `keep_source_image` when that bound fallback is appropriate.
+
+review_user: |-
+  Original full question image follows. Locate the printed diagram yourself.
+  @user_instruction
+  Compare it with the rendered candidate and decide whether a hard semantic error remains.
+  Current body-only TikZ:
+  @tikz_source
+
+render_result_user: |-
+  The submitted TikZ has been rendered. Compare the attached candidate with the original printed diagram retained earlier in this conversation.
+  @user_instruction
+  Current body-only TikZ:
+  @tikz_source

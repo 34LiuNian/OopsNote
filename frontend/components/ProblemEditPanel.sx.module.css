@@ -129,20 +129,119 @@
 .sectionTitle{display:block;margin-bottom:var(--oops-space-3);font-size:var(--oops-text-sm);font-weight:600;color:var(--fgColor-default);}
 
 /* 附图 disclosure header (in-place collapsible) */
-.diagramDisclosure{display:flex;width:100%;align-items:center;justify-content:space-between;gap:var(--oops-space-2);padding:0;border:0;background:transparent;color:var(--fgColor-default);font:inherit;cursor:pointer;text-align:left;}
-.diagramDisclosureLead{display:flex;align-items:center;gap:var(--oops-space-2);min-width:0;}
-.diagramDisclosureIcon{flex-shrink:0;color:var(--fgColor-muted);transition:transform var(--oops-transition-fast);}
 .diagramDisclosureTitle{font-size:var(--oops-text-sm);font-weight:600;color:var(--fgColor-default);}
-.diagramDisclosureSummary{color:var(--fgColor-muted);font-size:var(--oops-text-xs);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-.diagramBody{margin-top:var(--oops-space-3);display:flex;flex-direction:column;gap:var(--oops-space-4);}
+.diagramActionRow{display:flex;align-items:center;gap:var(--oops-space-2);flex-wrap:wrap;}
+.diagramTikzPanel{display:flex;flex-direction:column;gap:var(--oops-space-3);}
+.diagramScaleValue{min-width:60px;color:var(--fgColor-muted);font-size:var(--oops-text-sm);}
 
-/* TikZ AI/手动 view tabs — mirrors aiSettings .filterTab* against the same tokens */
-.diagramTabs{display:flex;gap:var(--oops-space-1);border-bottom:1px solid var(--borderColor-muted);}
-.diagramTab{display:inline-flex;min-height:36px;align-items:center;gap:var(--oops-space-1);padding:0 var(--oops-space-3);border:0;border-bottom:2px solid transparent;color:var(--fgColor-muted);background:transparent;font:inherit;font-size:var(--oops-text-xs);white-space:nowrap;cursor:pointer;}
-.diagramTab:hover{color:var(--fgColor-default);}
-.diagramTabActive{border-bottom-color:var(--fgColor-default);color:var(--fgColor-default);font-weight:650;}
 .diagramTabPanel{display:flex;flex-direction:column;gap:var(--oops-space-3);}
 
-/* Layout sub-group (position + size) inside 附图 */
-.diagramLayoutRow{display:flex;align-items:center;gap:var(--oops-space-2);flex-wrap:wrap;}
-.diagramLayoutLabel{min-width:36px;color:var(--fgColor-muted);font-size:var(--oops-text-sm);}
+/* Attachment workbench: a self-contained tool surface with the same dense rhythm as the reference. */
+.diagramSection{padding-top:var(--oops-space-4);}
+.diagramWorkbench{overflow:hidden;border:1px solid var(--borderColor-default);border-radius:var(--oops-radius-md);background:var(--bgColor-default);}
+.diagramHeader{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:var(--oops-space-3);min-height:80px;padding:var(--oops-space-2) var(--oops-space-3);}
+.diagramCollapsedPreview{display:grid;min-height:190px;max-height:360px;place-items:center;overflow:hidden;padding:var(--oops-space-3) var(--oops-space-5);border-top:1px solid var(--borderColor-muted);background:var(--bgColor-default);}
+.diagramCollapsedPreview :global(.oops-svg){width:min(100%,760px);height:100%;}
+.diagramCollapsedPreview :global(.oops-svg) :global(svg){max-height:320px;}
+.diagramCollapsedPreview>img{display:block;width:min(100%,960px);height:auto;max-height:320px;object-fit:contain;}
+.diagramCollapsedEmpty{display:flex;align-items:center;gap:var(--oops-space-2);color:var(--fgColor-muted);}
+.diagramHeaderCopy{min-width:0;}
+.diagramHeaderTitleRow{display:flex;align-items:center;gap:var(--oops-space-2);flex-wrap:wrap;}
+.diagramHeaderSummary{display:block;margin-top:var(--oops-space-1);color:var(--fgColor-muted);font-size:var(--oops-text-xs);}
+.diagramHeaderActions{display:flex;align-items:center;gap:var(--oops-space-1);flex-wrap:wrap;justify-content:flex-end;}
+.diagramStatusBadge{display:inline-flex;align-items:center;gap:var(--oops-space-1);padding:2px var(--oops-space-2);border-radius:var(--oops-radius-full);font-size:var(--oops-text-xs);}
+.diagramStatusBadge>span{width:6px;height:6px;border-radius:50%;background:currentColor;}
+.diagramStatusBadge[data-status="success"]{color:var(--fgColor-success);background:var(--bgColor-success-muted);}
+.diagramStatusBadge[data-status="attention"]{color:var(--fgColor-attention);background:var(--bgColor-attention-muted);}
+.diagramStatusBadge[data-status="danger"]{color:var(--fgColor-danger);background:var(--bgColor-danger-muted);}
+.diagramExpanded{border-top:1px solid var(--borderColor-muted);}
+.diagramTopbar{display:flex;align-items:center;justify-content:space-between;gap:var(--oops-space-3);padding:var(--oops-space-2) var(--oops-space-3);border-bottom:1px solid var(--borderColor-muted);background:var(--bgColor-muted);}
+.diagramTypeSwitch{display:inline-flex;align-items:center;gap:2px;padding:3px;border:1px solid var(--borderColor-muted);border-radius:var(--oops-radius-sm);background:var(--bgColor-default);}
+.diagramSegment{min-height:28px;padding:4px var(--oops-space-3);border:0;border-radius:var(--oops-radius-xs);background:transparent;color:var(--fgColor-default);font:inherit;font-size:var(--oops-text-xs);cursor:pointer;}
+.diagramSegment:hover{background:var(--bgColor-muted);}
+.diagramSegment[disabled]{cursor:not-allowed;opacity:.55;}
+.diagramSegmentActive{background:var(--bgColor-accent-muted);color:var(--fgColor-accent);font-weight:600;}
+.diagramLayoutPanel{display:flex;flex-direction:column;gap:var(--oops-space-2);padding:var(--oops-space-2) var(--oops-space-3);border-bottom:1px solid var(--borderColor-muted);background:var(--bgColor-muted);}
+.diagramLayoutLine{display:flex;align-items:center;gap:var(--oops-space-2);flex-wrap:wrap;}
+.diagramLayoutLabel{min-width:54px;color:var(--fgColor-muted);font-size:var(--oops-text-xs);}
+.diagramRange{flex:1 1 160px;accent-color:var(--fgColor-accent);}
+.diagramWorkspace{padding:var(--oops-space-3);}
+.diagramWorkspaceLayout{display:grid;grid-template-columns:minmax(240px,280px) minmax(0,1fr);min-width:0;}
+.diagramWorkspaceLayout:not(.diagramWorkspaceLayoutWithSidebar){display:block;}
+.diagramVersionSidebar{min-width:0;padding-right:var(--oops-space-3);border-right:1px solid var(--borderColor-muted);}
+.diagramVersionSidebarHeader{display:flex;align-items:center;gap:var(--oops-space-1);min-height:32px;padding:0 var(--oops-space-1);color:var(--fgColor-muted);font-size:var(--oops-text-xs);font-weight:600;}
+.diagramVersionSidebarList{display:flex;max-height:min(58vh,620px);flex-direction:column;gap:var(--oops-space-1);overflow-y:auto;margin-top:var(--oops-space-1);padding-right:var(--oops-space-1);scrollbar-gutter:stable;}
+.diagramSidebarRow{display:block;width:100%;min-height:54px;padding:var(--oops-space-2);border:1px solid transparent;border-radius:var(--oops-radius-sm);background:transparent;color:var(--fgColor-default);font:inherit;text-align:left;cursor:pointer;}
+.diagramSidebarRow:hover{background:var(--bgColor-muted);}
+.diagramSidebarRowViewed{border-color:var(--borderColor-default);background:var(--bgColor-muted);box-shadow:inset 2px 0 0 var(--fgColor-default);}
+.diagramWorkspaceMain{min-width:0;padding-left:var(--oops-space-3);}
+.diagramWorkspaceHead{display:flex;align-items:center;justify-content:space-between;gap:var(--oops-space-3);margin-bottom:var(--oops-space-3);}
+.diagramVersionTitle{display:flex;align-items:baseline;gap:var(--oops-space-2);flex-wrap:wrap;min-width:0;}
+.diagramCurrentVersion{font-size:var(--oops-text-sm);font-weight:600;}
+.diagramMuted{color:var(--fgColor-muted);font-size:var(--oops-text-xs);}
+.diagramPreviewFrame{position:relative;min-height:244px;display:grid;place-items:center;overflow:hidden;border:1px solid var(--borderColor-muted);border-radius:var(--oops-radius-sm);background-color:var(--bgColor-default);}
+.diagramPreviewFrame img{display:block;width:min(76%,430px);height:auto;max-height:220px;object-fit:contain;}
+.diagramPreviewFrame :global(.oops-svg){width:min(86%,760px);height:100%;}
+.diagramPreviewFrame :global(.oops-svg) :global(svg){max-height:220px;}
+.diagramPreviewFooter{display:flex;align-items:center;justify-content:space-between;gap:var(--oops-space-2);min-height:36px;padding-top:var(--oops-space-2);flex-wrap:wrap;}
+.diagramEmptyTikz{min-height:244px;display:grid;place-items:center;padding:var(--oops-space-6);border:1px dashed var(--borderColor-default);border-radius:var(--oops-radius-sm);text-align:center;}
+.diagramEmptyIcon{width:46px;height:46px;display:grid;place-items:center;margin:0 auto var(--oops-space-2);border-radius:var(--oops-radius-full);background:var(--bgColor-accent-muted);color:var(--fgColor-accent);}
+.diagramEmptyTitle{font-size:var(--oops-text-sm);font-weight:600;}
+.diagramAiSection{margin-top:var(--oops-space-3);padding-top:var(--oops-space-3);border-top:1px solid var(--borderColor-muted);}
+.diagramAiTitle{display:flex;align-items:center;gap:var(--oops-space-1);margin-bottom:var(--oops-space-2);font-size:var(--oops-text-sm);font-weight:600;}
+.diagramAiCompose{display:grid;grid-template-columns:minmax(180px,1fr) 108px auto;gap:var(--oops-space-2);align-items:end;}
+.diagramAiCompose :global(.oops-form-control){min-width:0;}
+.diagramAiCompose :global(.oops-field-label){display:block;margin-bottom:var(--oops-space-1);color:var(--fgColor-muted);font-size:var(--oops-text-xs);font-weight:600;}
+.diagramSelect{width:100%;min-height:36px;padding-inline:var(--oops-space-2);border:1px solid var(--borderColor-default);border-radius:var(--oops-radius-sm);background:var(--bgColor-default);color:var(--fgColor-default);}
+.diagramPrimaryAction{display:flex;align-items:flex-end;}
+.diagramAiFooter{display:flex;align-items:center;justify-content:space-between;gap:var(--oops-space-2);margin-top:var(--oops-space-2);flex-wrap:wrap;}
+.diagramAiStatus{display:flex;align-items:center;gap:var(--oops-space-2);min-height:32px;}
+.diagramVersionCopy{min-width:0;}
+.diagramVersionName{display:block;font-size:var(--oops-text-xs);font-weight:600;}
+.diagramCurrentLabel{color:var(--fgColor-success);}
+.diagramCandidateDetails{display:flex;flex-direction:column;gap:var(--oops-space-1);margin-bottom:var(--oops-space-3);padding:var(--oops-space-2) var(--oops-space-3);border:1px solid var(--borderColor-muted);border-radius:var(--oops-radius-sm);background:var(--bgColor-muted);}
+.diagramCandidateDetailsHead{display:flex;align-items:baseline;justify-content:space-between;gap:var(--oops-space-2);}
+.diagramCandidateDetailsTitle{font-size:var(--oops-text-xs);font-weight:650;}
+.diagramCandidateMeta{color:var(--fgColor-muted);font-size:var(--oops-text-xs);}
+.diagramCandidateReason{color:var(--fgColor-default);font-size:var(--oops-text-xs);line-height:1.5;}
+.diagramCandidateIssue{display:flex;gap:var(--oops-space-2);font-size:var(--oops-text-xs);line-height:1.45;}
+.diagramCandidateIssue>p:first-child{flex:0 0 auto;font-weight:650;}
+.diagramCandidateIssue>p:last-child{min-width:0;overflow-wrap:anywhere;}
+.diagramCandidateIssue[data-kind="error"]{color:var(--fgColor-danger);}
+.diagramCandidateIssue[data-kind="muted"]{color:var(--fgColor-muted);}
+.diagramSourceView{display:flex;flex-direction:column;gap:var(--oops-space-2);}
+.diagramSourceShell{overflow:hidden;border:1px solid var(--borderColor-muted);border-radius:var(--oops-radius-sm);background:var(--bgColor-muted);}
+.diagramSourceHead{display:flex;align-items:center;justify-content:space-between;gap:var(--oops-space-2);min-height:36px;padding:var(--oops-space-1) var(--oops-space-2);border-bottom:1px solid var(--borderColor-muted);color:var(--fgColor-default);}
+.diagramSourceEditor{min-height:270px;resize:vertical;border:0;border-radius:0;background:transparent;color:var(--fgColor-default);font-family:var(--font-mono);line-height:1.55;}
+.diagramSourceActions{display:flex;justify-content:flex-end;gap:var(--oops-space-2);}
+.diagramCompileError{padding:var(--oops-space-2) var(--oops-space-3);border-left:3px solid var(--fgColor-danger);background:var(--bgColor-danger-muted);}
+.diagramCompileErrorTitle{color:var(--fgColor-danger);font-size:var(--oops-text-sm);font-weight:600;}
+.diagramCompileErrorBody{display:block;margin-top:var(--oops-space-1);color:var(--fgColor-default);font-size:var(--oops-text-xs);white-space:pre-wrap;}
+.diagramImagePanel{display:flex;flex-direction:column;}
+.diagramImageFooter{display:flex;align-items:center;justify-content:space-between;gap:var(--oops-space-2);padding-top:var(--oops-space-2);}
+.diagramOffState{display:flex;align-items:center;justify-content:space-between;gap:var(--oops-space-4);min-height:74px;padding:var(--oops-space-3);border:1px solid var(--borderColor-default);border-radius:var(--oops-radius-md);background:var(--bgColor-default);}
+.diagramOffTitleRow{display:flex;align-items:center;gap:var(--oops-space-3);}
+.diagramOffPreview{width:72px;height:48px;object-fit:contain;border:1px solid var(--borderColor-muted);border-radius:var(--oops-radius-xs);background:var(--bgColor-muted);}
+.diagramOffSummary{display:block;margin-top:var(--oops-space-1);color:var(--fgColor-muted);font-size:var(--oops-text-xs);}
+.diagramAddArea{position:relative;}
+.diagramAddMenu{position:absolute;z-index:4;top:calc(100% + 6px);right:0;width:min(320px,calc(100vw - 64px));display:flex;flex-direction:column;gap:var(--oops-space-1);padding:var(--oops-space-1);border:1px solid var(--borderColor-default);border-radius:var(--oops-radius-sm);background:var(--bgColor-default);box-shadow:var(--oops-shadow-md);}
+
+@media (max-width: 543px){
+  .diagramHeader{grid-template-columns:minmax(0,1fr) auto;gap:var(--oops-space-2);}
+  .diagramHeaderActions :global(.oops-button){font-size:0;padding-inline:var(--oops-space-2);}
+  .diagramHeaderActions :global(.oops-button svg){margin:0;}
+  .diagramTopbar,.diagramWorkspaceHead,.diagramOffState{align-items:stretch;flex-direction:column;}
+  .diagramWorkspaceLayout{display:flex;flex-direction:column;}
+  .diagramVersionSidebar{padding-right:0;padding-bottom:var(--oops-space-2);border-right:0;border-bottom:1px solid var(--borderColor-muted);}
+  .diagramVersionSidebarList{max-height:300px;}
+  .diagramWorkspaceMain{padding-left:0;padding-top:var(--oops-space-3);}
+  .diagramWorkspaceHead>:global(.oops-button){align-self:flex-end;}
+  .diagramTypeSwitch{width:100%;}
+  .diagramSegment{flex:1;}
+  .diagramAiCompose{grid-template-columns:1fr 96px;}
+  .diagramPrimaryAction{grid-column:1 / -1;}
+  .diagramPrimaryAction :global(.oops-button){width:100%;}
+  .diagramPreviewFrame{min-height:210px;}
+  .diagramSourceEditor{min-height:230px;}
+  .diagramAddMenu{left:0;right:auto;}
+}

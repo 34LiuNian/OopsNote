@@ -86,7 +86,45 @@
   border-left: 1px dashed var(--borderColor-default);
 }
 
+.adapterGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(220px, .65fr);
+  gap: 12px;
+}
+
+.adapterPanel,
+.adapterNotes {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--borderColor-default);
+  border-radius: 6px;
+  background: var(--bgColor-muted);
+}
+
+.adapterTitle {
+  font-size: var(--oops-text-sm);
+  font-weight: 600;
+}
+
+.adapterHint {
+  color: var(--fgColor-muted);
+  font-size: var(--oops-text-xs);
+  line-height: 1.5;
+}
+
+.cropPaper {
+  display: grid;
+  height: 100%;
+  place-items: center;
+  color: var(--fgColor-muted);
+  background: var(--bgColor-default);
+  font-size: var(--oops-text-sm);
+}
+
 @media (max-width: 640px) {
   .root { padding: 12px; }
   .header { align-items: flex-start; }
+  .adapterGrid { grid-template-columns: 1fr; }
 }

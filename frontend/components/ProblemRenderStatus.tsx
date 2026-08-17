@@ -23,7 +23,9 @@ export function ProblemRenderStatus({
 
   return (
     <Box className="problem-render-status">
-      <Text className="problem-render-status__title">图形重建失败，建议人工介入。</Text>
+      <Text className="problem-render-status__title">
+        {needsReview ? "图形重建需要人工确认。" : "图形重建失败。"}
+      </Text>
       {error ? <Text className="problem-render-status__error">{error}</Text> : null}
       {onRetry ? (
         <Button size="small" variant="default" onClick={onRetry} disabled={retrying} leadingVisual={retrying ? Spinner : undefined}>

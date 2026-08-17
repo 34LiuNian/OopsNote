@@ -60,7 +60,7 @@ html[data-oopsnote-color-scheme="dark"] .image-selection-stage.is-tone-auto > .i
 }
 
 .normalized-rect-editor {
-  --rect-editor-color: #16a34a;
+  --rect-editor-color: var(--fgColor-info);
   --rect-editor-stroke: 2px;
   position: absolute;
   z-index: 1;
@@ -71,98 +71,22 @@ html[data-oopsnote-color-scheme="dark"] .image-selection-stage.is-tone-auto > .i
   touch-action: none;
 }
 
-.normalized-rect-editor__selection {
-  position: absolute;
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-  box-shadow:
-    inset 0 0 0 var(--rect-editor-stroke) var(--rect-editor-color),
-    0 0 0 9999px rgb(0 0 0 / 38%);
-  cursor: move;
-}
-
 .normalized-rect-editor.is-redraw .normalized-rect-editor__selection { cursor: crosshair; }
-
-.normalized-rect-editor__guide {
-  position: absolute;
-  z-index: 1;
-  top: var(--rect-editor-stroke);
-  bottom: var(--rect-editor-stroke);
-  width: 0;
-  border-left: 1px dashed color-mix(in srgb, var(--rect-editor-color) 82%, white);
-  filter: drop-shadow(0 0 1px rgb(0 0 0 / 45%));
-  pointer-events: none;
-}
-
-.normalized-rect-editor__handle {
-  position: absolute;
-  z-index: 2;
-  display: block;
-  width: 24px;
-  height: 24px;
-  pointer-events: auto;
-}
-
-.normalized-rect-editor__handle.is-n,
-.normalized-rect-editor__handle.is-s {
-  left: 50%;
-  width: 44px;
-  height: 18px;
-  transform: translateX(-50%);
-  cursor: ns-resize;
-}
-.normalized-rect-editor__handle.is-n { top: 0; }
-.normalized-rect-editor__handle.is-s { bottom: 0; }
-
-.normalized-rect-editor__handle.is-e,
-.normalized-rect-editor__handle.is-w {
-  top: 50%;
-  width: 18px;
-  height: 44px;
-  transform: translateY(-50%);
-  cursor: ew-resize;
-}
-.normalized-rect-editor__handle.is-e { right: 0; }
-.normalized-rect-editor__handle.is-w { left: 0; }
-
-.normalized-rect-editor__handle.is-nw { top: 0; left: 0; cursor: nwse-resize; }
-.normalized-rect-editor__handle.is-ne { top: 0; right: 0; cursor: nesw-resize; }
-.normalized-rect-editor__handle.is-se { right: 0; bottom: 0; cursor: nwse-resize; }
-.normalized-rect-editor__handle.is-sw { bottom: 0; left: 0; cursor: nesw-resize; }
-
-.normalized-rect-editor__handle.is-nw::before,
-.normalized-rect-editor__handle.is-ne::before,
-.normalized-rect-editor__handle.is-se::before,
-.normalized-rect-editor__handle.is-sw::before {
-  position: absolute;
-  width: 14px;
-  height: 14px;
-  box-sizing: border-box;
-  border-color: var(--rect-editor-color);
-  border-style: solid;
-  border-width: 0;
-  content: "";
-}
-.normalized-rect-editor__handle.is-nw::before { top: 0; left: 0; border-top-width: 3px; border-left-width: 3px; }
-.normalized-rect-editor__handle.is-ne::before { top: 0; right: 0; border-top-width: 3px; border-right-width: 3px; }
-.normalized-rect-editor__handle.is-se::before { right: 0; bottom: 0; border-right-width: 3px; border-bottom-width: 3px; }
-.normalized-rect-editor__handle.is-sw::before { bottom: 0; left: 0; border-bottom-width: 3px; border-left-width: 3px; }
-
-.normalized-rect-editor__selection.is-compact-width .normalized-rect-editor__handle.is-n,
-.normalized-rect-editor__selection.is-compact-width .normalized-rect-editor__handle.is-s,
-.normalized-rect-editor__selection.is-compact-height .normalized-rect-editor__handle.is-e,
-.normalized-rect-editor__selection.is-compact-height .normalized-rect-editor__handle.is-w {
-  display: none;
-}
 
 .image-selection-stage.is-tone-inverted .normalized-rect-editor,
 html[data-oopsnote-color-scheme="dark"] .image-selection-stage.is-tone-auto .normalized-rect-editor {
-  --rect-editor-color: #22d3ee;
+  --rect-editor-color: var(--fgColor-info);
+}
+/* SelectionBox owns the interaction geometry. Keep the image editor's crop mask as
+   an adapter-level visual while sharing the same frame and handle treatment. */
+.normalized-rect-editor__selection {
+  --selection-box-color: var(--rect-editor-color);
+  --selection-box-stroke: var(--rect-editor-stroke);
+  --selection-box-extra-shadow: 0 0 0 9999px rgb(0 0 0 / 40%);
+  --selection-box-radius: var(--oops-radius-xs);
+  box-shadow: inset 0 0 0 var(--selection-box-stroke) var(--selection-box-color), var(--selection-box-extra-shadow);
 }
 .image-selection-stage.is-tone-inverted .normalized-rect-editor__selection,
 html[data-oopsnote-color-scheme="dark"] .image-selection-stage.is-tone-auto .normalized-rect-editor__selection {
-  box-shadow:
-    inset 0 0 0 var(--rect-editor-stroke) var(--rect-editor-color),
-    0 0 0 9999px rgb(255 255 255 / 16%);
+  --selection-box-extra-shadow: 0 0 0 9999px rgb(255 255 255 / 16%);
 }

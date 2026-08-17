@@ -18,36 +18,6 @@ ReviewReason = Literal[
 
 StudentResponseStatus = Literal["answered", "unanswered", "unknown"]
 
-OCR_INSTRUCTION = (
-    "Extract only printed content for one independent question. Return one strict JSON object "
-    "with exactly these fields: content_format='oopsmark-v1'; "
-    "subject='math'|'physics'|'chemistry'; "
-    "question_type='单选题'|'多选题'|'填空题'|'解答题'; problem_text:string; "
-    "options:string[]; has_diagram:boolean; printed_question_no:positive integer|null; "
-    "printed_chapter:string|null; "
-    "student_response_status:'answered'|'unanswered'|'unknown'; student_response:string; "
-    "review_reason:null|'unreadable'|'incomplete'|'multiple_questions'|'other'; "
-    "uncertain_regions:string[]; confidence:number from 0 to 1. "
-    "If the image contains two or more independent top-level question numbers, extract only "
-    "the first complete top-level question and set review_reason='multiple_questions'. Parts "
-    "such as （1）（2） or ①② under one top-level number belong to the same question and must "
-    "not trigger multiple_questions. Top-level printed numbers are metadata only: never put a "
-    "prefix such as '第 N 题', 'N.', or 'N、' into problem_text, and never invent one from "
-    "page/order/task context. Use OopsMark v1: inline math is $...$, display math is "
-    "$$...$$. Represent actual subquestions as separate paragraphs beginning exactly （1）, "
-    "（2）, and so on; never use Markdown 1./2. list markers and never invent subquestion "
-    "markers for a single-part question. options never appear in problem_text. Each options "
-    "entry contains only its body: omit printed labels such as A., A], (A), or 1.; array "
-    "position maps to A, B, C, and so on. A formula-only option still includes $...$ math "
-    "delimiters, for example '$\\frac{5}{2}$'. Never emit raw LaTeX environments "
-    "such as array, tabular, enumerate, or tikzpicture. student_response contains only visible "
-    "student handwriting or answer marks, never printed question text or a generated solution. "
-    "Use answered only when a readable student response is visible, unanswered when the question "
-    "is readable but no student response is present, and unknown when the response state cannot be "
-    "determined. Set printed_question_no or printed_chapter only when that exact identifier is visibly "
-    "printed; omit both from problem_text and use null when absent or unclear. Do not solve or invent unreadable text."
-)
-
 
 class OcrExtraction(BaseModel):
     """Validated provider output before it enters the managed agent context."""
@@ -130,7 +100,6 @@ def normalize_ocr_result(
 
 
 __all__ = [
-    "OCR_INSTRUCTION",
     "OcrExtraction",
     "StudentResponseStatus",
     "normalize_ocr_result",

@@ -3,7 +3,7 @@
 import { memo } from "react";
 import { Box, Text } from "@/components/ui/primitives";
 import { ProblemContent } from "./ProblemContent";
-import type { ContentFormat, DiagramImageTone } from "@/types/api";
+import type { ContentFormat, DiagramImageTone, DiagramPlacement } from "@/types/api";
 import sxStyles from "./ProblemCard.sx.module.css";
 
 type ProblemOption = {
@@ -25,8 +25,10 @@ type ProblemCardProps = {
   diagramSvg?: string | null;
   diagramImagePath?: string | null;
   diagramImageTone?: DiagramImageTone;
-  diagramPosition?: "left" | "right";
-  diagramScalePercent?: number | null;
+  diagramPlacement?: DiagramPlacement;
+  diagramScaleAdjustmentPercent?: number | null;
+  diagramCanvasWidthEm?: number | null;
+  diagramCanvasHeightEm?: number | null;
   diagramRenderStatus?: string | null;
   diagramError?: string | null;
   diagramNeedsReview?: boolean;
@@ -59,8 +61,10 @@ export const ProblemCard = memo(function ProblemCard({
   diagramSvg,
   diagramImagePath,
   diagramImageTone,
-  diagramPosition,
-  diagramScalePercent,
+  diagramPlacement,
+  diagramScaleAdjustmentPercent,
+  diagramCanvasWidthEm,
+  diagramCanvasHeightEm,
   diagramRenderStatus,
   diagramError,
   diagramNeedsReview,
@@ -98,8 +102,10 @@ export const ProblemCard = memo(function ProblemCard({
         diagramSvg={diagramSvg}
         diagramImagePath={diagramImagePath}
         diagramImageTone={diagramImageTone}
-        diagramPosition={diagramPosition}
-        diagramScalePercent={diagramScalePercent}
+        diagramPlacement={diagramPlacement}
+        diagramScaleAdjustmentPercent={diagramScaleAdjustmentPercent}
+        diagramCanvasWidthEm={diagramCanvasWidthEm}
+        diagramCanvasHeightEm={diagramCanvasHeightEm}
         diagramRenderStatus={diagramRenderStatus}
         diagramError={diagramError}
         diagramNeedsReview={diagramNeedsReview}

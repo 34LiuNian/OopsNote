@@ -31,7 +31,7 @@
         {
             "label": "OopsNote: Frontend Dev Server (Local)",
             "type": "shell",
-            "command": "fnm exec --using .nvmrc cmd /c npm run dev -- -p 3000",
+            "command": "npm run dev -- -p 3000",
             "options": {
                 "cwd": "${workspaceFolder}\\frontend",
                 "env": {

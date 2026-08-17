@@ -1,4 +1,8 @@
-export type ProviderCapability = { tool_calling: boolean; vision: boolean };
+export type ProviderCapability = {
+  tool_calling: boolean;
+  vision: boolean;
+  tool_result_image: boolean;
+};
 
 export type ChannelModel = {
   id: string;

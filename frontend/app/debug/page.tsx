@@ -191,12 +191,14 @@ export default function DebugPage() {
         <Box id="problem-illustration-auto" className={sxStyles.sx15}>
           <Heading as="h3" className={sxStyles.sx16}>TikZ/SVG 右侧自适应</Heading>
           <ProblemContent
-            problemText={"已知函数 $f(x)=x^2$，观察右图并回答。\n图形默认位于右侧，高度与完整作答内容栏一致。"}
+            problemText={"已知函数 $f(x)=x^2$，观察右图并回答。\n图形默认位于右侧，默认字号与题目正文一致。"}
             contentFormat="oopsmark-v1"
             options={[{ key: "A", text: "$1$" }, { key: "B", text: "$2$" }, { key: "C", text: "$3$" }, { key: "D", text: "$4$" }]}
             diagramDetected
             diagramKind="tikz"
             diagramSvg={'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 80"><rect id="theme-background" width="120" height="80" fill="#fff"/><path id="theme-axis" d="M10 70H110M20 75V5" fill="none" stroke="#000" stroke-width="3"/><path id="theme-series" d="M25 65Q55 60 100 15" fill="none" stroke="#0ea5e9" stroke-width="3"/><path id="theme-glyph" d="M50 40L60 40L55 50Z"/></svg>'}
+            diagramCanvasWidthEm={12}
+            diagramCanvasHeightEm={8}
           />
         </Box>
         <Box id="problem-illustration-custom" className={sxStyles.sx17}>
@@ -207,8 +209,8 @@ export default function DebugPage() {
             diagramDetected
             diagramKind="image"
             diagramImagePath="/favicon.svg"
-            diagramPosition="left"
-            diagramScalePercent={125}
+            diagramPlacement={{ kind: "side", side: "left" }}
+            diagramScaleAdjustmentPercent={125}
           />
         </Box>
       </Box>

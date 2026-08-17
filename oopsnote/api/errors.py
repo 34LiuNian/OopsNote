@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from enum import StrEnum
 from typing import Any
 
@@ -47,11 +48,87 @@ _TIKZ_CODES = frozenset(
 _REVIEW_CODES = frozenset(
     {
         "diagram_candidate_limit",
+        "renderer_environment_error",
         "ocr_unreadable",
         "ocr_incomplete",
         "ocr_multiple_questions",
     }
 )
+_SUPPLIER_CODES = frozenset(
+    {
+        "connection_error",
+        "network_error",
+        "ocr_network_error",
+        "ocr_provider_unavailable",
+        "ocr_rate_limit",
+        "ocr_timeout",
+        "provider_authorization",
+        "provider_model_unavailable",
+        "provider_rate_limit",
+        "provider_unavailable",
+        "rate_limit",
+        "rate_limit_exceeded",
+        "service_unavailable",
+    }
+)
+
+_HTTP_STATUS_PATTERN = re.compile(r"(?<!\d)([45]\d{2})(?!\d)")
+_HTML_TITLE_HOST_PATTERN = re.compile(
+    r"<title>\s*([a-z0-9](?:[a-z0-9.-]*[a-z0-9])?)\s*\|",
+    re.IGNORECASE,
+)
+
+
+def _http_status_from_message(message: str | None) -> int | None:
+    match = _HTTP_STATUS_PATTERN.search(message or "")
+    return int(match.group(1)) if match else None
+
+
+def public_error_code(code: str | None, message: str | None = None) -> str | None:
+    """Project legacy unclassified provider 5xx evidence onto the REST taxonomy."""
+
+    normalized = (code or "").strip().lower() or None
+    status = _http_status_from_message(message)
+    if normalized in {None, "runner_error", "validation_failed"} and (
+        "may only use the active task_id" in (message or "")
+        or "may only use the active run_id" in (message or "")
+    ):
+        return "model_output_invalid"
+    if (
+        normalized in {None, "runner_error", "validation_failed"}
+        and status is not None
+        and 500 <= status <= 599
+    ):
+        return "provider_unavailable"
+    return normalized
+
+
+def public_error_message(code: str | None, message: str | None) -> str | None:
+    """Return a concise public failure message while retaining raw local evidence."""
+
+    if not message:
+        return None
+    public_code = public_error_code(code, message)
+    if public_code == "model_output_invalid":
+        return f"模型输出不符合工具协议：{message}"
+    if public_code == "renderer_environment_error":
+        return "TikZ 渲染服务环境异常，需要人工介入修复"
+    if public_code not in _SUPPLIER_CODES:
+        return message
+    if message.startswith("供应商侧请求失败："):
+        return message
+
+    status = _http_status_from_message(message)
+    looks_like_markup = "<!doctype html" in message.lower() or "<html" in message.lower()
+    if public_code == "provider_unavailable" and (looks_like_markup or status == 524):
+        host_match = _HTML_TITLE_HOST_PATTERN.search(message)
+        host = host_match.group(1) if host_match else "上游网关"
+        if status == 524:
+            return f"供应商侧请求失败：{host} 网关响应超时（HTTP 524）"
+        if status is not None:
+            return f"供应商侧请求失败：{host} 暂时不可用（HTTP {status}）"
+        return f"供应商侧请求失败：{host} 暂时不可用"
+    return f"供应商侧请求失败：{message}"
 
 
 def category_for_error_code(
@@ -179,5 +256,7 @@ __all__ = [
     "api_error",
     "category_for_error_code",
     "error_detail",
+    "public_error_code",
+    "public_error_message",
     "scope_for_path",
 ]

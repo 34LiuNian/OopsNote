@@ -44,7 +44,6 @@ class BatchProcessingContext:
     session_store: BatchSessionStore
     job_store: BatchProcessJobStore
     session_view: Callable[[BatchSessionRecord], dict[str, Any]]
-    task_state_view: Callable[[BatchSessionRecord], BatchSessionRecord]
 
 
 def _metadata(
@@ -182,7 +181,7 @@ def process_batch_session(
                 f"Batch session revision is {record.revision}, expected {expected_revision}",
                 retryable=True,
             )
-        if not context.asset_store.is_available(record.asset_path, record.file_hash):
+        if not context.asset_store.matches_sha256(record.asset_path, record.file_hash):
             raise BatchProcessError(
                 409,
                 "batch_source_unavailable",
@@ -246,7 +245,7 @@ def process_batch_session(
                 "queued": 0,
                 "failed": 0,
                 "items": [],
-                "session": context.session_view(context.task_state_view(record)),
+                "session": context.session_view(record),
             }
         if not record.crop_confirmed:
             raise BatchProcessError(
@@ -298,7 +297,7 @@ def process_batch_session(
                 "failed": 0,
                 "needs_review": len(review_items),
                 "items": review_items,
-                "session": context.session_view(context.task_state_view(record)),
+                "session": context.session_view(record),
             }
 
         try:

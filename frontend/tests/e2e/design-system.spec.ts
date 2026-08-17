@@ -23,7 +23,6 @@ test.describe("Graphite Workbench design system matrix", () => {
     const matrix = page.getByTestId("design-system-matrix");
     await expect(matrix).toBeVisible({ timeout: 30_000 });
     await expect(matrix.getByRole("button", { name: "Save settings" })).toBeVisible();
-
     const firstInput = matrix.getByRole("textbox").first();
     await firstInput.focus();
     await expect(firstInput).toBeFocused();

@@ -7,9 +7,20 @@ from urllib.parse import quote
 
 from fastapi import APIRouter, HTTPException, Query, Response
 
-from oopsnote.api.errors import ApiErrorCategory, api_error
+from oopsnote.ai.diagram_renderer import TikzRenderError
+from oopsnote.api.errors import (
+    ApiErrorCategory,
+    api_error,
+    category_for_error_code,
+    public_error_message,
+)
 from oopsnote.api.schemas import PaperCompileRequest, PaperDraftCompileRequest
+from oopsnote.api.services.diagram_rendering import (
+    SelectedDiagramRenderError,
+    render_selected_tikz_candidate,
+)
 from oopsnote.core import (
+    DiagramStatus,
     PaperDraft,
     PaperDraftCreateRequest,
     PaperDraftItem,
@@ -109,6 +120,62 @@ def _document_error_response(error: PaperDocumentError) -> HTTPException:
     )
 
 
+def _prepare_paper_diagrams(
+    draft: PaperDraft,
+    tasks: dict[str, Any],
+) -> dict[str, Any]:
+    """Upgrade only selected legacy TikZ candidates needed by this export."""
+
+    api = _api()
+    for draft_item in draft.items:
+        task = tasks.get(draft_item.task_id)
+        if task is None or len(task.diagram_items) != 1:
+            continue
+        item = task.diagram_items[0]
+        if not item.enabled or item.status != DiagramStatus.READY_TIKZ:
+            continue
+        candidate = next(
+            (
+                candidate
+                for candidate in item.candidates
+                if candidate.id == item.selected_candidate_id
+            ),
+            None,
+        )
+        if candidate is None or candidate.has_normalized_typography_metrics:
+            continue
+        try:
+            tasks[task.id] = render_selected_tikz_candidate(
+                api.TASK_STORE,
+                api.ASSET_STORE,
+                task.id,
+            )
+        except SelectedDiagramRenderError as error:
+            raise api_error(
+                409 if error.code == "diagram_run_active" else 422,
+                code=error.code,
+                message=str(error),
+                category=ApiErrorCategory.REQUEST,
+                scope="paper_compile",
+                task_id=task.id,
+                diagram_item_id=error.item_id,
+                details={"item_id": draft_item.id, "problem_id": draft_item.problem_id},
+            ) from error
+        except TikzRenderError as error:
+            raise api_error(
+                503 if error.retryable else 422,
+                code=error.code,
+                message=public_error_message(error.code, str(error)) or str(error),
+                category=category_for_error_code(error.code),
+                retryable=error.retryable,
+                scope="paper_compile",
+                task_id=task.id,
+                diagram_item_id=item.id,
+                details={"item_id": draft_item.id, "problem_id": draft_item.problem_id},
+            ) from error
+    return tasks
+
+
 def _pdf_response(content: bytes, title: str) -> Response:
     safe_name = "".join(char for char in title if char not in '\\/:*?"<>|').strip() or "paper"
     encoded_name = quote(f"{safe_name}.pdf")
@@ -202,12 +269,15 @@ def compile_paper(payload: PaperCompileRequest) -> Response:
             )
         )
     draft_subject = tasks[draft_items[0].task_id].subject if draft_items else ""
+    draft = PaperDraft(title=payload.title, subject=draft_subject, items=draft_items)
     try:
+        tasks = _prepare_paper_diagrams(draft, tasks)
         document = build_paper_document(
-            PaperDraft(title=payload.title, subject=draft_subject, items=draft_items),
+            draft,
             tasks,
             subtitle=payload.subtitle or "",
             show_answers=payload.show_answers,
+            diagram_scale_percent=payload.diagram_scale_percent,
         )
     except PaperDocumentError as error:
         raise _document_error_response(error) from error
@@ -221,11 +291,13 @@ def compile_paper_draft(draft_id: str, payload: PaperDraftCompileRequest) -> Res
     except KeyError as error:
         raise HTTPException(status_code=404, detail="Paper draft not found") from error
     try:
+        tasks = _prepare_paper_diagrams(draft, _task_lookup())
         document = build_paper_document(
             draft,
-            _task_lookup(),
+            tasks,
             subtitle=payload.subtitle or "",
             show_answers=payload.show_answers,
+            diagram_scale_percent=payload.diagram_scale_percent,
         )
     except PaperDocumentError as error:
         raise _document_error_response(error) from error

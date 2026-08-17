@@ -15,7 +15,7 @@ export function policyModelUnavailableReason(
   if (!channel.has_secret) return "渠道缺少访问凭据";
   if (!model.enabled) return "模型未启用";
   if ((stage === "vision" || stage === "diagram") && !model.capability.vision) return "未启用 Vision 能力";
-  if ((stage === "agent" || stage === "review") && !model.capability.tool_calling) return "未启用 Tool Calling";
+  if ((stage === "agent" || stage === "review" || stage === "diagram") && !model.capability.tool_calling) return "未启用 Tool Calling";
   return null;
 }
 

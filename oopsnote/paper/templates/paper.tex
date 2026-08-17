@@ -15,6 +15,10 @@
 \renewcommand{\headrulewidth}{0pt}
 \setlength{\parindent}{0pt}
 \setlength{\parskip}{0pt}
+% Keep display-style math everywhere, but use a smaller adaptive clearance
+% when a tall fraction would otherwise force an oversized interline gap.
+\setlength{\lineskiplimit}{3pt}
+\setlength{\lineskip}{5pt}
 \raggedbottom
 \everymath{\displaystyle}
 

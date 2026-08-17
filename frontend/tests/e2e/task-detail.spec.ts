@@ -60,14 +60,22 @@ test("completed task keeps a scaled diagram stable while editing replaces the re
       diagram_kind: null,
       diagram_tikz_source: null,
       diagram_svg: null,
-      diagram_image_path: null,
-      diagram_image_crop: null as { x: number; y: number; width: number; height: number } | null,
+      diagram_image_path: null as string | null,
       diagram_image_tone: "auto",
-      diagram_position: "right",
-      diagram_scale_percent: 200,
+      diagram_placement: { kind: "side", side: "right" },
+      diagram_scale_adjustment_percent: 200,
+      diagram_canvas_width_em: 12,
+      diagram_canvas_height_em: 8,
       diagram_render_status: null,
       diagram_error: null,
       diagram_needs_review: false,
+      diagram_items: [] as Array<{
+        id: string;
+        status: "ready_image";
+        source_region: { x: number; y: number; width: number; height: number } | null;
+        fallback_image_path: string;
+        candidates: [];
+      }>,
     },
     solution: {
       problem_id: "problem-ui-test",
@@ -99,6 +107,21 @@ test("completed task keeps a scaled diagram stable while editing replaces the re
       ? update.options.map((text: string, index: number) => ({ key: String.fromCharCode(65 + index), text }))
       : task.problem.options;
     task.problem = { ...task.problem, ...update, options: nextOptions };
+    await route.fulfill({ json: { task } });
+  });
+  await page.route(`**/api/tasks/${taskId}/problem/diagram`, async (route) => {
+    const update = route.request().postDataJSON();
+    const sourceRegion = update.image_crop ?? task.problem.diagram_items[0]?.source_region ?? null;
+    task.problem.diagram_items = [{
+      id: "diagram-ui-test",
+      status: "ready_image",
+      source_region: sourceRegion,
+      fallback_image_path: "/assets/task-ui-test-crop.png",
+      candidates: [],
+    }];
+    task.problem.diagram_detected = update.enabled ?? true;
+    task.problem.diagram_kind = update.kind ?? "image";
+    task.problem.diagram_image_path = "/assets/task-ui-test-crop.png";
     await route.fulfill({ json: { task } });
   });
 
@@ -187,8 +210,8 @@ test("completed task keeps a scaled diagram stable while editing replaces the re
   await expect(page.getByText("未保存", { exact: true })).toBeVisible();
 
   await page.getByRole("button", { name: "保存修改" }).click();
-  expect(task.problem.diagram_image_crop?.x).toBeCloseTo(0.2, 1);
-  expect(task.problem.diagram_image_crop?.width).toBeCloseTo(0.6, 1);
+  expect(task.problem.diagram_items[0]?.source_region?.x).toBeCloseTo(0.2, 1);
+  expect(task.problem.diagram_items[0]?.source_region?.width).toBeCloseTo(0.6, 1);
   expect(task.problem.diagram_image_tone).toBe("auto");
   expect(task.problem.difficulty_coefficient_override).toBe(0.73);
   expect(task.problem.chapter).toBe("函数");

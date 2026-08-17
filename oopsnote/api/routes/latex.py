@@ -9,7 +9,12 @@ from fastapi import APIRouter
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
-from oopsnote.api.errors import ApiErrorCategory, api_error
+from oopsnote.api.errors import (
+    ApiErrorCategory,
+    api_error,
+    category_for_error_code,
+    public_error_message,
+)
 from oopsnote.content import validate_oopsmark
 
 router = APIRouter(prefix="/latex")
@@ -72,11 +77,23 @@ def render_tikz(payload: TikzRenderRequest) -> Response:
         ) from error
     if result.status_code != 200:
         retryable = result.status_code >= 500
+        code = "renderer_failed"
+        message = result.text[-12_000:]
+        try:
+            detail = result.json().get("detail")
+        except (TypeError, ValueError):
+            detail = None
+        if isinstance(detail, dict):
+            code = str(detail.get("code") or code)
+            message = str(detail.get("message") or message)
+            retryable = bool(detail.get("retryable", retryable))
+        elif isinstance(detail, str):
+            message = detail
         raise api_error(
             503 if retryable else 422,
-            code="renderer_failed",
-            message=result.text[-12_000:],
-            category=ApiErrorCategory.TIKZ_COMPILE,
+            code=code,
+            message=public_error_message(code, message) or message,
+            category=category_for_error_code(code),
             retryable=retryable,
             scope="tikz_render",
         )

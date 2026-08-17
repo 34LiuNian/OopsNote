@@ -1,5 +1,5 @@
 import { fetchJson } from "@/lib/api";
-import type { ChannelDraft, ChannelsResponse, DiscoveryResult, LangChainPolicy, ProviderChannel, ProviderValidation } from "./types";
+import type { ChannelDraft, ChannelsResponse, DiscoveryResult, LangChainPolicy, ProviderCapability, ProviderChannel, ProviderValidation } from "./types";
 
 type ChannelDiscoveryResponse = {
   channel: ProviderChannel;
@@ -41,7 +41,7 @@ export function reorderChannels(channelIds: string[]) {
   return fetchJson<{ items: ProviderChannel[] }>("/settings/ai/channels/order", { method: "PATCH", body: JSON.stringify({ channel_ids: channelIds }) });
 }
 
-export function updateChannelModel(channelId: string, modelId: string, payload: { enabled?: boolean; capability?: { tool_calling: boolean; vision: boolean } }) {
+export function updateChannelModel(channelId: string, modelId: string, payload: { enabled?: boolean; capability?: ProviderCapability }) {
   return fetchJson<{ channel: ProviderChannel }>(`/settings/ai/channels/${encodeURIComponent(channelId)}/models/${encodeURIComponent(modelId)}`, { method: "PATCH", body: JSON.stringify(payload) });
 }
 

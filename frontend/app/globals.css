@@ -1,4 +1,5 @@
 @import "./design-tokens.css";
+@import "../components/selection-box/selectionBox.css";
 @import "../components/image-selection/imageSelection.css";
 @import "../components/batch-continuous/batchContinuous.css";
 
@@ -95,43 +96,6 @@ html[data-oopsnote-batch-scan="active"] .oops-page-enter {
   height: 100%;
 }
 
-html[data-oopsnote-paper-compose="active"],
-html[data-oopsnote-paper-compose="active"] body {
-  overflow: hidden;
-}
-
-html[data-oopsnote-paper-compose="active"] .app-sidebar,
-html[data-oopsnote-paper-compose="active"] .oops-secondary-sidebar,
-html[data-oopsnote-paper-compose="active"] .oops-secondary-sidebar__backdrop,
-html[data-oopsnote-paper-compose="active"] .oops-titlebar,
-html[data-oopsnote-paper-compose="active"] .oops-glass,
-html[data-oopsnote-paper-compose="active"] .oops-mobile-tabbar {
-  display: none !important;
-}
-
-html[data-oopsnote-paper-compose="active"] .oops-app-body,
-html[data-oopsnote-paper-compose="active"] .oops-content-surface {
-  min-height: 100dvh;
-  border: 0;
-  border-radius: 0;
-  box-shadow: none;
-}
-
-html[data-oopsnote-paper-compose="active"] main {
-  height: 100dvh !important;
-  min-height: 0 !important;
-  max-height: 100dvh;
-  flex: 0 0 100dvh !important;
-  padding: 0 !important;
-  overflow: hidden;
-}
-
-html[data-oopsnote-paper-compose="active"] .oops-page-enter {
-  height: 100%;
-  min-height: 0;
-  overflow: hidden;
-}
-
 /* Application navigation ------------------------------------------------ */
 .oops-app-shell {
   --oops-titlebar-height: 58px;
@@ -146,6 +110,7 @@ html[data-oopsnote-paper-compose="active"] .oops-page-enter {
 }
 
 .oops-app-shell.is-secondary-channels { --oops-secondary-sidebar-width: 312px; }
+.oops-app-shell.is-secondary-paper-compose { --oops-secondary-sidebar-width: 320px; }
 
 .oops-app-shell.is-sidebar-collapsed { --oops-sidebar-width: 58px; }
 
@@ -604,13 +569,21 @@ html[data-oopsnote-paper-compose="active"] .oops-page-enter {
 }
 
 /* Capture workspace ------------------------------------------------------ */
-.problem-content__lead.has-illustration {
+.problem-content[data-font-size="0"] { font-size: var(--oops-text-xs); }
+.problem-content[data-font-size="1"] { font-size: var(--oops-text-sm); }
+.problem-content[data-font-size="2"] { font-size: var(--oops-text-md); }
+.problem-content[data-font-size="3"] { font-size: var(--oops-text-lg); }
+.problem-content__layout { display: flex; min-width: 0; flex-direction: column; gap: var(--oops-space-3); }
+.problem-content__layout[data-placement="side"] {
   display: grid;
-  grid-template-areas: "text illustration";
-  /* Keep the illustration track independent from the measured text height. */
-  grid-template-columns: minmax(0, 1fr) minmax(160px, 38%);
+  grid-template-areas: "stem illustration" "options options";
+  grid-template-columns: minmax(260px, 1fr) max-content;
   align-items: start;
-  gap: clamp(16px, 3vw, 36px);
+  column-gap: 24px;
+}
+.problem-content__layout[data-placement="side"][data-side="left"] {
+  grid-template-areas: "illustration stem" "options options";
+  grid-template-columns: max-content minmax(260px, 1fr);
 }
 
 .problem-render-status {
@@ -636,22 +609,28 @@ html[data-oopsnote-paper-compose="active"] .oops-page-enter {
   white-space: pre-wrap;
 }
 
-.problem-content__lead.is-left.has-illustration {
-  grid-template-areas: "illustration text";
-  grid-template-columns: minmax(160px, 38%) minmax(0, 1fr);
-}
-
-.problem-content__body { grid-area: text; min-width: 0; }
+.problem-content__stem { grid-area: stem; min-width: 0; }
+.problem-content__options { grid-area: options; min-width: 0; }
 .problem-content__illustration {
   grid-area: illustration;
-  width: 100%;
   max-width: 100%;
   min-width: 0;
   justify-self: end;
   overflow: hidden;
   border-radius: var(--oops-radius-sm);
 }
-.problem-content__lead.is-left .problem-content__illustration { justify-self: start; }
+.problem-content__illustration[data-normalized-tikz="true"] {
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+.problem-content__illustration-canvas {
+  max-width: none;
+  overflow: hidden;
+}
+.problem-content__layout[data-side="left"] .problem-content__illustration,
+.problem-content__layout[data-align="left"] .problem-content__illustration { align-self: flex-start; justify-self: start; }
+.problem-content__layout[data-align="center"] .problem-content__illustration { align-self: center; justify-self: center; }
+.problem-content__layout[data-align="right"] .problem-content__illustration { align-self: flex-end; justify-self: end; }
 .problem-content__illustration > img {
   display: block;
   width: 100%;
@@ -839,11 +818,6 @@ html[data-oopsnote-color-scheme="dark"] .problem-content__illustration > img.is-
 
 @media (max-width: 720px) {
   .problem-tag-grid { grid-template-columns: 1fr; gap: 12px; }
-  .problem-content__lead.has-illustration,
-  .problem-content__lead.is-left.has-illustration {
-    grid-template-areas: "text" "illustration";
-    grid-template-columns: minmax(0, 1fr);
-  }
   .problem-content__illustration { max-width: 100%; }
 }
 

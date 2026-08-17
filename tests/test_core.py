@@ -1,6 +1,7 @@
 """OopsNote Core 测试。"""
 
 import base64
+import hashlib
 import json
 import tempfile
 import threading
@@ -17,6 +18,8 @@ from oopsnote.core import (
     BatchSegment,
     BatchSessionRecord,
     BatchSessionStore,
+    DiagramCandidate,
+    DiagramItem,
     Problem,
     ProblemMergeStore,
     RunArtifact,
@@ -36,6 +39,32 @@ from oopsnote.core import (
     TaskStore,
     problem_fingerprint,
 )
+
+
+def test_diagram_layout_legacy_fields_migrate_to_automatic_typography():
+    item = DiagramItem.model_validate({"position": "left", "scale_percent": 125})
+
+    assert item.placement.model_dump() == {"kind": "side", "side": "left"}
+    assert item.scale_adjustment_percent == 100
+    persisted = item.model_dump(mode="json")
+    assert "position" not in persisted
+    assert "scale_percent" not in persisted
+
+
+def test_diagram_layout_preserves_explicit_font_relative_adjustment():
+    item = DiagramItem.model_validate({"scale_adjustment_percent": 125})
+
+    assert item.scale_adjustment_percent == 125
+
+
+def test_diagram_candidate_rejects_partial_typography_metrics():
+    with pytest.raises(ValueError, match="typography metrics must be complete"):
+        DiagramCandidate(
+            ordinal=1,
+            tikz_source=r"\draw (0,0)--(1,0);",
+            base_font_size_pt=10,
+            canvas_width_em=12,
+        )
 
 
 class TestTaskStore:
@@ -593,6 +622,21 @@ class TestAssetStore:
 
         assert store.save_bytes(b"new", "source.png", stable_name="stable") == path
         assert store.resolve(path).read_bytes() == b"new"
+
+    def test_presence_and_content_identity_are_distinct_contracts(self):
+        store = AssetStore(base_dir=Path(tempfile.mkdtemp()))
+        content = b"verified source"
+        expected_sha256 = hashlib.sha256(content).hexdigest()
+        path = store.save_bytes(content, "source.pdf", stable_name="stable")
+
+        assert store.exists(path) is True
+        assert store.matches_sha256(path, expected_sha256) is True
+
+        store.resolve(path).write_bytes(b"tampered source")
+
+        assert store.exists(path) is True
+        assert store.matches_sha256(path, expected_sha256) is False
+        assert store.exists("/assets/missing.pdf") is False
 
 
 class TestSearcherExtra:

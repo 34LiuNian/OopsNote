@@ -148,8 +148,10 @@ export function ProblemStudyPanel({ taskId, problem, mergedInto, onStatusMessage
                       diagramSvg={candidate.diagram_svg}
                       diagramImagePath={candidate.diagram_image_path}
                       diagramImageTone={candidate.diagram_image_tone}
-                      diagramPosition={candidate.diagram_position}
-                      diagramScalePercent={candidate.diagram_scale_percent}
+                      diagramPlacement={candidate.diagram_placement}
+                      diagramScaleAdjustmentPercent={candidate.diagram_scale_adjustment_percent}
+                      diagramCanvasWidthEm={candidate.diagram_canvas_width_em}
+                      diagramCanvasHeightEm={candidate.diagram_canvas_height_em}
                       diagramRenderStatus={candidate.diagram_render_status}
                       diagramError={candidate.diagram_error}
                       diagramNeedsReview={candidate.diagram_needs_review}

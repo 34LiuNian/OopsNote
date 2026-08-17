@@ -231,13 +231,21 @@ class AssetStore:
         """Delete one managed asset after resolving it inside the asset store."""
         self.resolve(asset_path).unlink()
 
-    def is_available(self, asset_path: str, expected_sha256: str | None = None) -> bool:
-        """Check existence and, when supplied, content identity of one asset."""
+    def exists(self, asset_path: str) -> bool:
+        """Return whether one managed asset currently exists."""
+        try:
+            self.resolve(asset_path)
+        except (FileNotFoundError, ValueError, OSError):
+            return False
+        return True
+
+    def matches_sha256(self, asset_path: str, expected_sha256: str) -> bool:
+        """Verify that one managed asset exists and has the expected content identity."""
         try:
             path = self.resolve(asset_path)
         except (FileNotFoundError, ValueError, OSError):
             return False
-        return expected_sha256 is None or self._file_sha256(path) == expected_sha256
+        return self._file_sha256(path) == expected_sha256
 
     @staticmethod
     def _extract(data: str) -> tuple[str, str | None]:

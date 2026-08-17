@@ -11,8 +11,9 @@ import { notify } from "@/lib/notify";
 import { confirmAction } from "@/lib/confirm";
 import { formatApiError } from "@/lib/errorFormatter";
 import { getChannelCredential } from "@/features/settings/api";
+import { baseUrlAfterProviderChange, PROVIDER_DEFAULT_URLS } from "@/features/settings/channelDefaults";
 import { useAiChannels, useAiChannelMutations } from "@/features/settings/useAiProviders";
-import type { ChannelDraft, ChannelModel, ProviderChannel, ProviderValidation } from "@/features/settings/types";
+import type { ChannelDraft, ChannelModel, ProviderCapability, ProviderChannel, ProviderValidation } from "@/features/settings/types";
 import { ChannelRail, ModelCatalog, type ModelCatalogFilter, ProviderIconPicker, ProviderMark, providerLabel } from "@/components/settings/ai";
 import { useSecondarySidebar } from "@/components/layout/SecondarySidebarContext";
 import styles from "@/components/settings/ai/aiSettings.module.css";
@@ -25,14 +26,6 @@ const PROVIDERS = [
   { value: "google", label: "Google Gemini" },
   { value: "openai-compatible", label: "OpenAI Compatible" },
 ];
-
-const PROVIDER_DEFAULT_URLS: Record<string, string | null> = {
-  deepseek: "https://api.deepseek.com/v1",
-  openai: "https://api.openai.com/v1",
-  anthropic: "https://api.anthropic.com",
-  google: "https://generativelanguage.googleapis.com",
-  "openai-compatible": null,
-};
 
 const EMPTY_DRAFT: ChannelDraft = {
   id: "",
@@ -106,6 +99,7 @@ export default function AiChannelsPage() {
     (creating || infoDirty || secretDirty)
     && activeDraft.id.trim()
     && activeDraft.display_name.trim()
+    && (activeDraft.provider !== "openai-compatible" || activeDraft.base_url?.trim())
     && (!secretDirty || secretDraft.trim()),
   );
   const displayedSecret = secretRevealed || secretDirty
@@ -265,7 +259,7 @@ export default function AiChannelsPage() {
     }
   }
 
-  async function patchModel(model: ChannelModel, patch: { enabled?: boolean; capability?: { tool_calling: boolean; vision: boolean } }) {
+  async function patchModel(model: ChannelModel, patch: { enabled?: boolean; capability?: ProviderCapability }) {
     if (!selected) return;
     setBusyModelId(model.id);
     setErrorMessage("");
@@ -401,7 +395,7 @@ export default function AiChannelsPage() {
                 <div className={styles.formRow}>
                   <div><div className={styles.overviewLabel}>Provider</div><div className={styles.overviewHint}>服务商适配器</div></div>
                   <div className={styles.formControl}>
-                    <Select block value={activeDraft.provider} onValueChange={(provider) => setDraft({ ...activeDraft, provider, base_url: PROVIDER_DEFAULT_URLS[provider] ?? null })}>
+                    <Select block value={activeDraft.provider} onValueChange={(provider) => setDraft({ ...activeDraft, provider, base_url: baseUrlAfterProviderChange(activeDraft.provider, activeDraft.base_url, provider) })}>
                       {PROVIDERS.map((provider) => <Select.Option key={provider.value} value={provider.value}>{provider.label}</Select.Option>)}
                     </Select>
                   </div>
@@ -413,7 +407,7 @@ export default function AiChannelsPage() {
                 <div className={styles.formRow}>
                   <div><div className={styles.overviewLabel}>Base URL</div><div className={styles.overviewHint}>Provider API 接入地址</div></div>
                   <div className={styles.inlineControlGroup}>
-                    <TextInput block value={activeDraft.base_url ?? ""} placeholder="官方渠道可使用默认地址" onChange={(event) => setDraft({ ...activeDraft, base_url: event.currentTarget.value || null })} />
+                    <TextInput block required={activeDraft.provider === "openai-compatible"} error={activeDraft.provider === "openai-compatible" && !activeDraft.base_url?.trim() ? "OpenAI Compatible 必须填写 Base URL" : undefined} value={activeDraft.base_url ?? ""} placeholder={activeDraft.provider === "openai-compatible" ? "OpenAI Compatible 接入地址" : "官方渠道可使用默认地址"} onChange={(event) => setDraft({ ...activeDraft, base_url: event.currentTarget.value || null })} />
                     <Tooltip text="复制 API 地址"><IconButton variant="default" icon={Copy} aria-label="复制 API 地址" disabled={!activeDraft.base_url} onClick={() => void copyBaseUrl()} /></Tooltip>
                   </div>
                 </div>

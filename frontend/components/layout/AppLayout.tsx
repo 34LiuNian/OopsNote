@@ -27,7 +27,8 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const isLibrary = pathname.startsWith("/library");
   const isChannels = pathname.startsWith("/settings/channels");
-  const hasSecondarySidebar = isLibrary || isChannels;
+  const isPaperCompose = pathname === "/papers/new";
+  const hasSecondarySidebar = isLibrary || isChannels || isPaperCompose;
   const defaultDesktopSidebarState: DesktopSidebarState = {
     pathname,
     primaryCollapsed: isLibrary,
@@ -88,7 +89,8 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
   const handleNavigation = useCallback((href: string) => {
     const nextIsLibrary = href.startsWith("/library");
-    const nextHasSecondarySidebar = nextIsLibrary || href.startsWith("/settings/channels");
+    const nextIsPaperCompose = href === "/papers/new";
+    const nextHasSecondarySidebar = nextIsLibrary || href.startsWith("/settings/channels") || nextIsPaperCompose;
     setDesktopSidebarState({
       pathname: href,
       primaryCollapsed: nextIsLibrary,
@@ -105,7 +107,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     });
   }, [activeDesktopSidebarState, pathname]);
 
-  const secondaryLabel = isLibrary ? "题库筛选" : "AI 渠道";
+  const secondaryLabel = isLibrary ? "题库筛选" : isChannels ? "AI 渠道" : "组卷筛选";
   const toggleLabel = sidebarCollapsed ? "展开侧栏" : "收起侧栏";
   const ToggleIcon = sidebarCollapsed ? SidebarExpandIcon : SidebarCollapseIcon;
 
@@ -120,7 +122,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         closeSecondarySidebar,
       }}
     >
-      <Box className={`oops-app-shell${sidebarCollapsed ? " is-sidebar-collapsed" : ""}${secondaryView === "context" ? " is-secondary-open" : " is-secondary-closed"}${isChannels ? " is-secondary-channels" : ""}`}>
+      <Box className={`oops-app-shell${sidebarCollapsed ? " is-sidebar-collapsed" : ""}${secondaryView === "context" ? " is-secondary-open" : " is-secondary-closed"}${isChannels ? " is-secondary-channels" : ""}${isPaperCompose ? " is-secondary-paper-compose" : ""}`}>
         <Box as="header" className="oops-titlebar">
           <Button
             variant="default"

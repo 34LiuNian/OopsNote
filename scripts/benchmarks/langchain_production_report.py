@@ -234,11 +234,7 @@ def build_report(
     if evidence is not None:
         quality_count = sum(item.quality_pass for item in evidence.task_results)
         denominator = len(evidence.task_results)
-        quality_gate = bool(
-            exact_cohort
-            and denominator
-            and quality_count / denominator >= 0.95
-        )
+        quality_gate = bool(exact_cohort and denominator and quality_count / denominator >= 0.95)
         integrity_gate = bool(
             exact_cohort
             and all(
@@ -260,9 +256,7 @@ def build_report(
         )
         measured_p95 = _p95(durations)
         latency_gate = bool(
-            exact_cohort
-            and measured_p95 is not None
-            and measured_p95 <= evidence.maximum_p95_ms
+            exact_cohort and measured_p95 is not None and measured_p95 <= evidence.maximum_p95_ms
         )
         cost_coverage = sum(cost is not None for cost in costs) / total if total else None
         total_cost = sum(float(cost or 0) for cost in costs)

@@ -1,17 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { SelectionBox, type SelectionRect } from "@/components/selection-box";
 import {
   clampDocumentPoint,
-  moveDocumentRect,
   normalizeRect,
-  resizeDocumentRect,
   splitSelectionAcrossPages,
 } from "./batchContinuousGeometry";
-import type { DocumentPoint, PageMetric, ResizeHandle, SelectionModel } from "./batchContinuousTypes";
-import { GeometryButton } from "@/components/ui/primitives";
-
-const HANDLES: ResizeHandle[] = ["nw", "n", "ne", "e", "se", "s", "sw", "w"];
+import type { DocumentPoint, PageMetric, SelectionModel } from "./batchContinuousTypes";
 const COMPACT_HANDLE_THRESHOLD = 64;
 
 type Props = {
@@ -37,7 +33,6 @@ export function BatchSelectionOverlay({
 }: Props) {
   const rootRef = useRef<HTMLDivElement | null>(null);
   const [draft, setDraft] = useState<{ pointerId: number; start: DocumentPoint; end: DocumentPoint } | null>(null);
-  const [movingSelectionId, setMovingSelectionId] = useState<string>();
 
   const clientToDocument = useCallback((clientX: number, clientY: number) => {
     const bounds = rootRef.current?.getBoundingClientRect();
@@ -97,73 +92,19 @@ export function BatchSelectionOverlay({
     });
   }, [metrics, onChange]);
 
-  const startResize = useCallback((event: React.PointerEvent, selection: SelectionModel, handle: ResizeHandle) => {
-    if (selection.status !== "pending") return;
-    event.preventDefault();
-    event.stopPropagation();
-    onActiveSelectionChange(selection.id);
-    const pointerId = event.pointerId;
-    const original = selection.rect;
-    const totalHeight = metrics.at(-1)?.documentBottom ?? 0;
-    const move = (moveEvent: PointerEvent) => {
-      if (moveEvent.pointerId !== pointerId) return;
-      const rect = resizeDocumentRect(
-        original,
-        handle,
-        clientToDocument(moveEvent.clientX, moveEvent.clientY),
-        { left: 0, top: 0, right: metrics[0]?.displayWidth ?? 1000, bottom: totalHeight },
-      );
-      changeRect(selection, rect);
-    };
-    const stop = (stopEvent: PointerEvent) => {
-      if (stopEvent.pointerId !== pointerId) return;
-      window.removeEventListener("pointermove", move, true);
-      window.removeEventListener("pointerup", stop, true);
-      window.removeEventListener("pointercancel", stop, true);
-    };
-    window.addEventListener("pointermove", move, true);
-    window.addEventListener("pointerup", stop, true);
-    window.addEventListener("pointercancel", stop, true);
-  }, [changeRect, clientToDocument, metrics, onActiveSelectionChange]);
-
-  const startMove = useCallback((event: React.PointerEvent, selection: SelectionModel) => {
-    if (selection.status !== "pending") return;
-    event.preventDefault();
-    event.stopPropagation();
-    onActiveSelectionChange(selection.id);
-    setMovingSelectionId(selection.id);
-    const pointerId = event.pointerId;
-    const origin = clientToDocument(event.clientX, event.clientY);
-    const original = selection.rect;
-    const bounds = {
-      left: 0,
-      top: 0,
-      right: metrics[0]?.displayWidth ?? 1000,
-      bottom: metrics.at(-1)?.documentBottom ?? 0,
-    };
-    const move = (moveEvent: PointerEvent) => {
-      if (moveEvent.pointerId !== pointerId) return;
-      const point = clientToDocument(moveEvent.clientX, moveEvent.clientY);
-      changeRect(selection, moveDocumentRect(original, {
-        x: point.x - origin.x,
-        y: point.y - origin.y,
-      }, bounds));
-    };
-    const stop = (stopEvent: PointerEvent) => {
-      if (stopEvent.pointerId !== pointerId) return;
-      setMovingSelectionId((current) => current === selection.id ? undefined : current);
-      window.removeEventListener("pointermove", move, true);
-      window.removeEventListener("pointerup", stop, true);
-      window.removeEventListener("pointercancel", stop, true);
-    };
-    window.addEventListener("pointermove", move, true);
-    window.addEventListener("pointerup", stop, true);
-    window.addEventListener("pointercancel", stop, true);
-  }, [changeRect, clientToDocument, metrics, onActiveSelectionChange]);
-
   const totalHeight = metrics.at(-1)?.documentBottom ?? 1;
   const documentWidth = metrics[0]?.displayWidth ?? 1000;
   const draftRect = draft ? normalizeRect(draft.start, draft.end) : null;
+  const documentRectToSelectionRect = useCallback((rect: SelectionModel["rect"]): SelectionRect => ({
+    x: rect.left / documentWidth,
+    y: rect.top / totalHeight,
+    width: (rect.right - rect.left) / documentWidth,
+    height: (rect.bottom - rect.top) / totalHeight,
+  }), [documentWidth, totalHeight]);
+  const selectionPointClamp = useCallback((point: { x: number; y: number }) => {
+    const documentPoint = clampDocumentPoint({ x: point.x * documentWidth, y: point.y * totalHeight }, metrics);
+    return { x: documentPoint.x / documentWidth, y: documentPoint.y / totalHeight };
+  }, [documentWidth, metrics, totalHeight]);
 
   return (
     <div
@@ -202,37 +143,38 @@ export function BatchSelectionOverlay({
         const compactHeight = rect.bottom - rect.top < COMPACT_HANDLE_THRESHOLD;
         const labelInside = rect.top < 40;
         return (
-          <GeometryButton
-            type="button"
+          <SelectionBox
             key={selection.id}
-            className={`batch-selection is-${selection.status}${active ? " is-active" : ""}${movingSelectionId === selection.id ? " is-moving" : ""}${labelInside ? " is-label-inside" : ""}${compactWidth ? " is-compact-width" : ""}${compactHeight ? " is-compact-height" : ""}`}
+            value={documentRectToSelectionRect(rect)}
+            surfaceRef={rootRef}
+            minSize={{ x: 8 / documentWidth, y: 8 / totalHeight }}
+            disabled={selection.status !== "pending"}
+            showHandles={active && selection.status === "pending"}
+            compactThreshold={COMPACT_HANDLE_THRESHOLD / Math.max(documentWidth, totalHeight)}
+            label={<span className="batch-selection__label">{selection.questionNo}</span>}
+            className={`batch-selection is-${selection.status}${active ? " is-active" : ""}${labelInside ? " is-label-inside" : ""}${compactWidth ? " is-compact-width" : ""}${compactHeight ? " is-compact-height" : ""}`}
+            handleClassName="batch-selection-handle"
             data-selection-id={selection.id}
             aria-label={`第 ${selection.questionNo} 题选区`}
-            onPointerDown={(event) => startMove(event, selection)}
-            onClick={(event) => { event.stopPropagation(); onActiveSelectionChange(selection.id); }}
-            style={{
-              left: `${rect.left / documentWidth * 100}%`,
-              top: `${rect.top / totalHeight * 100}%`,
-              width: `${(rect.right - rect.left) / documentWidth * 100}%`,
-              height: `${(rect.bottom - rect.top) / totalHeight * 100}%`,
-            }}
-          >
-            <span className="batch-selection__label">{selection.questionNo}</span>
-            {active && selection.status === "pending" && HANDLES.map((handle) => (
-              <span key={handle} className={`batch-selection-handle is-${handle}`} onPointerDown={(event) => startResize(event, selection, handle)} />
-            ))}
-          </GeometryButton>
+            clampPoint={selectionPointClamp}
+            onActivate={() => onActiveSelectionChange(selection.id)}
+            onChange={(nextRect) => changeRect(selection, {
+              left: nextRect.x * documentWidth,
+              top: nextRect.y * totalHeight,
+              right: (nextRect.x + nextRect.width) * documentWidth,
+              bottom: (nextRect.y + nextRect.height) * totalHeight,
+            })}
+          />
         );
       })}
       {draftRect && (
-        <div
+        <SelectionBox
+          value={documentRectToSelectionRect(draftRect)}
+          surfaceRef={rootRef}
+          disabled
+          showHandles={false}
           className="batch-selection is-draft"
-          style={{
-            left: `${draftRect.left / documentWidth * 100}%`,
-            top: `${draftRect.top / totalHeight * 100}%`,
-            width: `${(draftRect.right - draftRect.left) / documentWidth * 100}%`,
-            height: `${(draftRect.bottom - draftRect.top) / totalHeight * 100}%`,
-          }}
+          onChange={() => undefined}
         />
       )}
       {draft && (

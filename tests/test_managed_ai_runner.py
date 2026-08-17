@@ -109,6 +109,21 @@ def test_orphaned_running_run_requires_a_fresh_retry(tmp_path):
     assert task_store.get(task.id).status == TaskStatus.FAILED
 
 
+def test_failure_transition_replaces_stale_stage_message_with_terminal_error(tmp_path):
+    runner, task_store, run_store = make_runner(tmp_path)
+    task = task_store.create(TaskCreateRequest(subject="math"))
+    run = runner.enqueue(task.id)
+    task_store.update(task.id, stage_message="LangChain provider started")
+
+    runner._fail_start(task.id, run.id, "供应商返回 503", "provider_unavailable")
+
+    failed = task_store.get(task.id)
+    assert failed.status == TaskStatus.FAILED
+    assert failed.stage_message == "供应商返回 503"
+    assert failed.last_error == "供应商返回 503"
+    assert run_store.get(run.id).error_code == "provider_unavailable"
+
+
 def test_orphan_recovery_cannot_overwrite_newer_run_ownership(tmp_path):
     runner, task_store, run_store = make_runner(tmp_path)
     task = task_store.create(TaskCreateRequest(subject="math"))

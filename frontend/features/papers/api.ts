@@ -65,7 +65,7 @@ export async function listPaperCandidates(params: {
 
 export async function compilePaperDraft(
   draftId: string,
-  payload: { subtitle?: string; show_answers?: boolean },
+  payload: { subtitle?: string; show_answers?: boolean; diagram_scale_percent?: number },
 ): Promise<Blob> {
   const response = await fetchApi(`/papers/${encodeURIComponent(draftId)}/compile`, {
     method: "POST",

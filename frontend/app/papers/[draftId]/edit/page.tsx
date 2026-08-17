@@ -70,6 +70,7 @@ export default function PaperEditorPage() {
   const [draggedId, setDraggedId] = useState<string | null>(null);
   const [subtitle, setSubtitle] = useState("");
   const [showAnswers, setShowAnswers] = useState(false);
+  const [diagramScalePercent, setDiagramScalePercent] = useState(60);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState("");
@@ -223,6 +224,7 @@ export default function PaperEditorPage() {
       const pdf = await compilePaperDraft(draftId, {
         subtitle: subtitle.trim() || undefined,
         show_answers: showAnswers,
+        diagram_scale_percent: diagramScalePercent,
       });
       const nextUrl = URL.createObjectURL(pdf);
       setPreviewUrl((current) => {
@@ -344,20 +346,22 @@ export default function PaperEditorPage() {
                       }}
                     />
                   </label>
-                  <label>
-                    <span className={styles.coefficient}>答题空间</span>{" "}
-                    <NativeSelect
-                      className={styles.pointsInput}
-                      value={item.answer_space}
-                      onChange={(event) => void saveItems(paper.items.map((candidate) => (
-                        candidate.id === item.id ? { ...candidate, answer_space: event.target.value } : candidate
-                      )))}
-                    >
-                      <option value="compact">紧凑</option>
-                      <option value="standard">标准</option>
-                      <option value="large">宽裕</option>
-                    </NativeSelect>
-                  </label>
+                  {item.question_type === "解答题" ? (
+                    <label>
+                      <span className={styles.coefficient}>答题空间</span>{" "}
+                      <NativeSelect
+                        className={styles.pointsInput}
+                        value={item.answer_space}
+                        onChange={(event) => void saveItems(paper.items.map((candidate) => (
+                          candidate.id === item.id ? { ...candidate, answer_space: event.target.value } : candidate
+                        )))}
+                      >
+                        <option value="compact">紧凑</option>
+                        <option value="standard">标准</option>
+                        <option value="large">宽裕</option>
+                      </NativeSelect>
+                    </label>
+                  ) : null}
                   <div className={styles.itemToolbarActions}>
                     <Button size="small" onClick={() => router.push(`/tasks/${item.task_id}`)}>编辑原题</Button>
                     <Button size="small" onClick={() => setPickerMode({ kind: "replace", itemId: item.id })}>替换</Button>
@@ -378,8 +382,10 @@ export default function PaperEditorPage() {
                     diagramSvg={item.problem.diagram_svg}
                     diagramImagePath={item.problem.diagram_image_path}
                     diagramImageTone={item.problem.diagram_image_tone}
-                    diagramPosition={item.problem.diagram_position}
-                    diagramScalePercent={item.problem.diagram_scale_percent}
+                    diagramPlacement={item.problem.diagram_placement}
+                    diagramScaleAdjustmentPercent={item.problem.diagram_scale_adjustment_percent}
+                    diagramCanvasWidthEm={item.problem.diagram_canvas_width_em}
+                    diagramCanvasHeightEm={item.problem.diagram_canvas_height_em}
                     diagramRenderStatus={item.problem.diagram_render_status}
                     diagramError={item.problem.diagram_error}
                     diagramNeedsReview={item.problem.diagram_needs_review}
@@ -432,6 +438,22 @@ export default function PaperEditorPage() {
                       clearFormalPreview();
                       setShowAnswers(event.target.checked);
                     }} />
+                  <label>
+                    <span>题图统一缩放（%）</span>
+                    <NativeInput
+                      type="number"
+                      min={25}
+                      max={200}
+                      step={5}
+                      value={diagramScalePercent}
+                      onChange={(event) => {
+                        const value = event.target.valueAsNumber;
+                        if (!Number.isFinite(value)) return;
+                        clearFormalPreview();
+                        setDiagramScalePercent(Math.min(200, Math.max(25, value)));
+                      }}
+                    />
+                  </label>
                   <Button
                     size="small"
                     leadingVisual={Eye}

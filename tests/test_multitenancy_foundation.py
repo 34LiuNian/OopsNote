@@ -21,6 +21,9 @@ from oopsnote.control import (
     WorkspaceRegistry,
 )
 from oopsnote.core import (
+    DiagramRunMode,
+    DiagramRunStep,
+    DiagramTransport,
     Principal,
     RunPurpose,
     RunStatus,
@@ -418,6 +421,25 @@ def test_workspace_run_store_queues_beyond_concurrency_and_claims_one_execution_
     stores.run_store.finish(first.id, RunStatus.FAILED, error_code="provider_unavailable")
     stores.run_store.start(second.id, None, "runs/second.log")
     assert second.quota_reservation_id != first.quota_reservation_id
+
+
+def test_workspace_run_store_preserves_diagram_transport_contract(tmp_path):
+    registry = _registry(tmp_path)
+    context = registry.get_or_create(Principal("auth-diagram-run", UserRole.USER))
+    stores = WorkspaceStoreFactory().for_context(context)
+
+    run = stores.run_store.create(
+        "task-diagram",
+        purpose=RunPurpose.DIAGRAM,
+        diagram_item_id="diagram-item",
+        diagram_mode=DiagramRunMode.REBUILD,
+        diagram_max_candidates=4,
+        diagram_step=DiagramRunStep.GENERATE,
+        diagram_transport=DiagramTransport.MESSAGE_IMAGE_BRIDGE,
+    )
+
+    assert run.diagram_transport == DiagramTransport.MESSAGE_IMAGE_BRIDGE
+    assert stores.run_store.get(run.id).diagram_transport == run.diagram_transport
 
 
 def test_dispatcher_defers_queued_run_until_workspace_execution_slot_is_available(tmp_path):

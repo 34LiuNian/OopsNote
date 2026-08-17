@@ -71,15 +71,15 @@ function TreeNodeRow({
     <li className={styles.treeItem}>
       <div className={styles.treeRow} style={{ paddingLeft: `${Math.max(0, node.depth - 1) * 14}px` }}>
         {hasChildren ? (
-          <Button
+          <IconButton
+            icon={open ? ChevronDown : ChevronRight}
+            size="small"
             variant="invisible"
             type="button"
             className={styles.treeExpand}
             onClick={() => setExpanded((value) => !value)}
             aria-label={open ? `收起${node.title}` : `展开${node.title}`}
-          >
-            {open ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
-          </Button>
+          />
         ) : <span className={styles.treeSpacer} />}
         <NativeInput
           type="checkbox"
@@ -93,6 +93,7 @@ function TreeNodeRow({
         <Button
           variant="invisible"
           type="button"
+          contentAlign="start"
           className={`${styles.treeLabel}${selectionState.checked || selectionState.indeterminate ? ` ${styles.treeLabelSelected}` : ""}`}
           onClick={() => onToggle(node)}
         >
@@ -124,6 +125,7 @@ export function KnowledgeTreeSelector({
   onBack,
   onSubjectChange,
   onToggle,
+  showBackButton = true,
 }: {
   root: KnowledgeTreeNode | null;
   subject: string;
@@ -132,6 +134,7 @@ export function KnowledgeTreeSelector({
   onBack: () => void;
   onSubjectChange: (subject: string) => void;
   onToggle: (node: KnowledgeTreeNode) => void;
+  showBackButton?: boolean;
 }) {
   const [query, setQuery] = useState("");
   const normalizedQuery = query.trim().toLocaleLowerCase();
@@ -148,14 +151,16 @@ export function KnowledgeTreeSelector({
   return (
     <div className={styles.treePanel}>
       <div className={styles.treeSubjectBar}>
-        <IconButton
-          icon={ArrowLeft}
-          size="small"
-          variant="invisible"
-          aria-label="退出正式组卷"
-          title="退出正式组卷"
-          onClick={onBack}
-        />
+        {showBackButton ? (
+          <IconButton
+            icon={ArrowLeft}
+            size="small"
+            variant="invisible"
+            aria-label="退出正式组卷"
+            title="退出正式组卷"
+            onClick={onBack}
+          />
+        ) : null}
         <span className={styles.treeSubjectLabel}>学科</span>
         <div className={styles.treeSubjectControl}>
           <Select value={subject} onValueChange={onSubjectChange} block>

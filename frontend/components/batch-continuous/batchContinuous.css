@@ -21,39 +21,22 @@
 .batch-continuous-page__borrow-mask.is-hovered { opacity: 0; }
 .batch-continuous-page__column-label { position: absolute; z-index: 2; top: 4px; left: 50%; padding: 2px 6px; border-radius: 999px; transform: translateX(-50%); color: var(--fgColor-muted); background: color-mix(in srgb, var(--bgColor-default) 82%, transparent); font-size: 10px; line-height: 1.4; pointer-events: none; }
 .batch-selection-overlay { position: absolute; z-index: 4; inset: 0; cursor: crosshair; touch-action: none; }
-.batch-selection { --selection-stroke: var(--batch-selection-muted-stroke, 1px); --selection-offset: var(--batch-selection-offset, 1px); --selection-color: #55a56f; position: absolute; z-index: 2; padding: 0; border: 0; border-radius: var(--batch-selection-radius, 3px); appearance: none; color: inherit; background: transparent; box-shadow: inset 0 0 0 var(--selection-stroke) var(--selection-color); cursor: pointer; font: inherit; transition: box-shadow 120ms ease-out, background-color 120ms ease-out; }
+.batch-selection { --selection-box-color: var(--fgColor-info); --selection-box-stroke: var(--batch-selection-muted-stroke, 2px); --selection-box-radius: var(--oops-radius-xs); transition: box-shadow 120ms ease-out, background-color 120ms ease-out; }
 .batch-selection.is-pending { cursor: grab; }
-.batch-selection.is-pending:hover { --selection-color: #238b4b; background: color-mix(in srgb, #15803d 2.5%, transparent); }
-.batch-selection.is-active { --selection-stroke: var(--batch-selection-stroke, 2px); --selection-color: #15803d; z-index: 3; box-shadow: inset 0 0 0 var(--selection-stroke) var(--selection-color), 0 0 0 1px rgb(255 255 255 / 88%), 0 2px 7px rgb(15 23 42 / 16%); }
-.batch-selection.is-moving { background: color-mix(in srgb, #15803d 5%, transparent); cursor: grabbing; transition: none; }
-.batch-selection:focus-visible { outline: 2px solid var(--selection-color); outline-offset: 3px; }
-.batch-selection.is-draft { --selection-stroke: var(--batch-selection-stroke, 2px); --selection-color: #15803d; background: color-mix(in srgb, #15803d 6%, transparent); pointer-events: none; }
+.batch-selection.is-pending:hover { --selection-box-color: var(--fgColor-info); background: color-mix(in srgb, var(--fgColor-info) 5%, transparent); }
+.batch-selection.is-active { --selection-box-stroke: var(--batch-selection-stroke, 3px); --selection-box-color: var(--fgColor-info); z-index: 3; }
+.batch-selection.is-moving { background: color-mix(in srgb, var(--fgColor-info) 5%, transparent); cursor: grabbing; transition: none; }
+.batch-selection:focus-visible { outline: 2px solid var(--selection-box-color); outline-offset: 3px; }
+.batch-selection.is-draft { --selection-box-stroke: var(--batch-selection-stroke, 3px); --selection-box-color: var(--fgColor-info); background: color-mix(in srgb, var(--fgColor-info) 6%, transparent); pointer-events: none; }
 .batch-selection.is-processing { box-shadow: none; }
-.batch-selection.is-processing::before { --batch-selection-marquee-angle: 0deg; position: absolute; inset: var(--batch-selection-negative-stroke, -2px); padding: var(--selection-stroke); border-radius: inherit; background: conic-gradient(from var(--batch-selection-marquee-angle), #f3c45b 0deg, #ef787b 72deg, #a779e8 140deg, #6198ed 210deg, #65cbd1 258deg, #72c88a 310deg, #f3c45b 360deg); content: ""; pointer-events: none; -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude; animation: batch-selection-marquee 1.8s linear infinite; }
-.batch-selection.is-completed { --selection-color: #64748b; }
-.batch-selection.is-failed { --selection-color: var(--fgColor-danger); }
-.batch-selection.is-needs_review { --selection-color: #d97706; background: color-mix(in srgb, #f59e0b 6%, transparent); }
-.batch-selection__label { position: absolute; top: -4px; left: 0; display: grid; min-width: 22px; height: 22px; place-items: center; padding: 0 6px; border: 1px solid var(--selection-color); border-radius: 4px; transform: translateY(-100%); color: var(--selection-color); background: rgb(255 255 255 / 96%); box-shadow: 0 1px 3px rgb(15 23 42 / 18%); font-size: 10px; font-weight: 700; line-height: 1; pointer-events: none; }
-.batch-selection.is-active .batch-selection__label { color: #fff; background: var(--selection-color); }
+.batch-selection.is-processing::before { --batch-selection-marquee-angle: 0deg; position: absolute; inset: var(--batch-selection-negative-stroke, -2px); padding: var(--selection-box-stroke); border-radius: inherit; background: conic-gradient(from var(--batch-selection-marquee-angle), #f3c45b 0deg, #ef787b 72deg, #a779e8 140deg, #6198ed 210deg, #65cbd1 258deg, #72c88a 310deg, #f3c45b 360deg); content: ""; pointer-events: none; -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude; animation: batch-selection-marquee 1.8s linear infinite; }
+.batch-selection.is-completed { --selection-box-color: var(--fgColor-success); }
+.batch-selection.is-failed { --selection-box-color: var(--fgColor-danger); }
+.batch-selection.is-needs_review { --selection-box-color: #d97706; background: color-mix(in srgb, #f59e0b 6%, transparent); }
+.batch-selection__label { position: absolute; top: -4px; left: 0; display: grid; min-width: 22px; height: 22px; place-items: center; padding: 0 6px; border: 1px solid var(--selection-box-color); border-radius: 4px; transform: translateY(-100%); color: var(--selection-box-color); background: rgb(255 255 255 / 96%); box-shadow: 0 1px 3px rgb(15 23 42 / 18%); font-size: 10px; font-weight: 700; line-height: 1; pointer-events: none; }
+.batch-selection.is-active .batch-selection__label { color: #fff; background: var(--selection-box-color); }
 .batch-selection.is-label-inside .batch-selection__label { top: 4px; left: 4px; transform: none; }
-.batch-selection-handle { position: absolute; z-index: 5; display: block; width: var(--batch-handle-hit, 24px); height: var(--batch-handle-hit, 24px); pointer-events: auto; }
-.batch-selection-handle::before { position: absolute; top: 50%; left: 50%; box-sizing: border-box; width: var(--batch-handle-size, 10px); height: var(--batch-handle-size, 10px); border: var(--batch-handle-border, 2px) solid var(--selection-color); border-radius: var(--batch-handle-radius, 2px); transform: translate(-50%, -50%); background: #fff; box-shadow: 0 1px 3px rgb(15 23 42 / 28%); content: ""; }
-.batch-selection-handle.is-n,
-.batch-selection-handle.is-s { left: 50%; width: var(--batch-handle-side-hit, 40px); cursor: ns-resize; }
-.batch-selection-handle.is-n { top: var(--selection-offset); transform: translate(-50%, -50%); }
-.batch-selection-handle.is-s { bottom: var(--selection-offset); transform: translate(-50%, 50%); }
-.batch-selection-handle.is-e,
-.batch-selection-handle.is-w { top: 50%; height: var(--batch-handle-side-hit, 40px); cursor: ew-resize; }
-.batch-selection-handle.is-e { right: var(--selection-offset); transform: translate(50%, -50%); }
-.batch-selection-handle.is-w { left: var(--selection-offset); transform: translate(-50%, -50%); }
-.batch-selection-handle.is-nw,
-.batch-selection-handle.is-ne,
-.batch-selection-handle.is-se,
-.batch-selection-handle.is-sw { width: var(--batch-handle-hit, 24px); height: var(--batch-handle-hit, 24px); }
-.batch-selection-handle.is-nw { top: var(--selection-offset); left: var(--selection-offset); transform: translate(-50%, -50%); cursor: nwse-resize; }
-.batch-selection-handle.is-ne { top: var(--selection-offset); right: var(--selection-offset); transform: translate(50%, -50%); cursor: nesw-resize; }
-.batch-selection-handle.is-se { right: var(--selection-offset); bottom: var(--selection-offset); transform: translate(50%, 50%); cursor: nwse-resize; }
-.batch-selection-handle.is-sw { bottom: var(--selection-offset); left: var(--selection-offset); transform: translate(-50%, 50%); cursor: nesw-resize; }
+.batch-selection-handle { z-index: 5; }
 .batch-continuous-crosshair { position: absolute; z-index: 10; width: 20px; height: 20px; transform: translate(-50%, -50%); pointer-events: none; }
 .batch-continuous-crosshair::before,
 .batch-continuous-crosshair::after { position: absolute; background: #0caf50; content: ""; }

@@ -31,6 +31,7 @@ from oopsnote.ai.secrets import (
     MemorySecretStore,
     SecretStoreCorruptionError,
 )
+from oopsnote.ai.skills import load_skill_prompt, load_skill_prompts
 from oopsnote.core import (
     AppSettingsStore,
     RunStatus,
@@ -236,6 +237,51 @@ def test_vision_ocr_model_uses_native_json_mode_only_when_supported(
         assert calls == []
 
 
+def test_diagram_model_requires_vision_and_tool_calling(monkeypatch):
+    vault = MemorySecretStore()
+    profile = ProviderProfile(
+        id="diagram-vision",
+        version=1,
+        provider="openai",
+        model="vision-model",
+        base_url="https://provider.example/v1",
+        credential_ref=vault.put("secret"),
+        capability=ProviderCapabilities(vision=True, tool_calling=True),
+    )
+    factory = ProviderClientFactory(vault)
+    model = object()
+    monkeypatch.setattr(factory, "create_chat_model", lambda _profile: model)
+
+    assert factory.create_diagram_model(profile) is model
+    with pytest.raises(ValueError, match="Vision and Tool Calling"):
+        factory.create_diagram_model(
+            profile.model_copy(update={"capability": ProviderCapabilities(vision=True)})
+        )
+
+
+def test_provider_connection_check_loads_its_skill_prompt(monkeypatch):
+    project_root = Path(__file__).resolve().parents[1]
+    factory = ProviderClientFactory(MemorySecretStore(), project_root=project_root)
+    calls = []
+    monkeypatch.setattr(
+        factory,
+        "create_chat_model",
+        lambda _profile: SimpleNamespace(invoke=lambda prompt: calls.append(prompt)),
+    )
+    profile = ProviderProfile(
+        id="health",
+        version=1,
+        provider="openai",
+        model="health-model",
+        credential_ref="test-secret",
+    )
+
+    result = factory.check(profile)
+
+    assert result.success is True
+    assert calls == [load_skill_prompt(project_root, "oopsnote-provider-health")]
+
+
 def test_provider_api_reports_unavailable_vault_instead_of_missing_secrets(monkeypatch, tmp_path):
     from oopsnote.api import main
 
@@ -361,6 +407,64 @@ def test_channel_reorder_route_requires_one_complete_order(monkeypatch, tmp_path
     assert [item.id for item in settings.provider_channels()] == ["second", "first"]
 
 
+def test_openai_compatible_update_requires_base_url_without_mutating_channel(monkeypatch, tmp_path):
+    from oopsnote.api import main
+
+    settings = AppSettingsStore(tmp_path / "settings.json")
+    vault = MemorySecretStore()
+    channel = ProviderChannel(
+        id="gateway",
+        version=1,
+        display_name="Gateway",
+        provider="deepseek",
+        base_url="https://gateway.example/v1",
+    )
+    settings.upsert_provider_channel(channel)
+    monkeypatch.setattr(main, "APP_SETTINGS_STORE", settings)
+    monkeypatch.setattr(main, "get_secret_store", lambda: vault)
+
+    response = TestClient(main.app).patch(
+        "/settings/ai/channels/gateway",
+        json={"provider": "openai-compatible", "base_url": None},
+    )
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == "openai-compatible provider requires base_url"
+    assert settings.provider_channels() == [channel]
+
+
+def test_syncing_legacy_openai_compatible_channel_without_base_url_is_explicit(
+    monkeypatch, tmp_path
+):
+    from oopsnote.api import main
+
+    path = tmp_path / "settings.json"
+    vault = MemorySecretStore()
+    channel = ProviderChannel(
+        id="gateway",
+        version=2,
+        display_name="Gateway",
+        provider="openai-compatible",
+        credential_ref=vault.put("secret"),
+    )
+    path.write_text(
+        json.dumps({"provider_channels": [channel.model_dump(mode="json")]}),
+        encoding="utf-8",
+    )
+    settings = AppSettingsStore(path)
+    monkeypatch.setattr(main, "APP_SETTINGS_STORE", settings)
+    monkeypatch.setattr(main, "get_secret_store", lambda: vault)
+
+    response = TestClient(main.app).post("/settings/ai/channels/gateway/models/sync")
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == {
+        "code": "invalid_configuration",
+        "message": "Provider model discovery failed",
+    }
+    assert settings.provider_channels() == [channel]
+
+
 def test_model_policy_selects_the_vision_stage(monkeypatch, tmp_path):
     from oopsnote.api import main
 
@@ -379,13 +483,19 @@ def test_model_policy_selects_the_vision_stage(monkeypatch, tmp_path):
                 id="vision-model",
                 source="OCR",
                 enabled=True,
-                capability=ProviderCapabilities(vision=True),
+                capability=ProviderCapabilities(vision=True, tool_calling=True),
             ),
             ChannelModel(
                 id="agent-model",
                 source="OCR",
                 enabled=True,
                 capability=ProviderCapabilities(tool_calling=True),
+            ),
+            ChannelModel(
+                id="vision-only-model",
+                source="OCR",
+                enabled=True,
+                capability=ProviderCapabilities(vision=True),
             ),
         ),
     )
@@ -402,6 +512,18 @@ def test_model_policy_selects_the_vision_stage(monkeypatch, tmp_path):
         },
     )
     assert incomplete.status_code == 422
+
+    missing_tool_calling = TestClient(main.app).put(
+        "/settings/ai/policy",
+        json={
+            "vision": {"channel_id": "ocr", "model_id": "vision-model"},
+            "agent": {"channel_id": "ocr", "model_id": "agent-model"},
+            "review": {"channel_id": "ocr", "model_id": "agent-model"},
+            "diagram": {"channel_id": "ocr", "model_id": "vision-only-model"},
+        },
+    )
+    assert missing_tool_calling.status_code == 409
+    assert missing_tool_calling.json()["detail"] == "diagram stage requires Tool Calling"
 
     response = TestClient(main.app).put(
         "/settings/ai/policy",
@@ -740,14 +862,17 @@ def test_contract_dispatcher_binds_model_calls_to_the_active_run():
 
     dispatcher = ContractBoundToolDispatcher(Client(), task_id="active-task", run_id="active-run")
     asyncio.run(dispatcher.call("ocr_image", {}))
+    asyncio.run(
+        dispatcher.call(
+            "ocr_image",
+            {"task_id": "model-invented-task", "run_id": "model-invented-run"},
+        )
+    )
 
-    assert calls == [("ocr_image", {"task_id": "active-task", "run_id": "active-run"})]
-    try:
-        asyncio.run(dispatcher.call("ocr_image", {"task_id": "other-task"}))
-    except ValueError as error:
-        assert "active task_id" in str(error)
-    else:
-        raise AssertionError("cross-task tool call was accepted")
+    assert calls == [
+        ("ocr_image", {"task_id": "active-task", "run_id": "active-run"}),
+        ("ocr_image", {"task_id": "active-task", "run_id": "active-run"}),
+    ]
 
 
 def test_contract_dispatcher_rejects_stale_phase_call_before_mcp_execution():
@@ -1084,6 +1209,44 @@ def test_provider_factory_leaves_run_timeout_to_managed_lifecycle(monkeypatch):
     assert "timeout" not in captured
 
 
+@pytest.mark.parametrize("native_image_result", [False, True])
+def test_provider_factory_enables_responses_api_only_for_native_image_tool_results(
+    monkeypatch, native_image_result
+):
+    captured = {}
+
+    class ChatModel:
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+
+    monkeypatch.setitem(sys.modules, "langchain_openai", SimpleNamespace(ChatOpenAI=ChatModel))
+    vault = MemorySecretStore()
+    profile = ProviderProfile(
+        id="diagram",
+        version=1,
+        provider="openai-compatible",
+        model="vision-tool-model",
+        base_url="https://provider.example/v1",
+        credential_ref=vault.put("secret"),
+        capability=ProviderCapabilities(
+            vision=True,
+            tool_calling=True,
+            tool_result_image=native_image_result,
+        ),
+    )
+
+    ProviderClientFactory(vault).create_chat_model(profile)
+
+    if native_image_result:
+        assert captured["use_responses_api"] is True
+        assert captured["output_version"] == "responses/v1"
+        assert captured["store"] is False
+    else:
+        assert "use_responses_api" not in captured
+        assert "output_version" not in captured
+        assert "store" not in captured
+
+
 def test_google_provider_uses_the_selected_channel_base_url(monkeypatch):
     captured = {}
 
@@ -1112,6 +1275,44 @@ def test_google_provider_uses_the_selected_channel_base_url(monkeypatch):
     assert captured["api_key"] == "secret"
     assert captured["vertexai"] is False
     assert captured["retries"] == 0
+
+
+def test_google_required_tool_binding_omits_unsupported_parallel_tool_flag():
+    captured = {}
+
+    class ChatModel:
+        def bind_tools(self, tools, **kwargs):
+            captured["tools"] = tools
+            captured["bind_kwargs"] = kwargs
+            return self
+
+    profile = ProviderProfile(
+        id="google-diagram",
+        version=1,
+        provider="google",
+        model="gemini-3.6-flash",
+        credential_ref="secret-ref",
+        capability=ProviderCapabilities(vision=True, tool_calling=True),
+    )
+
+    ProviderClientFactory(MemorySecretStore()).bind_managed_tools(
+        ChatModel(),
+        profile,
+        tool_names={"submit_tikz_revision"},
+        constants={"submit_tikz_revision": {"task_id": "active-task", "run_id": "active-run"}},
+        require_call=True,
+    )
+
+    assert captured["bind_kwargs"] == {"tool_choice": "required"}
+    assert "additionalProperties" not in json.dumps(captured["tools"])
+    provider_parameters = captured["tools"][0]["function"]["parameters"]
+    assert "task_id" not in provider_parameters["properties"]
+    assert "run_id" not in provider_parameters["properties"]
+    assert "task_id" not in provider_parameters["required"]
+    assert "run_id" not in provider_parameters["required"]
+    canonical = langchain_tool_schemas({"submit_tikz_revision"})
+    assert canonical[0]["function"]["parameters"]["additionalProperties"] is False
+    assert {"task_id", "run_id"}.issubset(canonical[0]["function"]["parameters"]["properties"])
 
 
 def test_provider_factory_configures_dashscope_non_thinking_tool_loop(monkeypatch):
@@ -1219,6 +1420,22 @@ def test_langchain_places_immutable_rules_in_system_message(tmp_path):
     assert "problem_json at most 8000 characters" in model.messages[0][0].content
     assert isinstance(model.messages[0][1], HumanMessage)
     assert "Untrusted task context follows" in model.messages[0][1].content
+
+
+def test_langchain_runtime_and_diagram_prompts_are_skill_owned(tmp_path):
+    project_root = Path(__file__).resolve().parents[1]
+    model = ScriptedModel([model_response(1)])
+    runner, _task_store, _run_store, _vault, _profile = langchain_runner_fixture(tmp_path, model)
+
+    assert runner._runtime_prompts == load_skill_prompts(project_root, "oopsnote-orchestrator")
+    assert runner._diagram_skill_prompt == load_skill_prompt(
+        project_root, "oopsnote-diagram-reconstruction"
+    )
+    assert runner._diagram_prompts == load_skill_prompts(
+        project_root, "oopsnote-diagram-reconstruction"
+    )
+    assert runner.prompt_version.startswith("oopsnote-skills-sha256:")
+    assert runner.diagram_prompt_version.startswith("oopsnote-skills-sha256:")
 
 
 def test_langchain_phase_tool_sets_are_disjoint_from_illegal_capabilities():
@@ -1594,6 +1811,7 @@ def test_langchain_cancel_stops_active_async_work_without_overwriting_terminal_s
         (403, "provider_authorization"),
         (429, "rate_limit"),
         (503, "provider_unavailable"),
+        (524, "provider_unavailable"),
         (404, "runner_error"),
     ],
 )
@@ -1603,6 +1821,16 @@ def test_langchain_provider_status_classification(status, expected):
     error = RuntimeError("provider failed")
     error.status_code = status
     assert LangChainRunner._error_code(error) == expected
+
+
+def test_langchain_provider_integer_code_classifies_gateway_524():
+    from oopsnote.ai.backends.langchain import LangChainRunner
+
+    error = RuntimeError("gateway failed")
+    error.code = 524
+
+    assert LangChainRunner._error_code(error) == "provider_unavailable"
+    assert LangChainRunner.is_retryable_error("provider_unavailable") is True
 
 
 def test_langchain_event_writer_redacts_credentials(tmp_path):

@@ -101,6 +101,9 @@ for (const line of diff.split(/\r?\n/)) {
   if (!line.startsWith("+") || line.startsWith("+++")) continue;
   const added = line.slice(1);
   if (currentFile.includes("components/ui/")) continue;
+  if (currentFile.endsWith(".css") && /\.mantine-Button-(?:inner|label)\b/.test(added) && !lineExistsInHead(currentFile, added)) {
+    failures.push(`${currentFile}: Button internals belong behind components/ui; use semantic Button props`);
+  }
   if (/\bsx=\{/.test(added) && !lineExistsInHead(currentFile, added)) failures.push(`${currentFile}: new business sx escape; use semantic UI props or feature geometry class`);
   if (/<(?:button|input|select|textarea)\b/.test(added) && !lineExistsInHead(currentFile, added)) failures.push(`${currentFile}: new native control; use the components/ui facade`);
 }

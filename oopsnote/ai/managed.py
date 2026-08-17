@@ -310,6 +310,7 @@ class ManagedAiRunner(ABC):
                     expected_active_run_id=run_id,
                     status=TaskStatus.FAILED,
                     active_run_id=None,
+                    stage_message=str(error),
                     last_error=str(error),
                     last_error_code="dispatcher_error",
                 )
@@ -482,6 +483,7 @@ class ManagedAiRunner(ABC):
                     expected_active_run_id=run.id,
                     status=TaskStatus.FAILED,
                     active_run_id=None,
+                    stage_message=message,
                     last_error=message,
                     last_error_code="stale_heartbeat",
                 )
@@ -560,6 +562,7 @@ class ManagedAiRunner(ABC):
                             expected_active_run_id=run.id,
                             status=TaskStatus.FAILED,
                             active_run_id=None,
+                            stage_message=message,
                             last_error=message,
                             last_error_code="worker_lost",
                         )
@@ -587,6 +590,7 @@ class ManagedAiRunner(ABC):
                 expected_active_run_id=run_id,
                 status=TaskStatus.FAILED,
                 active_run_id=None,
+                stage_message=message,
                 last_error=message,
                 last_error_code=error_code,
             )
@@ -659,6 +663,7 @@ class ManagedAiRunner(ABC):
                 diagram_instruction=completed.diagram_instruction,
                 diagram_max_candidates=completed.diagram_max_candidates,
                 diagram_step=completed.diagram_step,
+                diagram_transport=completed.diagram_transport,
                 provider=completed.provider,
                 model=completed.model,
                 prompt_version=completed.prompt_version,

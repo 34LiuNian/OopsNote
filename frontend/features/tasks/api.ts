@@ -2,6 +2,7 @@ import { apiErrorFromResponse, fetchApi, fetchJson } from "../../lib/api";
 import type {
   ContentFormat,
   DiagramImageTone,
+  DiagramPlacement,
   NormalizedRect,
   ProblemsResponse,
   TaskResponse,
@@ -73,8 +74,8 @@ export type OverrideProblemPayload = {
   diagram_image_path?: string | null;
   diagram_image_crop?: NormalizedRect | null;
   diagram_image_tone?: DiagramImageTone;
-  diagram_position?: "left" | "right";
-  diagram_scale_percent?: number | null;
+  diagram_placement?: DiagramPlacement;
+  diagram_scale_adjustment_percent?: number | null;
   diagram_render_status?: string | null;
   diagram_error?: string | null;
   diagram_needs_review?: boolean;
@@ -96,7 +97,7 @@ export async function rerenderProblemDiagram(taskId: string): Promise<TaskRespon
   });
 }
 
-export type DiagramRunPayload = { max_candidates?: number; instruction?: string | null };
+export type DiagramRunPayload = { max_candidates?: number; instruction?: string | null; tikz_only?: boolean };
 
 export async function reconstructProblemDiagram(taskId: string, payload: DiagramRunPayload): Promise<TaskResponse> {
   return fetchJson<TaskResponse>(`/tasks/${encodeURIComponent(taskId)}/diagrams/reconstruct`, {
@@ -129,6 +130,50 @@ export async function selectProblemDiagramCandidate(taskId: string, itemId: stri
   return fetchJson<TaskResponse>(`/tasks/${encodeURIComponent(taskId)}/diagrams/${encodeURIComponent(itemId)}/candidates/${encodeURIComponent(candidateId)}/select`, {
     method: "POST",
   });
+}
+
+export type DiagramSettingsPayload = {
+  enabled?: boolean;
+  kind?: "tikz" | "image";
+  placement?: DiagramPlacement;
+  scale_adjustment_percent?: number;
+  image_crop?: NormalizedRect;
+  image_tone?: DiagramImageTone;
+};
+
+export async function updateProblemDiagramSettings(
+  taskId: string,
+  payload: DiagramSettingsPayload,
+): Promise<TaskResponse> {
+  return fetchJson<TaskResponse>(`/tasks/${encodeURIComponent(taskId)}/problem/diagram`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function deleteProblemDiagramCandidate(
+  taskId: string,
+  itemId: string,
+  candidateId: string,
+): Promise<TaskResponse> {
+  return fetchJson<TaskResponse>(
+    `/tasks/${encodeURIComponent(taskId)}/diagrams/${encodeURIComponent(itemId)}/candidates/${encodeURIComponent(candidateId)}`,
+    { method: "DELETE" },
+  );
+}
+
+export async function createProblemDiagramCandidate(
+  taskId: string,
+  itemId: string,
+  tikzSource: string,
+): Promise<TaskResponse> {
+  return fetchJson<TaskResponse>(
+    `/tasks/${encodeURIComponent(taskId)}/diagrams/${encodeURIComponent(itemId)}/candidates`,
+    {
+      method: "POST",
+      body: JSON.stringify({ tikz_source: tikzSource }),
+    },
+  );
 }
 
 export async function deleteTask(taskId: string): Promise<void> {

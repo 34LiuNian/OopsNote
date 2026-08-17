@@ -6,6 +6,7 @@ FastMCP stdio server，暴露 CRUD 工具供 the managed LangChain pipeline 调�
 
 from __future__ import annotations
 
+import hashlib
 import os
 from pathlib import Path
 from typing import Any, Literal
@@ -13,12 +14,18 @@ from typing import Any, Literal
 from mcp.server.fastmcp import FastMCP
 
 from oopsnote.catalog import KNOWLEDGE_TAGS_PATH, KNOWLEDGE_TREES_PATH
-from oopsnote.content import validate_answer_conclusion
+from oopsnote.content import validate_answer_conclusion, validate_oopsmark
 from oopsnote.core import (
     AssetStore,
     ContentFormat,
+    DiagramCandidate,
+    DiagramRunMode,
+    DiagramRunStep,
+    DiagramSourceRegion,
+    DiagramStatus,
     Problem,
     RunArtifact,
+    RunPurpose,
     RunStatus,
     RunStore,
     RunValidationError,
@@ -119,6 +126,288 @@ def _task_ack(task: TaskRecord, **fields: Any) -> dict[str, Any]:
         "status": task.status.value,
         **fields,
     }
+
+
+def _active_diagram_context(task_id: str, run_id: str) -> tuple[TaskRecord, Any, Any]:
+    """Resolve the diagram item exclusively owned by one active managed run."""
+
+    task = _stores().task_store.get(task_id)
+    run = _stores().run_store.get(run_id)
+    if run.task_id != task_id or run.purpose != RunPurpose.DIAGRAM or not run.diagram_item_id:
+        raise ValueError(f"run_id {run_id} is not an active diagram run for task {task_id}")
+    if run.status not in {RunStatus.QUEUED, RunStatus.RUNNING}:
+        raise ValueError(f"diagram run {run_id} is already terminal")
+    item = next((value for value in task.diagram_items if value.id == run.diagram_item_id), None)
+    if item is None or item.active_run_id != run_id:
+        raise ValueError(f"run_id {run_id} does not own diagram {run.diagram_item_id}")
+    return task, run, item
+
+
+def _diagram_context(task_id: str, run_id: str) -> tuple[TaskRecord, Any, Any]:
+    task = _stores().task_store.get(task_id)
+    run = _stores().run_store.get(run_id)
+    if run.task_id != task_id or run.purpose != RunPurpose.DIAGRAM or not run.diagram_item_id:
+        raise ValueError(f"run_id {run_id} is not a diagram run for task {task_id}")
+    item = next((value for value in task.diagram_items if value.id == run.diagram_item_id), None)
+    if item is None:
+        raise ValueError(f"diagram {run.diagram_item_id} does not exist")
+    return task, run, item
+
+
+def _diagram_candidate_for_run(run: Any, item: Any) -> DiagramCandidate | None:
+    if not run.diagram_candidate_id:
+        return None
+    return next(
+        (candidate for candidate in item.candidates if candidate.id == run.diagram_candidate_id),
+        None,
+    )
+
+
+@mcp.tool()
+def submit_tikz_revision(
+    task_id: str,
+    run_id: str,
+    tikz_source: str,
+    hard_errors: list[str] | None = None,
+    soft_differences: list[str] | None = None,
+    reason: str | None = None,
+) -> dict[str, Any]:
+    """Persist one validated TikZ proposal without rendering or finishing the run."""
+
+    task, run, item = _active_diagram_context(task_id, run_id)
+    source = tikz_source.strip()
+    issues = validate_oopsmark(f"```tikz\n{source}\n```")
+    if issues:
+        first = issues[0]
+        raise ValueError(f"{first.code} at line {first.line}: {first.message}")
+    run_candidates = [candidate for candidate in item.candidates if candidate.run_id == run.id]
+    parent_id = run.diagram_candidate_id
+    if parent_id is None and run.diagram_mode == DiagramRunMode.CONTINUE:
+        parent_id = item.selected_candidate_id
+    digest = hashlib.sha256(source.encode("utf-8")).hexdigest()
+    current_candidate = _diagram_candidate_for_run(run, item)
+    if (
+        current_candidate is not None
+        and current_candidate.run_id == run.id
+        and current_candidate.source_sha256 == digest
+    ):
+        return _task_ack(
+            task,
+            diagram_item_id=item.id,
+            candidate_id=current_candidate.id,
+            source_sha256=current_candidate.source_sha256,
+            repeated=True,
+        )
+    existing = next(
+        (
+            candidate
+            for candidate in run_candidates
+            if candidate.parent_candidate_id == parent_id and candidate.source_sha256 == digest
+        ),
+        None,
+    )
+    if existing is not None:
+        return _task_ack(
+            task,
+            diagram_item_id=item.id,
+            candidate_id=existing.id,
+            source_sha256=existing.source_sha256,
+            repeated=True,
+        )
+    if len(run_candidates) >= int(run.diagram_max_candidates or 0):
+        raise ValueError("diagram candidate limit has been reached")
+    candidate = DiagramCandidate(
+        ordinal=max((value.ordinal for value in item.candidates), default=0) + 1,
+        parent_candidate_id=parent_id,
+        tikz_source=source,
+        decision="revise",
+        hard_errors=[value.strip() for value in hard_errors or [] if value.strip()],
+        soft_differences=[value.strip() for value in soft_differences or [] if value.strip()],
+        review_reason=(reason or "").strip() or None,
+        provider=run.provider,
+        model=run.model,
+        run_id=run.id,
+    )
+    _stores().task_store.append_diagram_candidate(
+        task_id,
+        item.id,
+        candidate,
+        expected_active_run_id=run.id,
+    )
+    _stores().task_store.update_diagram_item(
+        task_id,
+        item.id,
+        expected_active_run_id=run.id,
+        status=DiagramStatus.RENDERING,
+    )
+    _stores().run_store.update(
+        run.id,
+        diagram_step=DiagramRunStep.RENDER,
+        diagram_candidate_id=candidate.id,
+    )
+    return _task_ack(
+        task,
+        diagram_item_id=item.id,
+        candidate_id=candidate.id,
+        source_sha256=candidate.source_sha256,
+        repeated=False,
+    )
+
+
+@mcp.tool()
+def accept_tikz_candidate(
+    task_id: str,
+    run_id: str,
+    soft_differences: list[str] | None = None,
+    reason: str | None = None,
+) -> dict[str, Any]:
+    """Select the active rendered candidate and finish the diagram item."""
+
+    task, run, item = _diagram_context(task_id, run_id)
+    if (
+        item.active_run_id is None
+        and item.status == DiagramStatus.READY_TIKZ
+        and item.selected_candidate_id == run.diagram_candidate_id
+    ):
+        return _task_ack(
+            task,
+            diagram_item_id=item.id,
+            candidate_id=item.selected_candidate_id,
+            terminal=True,
+            repeated=True,
+        )
+    if item.active_run_id != run_id or run.status not in {RunStatus.QUEUED, RunStatus.RUNNING}:
+        raise ValueError(f"run_id {run_id} no longer owns diagram {item.id}")
+    candidate = _diagram_candidate_for_run(run, item)
+    if (
+        candidate is None
+        or not candidate.svg_path
+        or not candidate.pdf_path
+        or not candidate.png_path
+    ):
+        raise ValueError("accept_tikz_candidate requires the active rendered candidate")
+    _stores().task_store.update_diagram_candidate(
+        task_id,
+        item.id,
+        candidate.id,
+        expected_active_run_id=run.id,
+        decision="accept",
+        hard_errors=[],
+        soft_differences=[value.strip() for value in soft_differences or [] if value.strip()],
+        review_reason=(reason or "").strip() or None,
+    )
+    _stores().task_store.update_diagram_item(
+        task_id,
+        item.id,
+        expected_active_run_id=run.id,
+        selected_candidate_id=candidate.id,
+        status=DiagramStatus.READY_TIKZ,
+        active_run_id=None,
+        needs_review=False,
+        last_error=None,
+        last_error_code=None,
+    )
+    return _task_ack(task, diagram_item_id=item.id, candidate_id=candidate.id, terminal=True)
+
+
+@mcp.tool()
+def keep_source_image(
+    task_id: str,
+    run_id: str,
+    source_region: DiagramSourceRegion,
+    reason: str,
+) -> dict[str, Any]:
+    """Persist an idempotent source crop for an automatic reconstruction run."""
+
+    task, run, item = _diagram_context(task_id, run_id)
+    if item.active_run_id is None and item.status == DiagramStatus.READY_IMAGE:
+        return _task_ack(
+            task,
+            diagram_item_id=item.id,
+            image_path=item.fallback_image_path,
+            reason=reason.strip(),
+            terminal=True,
+            repeated=True,
+        )
+    if item.active_run_id != run_id or run.status not in {RunStatus.QUEUED, RunStatus.RUNNING}:
+        raise ValueError(f"run_id {run_id} no longer owns diagram {item.id}")
+    if run.diagram_mode != DiagramRunMode.AUTO:
+        raise ValueError("keep_source_image is only legal for automatic diagram runs")
+    if not item.source_asset_path:
+        raise ValueError("diagram item has no source image")
+    image_path, normalized = _stores().asset_store.save_image_crop(
+        item.source_asset_path,
+        source_region.model_dump(),
+    )
+    _stores().task_store.update_diagram_item(
+        task_id,
+        item.id,
+        expected_active_run_id=run.id,
+        source_region=normalized,
+        fallback_image_path=image_path,
+        status=DiagramStatus.READY_IMAGE,
+        active_run_id=None,
+        needs_review=False,
+        last_error=None,
+        last_error_code=None,
+    )
+    return _task_ack(
+        task,
+        diagram_item_id=item.id,
+        image_path=image_path,
+        reason=reason.strip(),
+        terminal=True,
+    )
+
+
+@mcp.tool()
+def request_diagram_review(
+    task_id: str,
+    run_id: str,
+    reason: str,
+    hard_errors: list[str] | None = None,
+) -> dict[str, Any]:
+    """End a bounded reconstruction after all permitted candidates were used."""
+
+    task, run, item = _diagram_context(task_id, run_id)
+    if item.active_run_id is None and item.status == DiagramStatus.NEEDS_REVIEW:
+        return _task_ack(
+            task,
+            diagram_item_id=item.id,
+            reason=item.last_error,
+            terminal=True,
+            repeated=True,
+        )
+    if item.active_run_id != run_id or run.status not in {RunStatus.QUEUED, RunStatus.RUNNING}:
+        raise ValueError(f"run_id {run_id} no longer owns diagram {item.id}")
+    run_candidates = [candidate for candidate in item.candidates if candidate.run_id == run.id]
+    if len(run_candidates) < int(run.diagram_max_candidates or 0):
+        raise ValueError("request_diagram_review is only legal at the candidate limit")
+    message = reason.strip()
+    if not message:
+        raise ValueError("request_diagram_review requires a reason")
+    candidate = _diagram_candidate_for_run(run, item)
+    if candidate is not None:
+        _stores().task_store.update_diagram_candidate(
+            task_id,
+            item.id,
+            candidate.id,
+            expected_active_run_id=run.id,
+            decision="revise",
+            hard_errors=[value.strip() for value in hard_errors or [] if value.strip()],
+            review_reason=message,
+        )
+    _stores().task_store.update_diagram_item(
+        task_id,
+        item.id,
+        expected_active_run_id=run.id,
+        status=DiagramStatus.NEEDS_REVIEW,
+        active_run_id=None,
+        needs_review=True,
+        last_error=message,
+        last_error_code="diagram_candidate_limit",
+    )
+    return _task_ack(task, diagram_item_id=item.id, reason=message, terminal=True)
 
 
 def _update_completed_task_message(

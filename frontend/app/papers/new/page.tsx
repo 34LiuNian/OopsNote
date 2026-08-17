@@ -1,14 +1,19 @@
 "use client";
 
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
+import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
-import { Box, Button, FormControl, NativeInput, Spinner, Text, TextInput } from "@/components/ui/primitives";
+import { Minus, Plus, SlidersHorizontal } from "lucide-react";
+import { Box, Button, FormControl, IconButton, NativeInput, Spinner, Text, TextInput } from "@/components/ui/primitives";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
 import { DEFAULT_SUBJECT, SUBJECT_OPTIONS } from "@/config/subjects";
 import { getKnowledgeTree } from "@/features/tags/api";
 import { createPaper } from "@/features/papers";
 import { KnowledgeTreeSelector } from "@/features/papers/KnowledgeTreeSelector";
 import type { DifficultyBand, KnowledgeTreeNode } from "@/types/api";
+import { PageHeader } from "@/components/layout/PageHeader";
+import { SidebarCollapseIcon } from "@/components/ui/icons";
+import { useSecondarySidebar } from "@/components/layout/SecondarySidebarContext";
 import styles from "../paperWorkflow.module.css";
 
 const SUBJECTS = SUBJECT_OPTIONS.filter((subject) => subject.value !== "english");
@@ -69,6 +74,12 @@ function compactSelectedNodes(
 
 export default function NewPaperPage() {
   const router = useRouter();
+  const {
+    target: secondarySidebarTarget,
+    contextSidebarOpen,
+    toggleContextSidebar,
+    closeSecondarySidebar,
+  } = useSecondarySidebar();
   const [subject, setSubject] = useState(DEFAULT_SUBJECT);
   const [root, setRoot] = useState<KnowledgeTreeNode | null>(null);
   const [treeError, setTreeError] = useState("");
@@ -84,14 +95,6 @@ export default function NewPaperPage() {
   const [titleCustomized, setTitleCustomized] = useState(false);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState("");
-
-  useEffect(() => {
-    const documentRoot = document.documentElement;
-    documentRoot.dataset.oopsnotePaperCompose = "active";
-    return () => {
-      delete documentRoot.dataset.oopsnotePaperCompose;
-    };
-  }, []);
 
   useEffect(() => {
     let active = true;
@@ -189,20 +192,52 @@ export default function NewPaperPage() {
   }
 
   return (
-    <Box className={styles.composePage}>
-      <div className={styles.builderShell}>
-        <KnowledgeTreeSelector
-          key={subject}
-          root={root}
-          subject={subject}
-          subjectOptions={SUBJECTS}
-          selectedLeafIds={selectedLeafIds}
-          onBack={() => router.push("/papers")}
-          onSubjectChange={handleSubjectChange}
-          onToggle={toggleNode}
+    <>
+      {secondarySidebarTarget ? createPortal(
+        <Box className={styles.paperFilterPanel}>
+          <Box className="oops-secondary-sidebar__header">
+            <Text as="span">组卷筛选</Text>
+            <IconButton
+              type="button"
+              icon={SidebarCollapseIcon}
+              onClick={closeSecondarySidebar}
+              aria-label="收起组卷筛选"
+              title="收起组卷筛选"
+            />
+          </Box>
+          <KnowledgeTreeSelector
+            key={subject}
+            root={root}
+            subject={subject}
+            subjectOptions={SUBJECTS}
+            selectedLeafIds={selectedLeafIds}
+            onBack={() => router.push("/papers")}
+            onSubjectChange={handleSubjectChange}
+            onToggle={toggleNode}
+            showBackButton={false}
+          />
+        </Box>,
+        secondarySidebarTarget,
+      ) : null}
+      <Box className={styles.composePage}>
+        <PageHeader
+          title="新建试卷"
+          description="从知识点范围、难度和题型设置生成试卷草稿"
+          action={(
+            <Button
+              size="small"
+              variant={contextSidebarOpen ? "default" : "secondary"}
+              leadingVisual={SlidersHorizontal}
+              aria-pressed={contextSidebarOpen}
+              onClick={toggleContextSidebar}
+            >
+              筛选
+            </Button>
+          )}
         />
-        <div className={styles.configColumn}>
-          <div className={styles.configBody}>
+        <div className={styles.builderShell}>
+          <div className={styles.configColumn}>
+            <div className={styles.configBody}>
             <div className={styles.paperTitleField}>
               <FormControl>
                 <FormControl.Label>试卷标题</FormControl.Label>
@@ -220,7 +255,7 @@ export default function NewPaperPage() {
               <div className={styles.stepTitle}>
                 <span className={styles.stepNumber}>01</span>
                 <span>选择知识点</span>
-                <span className={styles.stepHint}>从左侧知识树选择</span>
+                <span className={styles.stepHint}>从组卷筛选栏选择</span>
               </div>
               <ErrorBanner message={treeError} title="加载知识树失败" />
               <div className={styles.chipList}>
@@ -308,15 +343,15 @@ export default function NewPaperPage() {
                     <label className={styles.countRow} key={type}>
                       <span>{type}</span>
                       <span className={styles.countStepper}>
-                        <Button
+                        <IconButton
+                          icon={Minus}
                           variant="invisible"
+                          size="small"
                           type="button"
                           onClick={() => adjustQuestionCount(type, -1)}
                           disabled={counts[type] <= 0}
                           aria-label={`减少${type}`}
-                        >
-                          −
-                        </Button>
+                        />
                         <NativeInput
                           type="number"
                           min={0}
@@ -328,15 +363,15 @@ export default function NewPaperPage() {
                           }))}
                           aria-label={`${type}数量`}
                         />
-                        <Button
+                        <IconButton
+                          icon={Plus}
                           variant="invisible"
+                          size="small"
                           type="button"
                           onClick={() => adjustQuestionCount(type, 1)}
                           disabled={counts[type] >= 100}
                           aria-label={`增加${type}`}
-                        >
-                          +
-                        </Button>
+                        />
                       </span>
                     </label>
                   ))}
@@ -354,8 +389,9 @@ export default function NewPaperPage() {
               {creating ? <><Spinner size="small" /> 正在创建</> : "生成试卷草稿"}
             </Button>
           </div>
+          </div>
         </div>
-      </div>
-    </Box>
+      </Box>
+    </>
   );
 }

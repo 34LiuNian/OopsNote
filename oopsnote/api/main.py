@@ -10,7 +10,9 @@ import logging
 import os
 import sys
 import threading
+from collections.abc import Iterable, Mapping
 from contextlib import asynccontextmanager, suppress
+from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
@@ -22,6 +24,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 
 from oopsnote.ai import LangChainRunner
+from oopsnote.ai.diagram_renderer import legacy_svg_canvas_em
 from oopsnote.ai.langchain_tools import McpHttpToolClient
 from oopsnote.ai.providers import ProviderClientFactory, ProviderProfile
 from oopsnote.ai.secrets import SecretStore, secret_store_from_environment
@@ -42,6 +45,8 @@ from oopsnote.api.errors import (
     ApiErrorCategory,
     category_for_error_code,
     error_detail,
+    public_error_code,
+    public_error_message,
     scope_for_path,
 )
 from oopsnote.api.routes import (
@@ -269,7 +274,55 @@ BATCH_REVIEW_REASONS = {
 }
 
 
+@dataclass(frozen=True, slots=True)
+class _BatchTaskSnapshot:
+    by_id: dict[str, TaskRecord]
+    by_source_file_hash: dict[str, tuple[TaskRecord, ...]]
+
+
+def _batch_task_snapshot() -> _BatchTaskSnapshot:
+    stores = _active_stores()
+    task_store = stores.task_store if stores else TASK_STORE
+    tasks = task_store.list_all()
+    by_source_file_hash: dict[str, list[TaskRecord]] = {}
+    for task in tasks:
+        selection = task.metadata.get("selection_snapshot")
+        if not isinstance(selection, dict):
+            continue
+        file_hash = selection.get("source_file_hash")
+        if isinstance(file_hash, str) and file_hash:
+            by_source_file_hash.setdefault(file_hash, []).append(task)
+    return _BatchTaskSnapshot(
+        by_id={task.id: task for task in tasks},
+        by_source_file_hash={
+            file_hash: tuple(matching_tasks)
+            for file_hash, matching_tasks in by_source_file_hash.items()
+        },
+    )
+
+
+def _batch_session_views(records: Iterable[BatchSessionRecord]) -> list[dict[str, Any]]:
+    records = list(records)
+    if not records:
+        return []
+    task_snapshot = _batch_task_snapshot()
+    return [
+        _batch_session_view_from_snapshot(
+            _sync_batch_session_tasks_locked(record, tasks_by_id=task_snapshot.by_id),
+            task_snapshot,
+        )
+        for record in records
+    ]
+
+
 def _batch_session_view(record: BatchSessionRecord) -> dict[str, Any]:
+    return _batch_session_views([record])[0]
+
+
+def _batch_session_view_from_snapshot(
+    record: BatchSessionRecord,
+    task_snapshot: _BatchTaskSnapshot,
+) -> dict[str, Any]:
     return {
         "file_hash": record.file_hash,
         "filename": record.filename,
@@ -285,7 +338,10 @@ def _batch_session_view(record: BatchSessionRecord) -> dict[str, Any]:
         "column_layout": record.column_layout.model_dump(),
         "excluded_page_indices": record.excluded_page_indices,
         "segments": [segment.model_dump() for segment in record.segments],
-        "submitted_selections": _batch_submitted_selection_views(record.file_hash),
+        "submitted_selections": _batch_submitted_selection_views(
+            record.file_hash,
+            task_snapshot,
+        ),
         "revision": record.revision,
         "created_at": record.created_at.isoformat(),
         "updated_at": record.updated_at.isoformat(),
@@ -293,19 +349,21 @@ def _batch_session_view(record: BatchSessionRecord) -> dict[str, Any]:
 
 
 def _batch_source_available(record: BatchSessionRecord) -> bool:
+    """Report source presence; source-consuming boundaries verify its digest."""
     stores = _active_stores()
     asset_store = stores.asset_store if stores else ASSET_STORE
-    return asset_store.is_available(record.asset_path, record.file_hash)
+    return asset_store.exists(record.asset_path)
 
 
-def _batch_submitted_selection_views(file_hash: str) -> list[dict[str, Any]]:
+def _batch_submitted_selection_views(
+    file_hash: str,
+    task_snapshot: _BatchTaskSnapshot,
+) -> list[dict[str, Any]]:
     """Return immutable task provenance for rendering after session edits/deletion."""
     views: list[dict[str, Any]] = []
-    stores = _active_stores()
-    task_store = stores.task_store if stores else TASK_STORE
-    for task in task_store.list_all():
+    for task in task_snapshot.by_source_file_hash.get(file_hash, ()):
         snapshot = task.metadata.get("selection_snapshot")
-        if not isinstance(snapshot, dict) or snapshot.get("source_file_hash") != file_hash:
+        if not isinstance(snapshot, dict):
             continue
         parts = snapshot.get("parts")
         if not isinstance(parts, list) or not parts:
@@ -405,7 +463,11 @@ def _sync_batch_session_tasks(record: BatchSessionRecord) -> BatchSessionRecord:
     return _sync_batch_session_tasks_locked(record)
 
 
-def _sync_batch_session_tasks_locked(record: BatchSessionRecord) -> BatchSessionRecord:
+def _sync_batch_session_tasks_locked(
+    record: BatchSessionRecord,
+    *,
+    tasks_by_id: Mapping[str, TaskRecord] | None = None,
+) -> BatchSessionRecord:
     changed = False
     segments = []
     stores = _active_stores()
@@ -414,9 +476,14 @@ def _sync_batch_session_tasks_locked(record: BatchSessionRecord) -> BatchSession
         if not segment.task_id:
             segments.append(segment)
             continue
-        try:
-            task = task_store.get(segment.task_id)
-        except KeyError:
+        if tasks_by_id is None:
+            try:
+                task = task_store.get(segment.task_id)
+            except KeyError:
+                task = None
+        else:
+            task = tasks_by_id.get(segment.task_id)
+        if task is None:
             next_segment = segment.model_copy(
                 update={"status": "failed", "error": "关联任务不存在"}
             )
@@ -513,6 +580,7 @@ def _problem_view(task: TaskRecord, problem: Problem) -> dict[str, Any]:
     metadata = task.metadata
     difficulty_reason = difficulty_review_reason(task)
     diagram = task.diagram_items[0] if task.diagram_items else None
+    diagram_enabled = bool(diagram.enabled) if diagram else bool(problem.has_diagram)
     selected = (
         next(
             (
@@ -527,9 +595,12 @@ def _problem_view(task: TaskRecord, problem: Problem) -> dict[str, Any]:
     )
     diagram_kind = (
         "tikz"
-        if diagram and diagram.status.value == "ready_tikz"
+        if diagram
+        and diagram.enabled
+        and diagram.status.value != "ready_image"
+        and selected is not None
         else "image"
-        if diagram and diagram.status.value == "ready_image"
+        if diagram and diagram.enabled and diagram.status.value == "ready_image"
         else None
     )
     diagram_svg = None
@@ -539,12 +610,33 @@ def _problem_view(task: TaskRecord, problem: Problem) -> dict[str, Any]:
         except (FileNotFoundError, OSError, UnicodeError, ValueError):
             diagram_svg = None
 
+    diagram_base_font_size_pt = selected.base_font_size_pt if selected else None
+    diagram_canvas_width_em = selected.canvas_width_em if selected else None
+    diagram_canvas_height_em = selected.canvas_height_em if selected else None
+    if (
+        diagram_kind == "tikz"
+        and selected
+        and diagram_svg
+        and (
+            diagram_base_font_size_pt is None
+            or diagram_canvas_width_em is None
+            or diagram_canvas_height_em is None
+        )
+    ):
+        legacy_metrics = legacy_svg_canvas_em(diagram_svg)
+        if legacy_metrics is not None:
+            diagram_base_font_size_pt = 10.0
+            diagram_canvas_width_em, diagram_canvas_height_em = legacy_metrics
+
     def diagram_category(item: Any) -> ApiErrorCategory | None:
         if item is None:
             return None
         if not item.last_error_code and not item.needs_review:
             return None
-        return category_for_error_code(item.last_error_code, needs_review=item.needs_review)
+        return category_for_error_code(
+            public_error_code(item.last_error_code, item.last_error),
+            needs_review=item.needs_review,
+        )
 
     def diagram_requires_review(item: Any) -> bool:
         return _diagram_requires_human_review(item)
@@ -562,6 +654,8 @@ def _problem_view(task: TaskRecord, problem: Problem) -> dict[str, Any]:
             item_view["status"] = DiagramStatus.FAILED.value
         item_view["needs_review"] = diagram_requires_review(item)
         item_view["error_category"] = category.value if category else None
+        item_view["last_error_code"] = public_error_code(item.last_error_code, item.last_error)
+        item_view["last_error"] = public_error_message(item.last_error_code, item.last_error)
         diagram_items.append(item_view)
     selected_diagram_category = diagram_category(diagram)
     return {
@@ -582,20 +676,25 @@ def _problem_view(task: TaskRecord, problem: Problem) -> dict[str, Any]:
         "difficulty_needs_review": difficulty_reason is not None,
         "difficulty_review_reason": difficulty_reason,
         "has_diagram": problem.has_diagram,
-        "diagram_detected": bool(diagram or problem.has_diagram),
+        "diagram_detected": diagram_enabled,
+        "diagram_enabled": diagram_enabled,
         "diagram_kind": diagram_kind,
         "diagram_tikz_source": selected.tikz_source
         if selected and diagram_kind == "tikz"
         else None,
         "diagram_svg": diagram_svg if diagram_kind == "tikz" else None,
-        "diagram_svg_path": selected.svg_path if selected and diagram_kind == "tikz" else None,
+        "diagram_svg_path": (selected.svg_path if selected and diagram_kind == "tikz" else None),
         "diagram_image_path": diagram.fallback_image_path if diagram else None,
-        "diagram_image_crop": diagram.source_region.model_dump()
-        if diagram and diagram.source_region
-        else None,
         "diagram_image_tone": diagram.image_tone if diagram else "auto",
-        "diagram_position": diagram.position if diagram else "right",
-        "diagram_scale_percent": diagram.scale_percent if diagram else 100,
+        "diagram_placement": (
+            diagram.placement.model_dump(mode="json")
+            if diagram
+            else {"kind": "side", "side": "right"}
+        ),
+        "diagram_scale_adjustment_percent": (diagram.scale_adjustment_percent if diagram else 100),
+        "diagram_base_font_size_pt": diagram_base_font_size_pt,
+        "diagram_canvas_width_em": diagram_canvas_width_em,
+        "diagram_canvas_height_em": diagram_canvas_height_em,
         "diagram_render_status": (
             DiagramStatus.FAILED.value
             if diagram
@@ -605,7 +704,9 @@ def _problem_view(task: TaskRecord, problem: Problem) -> dict[str, Any]:
             if diagram
             else None
         ),
-        "diagram_error": diagram.last_error if diagram else None,
+        "diagram_error": (
+            public_error_message(diagram.last_error_code, diagram.last_error) if diagram else None
+        ),
         "diagram_error_category": (
             selected_diagram_category.value if selected_diagram_category else None
         ),
@@ -619,6 +720,7 @@ def _problem_view(task: TaskRecord, problem: Problem) -> dict[str, Any]:
 
 
 def _run_view(run: Any) -> dict[str, Any]:
+    error_code = public_error_code(run.error_code, run.error_message)
     return {
         "id": run.id,
         "attempt": run.attempt,
@@ -648,11 +750,9 @@ def _run_view(run: Any) -> dict[str, Any]:
         "started_at": run.started_at.isoformat() if run.started_at else None,
         "heartbeat_at": run.heartbeat_at.isoformat(),
         "ended_at": run.ended_at.isoformat() if run.ended_at else None,
-        "error_code": run.error_code,
-        "error_category": (
-            category_for_error_code(run.error_code).value if run.error_code else None
-        ),
-        "error_message": run.error_message,
+        "error_code": error_code,
+        "error_category": (category_for_error_code(error_code).value if error_code else None),
+        "error_message": public_error_message(run.error_code, run.error_message),
         "stages": [stage.model_dump(mode="json") for stage in run.stage_runs],
         "evidence": {
             "artifacts": [
@@ -666,6 +766,15 @@ def _run_view(run: Any) -> dict[str, Any]:
             "validation_error_count": len(run.validation_errors),
         },
     }
+
+
+def _task_stage_message(record: TaskRecord, run: Any | None = None) -> str | None:
+    """Expose terminal failure evidence instead of a stale lifecycle label."""
+
+    if record.status == TaskStatus.FAILED:
+        message = record.last_error or (run.error_message if run else None) or record.stage_message
+        return public_error_message(record.last_error_code, message)
+    return record.stage_message or record.last_error
 
 
 def _task_view(record: TaskRecord) -> dict[str, Any]:
@@ -698,11 +807,13 @@ def _task_view(record: TaskRecord) -> dict[str, Any]:
         "id": record.id,
         "status": record.status.value,
         "stage": record.stage.value if record.stage else None,
-        "stage_message": record.stage_message or record.last_error,
+        "stage_message": _task_stage_message(record, run),
         "active_run_id": record.active_run_id,
         "error_category": (
-            category_for_error_code(record.last_error_code).value
-            if record.last_error_code
+            category_for_error_code(
+                public_error_code(record.last_error_code, record.last_error)
+            ).value
+            if public_error_code(record.last_error_code, record.last_error)
             else None
         ),
         "diagram_needs_review": any(
@@ -744,11 +855,13 @@ def _task_summary(record: TaskRecord) -> dict[str, Any]:
         "id": record.id,
         "status": record.status.value,
         "stage": record.stage.value if record.stage else None,
-        "stage_message": record.stage_message or record.last_error,
+        "stage_message": _task_stage_message(record),
         "active_run_id": record.active_run_id,
         "error_category": (
-            category_for_error_code(record.last_error_code).value
-            if record.last_error_code
+            category_for_error_code(
+                public_error_code(record.last_error_code, record.last_error)
+            ).value
+            if public_error_code(record.last_error_code, record.last_error)
             else None
         ),
         "diagram_needs_review": any(
@@ -920,9 +1033,7 @@ def health() -> dict[str, Any]:
         "version": "0.3.0",
         "auth": {
             "mode": (
-                auth_config.mode
-                if (auth_config.local or auth_config.better_auth)
-                else "disabled"
+                auth_config.mode if (auth_config.local or auth_config.better_auth) else "disabled"
             ),
         },
         "ai": ai_status,

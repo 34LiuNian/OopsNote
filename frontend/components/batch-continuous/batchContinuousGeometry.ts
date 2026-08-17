@@ -9,6 +9,7 @@ import type {
   ResizeHandle,
   SelectionSlice,
 } from "./batchContinuousTypes";
+import { moveSelectionRect, resizeSelectionRect } from "@/components/selection-box";
 
 export const DOCUMENT_WIDTH = 1000;
 export const MIN_CROP_SIZE = 0.05;
@@ -160,12 +161,15 @@ export function resizeDocumentRect(
   bounds: DocumentRect,
   minimum = 8,
 ): DocumentRect {
-  const next = { ...original };
-  if (handle.includes("w")) next.left = clamp(point.x, bounds.left, original.right - minimum);
-  if (handle.includes("e")) next.right = clamp(point.x, original.left + minimum, bounds.right);
-  if (handle.includes("n")) next.top = clamp(point.y, bounds.top, original.bottom - minimum);
-  if (handle.includes("s")) next.bottom = clamp(point.y, original.top + minimum, bounds.bottom);
-  return next;
+  const width = bounds.right - bounds.left;
+  const height = bounds.bottom - bounds.top;
+  const next = resizeSelectionRect(
+    { x: (original.left - bounds.left) / width, y: (original.top - bounds.top) / height, width: (original.right - original.left) / width, height: (original.bottom - original.top) / height },
+    handle,
+    { x: (point.x - bounds.left) / width, y: (point.y - bounds.top) / height },
+    { x: minimum / width, y: minimum / height },
+  );
+  return { left: bounds.left + next.x * width, top: bounds.top + next.y * height, right: bounds.left + (next.x + next.width) * width, bottom: bounds.top + (next.y + next.height) * height };
 }
 
 export function moveDocumentRect(
@@ -173,11 +177,13 @@ export function moveDocumentRect(
   delta: DocumentPoint,
   bounds: DocumentRect,
 ): DocumentRect {
-  const width = original.right - original.left;
-  const height = original.bottom - original.top;
-  const left = clamp(original.left + delta.x, bounds.left, bounds.right - width);
-  const top = clamp(original.top + delta.y, bounds.top, bounds.bottom - height);
-  return { left, top, right: left + width, bottom: top + height };
+  const width = bounds.right - bounds.left;
+  const height = bounds.bottom - bounds.top;
+  const next = moveSelectionRect(
+    { x: (original.left - bounds.left) / width, y: (original.top - bounds.top) / height, width: (original.right - original.left) / width, height: (original.bottom - original.top) / height },
+    { x: delta.x / width, y: delta.y / height },
+  );
+  return { left: bounds.left + next.x * width, top: bounds.top + next.y * height, right: bounds.left + (next.x + next.width) * width, bottom: bounds.top + (next.y + next.height) * height };
 }
 
 export function documentRectFromSlices(slices: SelectionSlice[], metrics: PageMetric[]): DocumentRect | null {

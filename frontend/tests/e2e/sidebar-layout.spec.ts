@@ -24,6 +24,18 @@ test("L1 is scoped to library while L0 remains the primary navigation", async ({
   await expect(page.getByRole("navigation", { name: "主导航" })).toBeVisible();
 });
 
+test("paper composer stays inside the standard workbench shell", async ({ page }) => {
+  await page.goto("/papers/new", { waitUntil: "domcontentloaded" });
+
+  await expect(page.locator(".oops-titlebar")).toBeVisible();
+  await expect(page.getByRole("navigation", { name: "主导航" })).toBeVisible();
+  await expect(page.getByRole("complementary", { name: "组卷筛选" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "收起组卷筛选" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "新建试卷" })).toBeVisible();
+  await expect(page.locator(".oops-content-surface")).toBeVisible();
+  await expect(page.locator("html")).not.toHaveAttribute("data-oopsnote-paper-compose", "active");
+});
+
 test("library sidebar layers can be controlled independently on desktop", async ({ page }) => {
   await mockLibraryApis(page);
   await page.goto("/library", { waitUntil: "domcontentloaded" });

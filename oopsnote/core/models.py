@@ -114,6 +114,13 @@ class DiagramRunStep(StrEnum):
     REVIEW = "review"
 
 
+class DiagramTransport(StrEnum):
+    """Immutable provider message transport selected when a diagram run is admitted."""
+
+    MESSAGE_IMAGE_BRIDGE = "message_image_bridge"
+    NATIVE_TOOL_IMAGE = "native_tool_image"
+
+
 class DiagramSourceRegion(BaseModel):
     """Normalized source region reserved for a future layout-analysis owner."""
 
@@ -129,6 +136,24 @@ class DiagramSourceRegion(BaseModel):
         return self
 
 
+class DiagramSidePlacement(BaseModel):
+    """Place the diagram beside the question stem."""
+
+    kind: Literal["side"] = "side"
+    side: Literal["left", "right"] = "right"
+
+
+class DiagramBlockPlacement(BaseModel):
+    """Place the diagram in document flow at a semantic question boundary."""
+
+    kind: Literal["block"] = "block"
+    anchor: Literal["after_stem", "after_options"] = "after_options"
+    align: Literal["left", "center", "right"] = "center"
+
+
+DiagramPlacement = DiagramSidePlacement | DiagramBlockPlacement
+
+
 class DiagramCandidate(BaseModel):
     """One immutable TikZ proposal and the assets rendered from that source."""
 
@@ -142,6 +167,11 @@ class DiagramCandidate(BaseModel):
     pdf_path: str | None = None
     png_path: str | None = None
     renderer_profile_version: str | None = None
+    base_font_size_pt: float | None = Field(default=None, gt=0)
+    canvas_width_em: float | None = Field(default=None, gt=0)
+    canvas_height_em: float | None = Field(default=None, gt=0)
+    render_error_code: str | None = None
+    render_error_message: str | None = None
     decision: Literal["accept", "revise", "keep_image"] | None = None
     hard_errors: list[str] = Field(default_factory=list)
     soft_differences: list[str] = Field(default_factory=list)
@@ -151,12 +181,32 @@ class DiagramCandidate(BaseModel):
     run_id: str | None = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
+    @property
+    def has_normalized_typography_metrics(self) -> bool:
+        return all(
+            value is not None
+            for value in (
+                self.base_font_size_pt,
+                self.canvas_width_em,
+                self.canvas_height_em,
+            )
+        )
+
     @model_validator(mode="after")
     def populate_source_hash(self) -> DiagramCandidate:
         digest = hashlib.sha256(self.tikz_source.encode("utf-8")).hexdigest()
         if self.source_sha256 and self.source_sha256 != digest:
             raise ValueError("Diagram candidate source_sha256 does not match tikz_source")
         self.source_sha256 = digest
+        metrics = (
+            self.base_font_size_pt,
+            self.canvas_width_em,
+            self.canvas_height_em,
+        )
+        if any(value is not None for value in metrics) and not all(
+            value is not None for value in metrics
+        ):
+            raise ValueError("Diagram candidate typography metrics must be complete")
         return self
 
 
@@ -169,8 +219,14 @@ class DiagramItem(BaseModel):
     source_region: DiagramSourceRegion | None = None
     fallback_image_path: str | None = None
     image_tone: Literal["auto", "original"] = "auto"
-    position: Literal["left", "right"] = "right"
-    scale_percent: int = Field(default=100, ge=50, le=200)
+    # Visibility is independent from retained source/candidate history. Hiding a
+    # diagram must not discard either the crop or TikZ versions.
+    enabled: bool = True
+    placement: DiagramPlacement = Field(
+        default_factory=DiagramSidePlacement,
+        discriminator="kind",
+    )
+    scale_adjustment_percent: int = Field(default=100, ge=50, le=200)
     status: DiagramStatus = DiagramStatus.DETECTED
     selected_candidate_id: str | None = None
     candidates: list[DiagramCandidate] = Field(default_factory=list)
@@ -180,6 +236,24 @@ class DiagramItem(BaseModel):
     last_error_code: str | None = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+
+    @model_validator(mode="before")
+    @classmethod
+    def migrate_legacy_layout(cls, value: Any) -> Any:
+        if not isinstance(value, dict):
+            return value
+        migrated = dict(value)
+        if "placement" not in migrated:
+            migrated["placement"] = {
+                "kind": "side",
+                "side": "left" if migrated.get("position") == "left" else "right",
+            }
+        # Legacy scale_percent sized the whole asset against the old layout.
+        # It cannot represent the new font-relative contract because carrying
+        # it forward would also enlarge or shrink ordinary TikZ labels.
+        if "scale_adjustment_percent" not in migrated and "scale_percent" in migrated:
+            migrated["scale_adjustment_percent"] = 100
+        return migrated
 
     @model_validator(mode="after")
     def validate_candidates(self) -> DiagramItem:
@@ -394,6 +468,9 @@ class TaskRun(BaseModel):
     diagram_instruction: str | None = Field(default=None, max_length=2000)
     diagram_max_candidates: int | None = Field(default=None, ge=1, le=8)
     diagram_step: DiagramRunStep | None = None
+    # Optional only so historical completed run evidence remains readable.
+    # Every newly admitted diagram run persists an explicit transport.
+    diagram_transport: DiagramTransport | None = None
     diagram_candidate_id: str | None = None
     attempt: int = 1
     status: RunStatus = RunStatus.QUEUED

@@ -14,12 +14,14 @@ export function FigureCropper({
   tone,
   onChange,
   onToneChange,
+  showToneControls = true,
 }: {
   imageUrl: string;
   value: NormalizedRect;
   tone: DiagramImageTone;
   onChange: (value: NormalizedRect) => void;
   onToneChange: (tone: DiagramImageTone) => void;
+  showToneControls?: boolean;
 }) {
   return (
     <Box className="figure-cropper">
@@ -41,11 +43,13 @@ export function FigureCropper({
           />
         </ImageSelectionStage>
       </Box>
-      <Box className="figure-cropper__tone">
-        <Text className={sxStyles.sx2}>显示</Text>
-        <Button aria-pressed={tone === "auto"} size="small" variant={tone === "auto" ? "primary" : "default"} onClick={() => onToneChange("auto")}>自动适配</Button>
-        <Button aria-pressed={tone === "original"} size="small" variant={tone === "original" ? "primary" : "default"} onClick={() => onToneChange("original")}>原图</Button>
-      </Box>
+      {showToneControls ? (
+        <Box className="figure-cropper__tone">
+          <Text className={sxStyles.sx2}>显示</Text>
+          <Button aria-pressed={tone === "auto"} size="small" variant={tone === "auto" ? "primary" : "default"} onClick={() => onToneChange("auto")}>自动适配</Button>
+          <Button aria-pressed={tone === "original"} size="small" variant={tone === "original" ? "primary" : "default"} onClick={() => onToneChange("original")}>原图</Button>
+        </Box>
+      ) : null}
     </Box>
   );
 }

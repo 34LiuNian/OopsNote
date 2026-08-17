@@ -12,6 +12,11 @@ import {
   selectionsToSessionSegments,
   sessionSegmentsToSelections,
 } from "../../features/upload/adapters/batchSessionSelectionAdapter";
+import {
+  moveSelectionRect,
+  rectFromSelectionPoints,
+  resizeSelectionRect,
+} from "../../components/selection-box";
 
 const pages = [
   { id: "a", pageIndex: 0, label: "A", sourceWidth: 600, sourceHeight: 800 },
@@ -138,7 +143,10 @@ test("page-boundary slices stay within the API normalized coordinate contract", 
 test("resize changes one logical rectangle and ordering is top then left", () => {
   const original = { left: 100, top: 200, right: 500, bottom: 600 };
   const resized = resizeDocumentRect(original, "se", { x: 720, y: 880 }, { left: 0, top: 0, right: 1000, bottom: 2000 });
-  expect(resized).toEqual({ left: 100, top: 200, right: 720, bottom: 880 });
+  expect(resized.left).toBeCloseTo(100);
+  expect(resized.top).toBeCloseTo(200);
+  expect(resized.right).toBeCloseTo(720);
+  expect(resized.bottom).toBeCloseTo(880);
   expect(compareDocumentRects(
     { left: 300, top: 100, right: 400, bottom: 200 },
     { left: 100, top: 100, right: 200, bottom: 200 },
@@ -148,16 +156,33 @@ test("resize changes one logical rectangle and ordering is top then left", () =>
 test("move preserves selection size and clamps the rectangle to document bounds", () => {
   const original = { left: 100, top: 200, right: 500, bottom: 600 };
   const bounds = { left: 0, top: 0, right: 1000, bottom: 900 };
-  expect(moveDocumentRect(original, { x: 120, y: -80 }, bounds)).toEqual({
-    left: 220,
-    top: 120,
-    right: 620,
-    bottom: 520,
-  });
-  expect(moveDocumentRect(original, { x: 800, y: 800 }, bounds)).toEqual({
-    left: 600,
-    top: 500,
-    right: 1000,
-    bottom: 900,
-  });
+  const moved = moveDocumentRect(original, { x: 120, y: -80 }, bounds);
+  expect(moved.left).toBeCloseTo(220);
+  expect(moved.top).toBeCloseTo(120);
+  expect(moved.right).toBeCloseTo(620);
+  expect(moved.bottom).toBeCloseTo(520);
+  const clamped = moveDocumentRect(original, { x: 800, y: 800 }, bounds);
+  expect(clamped.left).toBeCloseTo(600);
+  expect(clamped.top).toBeCloseTo(500);
+  expect(clamped.right).toBeCloseTo(1000);
+  expect(clamped.bottom).toBeCloseTo(900);
+});
+
+test("shared selection box geometry preserves the same move and resize invariants", () => {
+  const original = { x: 0.1, y: 0.2, width: 0.4, height: 0.3 };
+  const moved = moveSelectionRect(original, { x: 0.2, y: -0.1 });
+  expect(moved.x).toBeCloseTo(0.3);
+  expect(moved.y).toBeCloseTo(0.1);
+  expect(moved.width).toBeCloseTo(0.4);
+  expect(moved.height).toBeCloseTo(0.3);
+  const resized = resizeSelectionRect(original, "se", { x: 0.8, y: 0.9 }, { x: 0.05, y: 0.06 });
+  expect(resized.x).toBeCloseTo(0.1);
+  expect(resized.y).toBeCloseTo(0.2);
+  expect(resized.width).toBeCloseTo(0.7);
+  expect(resized.height).toBeCloseTo(0.7);
+  const drawn = rectFromSelectionPoints({ x: 0.8, y: 0.7 }, { x: 0.2, y: 0.1 }, 0.05);
+  expect(drawn.x).toBeCloseTo(0.2);
+  expect(drawn.y).toBeCloseTo(0.1);
+  expect(drawn.width).toBeCloseTo(0.6);
+  expect(drawn.height).toBeCloseTo(0.6);
 });

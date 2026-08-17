@@ -51,6 +51,9 @@ OopsMark 是受约束的 Markdown 方言，不是任意 Markdown，也不是完�
 网页、Obsidian 和试卷适配器必须从同一顺序派生标签，不得把标签写回选项正文。
 整项为公式时仍须写成 `$...$`；Core 的选项规范化边界会把不含自然语言、且含明确
 TeX 命令的整项裸公式补成行内数学，以收敛 OCR/模型输出，混合正文不会被猜测性改写。
+试卷适配器对四个选项测量最终 LaTeX 排版宽度：四项均适合四分之一行宽时使用
+`1 x 4`，否则在适合二分之一行宽时使用 `2 x 2`，再否则使用 `4 x 1`。布局判断不得
+依赖源字符串长度或为特定题目写死列数。
 
 ### 2.2 数学
 
@@ -114,13 +117,27 @@ C1=CC=CC=C1
 顺序和来源区域合同允许后续版面分析一次写入多个 item，而不改变候选版本模型。
 
 - `DiagramItem.source_asset_path` 指向完整原题图；可选 `source_region` 是归一化 `{x, y, width, height}`，由未来版面分析或保留原图决策写入。
+- 位图裁剪在资产层物化为新的 `fallback_image_path`；`source_region` 只保留相对 `source_asset_path` 的来源与编辑坐标。Web 展示投影直接渲染物化资产，不得把来源区域再次应用到 `fallback_image_path`。
 - 每个 item 保留 `candidates[]`。候选的 TikZ 源码和源码哈希不可变，`parent_candidate_id` 表示修订关系；选择旧版只更新 `selected_candidate_id`，不删除后续版本。
 - TikZ 源码是规范源。一次串行 XeLaTeX 编译从同一 XDV 派生 SVG、PDF、PNG并记录渲染配置版本：SVG用于 Web/Obsidian，PDF用于试卷，PNG只用于模型视觉比较。
 - `ready_tikz` 必须选中同时具有 SVG 和 PDF 的候选；`ready_image` 必须指向本地裁剪资产。其他状态不得进入试卷。
-- `position`: `right` / `left`，缺省为 `right`；`scale_percent` 范围为 50–200，缺省为 100。
+- `placement` 是结构化位置合同。缺省为 `{kind: "side", side: "right"}`；低频左侧使用 `side/left`。块级位置使用 `kind: "block"`，其中 `anchor` 为 `after_stem` / `after_options`，`align` 为 `left` / `center` / `right`。右侧空间不足时，渲染端确定性降级为题后同侧对齐，不改写持久化位置。
+- TikZ 渲染器显式声明默认字号，并从同源 PDF MediaBox 生成不可变的 `canvas_width_em` / `canvas_height_em`。Web 与试卷分别以最终 CSS / LaTeX 正文字号解释同一 `em` 尺寸，使 TikZ 默认字号自动映射为最终题目字号；源码中的 `\small`、`\large` 和文字节点缩放保留相对差异。
+- `scale_adjustment_percent` 范围为 50–200、缺省为 100，表示自动字号基准之上的人工微调，不再相对于题干高度或固定图片栏宽解释。
+- 试卷导出另有请求级 `diagram_scale_percent`，范围为 25–200、缺省为 60。它在题目自身
+  `scale_adjustment_percent` 之后统一生效，不写回 Task、DiagramItem 或候选。位图以试卷
+  正文宽度的 30% 作为无字号校准时的基准宽度，再且只再乘这两个显式比例一次。
+- 历史 `scale_percent` 使用旧版题干高度/栏宽语义，不能等价迁移为 `scale_adjustment_percent`；读取旧 item 时统一回到 100 的自动字号基准。只有明确写入的新字段才构成人工微调。
+- 位图题图本版本不执行字符识别或字号匹配；`ready_image` 保留为后续独立校准策略的扩展边界。
 - `image_tone`: `auto` / `original`。Web 缺省使用 `auto`；打印、试卷和原始资产保留原像素。
+- 当前编辑器只提供一个互斥的显示槽位：显示 TikZ 或题图裁剪；隐藏只改变 `DiagramItem.enabled`，不删除来源区域或候选版本。后续多图混排仍以 `diagram_items[]` 为扩展边界，不在当前界面提前引入多图编排。
 - 旧的单数 `diagram_*` metadata 只在读取时迁移，此后不得作为第二写入来源。
-- Web 在宽屏按左右栏渲染，窄屏退化为题干在上、旁图在下。
+- 旧 TikZ 候选若缺少标准化尺寸，Web 读取投影只从其 SVG 根节点的物理 `width/height` 一次性推导 `em` 尺寸；该兼容值不回写候选，组卷仍要求用当前渲染器重渲染以取得 PDF MediaBox 指标。
+- Web 和试卷优先按结构化位置渲染；侧排空间不足时退化为题干、选项、旁图的题后顺序。Web 题后区域仍不足时保留 TikZ 的自然 `em` 画布并提供横向滚动，不得缩小默认标签；试卷遇到超过可打印宽度的 TikZ 时明确失败，不得静默缩放。Obsidian v1 暂不消费位置合同，仍将题图输出在题目后。
+
+试卷中的 `compact` 答题空间表示不追加垂直留白。单选、填空等非解答题不消费答题空间
+设置；只有解答题可按 `standard` / `large` 追加答题区。题目之间不再隐式加入额外间隔，
+章节标题自身负责与首题的分隔。
 
 ### 2.6 表格
 

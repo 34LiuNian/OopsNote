@@ -61,11 +61,13 @@ class PaperCompileRequest(BaseModel):
     title: str = Field(default="试卷", min_length=1, max_length=200)
     subtitle: str | None = Field(default=None, max_length=200)
     show_answers: bool = False
+    diagram_scale_percent: int = Field(default=60, ge=25, le=200)
 
 
 class PaperDraftCompileRequest(BaseModel):
     subtitle: str | None = Field(default=None, max_length=200)
     show_answers: bool = False
+    diagram_scale_percent: int = Field(default=60, ge=25, le=200)
 
 
 __all__ = [

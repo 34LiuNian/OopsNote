@@ -1,15 +1,24 @@
-.composePage { height: 100%; min-height: 0; }
+.composePage {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+  gap: var(--oops-space-4);
+  container-type: inline-size;
+}
 
 .builderShell {
   display: grid;
-  height: 100%;
-  min-height: 0;
-  grid-template-columns: 320px minmax(0, 1fr);
+  min-height: 620px;
+  max-height: calc(100dvh - var(--oops-titlebar-height, 58px) - 88px);
+  grid-template-columns: minmax(0, 1fr);
   overflow: hidden;
-  border: 0;
-  border-radius: 0;
+  border: 1px solid var(--borderColor-default);
+  border-radius: 11px;
   background: var(--bgColor-default);
 }
+
+.paperFilterPanel { display: flex; height: 100%; min-height: 0; flex-direction: column; }
+.paperFilterPanel .treePanel { flex: 1; border-right: 0; }
 
 .treePanel {
   display: flex;
@@ -99,16 +108,19 @@
 
 .treeExpand {
   display: grid;
-  width: 18px;
-  height: 18px;
+  width: 18px !important;
+  height: 18px !important;
+  min-width: 18px !important;
+  min-height: 18px !important;
   flex: 0 0 18px;
   place-items: center;
+  padding: 0 !important;
   border-radius: 4px;
-  color: var(--fgColor-muted);
+  color: var(--fgColor-muted) !important;
   background: transparent;
 }
 
-.treeExpand:hover { color: var(--fgColor-default); background: var(--bgColor-muted); }
+.treeExpand:hover { color: var(--fgColor-default) !important; background: var(--bgColor-muted); }
 
 .treeSpacer { display: grid; width: 18px; height: 18px; flex: 0 0 18px; place-items: center; }
 
@@ -117,10 +129,12 @@
   flex: 1;
   overflow: hidden;
   padding: 5px 4px;
-  text-align: left;
+  background: transparent !important;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+.treeLabel:hover { background: transparent !important; }
 
 .treeLabelSelected { color: var(--fgColor-accent); font-weight: 600; }
 .treeEmpty { padding: 32px 12px; color: var(--fgColor-muted); text-align: center; font-size: 13px; }
@@ -194,9 +208,9 @@
 .countGrid { display: flex; max-width: 300px; flex-direction: column; gap: 8px; }
 .countRow { display: grid; min-height: 34px; grid-template-columns: minmax(72px, 1fr) auto; align-items: center; gap: 12px; }
 .countStepper { display: inline-grid; overflow: hidden; grid-template-columns: 32px 48px 32px; border: 1px solid var(--borderColor-default); border-radius: 7px; background: var(--bgColor-default); }
-.countStepper button { display: grid; width: 32px; height: 32px; place-items: center; border: 0; color: var(--fgColor-muted); background: transparent; font: inherit; font-size: 17px; cursor: pointer; }
+.countStepper button { display: grid; width: 32px; height: 32px; place-items: center; border: 0; color: var(--fgColor-default) !important; background: transparent; font: inherit; font-size: 17px; cursor: pointer; --ai-bg: transparent !important; --ai-color: var(--fgColor-default) !important; --ai-hover: var(--bgColor-muted) !important; --ai-hover-color: var(--fgColor-default) !important; }
 .countStepper button:hover:not(:disabled) { color: var(--fgColor-default); background: var(--bgColor-muted); }
-.countStepper button:disabled { opacity: .35; cursor: default; }
+.countStepper button:disabled { opacity: var(--oops-control-disabled-opacity); cursor: default; }
 .countStepper input { width: 48px; min-width: 0; padding: 0; border: 0; border-right: 1px solid var(--borderColor-muted); border-left: 1px solid var(--borderColor-muted); outline: none; color: inherit; background: transparent; font: inherit; text-align: center; appearance: textfield; }
 .countStepper input::-webkit-inner-spin-button,
 .countStepper input::-webkit-outer-spin-button { margin: 0; appearance: none; }
@@ -246,13 +260,17 @@
 .answerToggle input { margin: 0; accent-color: var(--fgColor-accent); }
 
 @media (max-width: 900px) {
-  .composePage { overflow: auto; }
-  .composePage .builderShell { min-height: 100dvh; }
-  .builderShell { height: auto; grid-template-columns: 1fr; }
+  .composePage { min-height: 0; }
+  .builderShell { height: auto; max-height: none; grid-template-columns: 1fr; }
   .treePanel { height: 50dvh; min-height: 340px; max-height: 430px; border-right: 0; border-bottom: 1px solid var(--borderColor-default); }
   .configBody { padding: 24px 18px 90px; }
   .editorGrid { grid-template-columns: 1fr; }
   .editorAside { position: static; }
+}
+
+@container (max-width: 900px) {
+  .builderShell { height: auto; max-height: none; grid-template-columns: 1fr; }
+  .treePanel { height: min(50dvh, 430px); min-height: 340px; max-height: none; border-right: 0; border-bottom: 1px solid var(--borderColor-default); }
 }
 
 @media (max-width: 560px) {

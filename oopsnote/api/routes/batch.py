@@ -66,12 +66,7 @@ def _validate_batch_source_length(request: Request) -> None:
 @router.get("/batch-sessions")
 def list_batch_sessions() -> dict[str, list[dict[str, Any]]]:
     api = _api()
-    return {
-        "items": [
-            api._batch_session_view(api._sync_batch_session_tasks(record))
-            for record in api.BATCH_SESSION_STORE.list_all()
-        ]
-    }
+    return {"items": api._batch_session_views(api.BATCH_SESSION_STORE.list_all())}
 
 
 @router.get("/batch-sessions/upload-limits")
@@ -92,7 +87,7 @@ def get_batch_session(file_hash: str) -> dict[str, Any]:
             scope="batch",
             details={"file_hash": file_hash},
         ) from error
-    return {"session": api._batch_session_view(api._sync_batch_session_tasks(record))}
+    return {"session": api._batch_session_view(record)}
 
 
 @router.get("/batch-sessions/{file_hash}/source")
@@ -108,7 +103,7 @@ def get_batch_source(file_hash: str) -> FileResponse:
             scope="batch",
             details={"file_hash": file_hash},
         ) from error
-    if not api.ASSET_STORE.is_available(record.asset_path, record.file_hash):
+    if not api.ASSET_STORE.matches_sha256(record.asset_path, record.file_hash):
         raise api_error(
             404,
             code="batch_source_unavailable",
@@ -171,7 +166,7 @@ async def upload_batch_source(file_hash: str, request: Request) -> dict[str, Any
         # A deleted source must be recoverable without discarding the mutable
         # session or its task links. The stream is hash-verified and written
         # atomically before the session reference is refreshed.
-        if not api.ASSET_STORE.is_available(record.asset_path, record.file_hash):
+        if not api.ASSET_STORE.matches_sha256(record.asset_path, record.file_hash):
             try:
                 asset_path = await api.ASSET_STORE.save_stream(
                     request.stream(),
@@ -253,7 +248,6 @@ def process_batch_session(
                 session_store=api.BATCH_SESSION_STORE,
                 job_store=api.BATCH_PROCESS_JOB_STORE,
                 session_view=api._batch_session_view,
-                task_state_view=api._sync_batch_session_tasks,
             ),
             file_hash,
             selected_backend,
@@ -289,7 +283,6 @@ def retry_batch_segment(
                 session_store=api.BATCH_SESSION_STORE,
                 job_store=api.BATCH_PROCESS_JOB_STORE,
                 session_view=api._batch_session_view,
-                task_state_view=api._sync_batch_session_tasks,
             ),
             file_hash,
             selected_backend,

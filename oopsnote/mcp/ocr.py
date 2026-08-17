@@ -16,10 +16,12 @@ from typing import Any
 
 import httpx
 
+from oopsnote.ai.skills import load_skill_prompt
 from oopsnote.core import OcrPrintedContext, RunArtifact, StateConflict, TaskStage, TaskStatus
-from oopsnote.mcp.ocr_contract import OCR_INSTRUCTION, normalize_ocr_result
+from oopsnote.mcp.ocr_contract import normalize_ocr_result
 
 MAX_IMAGE_BYTES = 12 * 1024 * 1024
+OCR_INSTRUCTION = load_skill_prompt(Path(__file__).resolve().parents[2], "oopsnote-ocr-extract")
 _OCR_RESULT_LOCK = threading.Lock()
 _OCR_RESULTS: OrderedDict[tuple[str, str, str], dict[str, Any]] = OrderedDict()
 _OCR_RESULT_LIMIT = 128
@@ -206,6 +208,7 @@ def ocr_image(task_id: str, run_id: str) -> dict[str, Any]:
 
 
 __all__ = [
+    "OCR_INSTRUCTION",
     "OcrProviderError",
     "clear_ocr_results",
     "clear_ocr_run_model_resolver",

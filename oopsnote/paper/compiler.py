@@ -63,10 +63,14 @@ DerivedAssetResolver = Callable[[str, str], Path | None]
 _TEMPLATE_PATH = Path(__file__).with_name("templates") / "paper.tex"
 _SUPPORTED_GRAPHICS = {".jpeg", ".jpg", ".pdf", ".png"}
 _ANSWER_SPACE = {
-    "compact": "12mm",
+    "compact": None,
     "standard": "35mm",
     "large": "65mm",
 }
+_PAPER_SIDE_MAX_WIDTH_EM = 14.0
+_PAPER_BLOCK_MAX_WIDTH_EM = 39.0
+_PAPER_SIDE_MAX_WIDTH_FRACTION = 0.4
+_PAPER_IMAGE_BASE_WIDTH_FRACTION = 0.3
 
 
 def _escape_latex_text(value: str) -> str:
@@ -188,65 +192,215 @@ def _options_latex(item: PaperDocumentItem, bundle: _BundleBuilder) -> str:
     if not item.problem.options:
         return ""
     options = [
-        rf"\item {_oopsmark_to_latex(option, item=item, bundle=bundle)}"
-        for option in item.problem.options
+        _oopsmark_to_latex(option, item=item, bundle=bundle) for option in item.problem.options
     ]
+    if len(options) == 4:
+        boxes = [
+            rf"\setbox{index}=\hbox{{{label}.\enspace {option}}}"
+            for index, (label, option) in enumerate(zip("ABCD", options, strict=True))
+        ]
+        measure = [rf"\ifdim\wd{index}>\dimen0\dimen0=\wd{index}\fi" for index in range(4)]
+        one_row = "".join(rf"\makebox[0.25\linewidth][l]{{\copy{index}}}" for index in range(4))
+        two_rows = [
+            "".join(rf"\makebox[0.5\linewidth][l]{{\copy{index}}}" for index in indices)
+            for indices in ((0, 1), (2, 3))
+        ]
+        return "\n".join(
+            [
+                "{",
+                *boxes,
+                r"\dimen0=0pt",
+                *measure,
+                r"\ifdim\dimen0<0.24\linewidth",
+                rf"\noindent{{{one_row}}}\par",
+                r"\else\ifdim\dimen0<0.49\linewidth",
+                rf"\noindent{{{two_rows[0]}}}\par",
+                rf"\noindent{{{two_rows[1]}}}\par",
+                r"\else",
+                *[rf"\noindent\copy{index}\par" for index in range(4)],
+                r"\fi\fi",
+                "}",
+            ]
+        )
+    enumerated = [rf"\item {option}" for option in options]
     return "\n".join(
         [
             "{",
             r"\begin{enumerate}",
             r"\renewcommand{\labelenumi}{\Alph{enumi}.}",
             r"\setlength{\itemsep}{2pt}",
-            *options,
+            *enumerated,
             r"\end{enumerate}",
             "}",
         ]
     )
 
 
-def _diagram_latex(diagram: PaperDiagram, bundle: _BundleBuilder) -> str:
-    width = f"{diagram.scale_percent / 100:g}\\linewidth"
+def _diagram_scale(diagram: PaperDiagram, diagram_scale_percent: int) -> float:
+    return diagram.scale_adjustment_percent * diagram_scale_percent / 10_000
+
+
+def _tikz_width_em(diagram: PaperDiagram, diagram_scale_percent: int) -> float:
+    assert diagram.canvas_width_em is not None
+    return diagram.canvas_width_em * _diagram_scale(diagram, diagram_scale_percent)
+
+
+def _image_width_fraction(diagram: PaperDiagram, diagram_scale_percent: int) -> float:
+    return _PAPER_IMAGE_BASE_WIDTH_FRACTION * _diagram_scale(diagram, diagram_scale_percent)
+
+
+def _diagram_latex(
+    diagram: PaperDiagram,
+    bundle: _BundleBuilder,
+    *,
+    diagram_scale_percent: int,
+    image_width: str | None = None,
+) -> str:
+    if diagram.kind == "tikz":
+        width_em = _tikz_width_em(diagram, diagram_scale_percent)
+        if width_em > _PAPER_BLOCK_MAX_WIDTH_EM:
+            raise PaperCompileError(
+                f"TikZ diagram width {width_em:g}em exceeds the printable question width",
+                code=PaperCompileFailure.INVALID_CONTENT,
+            )
+        width = f"{width_em:g}em"
+    else:
+        width_fraction = _image_width_fraction(diagram, diagram_scale_percent)
+        if width_fraction > 1:
+            raise PaperCompileError(
+                f"Image diagram width {width_fraction:g} of the line exceeds the printable question width",
+                code=PaperCompileFailure.INVALID_CONTENT,
+            )
+        width = image_width or f"{width_fraction:g}\\linewidth"
     path = bundle.managed_asset(diagram.source)
     return rf"\includegraphics[width={width},keepaspectratio]{{{path}}}"
 
 
-def _question_body_latex(item: PaperDocumentItem, bundle: _BundleBuilder) -> str:
+def _question_stem_latex(item: PaperDocumentItem, bundle: _BundleBuilder) -> str:
     problem = _oopsmark_to_latex(item.problem.problem_text, item=item, bundle=bundle)
-    parts = [
-        rf"\noindent\textbf{{{item.number}.}}\quad {problem}{_format_points(item.points)}\par",
-    ]
-    options = _options_latex(item, bundle)
-    if options:
-        parts.append(options)
-    return "\n".join(parts)
+    return rf"\noindent\textbf{{{item.number}.}}\quad {problem}{_format_points(item.points)}\par"
 
 
-def _question_latex(item: PaperDocumentItem, bundle: _BundleBuilder, *, show_answers: bool) -> str:
-    body = _question_body_latex(item, bundle)
-    parts = [r"\par\medskip"]
-    if item.diagram is None:
-        parts.append(body)
+def _block_figure_latex(
+    diagram: PaperDiagram,
+    bundle: _BundleBuilder,
+    *,
+    align: str,
+    diagram_scale_percent: int,
+) -> str:
+    alignment = {"left": "l", "center": "c", "right": "r"}[align]
+    figure = _diagram_latex(
+        diagram,
+        bundle,
+        diagram_scale_percent=diagram_scale_percent,
+    )
+    return rf"\noindent\makebox[\linewidth][{alignment}]{{{figure}}}\par"
+
+
+def _side_question_latex(
+    item: PaperDocumentItem,
+    bundle: _BundleBuilder,
+    diagram: PaperDiagram,
+    *,
+    diagram_scale_percent: int,
+) -> str | None:
+    placement = diagram.placement
+    if placement.kind != "side":
+        return None
+    if diagram.kind == "tikz":
+        width_em = _tikz_width_em(diagram, diagram_scale_percent)
+        if width_em > _PAPER_SIDE_MAX_WIDTH_EM:
+            return None
+        figure_width = f"{width_em:g}em"
+        figure_content = _diagram_latex(
+            diagram,
+            bundle,
+            diagram_scale_percent=diagram_scale_percent,
+        )
     else:
-        figure = "\n".join(
-            [
-                r"\begin{minipage}[t]{0.30\linewidth}",
-                r"\centering",
-                _diagram_latex(item.diagram, bundle),
-                r"\end{minipage}",
-            ]
+        width_fraction = _image_width_fraction(diagram, diagram_scale_percent)
+        if width_fraction > _PAPER_SIDE_MAX_WIDTH_FRACTION:
+            return None
+        figure_width = f"{width_fraction:g}\\linewidth"
+        figure_content = _diagram_latex(
+            diagram,
+            bundle,
+            diagram_scale_percent=diagram_scale_percent,
+            image_width=r"\linewidth",
         )
-        text = "\n".join(
-            [
-                r"\begin{minipage}[t]{0.66\linewidth}",
-                body,
-                r"\end{minipage}",
-            ]
+    figure = "\n".join(
+        [
+            rf"\begin{{minipage}}[t]{{{figure_width}}}",
+            r"\vspace{0pt}",
+            r"\centering",
+            figure_content,
+            r"\end{minipage}",
+        ]
+    )
+    text_width = rf"\dimexpr\linewidth-{figure_width}-1em\relax"
+    text = "\n".join(
+        [
+            rf"\begin{{minipage}}[t]{{{text_width}}}",
+            r"\vspace{0pt}",
+            _question_stem_latex(item, bundle),
+            r"\end{minipage}",
+        ]
+    )
+    lead = (
+        "\n".join([figure, r"\hfill", text])
+        if placement.side == "left"
+        else "\n".join([text, r"\hfill", figure])
+    )
+    options = _options_latex(item, bundle)
+    return "\n".join([lead, options] if options else [lead])
+
+
+def _question_latex(
+    item: PaperDocumentItem,
+    bundle: _BundleBuilder,
+    *,
+    show_answers: bool,
+    diagram_scale_percent: int,
+) -> str:
+    parts = [r"\par"]
+    if item.diagram is None:
+        parts.append(_question_stem_latex(item, bundle))
+        options = _options_latex(item, bundle)
+        if options:
+            parts.append(options)
+    else:
+        side = _side_question_latex(
+            item,
+            bundle,
+            item.diagram,
+            diagram_scale_percent=diagram_scale_percent,
         )
-        parts.extend(
-            [figure, r"\hfill", text]
-            if item.diagram.position == "left"
-            else [text, r"\hfill", figure]
-        )
+        if side is not None:
+            parts.append(side)
+        else:
+            placement = item.diagram.placement
+            parts.append(_question_stem_latex(item, bundle))
+            if placement.kind == "block" and placement.anchor == "after_stem":
+                parts.append(
+                    _block_figure_latex(
+                        item.diagram,
+                        bundle,
+                        align=placement.align,
+                        diagram_scale_percent=diagram_scale_percent,
+                    )
+                )
+            options = _options_latex(item, bundle)
+            if options:
+                parts.append(options)
+            if placement.kind == "side" or placement.anchor == "after_options":
+                parts.append(
+                    _block_figure_latex(
+                        item.diagram,
+                        bundle,
+                        align=placement.side if placement.kind == "side" else placement.align,
+                        diagram_scale_percent=diagram_scale_percent,
+                    )
+                )
 
     if show_answers:
         parts.append(
@@ -259,7 +413,9 @@ def _question_latex(item: PaperDocumentItem, bundle: _BundleBuilder, *, show_ans
                 + _oopsmark_to_latex(item.problem.explanation, item=item, bundle=bundle)
             )
     else:
-        parts.append(rf"\par\vspace*{{{_ANSWER_SPACE[item.answer_space]}}}")
+        answer_space = _ANSWER_SPACE[item.answer_space]
+        if item.question_type == "解答题" and answer_space:
+            parts.append(rf"\par\vspace*{{{answer_space}}}")
     return "\n".join(parts)
 
 
@@ -281,7 +437,12 @@ def build_paper_bundle(
             rf"\par\bigskip\noindent{{\large\bfseries {_chinese_number(index)}、{_escape_latex_text(section.question_type)}}}\par\medskip"
         )
         sections.extend(
-            _question_latex(item, bundle, show_answers=document.show_answers)
+            _question_latex(
+                item,
+                bundle,
+                show_answers=document.show_answers,
+                diagram_scale_percent=document.diagram_scale_percent,
+            )
             for item in section.items
         )
 

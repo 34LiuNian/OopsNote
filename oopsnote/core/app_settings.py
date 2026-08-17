@@ -49,6 +49,7 @@ class AppSettingsStore:
     def _upsert_channel(current: dict[str, Any], channel: Any) -> None:
         from oopsnote.ai.providers import ProviderChannel
 
+        channel.validate_connection_configuration()
         channels = [
             ProviderChannel.model_validate(item) for item in current.get("provider_channels", [])
         ]
@@ -106,7 +107,7 @@ class AppSettingsStore:
                 return False
             if stage in {"vision", "diagram"} and not model.capability.vision:
                 return False
-            if stage in {"agent", "review"} and not model.capability.tool_calling:
+            if stage in {"agent", "review", "diagram"} and not model.capability.tool_calling:
                 return False
         return True
 

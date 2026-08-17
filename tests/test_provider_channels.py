@@ -274,7 +274,7 @@ def test_secret_collection_finds_nested_stage_snapshot_references(tmp_path: Path
     assert not vault.has(stale_ref)
 
 
-def test_langchain_admission_freezes_all_three_stage_models_and_rejects_closed_capability(
+def test_langchain_admission_freezes_all_stage_models_and_rejects_closed_capability(
     tmp_path: Path,
 ):
     from oopsnote.ai.backends.langchain import LangChainRunner
@@ -288,7 +288,7 @@ def test_langchain_admission_freezes_all_three_stage_models_and_rejects_closed_c
                     id="vision",
                     source="Gateway",
                     enabled=True,
-                    capability=ProviderCapabilities(vision=True),
+                    capability=ProviderCapabilities(vision=True, tool_calling=True),
                 ),
                 ChannelModel(
                     id="agent",
@@ -339,6 +339,8 @@ def test_langchain_admission_freezes_all_three_stage_models_and_rejects_closed_c
     }
     assert metadata["provider_profile_snapshot"]["diagram"]["model"] == "vision"
     assert metadata["provider_profile_snapshot"]["vision"]["model"] == "vision"
+    diagram_metadata = runner._diagram_run_metadata(task.id)
+    assert diagram_metadata["diagram_transport"].value == "message_image_bridge"
     closed = configured.model_copy(
         update={
             "version": 2,

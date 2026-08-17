@@ -25,6 +25,8 @@ from .models import (
     DiagramItem,
     DiagramRunMode,
     DiagramRunStep,
+    DiagramStatus,
+    DiagramTransport,
     PaperDraft,
     PaperDraftCreateRequest,
     PaperDraftUpdateRequest,
@@ -315,6 +317,62 @@ class TaskStore:
                 candidates=candidates,
             )
 
+    def delete_diagram_candidate(
+        self,
+        task_id: str,
+        item_id: str,
+        candidate_id: str,
+    ) -> TaskRecord:
+        """Remove one retained TikZ version and roll selection back atomically.
+
+        The previous ordinal becomes selected when the deleted version was active.
+        Deleting the only version leaves the diagram slot intact, but with no TikZ
+        candidate so the editor can offer a fresh AI generation.
+        """
+        with self._lock:
+            record = self.get(task_id)
+            item = next((value for value in record.diagram_items if value.id == item_id), None)
+            if item is None:
+                raise KeyError(f"Diagram item {item_id} not found")
+            candidate = next((value for value in item.candidates if value.id == candidate_id), None)
+            if candidate is None:
+                raise KeyError(f"Diagram candidate {candidate_id} not found")
+            remaining = [value for value in item.candidates if value.id != candidate_id]
+            selected_id = item.selected_candidate_id
+            status = item.status
+            needs_review = item.needs_review
+            last_error = item.last_error
+            last_error_code = item.last_error_code
+            if selected_id == candidate_id:
+                previous = max(
+                    (value for value in remaining if value.ordinal < candidate.ordinal),
+                    key=lambda value: value.ordinal,
+                    default=None,
+                )
+                selected_id = previous.id if previous else (remaining[0].id if remaining else None)
+                if selected_id:
+                    if status != DiagramStatus.READY_IMAGE:
+                        status = DiagramStatus.READY_TIKZ
+                    needs_review = False
+                    last_error = None
+                    last_error_code = None
+                else:
+                    if status != DiagramStatus.READY_IMAGE:
+                        status = DiagramStatus.DETECTED
+                    needs_review = False
+                    last_error = None
+                    last_error_code = None
+            return self.update_diagram_item(
+                task_id,
+                item_id,
+                candidates=remaining,
+                selected_candidate_id=selected_id,
+                status=status,
+                needs_review=needs_review,
+                last_error=last_error,
+                last_error_code=last_error_code,
+            )
+
     def mark_status(
         self,
         task_id: str,
@@ -382,6 +440,7 @@ class RunStore:
         diagram_instruction: str | None = None,
         diagram_max_candidates: int | None = None,
         diagram_step: DiagramRunStep | None = None,
+        diagram_transport: DiagramTransport | None = None,
     ) -> TaskRun:
         with self._lock:
             previous_runs = [
@@ -402,6 +461,7 @@ class RunStore:
                 diagram_instruction=diagram_instruction,
                 diagram_max_candidates=diagram_max_candidates,
                 diagram_step=diagram_step,
+                diagram_transport=diagram_transport,
                 attempt=attempt,
                 prompt_version=prompt_version,
                 backend=backend,

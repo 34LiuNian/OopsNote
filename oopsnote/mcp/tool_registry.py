@@ -66,6 +66,30 @@ MANAGED_TOOL_DEFINITIONS = (
         "Fail the active OopsNote task with an explicit reason.",
         "barrier",
     ),
+    ManagedToolDefinition(
+        "submit_tikz_revision",
+        "submit_tikz_revision",
+        "Validate and persist one body-only TikZ revision for the active diagram run.",
+        "barrier",
+    ),
+    ManagedToolDefinition(
+        "accept_tikz_candidate",
+        "accept_tikz_candidate",
+        "Accept the active rendered TikZ candidate when no hard semantic error remains.",
+        "barrier",
+    ),
+    ManagedToolDefinition(
+        "keep_source_image",
+        "keep_source_image",
+        "Keep a normalized crop of the printed source diagram for an automatic diagram run.",
+        "barrier",
+    ),
+    ManagedToolDefinition(
+        "request_diagram_review",
+        "request_diagram_review",
+        "Finish the active diagram run for human review after its candidate limit is reached.",
+        "barrier",
+    ),
 )
 
 AI_TOOL_NAMES = tuple(item.remote_name for item in MANAGED_TOOL_DEFINITIONS)

@@ -2,19 +2,20 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Image from "next/image";
-import { Box, Button, Collapse, FormControl, GeometryButton, IconButton, NativeInput, Spinner, Text, TextInput, Textarea, useReducedMotion } from "@/components/ui/primitives";
+import { Box, Button, Collapse, FormControl, GeometryButton, IconButton, NativeInput, NativeSelect, Spinner, Text, TextInput, Textarea, useReducedMotion } from "@/components/ui/primitives";
 import { PlusIcon, TrashIcon } from "@/components/ui/icons";
-import { Check, ChevronDown, ChevronRight, CircleStop, RefreshCw, Sparkles, WandSparkles } from "lucide-react";
+import { Check, ChevronDown, ChevronRight, CircleStop, Code2, Crop, Eye, History, Image as ImageIcon, ImageMinus, ImagePlus, PanelRight, RefreshCw, Save, Sparkles, Trash2, WandSparkles } from "lucide-react";
 import { optionLabel } from "@/lib/content/options";
 import { notify } from "@/lib/notify";
 import { confirmAction } from "@/lib/confirm";
+import { apiErrorCode } from "@/lib/api";
 import { useAuthenticatedAssetUrl } from "@/hooks/useAuthenticatedAssetUrl";
-import type { DiagramCandidate, DiagramImageTone, DiagramItem, NormalizedRect, TagDimensionStyle } from "../types/api";
-import { cancelProblemDiagram, continueProblemDiagram, overrideProblem, rebuildProblemDiagram, reconstructProblemDiagram, selectProblemDiagramCandidate } from "../features/tasks";
+import type { DiagramCandidate, DiagramImageTone, DiagramItem, DiagramPlacement, NormalizedRect, TagDimensionStyle } from "../types/api";
+import { cancelProblemDiagram, continueProblemDiagram, createProblemDiagramCandidate, deleteProblemDiagramCandidate, overrideProblem, rebuildProblemDiagram, reconstructProblemDiagram, selectProblemDiagramCandidate, updateProblemDiagramSettings } from "../features/tasks";
 import { TagPicker } from "./TagPicker";
 import { ErrorBanner } from "./ui/ErrorBanner";
-import { SvgMarkup } from "./renderers/SvgMarkup";
 import { renderTikz } from "./renderers/TikzRenderer";
+import { AuthenticatedSvgMarkup } from "./renderers/AuthenticatedSvgMarkup";
 import { FigureCropper, FULL_IMAGE_CROP } from "./image-crop/FigureCropper";
 import sxStyles from "./ProblemEditPanel.sx.module.css";
 
@@ -36,16 +37,17 @@ type ProblemEditPanelProps = {
     difficulty_needs_review?: boolean;
     problem_text: string;
     diagram_detected?: boolean;
+    diagram_enabled?: boolean;
     diagram_kind?: string | null;
     diagram_tikz_source?: string | null;
     diagram_svg?: string | null;
     diagram_image_path?: string | null;
-    diagram_image_crop?: NormalizedRect | null;
     diagram_image_tone?: DiagramImageTone;
-    diagram_position?: "left" | "right";
-    diagram_scale_percent?: number | null;
+    diagram_placement?: DiagramPlacement;
+    diagram_scale_adjustment_percent?: number | null;
     diagram_render_status?: string | null;
     diagram_error?: string | null;
+    diagram_error_category?: string | null;
     diagram_needs_review?: boolean;
     diagram_items?: DiagramItem[];
     options?: Array<{ key: string; text: string } | null>;
@@ -59,9 +61,39 @@ type ProblemEditPanelProps = {
 };
 
 function CandidatePreview({ candidate }: { candidate: DiagramCandidate }) {
-  const imageUrl = useAuthenticatedAssetUrl(candidate.svg_path || null);
-  if (!imageUrl) return <Text className={sxStyles.sx1}>此版本尚未生成预览。</Text>;
-  return <Image src={imageUrl} alt={`题图版本 ${candidate.ordinal}`} width={800} height={320} unoptimized style={{ display: "block", width: "100%", height: "auto", maxHeight: 320, objectFit: "contain" }} />;
+  if (!candidate.svg_path) return <Text className={sxStyles.sx1}>此版本尚未生成预览。</Text>;
+  return <AuthenticatedSvgMarkup path={candidate.svg_path} label={`题图版本 ${candidate.ordinal}`} />;
+}
+
+const diagramStatusLabel: Record<DiagramItem["status"], string> = {
+  detected: "待处理",
+  queued: "等待处理",
+  generating: "正在生成",
+  rendering: "正在编译",
+  reviewing: "正在复核",
+  ready_tikz: "已就绪",
+  ready_image: "已就绪",
+  needs_review: "需要复核",
+  failed: "处理失败",
+  cancelled: "已取消",
+};
+
+const diagramPlacementOptions: Array<{ value: string; label: string; placement: DiagramPlacement }> = [
+  { value: "side-right", label: "右侧", placement: { kind: "side", side: "right" } },
+  { value: "side-left", label: "左侧", placement: { kind: "side", side: "left" } },
+  { value: "after-stem", label: "题干与选项之间", placement: { kind: "block", anchor: "after_stem", align: "center" } },
+  { value: "after-options", label: "题目下方", placement: { kind: "block", anchor: "after_options", align: "center" } },
+  { value: "after-options-right", label: "题目右下", placement: { kind: "block", anchor: "after_options", align: "right" } },
+];
+
+function diagramPlacementValue(placement: DiagramPlacement): string {
+  if (placement.kind === "side") return `side-${placement.side}`;
+  if (placement.anchor === "after_stem") return "after-stem";
+  return placement.align === "right" ? "after-options-right" : "after-options";
+}
+
+function diagramPlacementLabel(placement: DiagramPlacement): string {
+  return diagramPlacementOptions.find((option) => option.value === diagramPlacementValue(placement))?.label ?? "右侧";
 }
 
 export function ProblemEditPanel({ taskId, taskAssetPath, problem, tagStyles, onClose, onSaved }: ProblemEditPanelProps) {
@@ -93,26 +125,34 @@ export function ProblemEditPanel({ taskId, taskAssetPath, problem, tagStyles, on
   const [errorTags, setErrorTags] = useState(() => Array.isArray(problem.error_tags) ? problem.error_tags : []);
   const [userTags, setUserTags] = useState(() => Array.isArray(problem.user_tags) ? problem.user_tags : []);
   const [diagramTikzSource, setDiagramTikzSource] = useState(() => (problem.diagram_tikz_source || "").toString());
-  const [diagramKind, setDiagramKind] = useState<"none" | "tikz" | "image">(() => (
-    problem.diagram_kind === "image"
-      ? "image"
-      : problem.diagram_kind === "tikz" || problem.diagram_tikz_source
-        ? "tikz"
-        : "none"
-  ));
-  const [diagramPosition, setDiagramPosition] = useState<"left" | "right">(() => problem.diagram_position === "left" ? "left" : "right");
-  const [diagramScalePercent, setDiagramScalePercent] = useState<number | null>(() => (
-    typeof problem.diagram_scale_percent === "number"
-      ? Math.min(200, Math.max(50, Math.round(problem.diagram_scale_percent)))
-      : null
-  ));
-  const [diagramImageCrop, setDiagramImageCrop] = useState<NormalizedRect>(() => problem.diagram_image_crop || FULL_IMAGE_CROP);
-  const [diagramImageTone, setDiagramImageTone] = useState<DiagramImageTone>(() => problem.diagram_image_tone === "original" ? "original" : "auto");
-  const [diagramSvg, setDiagramSvg] = useState<string | null>(() => problem.diagram_svg || null);
-  const [diagramRenderStatus, setDiagramRenderStatus] = useState<string | null>(() => problem.diagram_render_status || null);
-  const [diagramCompileError, setDiagramCompileError] = useState<string>(() => (problem.diagram_error || "").replace(/\\n/g, "\n"));
-  const [isCompilingDiagram, setIsCompilingDiagram] = useState(false);
   const diagramItem = problem.diagram_items?.[0] ?? null;
+  const initialDiagramSourceKind: "tikz" | "image" = problem.diagram_kind === "image"
+    || (!problem.diagram_kind && diagramItem?.status === "ready_image")
+    || (!problem.diagram_kind && Boolean(diagramItem?.fallback_image_path) && !diagramItem?.candidates.length)
+    ? "image"
+    : "tikz";
+  const initialDiagramEnabled = problem.diagram_enabled
+    ?? problem.diagram_detected
+    ?? Boolean(problem.diagram_kind);
+  const [diagramKind, setDiagramKind] = useState<"none" | "tikz" | "image">(() => (
+    initialDiagramEnabled ? initialDiagramSourceKind : "none"
+  ));
+  const [diagramSourceKind, setDiagramSourceKind] = useState<"tikz" | "image">(initialDiagramSourceKind);
+  const [diagramPlacement, setDiagramPlacement] = useState<DiagramPlacement>(() => (
+    problem.diagram_placement ?? diagramItem?.placement ?? { kind: "side", side: "right" }
+  ));
+  const [diagramScaleAdjustmentPercent, setDiagramScaleAdjustmentPercent] = useState(() => (
+    typeof problem.diagram_scale_adjustment_percent === "number"
+      ? Math.min(200, Math.max(50, Math.round(problem.diagram_scale_adjustment_percent)))
+      : 100
+  ));
+  const [diagramImageCrop, setDiagramImageCrop] = useState<NormalizedRect>(() => diagramItem?.source_region || FULL_IMAGE_CROP);
+  const [diagramImageTone, setDiagramImageTone] = useState<DiagramImageTone>(() => problem.diagram_image_tone === "original" ? "original" : "auto");
+  const [, setDiagramSvg] = useState<string | null>(() => problem.diagram_svg || null);
+  const [, setDiagramRenderStatus] = useState<string | null>(() => problem.diagram_render_status || null);
+  const [diagramCompileError, setDiagramCompileError] = useState<string>(() => (problem.diagram_error || "").replace(/\\n/g, "\n"));
+  const [diagramCompileErrorCategory, setDiagramCompileErrorCategory] = useState<string>(() => problem.diagram_error_category || "");
+  const [isCompilingDiagram, setIsCompilingDiagram] = useState(false);
   const [candidateViewId, setCandidateViewId] = useState(() => diagramItem?.selected_candidate_id || diagramItem?.candidates.at(-1)?.id || null);
   const [diagramInstruction, setDiagramInstruction] = useState("");
   const [diagramMaxCandidates, setDiagramMaxCandidates] = useState("4");
@@ -122,14 +162,68 @@ export function ProblemEditPanel({ taskId, taskAssetPath, problem, tagStyles, on
   const [diagramSectionOpen, setDiagramSectionOpen] = useState(() => (
     Boolean(diagramItem) || Boolean(problem.diagram_error) || Boolean(problem.diagram_needs_review)
   ));
-  const [tikzView, setTikzView] = useState<"ai" | "manual">(() => (
-    diagramItem?.candidates.length ? "ai" : problem.diagram_tikz_source ? "manual" : "ai"
-  ));
+  const [tikzView, setTikzView] = useState<"preview" | "source">("preview");
+  const [layoutOpen, setLayoutOpen] = useState(false);
+  const [diagramAddMenuOpen, setDiagramAddMenuOpen] = useState(false);
+  const [isPersistingDiagram, setIsPersistingDiagram] = useState(false);
+  const diagramPersistTimerRef = useRef<number | null>(null);
 
   const effectiveCandidateViewId = diagramItem?.candidates.some((candidate) => candidate.id === candidateViewId)
     ? candidateViewId
     : diagramItem?.selected_candidate_id || diagramItem?.candidates.at(-1)?.id || null;
   const viewedCandidate = diagramItem?.candidates.find((candidate) => candidate.id === effectiveCandidateViewId) ?? null;
+
+  const persistDiagramSettings = useCallback(async (payload: Parameters<typeof updateProblemDiagramSettings>[1]) => {
+    if (diagramPersistTimerRef.current !== null) {
+      window.clearTimeout(diagramPersistTimerRef.current);
+      diagramPersistTimerRef.current = null;
+    }
+    setIsPersistingDiagram(true);
+    try {
+      await updateProblemDiagramSettings(taskId, payload);
+      await onSaved();
+    } catch (error) {
+      notify.error({ title: "附图设置保存失败", description: error instanceof Error ? error.message : "请稍后重试" });
+      throw error;
+    } finally {
+      setIsPersistingDiagram(false);
+    }
+  }, [onSaved, taskId]);
+
+  const scheduleDiagramSettings = useCallback((payload: Parameters<typeof updateProblemDiagramSettings>[1]) => {
+    if (diagramPersistTimerRef.current !== null) window.clearTimeout(diagramPersistTimerRef.current);
+    diagramPersistTimerRef.current = window.setTimeout(() => {
+      diagramPersistTimerRef.current = null;
+      void persistDiagramSettings(payload).catch(() => undefined);
+    }, 180);
+  }, [persistDiagramSettings]);
+
+  const setDiagramMode = useCallback(async (kind: "none" | "tikz" | "image") => {
+    if (kind === "none") {
+      setDiagramKind("none");
+      await persistDiagramSettings({ enabled: false });
+      return;
+    }
+    setDiagramSourceKind(kind);
+    setDiagramKind(kind);
+    setDiagramSectionOpen(true);
+    // A fresh TikZ slot is valid before its first candidate is generated.
+    if (kind === "tikz" && !diagramItem?.selected_candidate_id) {
+      await persistDiagramSettings({ enabled: true });
+      return;
+    }
+    await persistDiagramSettings({ enabled: true, kind });
+  }, [diagramItem?.selected_candidate_id, persistDiagramSettings]);
+
+  const updateDiagramLayout = useCallback(async (patch: { placement?: DiagramPlacement; scale_adjustment_percent?: number }) => {
+    if (patch.placement) setDiagramPlacement(patch.placement);
+    if (patch.scale_adjustment_percent !== undefined) setDiagramScaleAdjustmentPercent(patch.scale_adjustment_percent);
+    await persistDiagramSettings({
+      ...patch,
+      enabled: diagramKind !== "none",
+      kind: diagramSourceKind,
+    });
+  }, [diagramKind, diagramSourceKind, persistDiagramSettings]);
 
   const runDiagramAction = useCallback(async (mode: "initial" | "continue" | "rebuild") => {
     const maxCandidates = Number(diagramMaxCandidates);
@@ -139,7 +233,11 @@ export function ProblemEditPanel({ taskId, taskAssetPath, problem, tagStyles, on
     }
     setIsRunningDiagramAction(true);
     try {
-      const payload = { max_candidates: maxCandidates, instruction: diagramInstruction.trim() || null };
+      const payload = {
+        max_candidates: maxCandidates,
+        instruction: diagramInstruction.trim() || null,
+        tikz_only: true,
+      };
       if (mode === "initial" || !diagramItem) await reconstructProblemDiagram(taskId, payload);
       else if (mode === "continue") await continueProblemDiagram(taskId, diagramItem.id, payload);
       else await rebuildProblemDiagram(taskId, diagramItem.id, payload);
@@ -192,32 +290,109 @@ export function ProblemEditPanel({ taskId, taskAssetPath, problem, tagStyles, on
     setOptions((prev) => prev.filter((opt) => opt.id !== id));
   }, []);
 
-  const compileDiagram = useCallback(async () => {
+  const compileAndSaveDiagram = useCallback(async () => {
     const source = diagramTikzSource.trim();
     if (!source) {
       setDiagramSvg(null);
       setDiagramRenderStatus("skipped");
       setDiagramCompileError("");
+      notify.error({ title: "请先填写 TikZ 源码" });
       return;
     }
 
     setIsCompilingDiagram(true);
     setDiagramCompileError("");
+    setDiagramCompileErrorCategory("");
     try {
       const svg = await renderTikz(source);
       setDiagramSvg(svg);
       setDiagramRenderStatus("ready");
-      notify.success({ title: "图形编译成功" });
+      setDiagramCompileErrorCategory("");
+      let itemId = diagramItem?.id;
+      if (!itemId) {
+        const response = await updateProblemDiagramSettings(taskId, { enabled: true });
+        itemId = response.task.problem?.diagram_items?.[0]?.id;
+      }
+      if (!itemId) throw new Error("无法创建附图项目");
+      await createProblemDiagramCandidate(taskId, itemId, source);
+      setTikzView("preview");
+      notify.success({ title: "已编译并保存 TikZ 版本" });
+      await onSaved();
     } catch (err) {
       const message = err instanceof Error ? err.message : "图形编译失败";
       setDiagramSvg(null);
       setDiagramRenderStatus("failed");
       setDiagramCompileError(message.replace(/\\n/g, "\n"));
-      notify.error({ title: "图形编译失败" });
+      const category = apiErrorCode(err) === "renderer_environment_error" ? "human_review" : "";
+      setDiagramCompileErrorCategory(category);
+      notify.error({ title: category === "human_review" ? "需要人工介入" : "图形编译失败" });
     } finally {
       setIsCompilingDiagram(false);
     }
-  }, [diagramTikzSource]);
+  }, [diagramItem, diagramTikzSource, onSaved, taskId]);
+
+  const leaveDiagramSource = useCallback(() => {
+    setDiagramTikzSource(viewedCandidate?.tikz_source || "");
+    setDiagramCompileError("");
+    setTikzView("preview");
+  }, [viewedCandidate?.tikz_source]);
+
+  const openDiagramSource = useCallback(() => {
+    setDiagramTikzSource(viewedCandidate?.tikz_source || diagramTikzSource);
+    setDiagramCompileError("");
+    setTikzView("source");
+  }, [diagramTikzSource, viewedCandidate?.tikz_source]);
+
+  const requestLeaveDiagramSource = useCallback(() => {
+    const currentSource = viewedCandidate?.tikz_source || "";
+    if (diagramTikzSource !== currentSource) {
+      confirmAction({
+        title: "放弃未编译的源码？",
+        message: "返回预览后，当前未编译的源码修改会丢失。",
+        confirmLabel: "放弃修改",
+        destructive: true,
+        onConfirm: leaveDiagramSource,
+      });
+      return;
+    }
+    leaveDiagramSource();
+  }, [diagramTikzSource, leaveDiagramSource, viewedCandidate?.tikz_source]);
+
+  const viewCandidateFromSidebar = useCallback((candidate: DiagramCandidate) => {
+    const applyView = () => {
+      setCandidateViewId(candidate.id);
+      setDiagramTikzSource(candidate.tikz_source);
+      setDiagramCompileError("");
+      setTikzView("preview");
+    };
+    const currentSource = viewedCandidate?.tikz_source || "";
+    if (tikzView === "source" && diagramTikzSource !== currentSource) {
+      confirmAction({
+        title: "放弃未编译的源码？",
+        message: "切换版本会丢弃当前未编译的源码修改。",
+        confirmLabel: "放弃修改",
+        destructive: true,
+        onConfirm: applyView,
+      });
+      return;
+    }
+    applyView();
+  }, [diagramTikzSource, tikzView, viewedCandidate?.tikz_source]);
+
+  const deleteCandidate = useCallback(async (candidate: DiagramCandidate) => {
+    if (!diagramItem) return;
+    setIsRunningDiagramAction(true);
+    try {
+      await deleteProblemDiagramCandidate(taskId, diagramItem.id, candidate.id);
+      setCandidateViewId(null);
+      notify.success({ title: `已删除版本 ${candidate.ordinal}` });
+      await onSaved();
+    } catch (error) {
+      notify.error({ title: "删除题图版本失败", description: error instanceof Error ? error.message : "请稍后重试" });
+    } finally {
+      setIsRunningDiagramAction(false);
+    }
+  }, [diagramItem, onSaved, taskId]);
 
   const initialDraftSignature = JSON.stringify({
     questionNo: (problem.question_no || "").toString(),
@@ -232,21 +407,6 @@ export function ProblemEditPanel({ taskId, taskAssetPath, problem, tagStyles, on
     knowledgeTags: Array.isArray(problem.knowledge_tags) ? problem.knowledge_tags : [],
     errorTags: Array.isArray(problem.error_tags) ? problem.error_tags : [],
     userTags: Array.isArray(problem.user_tags) ? problem.user_tags : [],
-    diagramTikzSource: (problem.diagram_tikz_source || "").toString(),
-    diagramKind: problem.diagram_kind === "image"
-      ? "image"
-      : problem.diagram_kind === "tikz" || problem.diagram_tikz_source
-        ? "tikz"
-        : "none",
-    diagramPosition: problem.diagram_position === "left" ? "left" : "right",
-    diagramScalePercent: typeof problem.diagram_scale_percent === "number"
-      ? Math.min(200, Math.max(50, Math.round(problem.diagram_scale_percent)))
-      : null,
-    diagramImageCrop: problem.diagram_image_crop || FULL_IMAGE_CROP,
-    diagramImageTone: problem.diagram_image_tone === "original" ? "original" : "auto",
-    diagramSvg: problem.diagram_svg || null,
-    diagramRenderStatus: problem.diagram_render_status || null,
-    diagramCompileError: (problem.diagram_error || "").replace(/\\n/g, "\n"),
   });
   const currentDraftSignature = JSON.stringify({
     questionNo,
@@ -259,15 +419,6 @@ export function ProblemEditPanel({ taskId, taskAssetPath, problem, tagStyles, on
     knowledgeTags,
     errorTags,
     userTags,
-    diagramTikzSource,
-    diagramKind,
-    diagramPosition,
-    diagramScalePercent,
-    diagramImageCrop,
-    diagramImageTone,
-    diagramSvg,
-    diagramRenderStatus,
-    diagramCompileError,
   });
   const isDirty = initialDraftSignature !== currentDraftSignature;
 
@@ -304,17 +455,6 @@ export function ProblemEditPanel({ taskId, taskAssetPath, problem, tagStyles, on
         return;
       }
 
-      const tikzSource = diagramTikzSource.trim();
-      const imagePath = problem.diagram_image_path || taskAssetPath || null;
-      if (diagramKind === "tikz" && !tikzSource) {
-        notify.error({ title: "请先填写 TikZ 源码" });
-        return;
-      }
-      if (diagramKind === "image" && !imagePath) {
-        notify.error({ title: "当前题目没有可用的原始图片" });
-        return;
-      }
-
       await overrideProblem(taskId, {
         question_no: questionNo.trim() || null,
         chapter: chapter.trim() || null,
@@ -326,18 +466,6 @@ export function ProblemEditPanel({ taskId, taskAssetPath, problem, tagStyles, on
         user_tags: userTags,
         difficulty_coefficient_override: parsedDifficultyOverride,
         section_question_count: parsedSectionQuestionCount,
-        diagram_detected: diagramKind !== "none",
-        diagram_kind: diagramKind === "none" ? null : diagramKind,
-        diagram_tikz_source: diagramKind === "tikz" ? tikzSource : null,
-        diagram_svg: diagramKind === "tikz" ? diagramSvg : null,
-        diagram_image_path: diagramKind === "image" ? imagePath : null,
-        diagram_image_crop: diagramKind === "image" ? diagramImageCrop : null,
-        diagram_image_tone: diagramKind === "image" ? diagramImageTone : undefined,
-        diagram_position: diagramPosition,
-        diagram_scale_percent: diagramScalePercent,
-        diagram_render_status: diagramKind === "image" ? "ready" : diagramKind === "tikz" ? diagramRenderStatus : null,
-        diagram_error: diagramKind === "tikz" ? diagramCompileError || null : null,
-        diagram_needs_review: diagramKind === "tikz" && diagramRenderStatus === "failed",
       });
       notify.success({ title: "已保存" });
       await onSaved();
@@ -364,20 +492,15 @@ export function ProblemEditPanel({ taskId, taskAssetPath, problem, tagStyles, on
     sectionQuestionCount,
     taskId,
     userTags,
-    diagramTikzSource,
-    diagramKind,
-    diagramPosition,
-    diagramScalePercent,
-    diagramImageCrop,
-    diagramImageTone,
-    diagramSvg,
-    diagramRenderStatus,
-    diagramCompileError,
-    problem.diagram_image_path,
-    taskAssetPath,
   ]);
 
   const requestClose = useCallback(() => {
+    if (!isDirty && diagramKind === "tikz" && diagramItem && diagramItem.candidates.length === 0) {
+      void persistDiagramSettings({ enabled: false })
+        .then(() => onClose())
+        .catch(() => undefined);
+      return;
+    }
     if (isDirty && !isSaving) {
       confirmAction({
         title: "放弃未保存的修改",
@@ -389,7 +512,7 @@ export function ProblemEditPanel({ taskId, taskAssetPath, problem, tagStyles, on
       return;
     }
     onClose();
-  }, [isDirty, isSaving, onClose]);
+  }, [diagramItem, diagramKind, isDirty, isSaving, onClose, persistDiagramSettings]);
 
   useEffect(() => {
     if (!isDirty || isSaving) return;
@@ -417,9 +540,16 @@ export function ProblemEditPanel({ taskId, taskAssetPath, problem, tagStyles, on
     return () => window.clearInterval(timer);
   }, [diagramItem?.active_run_id, onSaved]);
 
+  useEffect(() => () => {
+    if (diagramPersistTimerRef.current !== null) window.clearTimeout(diagramPersistTimerRef.current);
+  }, []);
+
   const diagramImagePath = problem.diagram_image_path || taskAssetPath || null;
   const diagramCropSourcePath = taskAssetPath || diagramImagePath;
   const diagramImageUrl = useAuthenticatedAssetUrl(diagramCropSourcePath);
+  const diagramPreviewUrl = useAuthenticatedAssetUrl(
+    diagramSourceKind === "image" ? diagramImagePath : null,
+  );
 
   return (
     <Box className={["oops-card", sxStyles.sx2].filter(Boolean).join(" ")} >
@@ -560,282 +690,243 @@ export function ProblemEditPanel({ taskId, taskAssetPath, problem, tagStyles, on
           </Box>
         </Box>
 
-        <Box className={sxStyles.section}>
-          <GeometryButton
-            type="button"
-            className={sxStyles.diagramDisclosure}
-            aria-expanded={diagramSectionOpen}
-            onClick={() => setDiagramSectionOpen((open) => !open)}
-          >
-            <Box className={sxStyles.diagramDisclosureLead}>
-              {diagramSectionOpen
-                ? <ChevronDown size={16} className={sxStyles.diagramDisclosureIcon} aria-hidden />
-                : <ChevronRight size={16} className={sxStyles.diagramDisclosureIcon} aria-hidden />}
-              <Text className={sxStyles.diagramDisclosureTitle}>附图</Text>
-            </Box>
-            <Text className={sxStyles.diagramDisclosureSummary}>
-              {diagramKind === "none" ? "无附图" : diagramKind === "tikz" ? "TikZ 附图" : "图片附图"}
-              {diagramItem ? ` · ${diagramItem.status}${diagramItem.active_run_id ? " · 处理中" : ""}` : ""}
-            </Text>
-          </GeometryButton>
-
-          <Collapse expanded={diagramSectionOpen} transitionDuration={reducedMotion ? 0 : 180}>
-            <Box className={sxStyles.diagramBody}>
-              <Box className={sxStyles.sx26}>
-                <Button size="small" variant={diagramKind === "none" ? "primary" : "default"} onClick={() => setDiagramKind("none")}>
-                  无附图
-                </Button>
-                <Button
-                  size="small"
-                  variant={diagramKind === "tikz" ? "primary" : "default"}
-                  onClick={() => setDiagramKind("tikz")}
-                >
-                  TikZ 附图
-                </Button>
-                <Button
-                  size="small"
-                  variant={diagramKind === "image" ? "primary" : "default"}
-                  disabled={!diagramImagePath}
-                  onClick={() => setDiagramKind("image")}
-                >
-                  图片附图
-                </Button>
-              </Box>
-
-              {diagramKind !== "none" ? (
-                <Box className={sxStyles.sx27}>
-                  <Box className={sxStyles.diagramLayoutRow}>
-                    <Text className={sxStyles.diagramLayoutLabel}>位置</Text>
-                    <Button size="small" variant={diagramPosition === "right" ? "primary" : "default"} onClick={() => setDiagramPosition("right")}>右侧</Button>
-                    <Button size="small" variant={diagramPosition === "left" ? "primary" : "default"} onClick={() => setDiagramPosition("left")}>左侧</Button>
-                  </Box>
-                  <Box className={sxStyles.diagramLayoutRow}>
-                    <Text className={sxStyles.diagramLayoutLabel}>大小</Text>
-                    <Button size="small" variant={diagramScalePercent == null ? "primary" : "default"} onClick={() => setDiagramScalePercent(null)}>
-                      自适应（与题干等高）
-                    </Button>
-                    <Button size="small" variant={diagramScalePercent != null ? "primary" : "default"} onClick={() => setDiagramScalePercent(diagramScalePercent ?? 100)}>
-                      自定义
-                    </Button>
-                    {diagramScalePercent != null ? (
-                      <>
-                        <NativeInput
-                          aria-label="图形大小百分比"
-                          type="range"
-                          min="50"
-                          max="200"
-                          step="5"
-                          value={diagramScalePercent}
-                          onChange={(event) => setDiagramScalePercent(Number(event.target.value))}
-                        />
-                        <Text className={sxStyles.sx32}>{diagramScalePercent}%</Text>
-                      </>
-                    ) : null}
+        <Box className={[sxStyles.section, sxStyles.diagramSection].join(" ")}>
+          {diagramKind === "none" ? (
+            <Box className={sxStyles.diagramOffState}>
+              <Box className={sxStyles.diagramOffCopy}>
+                <Box className={sxStyles.diagramOffTitleRow}>
+                  {diagramSourceKind === "tikz" && viewedCandidate ? (
+                    <Box className={sxStyles.diagramOffPreview}><CandidatePreview candidate={viewedCandidate} /></Box>
+                  ) : diagramPreviewUrl ? (
+                    <Image src={diagramPreviewUrl} alt="附图预览" width={72} height={48} unoptimized className={sxStyles.diagramOffPreview} />
+                  ) : null}
+                  <Box>
+                    <Text className={sxStyles.diagramDisclosureTitle}>附图</Text>
+                    <Text className={sxStyles.diagramOffSummary}>{diagramItem ? "附图已移除 · 内容已保留" : "尚未添加附图"}</Text>
                   </Box>
                 </Box>
-              ) : null}
-
-              {diagramKind === "tikz" ? (
-                <>
-                  <Box className={sxStyles.diagramTabs} role="tablist" aria-label="TikZ 编辑方式">
-                    <GeometryButton
-                      type="button"
-                      role="tab"
-                      aria-selected={tikzView === "ai"}
-                      className={[sxStyles.diagramTab, tikzView === "ai" ? sxStyles.diagramTabActive : ""].filter(Boolean).join(" ")}
-                      onClick={() => setTikzView("ai")}
-                    >AI 生成</GeometryButton>
-                    <GeometryButton
-                      type="button"
-                      role="tab"
-                      aria-selected={tikzView === "manual"}
-                      className={[sxStyles.diagramTab, tikzView === "manual" ? sxStyles.diagramTabActive : ""].filter(Boolean).join(" ")}
-                      onClick={() => setTikzView("manual")}
-                    >手动源码</GeometryButton>
-                  </Box>
-
-                  {tikzView === "ai" ? (
-                    <Box className={sxStyles.diagramTabPanel} role="tabpanel">
-                      <Box className={sxStyles.sx16}>
-                        <TextInput
-                          block
-                          aria-label="题图优化指示"
-                          placeholder="本轮附加指示（可选）"
-                          value={diagramInstruction}
-                          onChange={(event) => setDiagramInstruction(event.currentTarget.value)}
-                        />
-                        <TextInput
-                          block
-                          type="number"
-                          min={1}
-                          max={8}
-                          aria-label="自动候选上限"
-                          value={diagramMaxCandidates}
-                          onChange={(event) => setDiagramMaxCandidates(event.currentTarget.value)}
-                        />
-                      </Box>
-                      <Box className={sxStyles.sx17}>
-                        {!diagramItem ? (
-                          <Button
-                            size="small"
-                            leadingVisual={WandSparkles}
-                            disabled={isRunningDiagramAction || !taskAssetPath}
-                            onClick={() => void runDiagramAction("initial")}
-                          >AI 重建</Button>
-                        ) : (
-                          <>
-                            <Button
-                              size="small"
-                              leadingVisual={Sparkles}
-                              disabled={isRunningDiagramAction || Boolean(diagramItem.active_run_id)}
-                              onClick={() => void runDiagramAction("continue")}
-                            >继续优化</Button>
-                            <Button
-                              size="small"
-                              variant="default"
-                              leadingVisual={RefreshCw}
-                              disabled={isRunningDiagramAction || Boolean(diagramItem.active_run_id)}
-                              onClick={() => void runDiagramAction("rebuild")}
-                            >重新重建</Button>
-                            <Text className={sxStyles.diagramStatus} data-status={diagramItem.needs_review ? "danger" : "muted"}>
-                              {diagramItem.status}{diagramItem.active_run_id ? " · 处理中" : ""}
-                            </Text>
-                            {diagramItem.active_run_id ? (
-                              <Button size="small" variant="danger" leadingVisual={CircleStop} disabled={isRunningDiagramAction} onClick={() => void cancelDiagram()}>
-                                取消任务
-                              </Button>
-                            ) : null}
-                          </>
-                        )}
-                      </Box>
-
-                      {diagramItem?.candidates.length ? (
-                        <Box className={sxStyles.sx18}>
-                          <Box className={sxStyles.sx19}>
-                {diagramItem.candidates.map((candidate) => (
-                  <Button
-                    key={candidate.id}
-                    size="small"
-                    variant={candidate.id === effectiveCandidateViewId ? "primary" : "default"}
-                    leadingVisual={candidate.id === diagramItem.selected_candidate_id ? Check : undefined}
-                    onClick={() => {
-                      setCandidateViewId(candidate.id);
-                    }}
-                  >版本 {candidate.ordinal} · {candidate.source_kind === "ai" ? "AI" : "人工"}</Button>
-                ))}
               </Box>
-              {viewedCandidate ? (
-                <Box className={sxStyles.sx20}>
-                  <Box className={sxStyles.sx21}>
-                    <CandidatePreview candidate={viewedCandidate} />
+              <Box className={sxStyles.diagramAddArea}>
+                <Button size="small" variant="primary" leadingVisual={ImagePlus} disabled={isPersistingDiagram} onClick={() => setDiagramAddMenuOpen((open) => !open)}>添加附图</Button>
+                {diagramAddMenuOpen ? (
+                  <Box className={sxStyles.diagramAddMenu} role="menu">
+                    <Button size="small" variant="invisible" leadingVisual={Code2} trailingVisual={ChevronRight} block onClick={() => { setDiagramAddMenuOpen(false); void setDiagramMode("tikz").catch(() => undefined); }}>TikZ · 恢复上次使用的版本</Button>
+                    <Button size="small" variant="invisible" leadingVisual={Crop} trailingVisual={ChevronRight} block disabled={!diagramImagePath} onClick={() => { setDiagramAddMenuOpen(false); void setDiagramMode("image").catch(() => undefined); }}>题图 · 恢复已保存的原图裁剪</Button>
                   </Box>
-                  <Text className={sxStyles.sx22}>
-                    {viewedCandidate.model || "人工版本"} · {viewedCandidate.decision || "待判断"}
-                    {viewedCandidate.parent_candidate_id ? " · 基于上一版本" : ""}
+                ) : null}
+              </Box>
+            </Box>
+          ) : (
+            <Box as="section" aria-label="附图工作台" className={sxStyles.diagramWorkbench}>
+              <Box className={sxStyles.diagramHeader}>
+                <Box className={sxStyles.diagramHeaderCopy}>
+                  <Box className={sxStyles.diagramHeaderTitleRow}>
+                    <Text className={sxStyles.diagramDisclosureTitle}>附图</Text>
+                    <Text className={sxStyles.diagramStatusBadge} data-status={diagramItem?.active_run_id ? "attention" : diagramItem?.needs_review ? "danger" : "success"}>
+                      <span aria-hidden />{diagramItem?.active_run_id ? "处理中" : diagramItem?.needs_review ? "需复核" : "已就绪"}
+                    </Text>
+                  </Box>
+                  <Text className={sxStyles.diagramHeaderSummary} truncate>
+                    {diagramKind === "tikz" ? `TikZ · ${viewedCandidate ? `版本 ${viewedCandidate.ordinal}` : "尚无版本"}` : "题图裁剪 · 已保存"}
+                    {diagramItem?.active_run_id ? " · 正在生成候选" : ""}
                   </Text>
-                  <Textarea
-                    readOnly
-                    block
-                    rows={5}
-                    aria-label={`题图版本 ${viewedCandidate.ordinal} 源码`}
-                    value={viewedCandidate.tikz_source}
-                    className={sxStyles.sx23}
-                  />
-                  {viewedCandidate.hard_errors.length ? (
-                    <>
-                      <ErrorBanner message={viewedCandidate.hard_errors.join("；")} title="题图候选存在硬错误" />
-                    </>
-                  ) : null}
-                  {viewedCandidate.soft_differences.length ? (
-                    <Text className={sxStyles.sx25}>已接受软差异：{viewedCandidate.soft_differences.join("；")}</Text>
-                  ) : null}
-                  {viewedCandidate.id !== diagramItem.selected_candidate_id && viewedCandidate.svg_path && viewedCandidate.pdf_path ? (
-                    <Button
-                      size="small"
-                      leadingVisual={Check}
-                      disabled={isRunningDiagramAction || Boolean(diagramItem.active_run_id)}
-                      onClick={() => void selectCandidate(viewedCandidate)}
-                    >采用此版本</Button>
-                  ) : null}
+                </Box>
+                <Box className={sxStyles.diagramHeaderActions}>
+                  <Button size="small" variant="invisible" leadingVisual={ImageMinus} disabled={isPersistingDiagram} onClick={() => void setDiagramMode("none").catch(() => undefined)}>移除</Button>
+                  <IconButton size="small" variant="invisible" icon={diagramSectionOpen ? ChevronDown : ChevronRight} aria-label={diagramSectionOpen ? "折叠附图设置" : "展开附图设置"} onClick={() => setDiagramSectionOpen((open) => !open)} />
+                </Box>
+              </Box>
+
+              {!diagramSectionOpen ? (
+                <Box as="figure" aria-label="折叠附图预览" className={sxStyles.diagramCollapsedPreview}>
+                  {diagramKind === "tikz" && viewedCandidate ? (
+                    <CandidatePreview candidate={viewedCandidate} />
+                  ) : diagramKind === "image" && diagramPreviewUrl ? (
+                    <Image src={diagramPreviewUrl} alt="当前附图预览" width={1200} height={640} unoptimized />
+                  ) : (
+                    <Box className={sxStyles.diagramCollapsedEmpty}><ImageIcon size={22} aria-hidden /><Text>暂无可用预览</Text></Box>
+                  )}
                 </Box>
               ) : null}
-            </Box>
-          ) : null}
-        </Box>
-      ) : (
-        <Box className={sxStyles.diagramTabPanel} role="tabpanel">
-                      <Textarea
-                        value={diagramTikzSource}
-                        onChange={(e) => {
-                          setDiagramTikzSource(e.target.value);
-                          setDiagramSvg(null);
-                          setDiagramRenderStatus(e.target.value.trim() ? "pending" : "skipped");
-                          setDiagramCompileError("");
-                        }}
-                        block
-                        rows={10}
-                        className={sxStyles.sx33}
-                        placeholder="粘贴或编辑 TikZ 源码..."
-                      />
-                      <Box className={sxStyles.sx34}>
-                        <Button size="small" onClick={compileDiagram} disabled={isCompilingDiagram}>
-                          {isCompilingDiagram ? (
-                            <><Spinner size="small" className={sxStyles.sx35} />编译中...</>
-                          ) : "重编译预览"}
-                        </Button>
-                        <Button
-                          size="small"
-                          variant="invisible"
-                          onClick={() => {
-                            setDiagramTikzSource("");
-                            setDiagramSvg(null);
-                            setDiagramRenderStatus("skipped");
-                            setDiagramCompileError("");
+
+              <Collapse expanded={diagramSectionOpen} transitionDuration={reducedMotion ? 0 : 180}>
+                <Box className={sxStyles.diagramExpanded}>
+                  <Box className={sxStyles.diagramTopbar}>
+                    <Box className={sxStyles.diagramTypeSwitch} role="group" aria-label="当前显示的附图类型">
+                      <GeometryButton type="button" className={[sxStyles.diagramSegment, diagramKind === "tikz" ? sxStyles.diagramSegmentActive : ""].filter(Boolean).join(" ")} aria-pressed={diagramKind === "tikz"} onClick={() => void setDiagramMode("tikz").catch(() => undefined)}>TikZ</GeometryButton>
+                      <GeometryButton type="button" className={[sxStyles.diagramSegment, diagramKind === "image" ? sxStyles.diagramSegmentActive : ""].filter(Boolean).join(" ")} aria-pressed={diagramKind === "image"} disabled={!diagramImagePath} onClick={() => void setDiagramMode("image").catch(() => undefined)}>题图</GeometryButton>
+                    </Box>
+                    <Button size="small" variant="invisible" leadingVisual={PanelRight} trailingVisual={layoutOpen ? ChevronDown : ChevronRight} aria-expanded={layoutOpen} onClick={() => setLayoutOpen((open) => !open)}>{`${diagramPlacementLabel(diagramPlacement)} · ${diagramScaleAdjustmentPercent === 100 ? "自动字号" : `${diagramScaleAdjustmentPercent}%`}`}</Button>
+                  </Box>
+
+                  {layoutOpen ? (
+                    <Box className={sxStyles.diagramLayoutPanel}>
+                      <Box className={sxStyles.diagramLayoutLine}>
+                        <Text className={sxStyles.diagramLayoutLabel}>位置</Text>
+                        <NativeSelect
+                          aria-label="附图位置"
+                          className={sxStyles.diagramSelect}
+                          value={diagramPlacementValue(diagramPlacement)}
+                          onChange={(event) => {
+                            const selected = diagramPlacementOptions.find((option) => option.value === event.target.value);
+                            if (selected) void updateDiagramLayout({ placement: selected.placement }).catch(() => undefined);
                           }}
                         >
-                          清空源码
-                        </Button>
+                          {diagramPlacementOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                        </NativeSelect>
                       </Box>
-
-                      {diagramSvg ? (
-                        <Box className={sxStyles.sx37}>
-                          <SvgMarkup svg={diagramSvg} label="TikZ 预览" colorMode="themed" />
-                        </Box>
-                      ) : null}
-
-                      {diagramCompileError ? (
-                        <Box className={sxStyles.sx38}>
-                          <Text className={sxStyles.sx39}>编译错误</Text>
-                          <Text className={sxStyles.sx40}>
-                            {diagramCompileError}
-                          </Text>
-                        </Box>
-                      ) : null}
+                      <Box className={sxStyles.diagramLayoutLine}>
+                        <Text className={sxStyles.diagramLayoutLabel}>大小</Text>
+                        <NativeInput className={sxStyles.diagramRange} aria-label="自动字号基准微调百分比" type="range" min="50" max="200" step="5" value={diagramScaleAdjustmentPercent} onChange={(event) => { const next = Number(event.target.value); setDiagramScaleAdjustmentPercent(next); scheduleDiagramSettings({ enabled: true, kind: diagramSourceKind, scale_adjustment_percent: next }); }} />
+                        <Text className={sxStyles.diagramScaleValue}>{diagramScaleAdjustmentPercent === 100 ? "自动" : `${diagramScaleAdjustmentPercent}%`}</Text>
+                      </Box>
                     </Box>
-                  )}
-                </>
-              ) : null}
+                  ) : null}
 
-              {diagramKind === "image" ? (
-                <Box className={sxStyles.sx36}>
-                  {diagramImageUrl ? (
-                    <FigureCropper
-                      imageUrl={diagramImageUrl}
-                      value={diagramImageCrop}
-                      tone={diagramImageTone}
-                      onChange={setDiagramImageCrop}
-                      onToneChange={setDiagramImageTone}
-                    />
+                  {diagramKind === "tikz" ? (
+                    <Box className={sxStyles.diagramTikzPanel}>
+                      <Box className={sxStyles.diagramWorkspace}>
+                        <Box className={[sxStyles.diagramWorkspaceLayout, diagramItem?.candidates.length ? sxStyles.diagramWorkspaceLayoutWithSidebar : ""].filter(Boolean).join(" ")}>
+                          {diagramItem?.candidates.length ? (
+                            <Box as="aside" className={sxStyles.diagramVersionSidebar} aria-label="版本记录">
+                              <Box className={sxStyles.diagramVersionSidebarHeader}><History size={14} aria-hidden />版本记录 · {diagramItem.candidates.length}</Box>
+                              <Box role="group" aria-label="版本历史列表" className={sxStyles.diagramVersionSidebarList}>
+                                {[...diagramItem.candidates].reverse().map((candidate) => {
+                                  const isCurrent = candidate.id === diagramItem.selected_candidate_id;
+                                  const isViewed = candidate.id === effectiveCandidateViewId;
+                                  return <GeometryButton key={candidate.id} type="button" className={[sxStyles.diagramSidebarRow, isViewed ? sxStyles.diagramSidebarRowViewed : ""].filter(Boolean).join(" ")} aria-pressed={isViewed} onClick={() => viewCandidateFromSidebar(candidate)}>
+                                    <Box className={sxStyles.diagramVersionCopy}>
+                                      <Text className={sxStyles.diagramVersionName}>版本 {candidate.ordinal} · {candidate.source_kind === "ai" ? "AI" : "人工"}</Text>
+                                      <Text className={[sxStyles.diagramMuted, isCurrent ? sxStyles.diagramCurrentLabel : ""].filter(Boolean).join(" ")}>{isCurrent ? "当前使用" : isViewed ? "正在查看" : candidate.parent_candidate_id ? "基于上一版本" : "候选版本"}</Text>
+                                    </Box>
+                                  </GeometryButton>;
+                                })}
+                              </Box>
+                            </Box>
+                          ) : null}
+
+                          <Box className={sxStyles.diagramWorkspaceMain}>
+                            <Box className={sxStyles.diagramWorkspaceHead}>
+                              <Box className={sxStyles.diagramVersionTitle}>
+                                <Text className={sxStyles.diagramCurrentVersion}>{viewedCandidate ? `版本 ${viewedCandidate.ordinal}` : "尚无 TikZ 版本"}</Text>
+                                {viewedCandidate ? <Text className={sxStyles.diagramMuted}>{viewedCandidate.id === diagramItem?.selected_candidate_id ? `${viewedCandidate.source_kind === "ai" ? "AI 生成" : "人工编译"} · 当前使用` : `${viewedCandidate.source_kind === "ai" ? "AI 生成" : "人工编译"} · 正在查看`}</Text> : null}
+                              </Box>
+                              {tikzView === "preview" ? <Button size="small" variant="invisible" leadingVisual={Code2} onClick={openDiagramSource}>编辑源码</Button> : <Button size="small" variant="invisible" leadingVisual={Eye} onClick={requestLeaveDiagramSource}>返回预览</Button>}
+                            </Box>
+
+                            {viewedCandidate ? (
+                              <Box as="section" aria-label="版本详细信息" className={sxStyles.diagramCandidateDetails}>
+                                <Box className={sxStyles.diagramCandidateDetailsHead}>
+                                  <Text className={sxStyles.diagramCandidateDetailsTitle}>版本详细信息</Text>
+                                  <Text className={sxStyles.diagramCandidateMeta}>
+                                    {[viewedCandidate.provider, viewedCandidate.model].filter(Boolean).join(" · ") || "本地编译"}
+                                  </Text>
+                                </Box>
+                                <Text className={sxStyles.diagramCandidateReason}>
+                                  {viewedCandidate.review_reason || (viewedCandidate.parent_candidate_id ? "基于上一版本编译。" : "候选版本。")}
+                                </Text>
+                                {viewedCandidate.hard_errors.length ? (
+                                  <Box className={sxStyles.diagramCandidateIssue} data-kind="error">
+                                    <Text>硬错误</Text>
+                                    <Text>{viewedCandidate.hard_errors.join("；")}</Text>
+                                  </Box>
+                                ) : null}
+                                {viewedCandidate.soft_differences.length ? (
+                                  <Box className={sxStyles.diagramCandidateIssue} data-kind="muted">
+                                    <Text>差异</Text>
+                                    <Text>{viewedCandidate.soft_differences.join("；")}</Text>
+                                  </Box>
+                                ) : null}
+                              </Box>
+                            ) : null}
+
+                        {tikzView === "preview" ? (
+                          <Box className={sxStyles.diagramTabPanel}>
+                            {viewedCandidate ? (
+                              <>
+                                <Box as="figure" aria-label="当前版本预览" className={sxStyles.diagramPreviewFrame}><CandidatePreview candidate={viewedCandidate} /></Box>
+                                <Box className={sxStyles.diagramPreviewFooter}>
+                                  <Text className={sxStyles.diagramMuted}>{diagramItem?.active_run_id ? "正在生成候选" : "已保存"}</Text>
+                                  <Box className={sxStyles.diagramActionRow}>
+                                    {viewedCandidate.id !== diagramItem?.selected_candidate_id && viewedCandidate.svg_path && viewedCandidate.pdf_path ? <Button size="small" leadingVisual={Check} disabled={isRunningDiagramAction || Boolean(diagramItem?.active_run_id)} onClick={() => void selectCandidate(viewedCandidate)}>采用此版本</Button> : null}
+                                    <Button size="small" variant="danger" leadingVisual={Trash2} disabled={isRunningDiagramAction || Boolean(diagramItem?.active_run_id)} onClick={() => void deleteCandidate(viewedCandidate)}>删除版本</Button>
+                                  </Box>
+                                </Box>
+                              </>
+                            ) : (
+                              <Box className={sxStyles.diagramEmptyTikz}><Box><Box className={sxStyles.diagramEmptyIcon}><WandSparkles size={22} aria-hidden /></Box><Text className={sxStyles.diagramEmptyTitle}>尚无 TikZ 版本</Text><Text className={sxStyles.diagramMuted}>从原始题图生成第一版</Text></Box></Box>
+                            )}
+
+                            <Box className={sxStyles.diagramAiSection}>
+                              <Text className={sxStyles.diagramAiTitle}><Sparkles size={15} aria-hidden />AI 优化</Text>
+                              <Box className={sxStyles.diagramAiCompose}>
+                                <FormControl>
+                                  <FormControl.Label htmlFor="diagram-instruction">附加指示（可选）</FormControl.Label>
+                                  <TextInput id="diagram-instruction" block placeholder="例如：保留横轴刻度与箭头方向" value={diagramInstruction} onChange={(event) => setDiagramInstruction(event.currentTarget.value)} />
+                                </FormControl>
+                                <FormControl>
+                                  <FormControl.Label htmlFor="diagram-rounds">最大轮数</FormControl.Label>
+                                  <NativeSelect id="diagram-rounds" className={sxStyles.diagramSelect} aria-label="最大轮数" value={diagramMaxCandidates} onChange={(event) => setDiagramMaxCandidates(event.currentTarget.value)}>
+                                    {[1, 2, 3, 4, 5, 6, 7, 8].map((round) => <option key={round} value={round}>{round}</option>)}
+                                  </NativeSelect>
+                                </FormControl>
+                                <Box className={sxStyles.diagramPrimaryAction}>
+                                  {!diagramItem?.candidates.length ? <Button size="small" variant="primary" leadingVisual={WandSparkles} disabled={isRunningDiagramAction || !taskAssetPath} onClick={() => void runDiagramAction("initial")}>AI 生成</Button> : <Button size="small" variant="primary" leadingVisual={Sparkles} disabled={isRunningDiagramAction || Boolean(diagramItem.active_run_id)} onClick={() => void runDiagramAction("continue")}>继续优化</Button>}
+                                </Box>
+                              </Box>
+                              <Box className={sxStyles.diagramAiFooter}>
+                                {diagramItem ? <Box className={sxStyles.diagramAiStatus}>
+                                  <Text className={sxStyles.diagramStatus} data-status={diagramItem.needs_review || diagramItem.status === "failed" ? "danger" : "muted"}>{diagramStatusLabel[diagramItem.status]}</Text>
+                                  {diagramItem.active_run_id ? <Button size="small" variant="danger" leadingVisual={CircleStop} disabled={isRunningDiagramAction} onClick={() => void cancelDiagram()}>取消任务</Button> : null}
+                                </Box> : <span />}
+                                <Button size="small" variant="invisible" leadingVisual={RefreshCw} disabled={isRunningDiagramAction || Boolean(diagramItem?.active_run_id)} onClick={() => void runDiagramAction("rebuild")}>从原图重新重建</Button>
+                              </Box>
+                            </Box>
+
+                          </Box>
+                        ) : (
+                          <Box className={sxStyles.diagramSourceView}>
+                            <Box className={sxStyles.diagramSourceShell}>
+                              <Box className={sxStyles.diagramSourceHead}><Text family="mono">diagram.tikz</Text><Text className={sxStyles.diagramMuted}>{viewedCandidate ? `基于版本 ${viewedCandidate.ordinal}` : "新建 TikZ 版本"}</Text></Box>
+                              <Textarea value={diagramTikzSource} onChange={(event) => { setDiagramTikzSource(event.target.value); setDiagramSvg(null); setDiagramRenderStatus("pending"); setDiagramCompileError(""); }} block rows={14} className={sxStyles.diagramSourceEditor} placeholder="编辑 TikZ 源码。编译并保存后才会生成版本。" />
+                            </Box>
+                            {diagramCompileError ? <Box className={sxStyles.diagramCompileError}><Text className={sxStyles.diagramCompileErrorTitle}>{diagramCompileErrorCategory === "human_review" ? "需要人工介入" : "编译错误"}</Text><Text className={sxStyles.diagramCompileErrorBody}>{diagramCompileError}</Text></Box> : null}
+                            <Box className={sxStyles.diagramSourceActions}>
+                              <Button size="small" variant="invisible" onClick={requestLeaveDiagramSource}>放弃修改</Button>
+                              <Button size="small" variant="primary" leadingVisual={Save} onClick={() => void compileAndSaveDiagram()} disabled={isCompilingDiagram}>{isCompilingDiagram ? <><Spinner size="small" className={sxStyles.sx35} />编译中…</> : "编译并保存"}</Button>
+                            </Box>
+                          </Box>
+                        )}
+                      </Box>
+                    </Box>
+                  </Box>
+                </Box>
+                  ) : null}
+
+                  {diagramKind === "image" ? (
+                    <Box className={sxStyles.diagramImagePanel}>
+                      <Box className={sxStyles.diagramWorkspace}>
+                        <Box className={sxStyles.diagramWorkspaceHead}>
+                          <Box className={sxStyles.diagramVersionTitle}><Text className={sxStyles.diagramCurrentVersion}>题图裁剪</Text><Text className={sxStyles.diagramMuted}>已保存</Text></Box>
+                          <Box className={sxStyles.diagramTypeSwitch} role="group" aria-label="题图色调">
+                            <GeometryButton type="button" className={[sxStyles.diagramSegment, diagramImageTone === "auto" ? sxStyles.diagramSegmentActive : ""].filter(Boolean).join(" ")} aria-pressed={diagramImageTone === "auto"} onClick={() => { setDiagramImageTone("auto"); void persistDiagramSettings({ enabled: true, kind: "image", image_tone: "auto" }).catch(() => undefined); }}>自动适配</GeometryButton>
+                            <GeometryButton type="button" className={[sxStyles.diagramSegment, diagramImageTone === "original" ? sxStyles.diagramSegmentActive : ""].filter(Boolean).join(" ")} aria-pressed={diagramImageTone === "original"} onClick={() => { setDiagramImageTone("original"); void persistDiagramSettings({ enabled: true, kind: "image", image_tone: "original" }).catch(() => undefined); }}>保留原色</GeometryButton>
+                          </Box>
+                        </Box>
+                        {diagramImageUrl ? <FigureCropper imageUrl={diagramImageUrl} value={diagramImageCrop} tone={diagramImageTone} showToneControls={false} onChange={(next) => { setDiagramImageCrop(next); scheduleDiagramSettings({ enabled: true, kind: "image", image_crop: next }); }} onToneChange={(tone) => { setDiagramImageTone(tone); void persistDiagramSettings({ enabled: true, kind: "image", image_tone: tone }).catch(() => undefined); }} /> : <Text className={sxStyles.sx1}>当前题目没有可用的原始图片。</Text>}
+                        <Box className={sxStyles.diagramImageFooter}><Text className={sxStyles.diagramMuted}>裁剪自原始题图 · 拖动选区后立即保存</Text><Crop size={15} aria-hidden /></Box>
+                      </Box>
+                    </Box>
                   ) : null}
                 </Box>
-              ) : null}
+              </Collapse>
             </Box>
-          </Collapse>
+          )}
         </Box>
 
         <Box className={sxStyles.sx41}>
           <Button size="small" variant="invisible" onClick={requestClose}>取消</Button>
-          <Button variant="primary" onClick={save} disabled={isSaving || !isDirty}>
+          <Button variant="primary" leadingVisual={Save} onClick={save} disabled={isSaving || !isDirty}>
             {isSaving ? (
               <>
                 <Spinner size="small" className={sxStyles.sx42} />

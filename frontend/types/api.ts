@@ -4,6 +4,9 @@ export type RunStatus = "queued" | "running" | "completed" | "failed" | "cancell
 export type ContentFormat = "legacy-markdown-latex" | "oopsmark-v1";
 export type NormalizedRect = { x: number; y: number; width: number; height: number };
 export type DiagramImageTone = "auto" | "original";
+export type DiagramPlacement =
+  | { kind: "side"; side: "left" | "right" }
+  | { kind: "block"; anchor: "after_stem" | "after_options"; align: "left" | "center" | "right" };
 export type ApiErrorCategory = "request" | "model_request" | "tikz_compile" | "human_review" | "internal";
 
 export interface DiagramCandidate {
@@ -17,6 +20,9 @@ export interface DiagramCandidate {
   pdf_path?: string | null;
   png_path?: string | null;
   renderer_profile_version?: string | null;
+  base_font_size_pt?: number | null;
+  canvas_width_em?: number | null;
+  canvas_height_em?: number | null;
   decision?: "accept" | "revise" | "keep_image" | null;
   hard_errors: string[];
   soft_differences: string[];
@@ -34,8 +40,9 @@ export interface DiagramItem {
   source_region?: NormalizedRect | null;
   fallback_image_path?: string | null;
   image_tone: DiagramImageTone;
-  position: "left" | "right";
-  scale_percent: number;
+  enabled: boolean;
+  placement: DiagramPlacement;
+  scale_adjustment_percent: number;
   status: "detected" | "queued" | "generating" | "rendering" | "reviewing" | "ready_tikz" | "ready_image" | "needs_review" | "failed" | "cancelled";
   selected_candidate_id?: string | null;
   candidates: DiagramCandidate[];
@@ -132,14 +139,17 @@ export interface TaskResponse {
       difficulty_review_reason?: string | null;
       has_diagram?: boolean;
       diagram_detected?: boolean;
+      diagram_enabled?: boolean;
       diagram_kind?: string | null;
       diagram_tikz_source?: string | null;
       diagram_svg?: string | null;
       diagram_image_path?: string | null;
-      diagram_image_crop?: NormalizedRect | null;
       diagram_image_tone?: DiagramImageTone;
-      diagram_position?: "left" | "right";
-      diagram_scale_percent?: number | null;
+      diagram_placement?: DiagramPlacement;
+      diagram_scale_adjustment_percent?: number | null;
+      diagram_base_font_size_pt?: number | null;
+      diagram_canvas_width_em?: number | null;
+      diagram_canvas_height_em?: number | null;
       diagram_render_status?: string | null;
       diagram_error?: string | null;
       diagram_error_category?: ApiErrorCategory | null;
@@ -219,14 +229,17 @@ export interface ProblemSummary {
   difficulty_review_reason?: string | null;
   has_diagram?: boolean;
   diagram_detected?: boolean;
+  diagram_enabled?: boolean;
   diagram_kind?: "tikz" | "image" | null;
   diagram_tikz_source?: string | null;
   diagram_svg?: string | null;
   diagram_image_path?: string | null;
-  diagram_image_crop?: NormalizedRect | null;
   diagram_image_tone?: DiagramImageTone;
-  diagram_position?: "left" | "right";
-  diagram_scale_percent?: number | null;
+  diagram_placement?: DiagramPlacement;
+  diagram_scale_adjustment_percent?: number | null;
+  diagram_base_font_size_pt?: number | null;
+  diagram_canvas_width_em?: number | null;
+  diagram_canvas_height_em?: number | null;
   diagram_render_status?: string | null;
   diagram_error?: string | null;
   diagram_error_category?: ApiErrorCategory | null;

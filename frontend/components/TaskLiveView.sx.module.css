@@ -26,13 +26,7 @@
 .sx9{margin-top:var(--oops-space-4);}
 
 /* Generated from components/TaskLiveView.tsx */
-.sx10{margin-top:var(--oops-space-4);padding-top:var(--oops-space-4);border-top-width:1px;border-top-style:solid;border-top-color:var(--borderColor-default);}
-
-/* Generated from components/TaskLiveView.tsx */
-.sx11{display:flex;align-items:baseline;justify-content:space-between;gap:var(--oops-space-2);margin-bottom:var(--oops-space-2);}
-
-/* Generated from components/TaskLiveView.tsx */
-.sx12{font-weight:600;}
+.sx10{margin-top:var(--oops-space-3);padding-top:var(--oops-space-3);border-top-width:1px;border-top-style:solid;border-top-color:var(--borderColor-default);}
 
 /* Generated from components/TaskLiveView.tsx */
 .sx13{padding-block:var(--oops-space-7);}
@@ -59,8 +53,9 @@
 .titleRow[data-completed="true"]{margin-bottom:0;}
 .title{margin:0;font-size:var(--oops-text-lg);}
 .title[data-completed="true"]{font-size:var(--oops-text-md);}
-.diagramStatus{font-size:var(--oops-text-xs);}
-.diagramStatus[data-status="review"]{color:var(--fgColor-danger);}
-.diagramStatus[data-status="success"]{color:var(--fgColor-success);}
-.diagramStatus[data-status="pending"]{color:var(--fgColor-muted);}
+.diagramDisclosure{padding-inline:var(--oops-space-1);color:var(--fgColor-muted);}
+.diagramDisclosure[data-status="error"]{color:var(--fgColor-danger);}
+.diagramDisclosure[data-status="success"]{color:var(--fgColor-success);}
+.diagramDisclosure[data-status="cancelled"]{color:var(--fgColor-muted);}
+.diagramDisclosure[data-status="pending"]{color:var(--fgColor-info);}
 .navLink{text-decoration:none;}
