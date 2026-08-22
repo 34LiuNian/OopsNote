@@ -85,7 +85,7 @@ export function SettingsModelSection({
         <Box className={sxStyles.sx3}>
           <CpuIcon size={16} />
           <Box>
-            <Text className="oops-section-subtitle">Models</Text>
+            <Text className="oops-section-subtitle">模型</Text>
             <Heading as="h3" className={["oops-section-title", sxStyles.sx4].filter(Boolean).join(" ")} >
               Model and Agent Settings
             </Heading>
@@ -93,20 +93,20 @@ export function SettingsModelSection({
         </Box>
         <Box className={sxStyles.sx5}>
           <Button onClick={() => onRefreshModels(true)} disabled={isLoadingModels || isSaving} leadingVisual={SyncIcon}>
-            {isLoadingModels ? "Refreshing..." : "Refresh model list"}
+            {isLoadingModels ? "正在刷新..." : "刷新模型列表"}
           </Button>
           <Button onClick={onReset} disabled={!isDirty || isSaving || isLoadingSettings}>
-            Reset
+            重置
           </Button>
           <Button variant="primary" onClick={onSave} disabled={!isDirty || isSaving || isLoadingSettings}>
-            {isSaving ? "Saving..." : "Save"}
+            {isSaving ? "正在保存..." : "保存"}
           </Button>
         </Box>
       </Box>
 
       {isDirty && !isSaving && !isLoadingSettings && (
         <Box className={["oops-badge oops-badge-warning", sxStyles.sx6].filter(Boolean).join(" ")} >
-          Unsaved changes
+          有未保存更改
         </Box>
       )}
       <ErrorBanner message={agentModelsErrorMessage} />

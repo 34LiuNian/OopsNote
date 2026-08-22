@@ -14,7 +14,7 @@
 .sx5{display:flex;gap:var(--oops-space-2);flex-wrap:wrap;}
 
 /* Generated from app/library/page.tsx */
-.sx6{position:relative;cursor:pointer;border-radius:var(--oops-radius-sm);overflow:hidden;border:1px solid;border-color:var(--borderColor-default);transition:all var(--oops-transition-fast);}.sx6:hover{box-shadow:var(--oops-shadow-md);transform:scale(1.05);}
+.sx6{position:relative;cursor:pointer;border-radius:var(--oops-radius-sm);overflow:hidden;border:1px solid;border-color:var(--borderColor-default);transition:border-color var(--oops-transition-fast),box-shadow var(--oops-transition-fast);}.sx6:hover{border-color:var(--fgColor-default);box-shadow:var(--oops-shadow-sm);}
 
 /* Generated from app/library/page.tsx */
 .sx7{width:100%;display:flex;justify-content:center;}

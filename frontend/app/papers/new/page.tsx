@@ -9,6 +9,7 @@ import { ErrorBanner } from "@/components/ui/ErrorBanner";
 import { DEFAULT_SUBJECT, SUBJECT_OPTIONS } from "@/config/subjects";
 import { getKnowledgeTree } from "@/features/tags/api";
 import { createPaper } from "@/features/papers";
+import { DEFAULT_REQUESTED_COUNTS } from "@/features/papers/defaultPaperStructure";
 import { KnowledgeTreeSelector } from "@/features/papers/KnowledgeTreeSelector";
 import type { DifficultyBand, KnowledgeTreeNode } from "@/types/api";
 import { PageHeader } from "@/components/layout/PageHeader";
@@ -89,7 +90,7 @@ export default function NewPaperPage() {
     DIFFICULTY_PRESETS.medium,
   );
   const [counts, setCounts] = useState<Record<string, number>>(
-    Object.fromEntries(QUESTION_TYPES.map((type) => [type, 0])),
+    { ...DEFAULT_REQUESTED_COUNTS },
   );
   const [title, setTitle] = useState(() => defaultTitle(DEFAULT_SUBJECT));
   const [titleCustomized, setTitleCustomized] = useState(false);

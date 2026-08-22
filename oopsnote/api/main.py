@@ -580,7 +580,9 @@ def _problem_view(task: TaskRecord, problem: Problem) -> dict[str, Any]:
     metadata = task.metadata
     difficulty_reason = difficulty_review_reason(task)
     diagram = task.diagram_items[0] if task.diagram_items else None
-    diagram_enabled = bool(diagram.enabled) if diagram else bool(problem.has_diagram)
+    # Only a retained DiagramItem is an actionable display/export diagram.
+    # ``has_diagram`` remains raw historical detection evidence.
+    diagram_enabled = bool(diagram and diagram.enabled)
     selected = (
         next(
             (

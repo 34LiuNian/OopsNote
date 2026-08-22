@@ -2,7 +2,6 @@
 
 import Image from "next/image";
 import { useCallback, useState } from "react";
-import Link from "next/link";
 import {
   Box,
   Button,
@@ -11,6 +10,7 @@ import {
   Text,
   Spinner,
 } from "@/components/ui/primitives";
+import { RefreshCw } from "lucide-react";
 import { useAuthenticatedAssetUrl } from "@/hooks/useAuthenticatedAssetUrl";
 import { confirmAction } from "@/lib/confirm";
 import type { DiagramItem, TaskRunSummary } from "@/types/api";
@@ -206,6 +206,7 @@ export function TaskLiveView({ taskId }: { taskId: string }) {
         progressLines={streamProgress}
       />
       <ErrorBanner message={streamErrorMessage} title="加载任务失败" />
+      {streamErrorMessage ? <Button variant="secondary" size="small" leadingVisual={RefreshCw} onClick={() => void loadOnce()}>重新加载任务</Button> : null}
 
       {/* Task header card */}
       <Box
@@ -385,16 +386,6 @@ export function TaskLiveView({ taskId }: { taskId: string }) {
           onOpenVariations={() => setIsVariationOpen(true)}
         />
       )}
-
-      {/* Bottom navigation */}
-      <Box className={sxStyles.sx15}>
-        <Link href="/" className={sxStyles.navLink}>
-          <Text as="span" className={sxStyles.sx16}>← 采集面板</Text>
-        </Link>
-        <Link href="/library" className={sxStyles.navLink}>
-          <Text as="span" className={sxStyles.sx17}>题库总览</Text>
-        </Link>
-      </Box>
     </Box>
   );
 }

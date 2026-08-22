@@ -15,6 +15,8 @@ from oopsnote.core import (
     TaskRecord,
 )
 
+from .defaults import default_points_for
+
 PaperAnswerSpace = Literal["compact", "standard", "large"]
 PaperDiagramKind = Literal["tikz", "image"]
 
@@ -74,18 +76,14 @@ def _paper_diagram(task: TaskRecord, *, item_id: str) -> PaperDiagram | None:
     problem = task.problem
     if problem is None:
         return None
-    if not problem.has_diagram and not task.diagram_items:
+    # DiagramItem is the only exportable diagram source. Historical
+    # ``has_diagram`` flags can survive without a reconstructed item.
+    if not task.diagram_items:
         return None
     if len(task.diagram_items) > 1:
         raise PaperDocumentError(
             "multiple-diagrams-not-supported",
             f"Problem {problem.id} has multiple diagrams; this paper layout supports one",
-            item_id=item_id,
-        )
-    if not task.diagram_items:
-        raise PaperDocumentError(
-            "missing-diagram-item",
-            f"Problem {problem.id} has no reconstructed diagram item",
             item_id=item_id,
         )
     item = task.diagram_items[0]
@@ -162,6 +160,7 @@ def build_paper_document(
     sections: list[PaperDocumentSection] = []
     current_type: str | None = None
     current_items: list[PaperDocumentItem] = []
+    type_ordinals: dict[str, int] = {}
 
     def flush_section() -> None:
         nonlocal current_items, current_type
@@ -200,12 +199,18 @@ def build_paper_document(
         if current_type != draft_item.question_type:
             flush_section()
             current_type = draft_item.question_type
+        ordinal = type_ordinals.get(draft_item.question_type, 0)
+        type_ordinals[draft_item.question_type] = ordinal + 1
         current_items.append(
             PaperDocumentItem(
                 id=draft_item.id,
                 number=number,
                 question_type=draft_item.question_type,
-                points=draft_item.points,
+                points=(
+                    draft_item.points
+                    if draft_item.points is not None
+                    else default_points_for(draft_item.question_type, ordinal)
+                ),
                 answer_space=draft_item.answer_space,
                 problem=problem,
                 diagram=_paper_diagram(task, item_id=draft_item.id),

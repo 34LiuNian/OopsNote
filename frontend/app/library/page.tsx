@@ -3,7 +3,7 @@
 import { useCallback, useState } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
-import { ListChecks, SlidersHorizontal, Trash2 } from "lucide-react";
+import { ListChecks, RotateCcw, SlidersHorizontal, Trash2 } from "lucide-react";
 import {
   Box,
   Text,
@@ -75,9 +75,7 @@ export default function LibraryPage() {
     subject: subject || undefined,
   });
   const [taskStripTab, setTaskStripTab] = useState<"active" | "failed">("active");
-  const taskStripView = taskStripTab === "active" && activeTaskItems.length === 0 && failedTaskItems.length > 0
-    ? "failed"
-    : taskStripTab;
+  const taskStripView = taskStripTab;
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Record<string, boolean>>({});
   const [isBatchDeleting, setIsBatchDeleting] = useState(false);
@@ -378,11 +376,17 @@ export default function LibraryPage() {
         {items.length === 0 ? (
           isLoading ? (
             <ListSkeleton count={5} showAvatar={false} />
+          ) : error ? (
+            <Box className="oops-empty-state">
+              <Text as="p" className={sxStyles.sx15}>题库加载失败</Text>
+              <Text as="p" className={sxStyles.sx16}>{error || "暂时无法读取题库，请检查连接后重试。"}</Text>
+              <Button variant="secondary" leadingVisual={RotateCcw} onClick={() => void refreshProblems()}>重新加载</Button>
+            </Box>
           ) : (
             <Box className="oops-empty-state">
               <Text as="p" className={sxStyles.sx15}>暂无题目</Text>
               <Text as="p" className={sxStyles.sx16}>在首页上传手稿图片，AI 会自动识别并生成题目。</Text>
-              <Link href="/" className={sxStyles.taskLink}>
+              <Link href="/new" className={sxStyles.taskLink}>
                 <Button variant="primary" className={sxStyles.sx17}>去上传</Button>
               </Link>
             </Box>
@@ -401,6 +405,8 @@ export default function LibraryPage() {
                   toggleKey={selectionMode ? problemSelectionKey(item.task_id, item.problem_id) : undefined}
                   onToggleSelection={selectionMode ? toggleSelected : undefined}
                   showViewLink={!selectionMode}
+                  showMetaPills
+                  showAnswerPeek={!selectionMode}
                 />
               </Box>
             ))}

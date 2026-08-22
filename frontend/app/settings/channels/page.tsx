@@ -346,7 +346,13 @@ export default function AiChannelsPage() {
       />, secondarySidebarTarget) : null}
       <div className={styles.channelWorkspace}>
       <section className={styles.channelDetail} aria-label="AI 渠道详情">
-        {!showEditor ? (
+        {channels.isError ? (
+          <div className={styles.emptyState}>
+            <strong>无法加载 AI 渠道</strong>
+            <p>请检查管理员权限和后端服务，然后重新加载。</p>
+            <Button variant="secondary" onClick={() => void channels.refetch()}>重新加载</Button>
+          </div>
+        ) : !showEditor ? (
           <div className={styles.emptyState} style={{ minHeight: "100%" }}>
             <ProviderMark provider="openai-compatible" size={52} />
             <strong>选择一个渠道开始配置</strong>
@@ -414,9 +420,9 @@ export default function AiChannelsPage() {
                 <div className={styles.formRow}>
                   <div><div className={styles.overviewLabel}>API Key</div><div className={styles.overviewHint}>{selected?.has_secret ? "已保存，可查看或替换" : "保存后自动同步模型"}</div></div>
                   <div className={styles.formControl}>
-                    <div className={styles.inlineControlGroup}>
+                    <div className={styles.inlineControlGroup} data-secret-visible={secretVisible ? "true" : "false"}>
                       <PasswordInput
-                        classNames={{ input: styles.credentialInput }}
+                        className={styles.credentialControl}
                         value={displayedSecret}
                         visible={secretVisible}
                         disabled={revealingSecret}

@@ -2,7 +2,7 @@
 
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import { useReducedMotion } from "@/components/ui/primitives";
-import { Ban, Check, Copy, KeyRound, LoaderCircle, RefreshCcw, RotateCcw, ShieldAlert, Ticket, UserPlus, UsersRound } from "lucide-react";
+import { Ban, Check, Copy, KeyRound, LoaderCircle, RefreshCw, RefreshCcw, RotateCcw, ShieldAlert, Ticket, UserPlus, UsersRound } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { InitialAvatar } from "@/components/ui/InitialAvatar";
@@ -221,6 +221,7 @@ export default function MembersPage() {
         )}
       />
       <ErrorBanner message={loadError} title="成员加载失败" />
+      {loadError ? <Button type="button" size="small" variant="secondary" leadingVisual={RefreshCw} onClick={() => void load()}>重新加载</Button> : null}
 
       <Collapse expanded={showCreateForm} transitionDuration={reducedMotion ? 0 : 180}>
         <section className={styles.panel}>
@@ -248,13 +249,13 @@ export default function MembersPage() {
                 const quotaLabel = member.provisioningPending ? "等待首次访问" : quotaAvailable ? "未建立" : "暂不可用";
                 return (
                   <tr key={member.id}>
-                    <td><div className={styles.memberIdentity}><InitialAvatar name={displayName} image={member.image} size={32} /><div className={styles.identity}><strong>{displayName}</strong><span>{member.email}</span></div></div></td>
-                    <td><span className={`${styles.status}${member.banned ? ` ${styles.statusBanned}` : ""}`}><span className={styles.statusDot} />{member.banned ? "已禁用" : "可用"}</span></td>
-                    <td><Select className={styles.role} aria-label={`${displayName} 的角色`} value={member.role || "user"} disabled={isBusy || isCurrentUser} onValueChange={(value) => void memberAction(member, "set-role", value)}><Select.Option value="user">用户</Select.Option><Select.Option value="admin">管理员</Select.Option></Select></td>
-                    <td>{member.quota ? <div className={styles.quota}><span>{member.quota.used_units} /</span><TextInput aria-label={`${member.email} 每日额度`} type="number" min="0" defaultValue={member.quota.daily_success_limit} onBlur={(event) => void updateQuota(member, event.target.value)} /></div> : quotaLabel}</td>
-                    <td>{member.quota ? `${member.quota.active_runs} / ${member.quota.max_concurrent_runs}` : "-"}</td>
-                    <td>{new Date(member.createdAt).toLocaleDateString("zh-CN")}</td>
-                    <td><div className={styles.actions}>
+                    <td data-label="成员"><div className={styles.memberIdentity}><InitialAvatar name={displayName} image={member.image} size={32} /><div className={styles.identity}><strong>{displayName}</strong><span>{member.email}</span></div></div></td>
+                    <td data-label="状态"><span className={`${styles.status}${member.banned ? ` ${styles.statusBanned}` : ""}`}><span className={styles.statusDot} />{member.banned ? "已禁用" : "可用"}</span></td>
+                    <td data-label="角色"><Select className={styles.role} aria-label={`${displayName} 的角色`} value={member.role || "user"} disabled={isBusy || isCurrentUser} onValueChange={(value) => void memberAction(member, "set-role", value)}><Select.Option value="user">用户</Select.Option><Select.Option value="admin">管理员</Select.Option></Select></td>
+                    <td data-label="今日额度">{member.quota ? <div className={styles.quota}><span>{member.quota.used_units} /</span><TextInput aria-label={`${member.email} 每日额度`} type="number" min="0" defaultValue={member.quota.daily_success_limit} onBlur={(event) => void updateQuota(member, event.target.value)} /></div> : quotaLabel}</td>
+                    <td data-label="并发">{member.quota ? `${member.quota.active_runs} / ${member.quota.max_concurrent_runs}` : "-"}</td>
+                    <td data-label="加入时间">{new Date(member.createdAt).toLocaleDateString("zh-CN")}</td>
+                    <td data-label="操作"><div className={styles.actions}>
                       <IconButton className={styles.iconButton} type="button" aria-label="撤销全部会话" title="撤销全部会话" icon={RefreshCcw} disabled={isBusy} onClick={() => void memberAction(member, "revoke-sessions")} />
                       <IconButton className={styles.iconButton} type="button" aria-label={member.banned ? "恢复账号" : "禁用账号"} title={isCurrentUser ? "不能禁用当前管理员" : member.banned ? "恢复账号" : "禁用账号"} icon={member.banned ? RotateCcw : Ban} disabled={isBusy || isCurrentUser} onClick={() => void memberAction(member, member.banned ? "unban" : "ban")} />
                       {!isBusy && <Check size={14} aria-hidden="true" />}
@@ -277,7 +278,7 @@ export default function MembersPage() {
               {invitations.map((invitation) => {
                 const label = invitation.status === "active" ? "有效" : invitation.status === "exhausted" ? "已用完" : invitation.status === "revoked" ? "已撤销" : "已过期";
                 const isBusy = busy === `${invitation.id}:revoke-invitation`;
-                return <tr key={invitation.id}><td>{invitation.useCount} / {invitation.maxUses}</td><td>{invitation.initialDailySuccessLimit}</td><td>{label}</td><td>{new Date(invitation.expiresAt).toLocaleString("zh-CN")}</td><td>{invitation.status === "active" && <IconButton type="button" aria-label="撤销邀请码" title="撤销邀请码" icon={Ban} disabled={isBusy} onClick={() => void revokeInvitation(invitation)} />}</td></tr>;
+                return <tr key={invitation.id}><td data-label="使用次数">{invitation.useCount} / {invitation.maxUses}</td><td data-label="每日额度">{invitation.initialDailySuccessLimit}</td><td data-label="状态">{label}</td><td data-label="有效期">{new Date(invitation.expiresAt).toLocaleString("zh-CN")}</td><td data-label="操作">{invitation.status === "active" && <IconButton type="button" aria-label="撤销邀请码" title="撤销邀请码" icon={Ban} disabled={isBusy} onClick={() => void revokeInvitation(invitation)} />}</td></tr>;
               })}
               {!loading && invitations.length === 0 && <tr><td colSpan={5}>暂无邀请码</td></tr>}
             </tbody>

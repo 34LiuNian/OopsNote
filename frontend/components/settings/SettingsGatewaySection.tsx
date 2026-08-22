@@ -58,7 +58,7 @@ export function SettingsGatewaySection({
         <Box className={sxStyles.sx3}>
           <PlugIcon size={16} />
           <Box>
-            <Text className="oops-section-subtitle">Connection</Text>
+            <Text className="oops-section-subtitle">连接</Text>
             <Heading as="h3" className={["oops-section-title", sxStyles.sx4].filter(Boolean).join(" ")} >
               连接配置
             </Heading>
@@ -107,7 +107,7 @@ export function SettingsGatewaySection({
       ) : (
         <Box className={sxStyles.sx8}>
           <FormControl>
-            <FormControl.Label>API Base URL</FormControl.Label>
+            <FormControl.Label>API 地址（Base URL）</FormControl.Label>
             <TextInput
               value={draft.base_url}
               onChange={(e) => onSetDraftField("base_url", e.target.value)}
@@ -123,7 +123,7 @@ export function SettingsGatewaySection({
           </FormControl>
 
           <FormControl>
-            <FormControl.Label>API Key</FormControl.Label>
+            <FormControl.Label>API 密钥</FormControl.Label>
             <TextInput
               type="password"
               value={draft.api_key}

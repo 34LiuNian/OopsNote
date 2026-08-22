@@ -332,17 +332,20 @@ function ProblemDetailCard({
 
       {solution && (
         <Box className={sxStyles.sx17}>
-          <Box
+          <Button
+            type="button"
+            variant="invisible"
+            contentAlign="start"
             onClick={() => setShowAnswer(!showAnswer)}
             className={sxStyles.sx18}
+            aria-expanded={showAnswer}
+            aria-controls={`task-answer-${problem.problem_id}`}
+            trailingVisual={showAnswer ? ChevronUpIcon : ChevronDownIcon}
           >
-            <Text className={sxStyles.sx19}>
-              {showAnswer ? "收起答案与解析" : "展开答案与解析"}
-            </Text>
-            {showAnswer ? <ChevronUpIcon size={16} /> : <ChevronDownIcon size={16} />}
-          </Box>
+            {showAnswer ? "收起答案与解析" : "展开答案与解析"}
+          </Button>
           {showAnswer && (
-            <Box className={sxStyles.sx20}>
+            <Box id={`task-answer-${problem.problem_id}`} className={sxStyles.sx20}>
               <Box className={sxStyles.sx21}>
                 <Text className={sxStyles.sx22}>答案</Text>
                 <MarkdownRenderer text={solution.answer || ""} format={problem.content_format} />

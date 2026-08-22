@@ -81,3 +81,9 @@ venv/
 # playground
 /.playwright-cli/
 /output/
+
+/.codex-runtime/
+/tmp/
+
+/impeccable-extract/
+/.impeccable/

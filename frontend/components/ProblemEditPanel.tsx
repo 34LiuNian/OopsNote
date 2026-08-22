@@ -2,9 +2,9 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Image from "next/image";
-import { Box, Button, Collapse, FormControl, GeometryButton, IconButton, NativeInput, NativeSelect, Text, TextInput, Textarea, useReducedMotion } from "@/components/ui/primitives";
+import { Box, Button, Collapse, FormControl, GeometryButton, Heading, IconButton, NativeInput, NativeSelect, Text, TextInput, Textarea, useReducedMotion } from "@/components/ui/primitives";
 import { PlusIcon, TrashIcon } from "@/components/ui/icons";
-import { Check, ChevronDown, ChevronRight, CircleStop, Code2, Crop, Eye, History, Image as ImageIcon, ImageMinus, ImagePlus, PanelRight, RefreshCw, Save, Sparkles, Trash2, WandSparkles } from "lucide-react";
+import { Check, ChevronDown, ChevronRight, CircleStop, Code2, Crop, Eye, History, Image as ImageIcon, ImageMinus, ImagePlus, PanelRight, RefreshCw, Save, Sparkles, Trash2, WandSparkles, X } from "lucide-react";
 import { optionLabel } from "@/lib/content/options";
 import { notify } from "@/lib/notify";
 import { confirmAction } from "@/lib/confirm";
@@ -551,143 +551,170 @@ export function ProblemEditPanel({ taskId, taskAssetPath, problem, tagStyles, on
     diagramSourceKind === "image" ? diagramImagePath : null,
   );
 
+  const saveState = isSaving ? "saving" : isDirty ? "dirty" : "saved";
+  const saveStateLabel = isSaving ? "保存中" : isDirty ? "未保存" : "已保存";
+
   return (
-    <Box className={["oops-card", sxStyles.sx2].filter(Boolean).join(" ")} >
-      <Box className={sxStyles.sx3}>
-        <Box className={sxStyles.sx4}>
-          <Box className={sxStyles.sx5}>
-            <Text className={sxStyles.sx6}>编辑题目</Text>
-          </Box>
-          <Box className={sxStyles.sx7}>
-            {isDirty ? <Text className={sxStyles.sx8}>未保存</Text> : null}
-            <Button size="small" variant="invisible" onClick={requestClose}>关闭</Button>
-          </Box>
+    <Box className={sxStyles.editorShell}>
+      <Box as="header" className={sxStyles.editorHeader}>
+        <Box className={sxStyles.headerIdentity}>
+          <Heading order={2} className={sxStyles.editorTitle}>编辑题目</Heading>
+          <Text className={sxStyles.headerContext} title={sourceTags[0] || undefined}>
+            <span>{questionNo ? `题 ${questionNo}` : "未编号"}</span>
+            {chapter ? <span>{chapter}</span> : null}
+            {sourceTags[0] ? <span className={sxStyles.headerSource}>{sourceTags[0]}</span> : null}
+          </Text>
         </Box>
+        <IconButton size="small" variant="invisible" icon={X} aria-label="关闭" onClick={requestClose} />
       </Box>
 
-      <Box className={sxStyles.sx9}>
-        <Box className={sxStyles.sx10}>
-          <FormControl>
-            <FormControl.Label>题号</FormControl.Label>
-            <TextInput value={questionNo} onChange={(e) => setQuestionNo(e.target.value)} block />
-          </FormControl>
-          <FormControl>
-            <FormControl.Label>章节</FormControl.Label>
-            <TextInput value={chapter} onChange={(e) => setChapter(e.target.value)} aria-label="章节" block />
-          </FormControl>
-          <TagPicker
-            title="来源"
-            dimension="meta"
-            value={sourceTags}
-            onChange={(next) => setSourceTags(next.slice(0, 1))}
-            styles={tagStyles}
-            placeholder="输入来源"
-          />
-          <FormControl>
-            <FormControl.Label>难度系数</FormControl.Label>
-            <TextInput
-              type="number"
-              aria-label="难度系数"
-              min={0}
-              max={1}
-              step={0.01}
-              value={difficultyCoefficientOverride}
-              onChange={(event) => setDifficultyCoefficientOverride(event.target.value)}
-              block
-            />
-          </FormControl>
-          <FormControl>
-            <FormControl.Label>区段总题数</FormControl.Label>
-            <TextInput
-              type="number"
-              aria-label="区段总题数"
-              min={1}
-              step={1}
-              value={sectionQuestionCount}
-              onChange={(event) => setSectionQuestionCount(event.target.value)}
-              block
-            />
-          </FormControl>
-          {problem.difficulty_needs_review && (
-            <Text className={sxStyles.sx11}>
-              请补全题号、来源和区段总题数，或设置难度系数。
-            </Text>
-          )}
-        </Box>
+      <Box className={sxStyles.editorBody}>
+        <Box className={sxStyles.editorGrid}>
+          <Box as="aside" className={sxStyles.detailsRail} aria-labelledby="problem-details-heading">
+            <Box className={sxStyles.detailsSection}>
+              <Heading order={3} id="problem-details-heading" className={sxStyles.detailsTitle}>题目信息</Heading>
+              <Box className={sxStyles.identityFields}>
+                <FormControl>
+                  <FormControl.Label>题号</FormControl.Label>
+                  <TextInput value={questionNo} onChange={(e) => setQuestionNo(e.target.value)} block />
+                </FormControl>
+                <FormControl>
+                  <FormControl.Label>章节</FormControl.Label>
+                  <TextInput value={chapter} onChange={(e) => setChapter(e.target.value)} aria-label="章节" block />
+                </FormControl>
+              </Box>
+              <TagPicker
+                title="来源"
+                dimension="meta"
+                value={sourceTags}
+                onChange={(next) => setSourceTags(next.slice(0, 1))}
+                styles={tagStyles}
+                placeholder="输入来源"
+              />
+            </Box>
 
-        <Box className={sxStyles.section}>
-          <FormControl>
-            <FormControl.Label>题干</FormControl.Label>
-            <Textarea
-              value={problemText}
-              onChange={(e) => setProblemText(e.target.value)}
-              block
-              rows={8}
-              className="problem-statement-editor"
-            />
-          </FormControl>
-        </Box>
-
-        <Box className={[sxStyles.section, "option-editor"].join(" ")}>
-          <Box className="option-editor__header">
-            <Text className={sxStyles.sx12}>选项</Text>
-            <Button size="small" variant="invisible" leadingVisual={PlusIcon} onClick={addOption}>添加</Button>
+            <Box className={sxStyles.detailsSection}>
+              <Heading order={3} className={sxStyles.detailsTitle}>难度与区段</Heading>
+              <Box className={sxStyles.identityFields}>
+                <FormControl>
+                  <FormControl.Label>难度系数</FormControl.Label>
+                  <TextInput
+                    type="number"
+                    aria-label="难度系数"
+                    min={0}
+                    max={1}
+                    step={0.01}
+                    value={difficultyCoefficientOverride}
+                    onChange={(event) => setDifficultyCoefficientOverride(event.target.value)}
+                    block
+                  />
+                </FormControl>
+                <FormControl>
+                  <FormControl.Label>区段总题数</FormControl.Label>
+                  <TextInput
+                    type="number"
+                    aria-label="区段总题数"
+                    min={1}
+                    step={1}
+                    value={sectionQuestionCount}
+                    onChange={(event) => setSectionQuestionCount(event.target.value)}
+                    block
+                  />
+                </FormControl>
+              </Box>
+              {problem.difficulty_needs_review ? (
+                <Text className={sxStyles.reviewNotice}>
+                  请补全题号、来源和区段总题数，或设置难度系数。
+                </Text>
+              ) : null}
+            </Box>
           </Box>
-          <Box className="option-editor__list">
-            {options.map((opt, index) => (
-              <Box key={opt.id} className="option-editor__row">
-                <Text className="option-editor__label">{optionLabel(index)}</Text>
+
+          <Box className={sxStyles.questionColumn}>
+            <Box as="section" className={sxStyles.contentSection} aria-labelledby="problem-content-heading">
+              <Box className={sxStyles.sectionHeading}>
+                <Box>
+                  <Heading order={3} id="problem-content-heading" className={sxStyles.sectionHeadingTitle}>题目内容</Heading>
+                  <Text className={sxStyles.sectionSummary}>{options.length ? `${options.length} 个选项` : "无选项"}</Text>
+                </Box>
+              </Box>
+              <FormControl>
+                <FormControl.Label>题干</FormControl.Label>
                 <Textarea
-                  value={opt.text}
-                  onChange={(e) => updateOption(opt.id, { text: e.target.value })}
-                  aria-label={`选项 ${optionLabel(index)}`}
-                  placeholder={`选项 ${optionLabel(index)} 内容`}
+                  value={problemText}
+                  onChange={(e) => setProblemText(e.target.value)}
                   block
-                  rows={1}
-                  className="option-editor__input"
+                  rows={8}
+                  className={["problem-statement-editor", sxStyles.stemEditor].join(" ")}
                 />
-                <IconButton
-                  size="small"
-                  variant="invisible"
-                  icon={TrashIcon}
-                  aria-label={`删除选项 ${optionLabel(index)}`}
-                  className="option-editor__remove"
-                  onClick={() => removeOptionDraft(opt.id)}
+              </FormControl>
+            </Box>
+
+            <Box as="section" className={[sxStyles.contentSection, "option-editor"].join(" ")} aria-labelledby="problem-options-heading">
+              <Box className={[sxStyles.sectionHeading, "option-editor__header"].join(" ")}>
+                <Heading order={3} id="problem-options-heading" className={sxStyles.sectionHeadingTitle}>选项</Heading>
+                <Button size="small" variant="invisible" leadingVisual={PlusIcon} onClick={addOption}>添加选项</Button>
+              </Box>
+              <Box className={["option-editor__list", sxStyles.optionList].join(" ")}>
+                {options.map((opt, index) => (
+                  <Box key={opt.id} className={["option-editor__row", sxStyles.optionRow].join(" ")}>
+                    <Text weight="bold" className={["option-editor__label", sxStyles.optionLabel].join(" ")}>{optionLabel(index)}.</Text>
+                    <Textarea
+                      value={opt.text}
+                      onChange={(e) => updateOption(opt.id, { text: e.target.value })}
+                      aria-label={`选项 ${optionLabel(index)}`}
+                      placeholder={`选项 ${optionLabel(index)} 内容`}
+                      block
+                      rows={1}
+                      className={["option-editor__input", sxStyles.optionInput].join(" ")}
+                    />
+                    <IconButton
+                      size="small"
+                      variant="invisible"
+                      icon={TrashIcon}
+                      aria-label={`删除选项 ${optionLabel(index)}`}
+                      className="option-editor__remove"
+                      onClick={() => removeOptionDraft(opt.id)}
+                    />
+                  </Box>
+                ))}
+              </Box>
+            </Box>
+
+            <Box as="section" className={sxStyles.contentSection} aria-labelledby="problem-tags-heading">
+              <Box className={sxStyles.sectionHeading}>
+                <Heading order={3} id="problem-tags-heading" className={sxStyles.sectionHeadingTitle}>分类与标签</Heading>
+              </Box>
+              <Box className={sxStyles.tagGrid}>
+                <TagPicker
+                  title="知识体系"
+                  dimension="knowledge"
+                  value={knowledgeTags}
+                  onChange={setKnowledgeTags}
+                  styles={tagStyles}
+                  placeholder="搜索或添加"
+                />
+                <TagPicker
+                  title="错题归因"
+                  dimension="error"
+                  value={errorTags}
+                  onChange={setErrorTags}
+                  styles={tagStyles}
+                  placeholder="搜索或添加"
+                />
+                <TagPicker
+                  title="自定义"
+                  dimension="custom"
+                  value={userTags}
+                  onChange={setUserTags}
+                  styles={tagStyles}
+                  enableRemoteSearch={false}
+                  placeholder="输入后回车"
                 />
               </Box>
-            ))}
+            </Box>
           </Box>
-        </Box>
 
-        <Box className={sxStyles.sx13}>
-          <Text className={sxStyles.sx14}>分类与标签</Text>
-          <Box className="problem-tag-grid">
-            <TagPicker
-              title="知识体系"
-              dimension="knowledge"
-              value={knowledgeTags}
-              onChange={setKnowledgeTags}
-              styles={tagStyles}
-              placeholder="搜索或添加"
-            />
-            <TagPicker
-              title="错题归因"
-              dimension="error"
-              value={errorTags}
-              onChange={setErrorTags}
-              styles={tagStyles}
-              placeholder="搜索或添加"
-            />
-            <TagPicker
-              title="自定义"
-              dimension="custom"
-              value={userTags}
-              onChange={setUserTags}
-              styles={tagStyles}
-              enableRemoteSearch={false}
-              placeholder="输入后回车"
-            />
-          </Box>
         </Box>
 
         <Box className={[sxStyles.section, sxStyles.diagramSection].join(" ")}>
@@ -924,11 +951,17 @@ export function ProblemEditPanel({ taskId, taskAssetPath, problem, tagStyles, on
           )}
         </Box>
 
-        <Box className={sxStyles.sx41}>
-          <Button size="small" variant="invisible" onClick={requestClose}>取消</Button>
-          <Button variant="primary" leadingVisual={Save} loading={isSaving} onClick={save} disabled={isSaving || !isDirty}>
-            {isSaving ? "保存中…" : "保存修改"}
-          </Button>
+        <Box className={sxStyles.editorFooter}>
+          <Text className={sxStyles.saveState} data-state={saveState} aria-live="polite">
+            <span aria-hidden="true" />
+            {saveStateLabel}
+          </Text>
+          <Box className={sxStyles.footerActions}>
+            <Button size="small" variant="invisible" onClick={requestClose}>取消</Button>
+            <Button variant="primary" leadingVisual={Save} loading={isSaving} onClick={save} disabled={isSaving || !isDirty}>
+              {isSaving ? "保存中…" : "保存修改"}
+            </Button>
+          </Box>
         </Box>
       </Box>
     </Box>

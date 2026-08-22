@@ -55,7 +55,15 @@
     ".next-codex-build-ai-channels/types/**/*.ts",
     ".next-codex-build-ai-channels/dev/types/**/*.ts",
     ".next-codex-build-ai-channels-final/types/**/*.ts",
-    ".next-codex-build-ai-channels-final/dev/types/**/*.ts"
+    ".next-codex-build-ai-channels-final/dev/types/**/*.ts",
+    ".next-e2e-editor/types/**/*.ts",
+    ".next-e2e-editor/dev/types/**/*.ts",
+    ".next-e2e-editor-local/types/**/*.ts",
+    ".next-e2e-editor-local/dev/types/**/*.ts",
+    ".next-e2e-editor-left/types/**/*.ts",
+    ".next-e2e-editor-left/dev/types/**/*.ts",
+    ".next-e2e-editor-left-final/types/**/*.ts",
+    ".next-e2e-editor-left-final/dev/types/**/*.ts"
   ],
   "exclude": [
     "node_modules",

@@ -34,14 +34,6 @@
 /* Generated from components/TaskLiveView.tsx */
 .sx14{color:var(--fgColor-muted);}
 
-/* Generated from components/TaskLiveView.tsx */
-.sx15{display:flex;gap:var(--oops-space-4);padding-top:var(--oops-space-2);border-top-width:1px;border-top-style:solid;border-top-color:var(--borderColor-muted);font-size:var(--oops-text-sm);}
-
-/* Generated from components/TaskLiveView.tsx */
-.sx16{color:var(--fgColor-accent);font-weight:500;}.sx16:hover{text-decoration:underline;}
-
-/* Generated from components/TaskLiveView.tsx */
-.sx17{color:var(--fgColor-accent);font-weight:500;}.sx17:hover{text-decoration:underline;}
 .headerCard{position:relative;overflow:hidden;padding:var(--oops-space-4);}
 .headerCard[data-completed="true"]{padding:var(--oops-space-3);}
 .statusBar{position:absolute;top:0;left:0;right:0;height:3px;border-radius:var(--oops-radius-md) var(--oops-radius-md) 0 0;background:var(--fgColor-info);}
@@ -58,4 +50,3 @@
 .diagramDisclosure[data-status="success"]{color:var(--fgColor-success);}
 .diagramDisclosure[data-status="cancelled"]{color:var(--fgColor-muted);}
 .diagramDisclosure[data-status="pending"]{color:var(--fgColor-info);}
-.navLink{text-decoration:none;}

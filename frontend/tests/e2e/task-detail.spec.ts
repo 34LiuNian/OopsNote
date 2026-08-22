@@ -130,7 +130,7 @@ test("completed task keeps a scaled diagram stable while editing replaces the re
   await waitForAppReady(page);
 
   const taskCard = page.locator(".oops-card").first();
-  const progressSummary = taskCard.getByRole("button", { name: /5\/5 阶段完成/ });
+  const progressSummary = taskCard.getByRole("button", { name: /4\/4 阶段完成/ });
   await expect(progressSummary).toBeVisible();
   await expect(progressSummary).toContainText("1分3秒");
   await expect(taskCard.getByText("已完成", { exact: true })).toHaveCount(0);
@@ -163,13 +163,13 @@ test("completed task keeps a scaled diagram stable while editing replaces the re
   await expect(page.getByText("收起答案与解析", { exact: true })).toHaveCount(0);
   await expect(page.getByText("支持 Markdown / LaTeX", { exact: false })).toHaveCount(0);
   await expect(page.getByText("未修改", { exact: true })).toHaveCount(0);
-  await expect(page.locator(".option-editor__label")).toHaveText(["A", "B"]);
+  await expect(page.locator(".option-editor__label")).toHaveText(["A.", "B."]);
   await expect(page.getByRole("textbox", { name: "选项 A" })).toHaveValue("$\\frac{5}{2}$");
   await page.getByLabel("难度系数").fill("0.73");
   await page.getByLabel("章节").fill("函数");
   await page.getByLabel("区段总题数").fill("8");
-  await page.getByRole("button", { name: "添加" }).click();
-  await expect(page.locator(".option-editor__label")).toHaveText(["A", "B", "C"]);
+  await page.getByRole("button", { name: "添加选项" }).click();
+  await expect(page.locator(".option-editor__label")).toHaveText(["A.", "B.", "C."]);
   await page.getByRole("button", { name: "删除选项 C" }).click();
 
   const problemText = page.locator("textarea").first();
@@ -177,7 +177,8 @@ test("completed task keeps a scaled diagram stable while editing replaces the re
   await expect(page.locator(".tag-picker__field").filter({ hasText: "函数" })).toBeVisible();
   await expect(page.getByText("未选择", { exact: true })).toHaveCount(0);
   await problemText.fill("求函数 $f(x)=x^2+1$ 的最小值。");
-  await page.getByRole("button", { name: "图片附图" }).click();
+  await page.getByRole("button", { name: "添加附图" }).click();
+  await page.getByRole("button", { name: "题图 · 恢复已保存的原图裁剪" }).click();
   const figureStage = page.locator(".figure-cropper .image-selection-stage");
   const figureOverlay = figureStage.locator(".normalized-rect-editor");
   await expect(figureOverlay.locator(".normalized-rect-editor__selection")).toBeVisible();
@@ -207,6 +208,7 @@ test("completed task keeps a scaled diagram stable while editing replaces the re
   await page.mouse.move(overlayBox.x + overlayBox.width * 0.8, overlayBox.y + overlayBox.height * 0.75);
   await page.mouse.up();
   await expect(figureOverlay.locator(".normalized-rect-editor__selection")).toHaveAttribute("style", /left: 20/);
+  await page.waitForTimeout(250);
   await expect(page.getByText("未保存", { exact: true })).toBeVisible();
 
   await page.getByRole("button", { name: "保存修改" }).click();
@@ -218,19 +220,21 @@ test("completed task keeps a scaled diagram stable while editing replaces the re
   expect(task.problem.section_question_count).toBe(8);
   await expect(page.getByRole("heading", { name: "题目与解答" })).toBeVisible();
   await expect(page.getByText("求函数", { exact: false })).toBeVisible();
-  const readingLayout = await page.locator(".problem-content__lead.has-illustration").evaluate((element) => {
-    const body = element.querySelector<HTMLElement>(".problem-content__body")!;
+  await expect(page.getByRole("link", { name: "采集面板" })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "题库总览" })).toHaveCount(0);
+  const readingLayout = await page.locator(".problem-content__layout.has-illustration").evaluate((element) => {
     const figure = element.querySelector<HTMLElement>(".problem-content__illustration")!;
     return {
-      bodyHeight: body.getBoundingClientRect().height,
+      layoutHeight: element.getBoundingClientRect().height,
       figureHeight: figure.getBoundingClientRect().height,
-      optionsInsideBody: Boolean(body.querySelector("[data-option-item='true']")),
+      optionsInsideLayout: Boolean(element.querySelector("[data-option-item='true']")),
     };
   });
-  expect(readingLayout.optionsInsideBody).toBe(true);
-  expect(Math.abs(readingLayout.figureHeight - readingLayout.bodyHeight * 2)).toBeLessThan(1);
+  expect(readingLayout.optionsInsideLayout).toBe(true);
+  expect(readingLayout.figureHeight).toBeGreaterThan(0);
+  expect(readingLayout.layoutHeight).toBeGreaterThan(readingLayout.figureHeight);
 
-  const layoutSamples = await page.locator(".problem-content__lead.has-illustration").evaluate(async (element) => {
+  const layoutSamples = await page.locator(".problem-content__layout.has-illustration").evaluate(async (element) => {
     const figure = element.querySelector<HTMLElement>(".problem-content__illustration")!;
     const samples: string[] = [];
     for (let index = 0; index < 3; index += 1) {
@@ -244,14 +248,15 @@ test("completed task keeps a scaled diagram stable while editing replaces the re
 
   await page.getByRole("button", { name: "编辑" }).click();
   await page.locator("textarea").first().fill("尚未保存的题干");
-  page.once("dialog", async (dialog) => {
-    expect(dialog.message()).toBe("放弃未保存的修改？");
-    await dialog.dismiss();
-  });
   await page.getByRole("button", { name: "关闭" }).click();
+  const discardDialog = page.getByRole("dialog", { name: "放弃未保存的修改" });
+  await expect(discardDialog).toBeVisible();
+  await expect(discardDialog).toContainText("关闭后，本次未保存的修改将丢失。");
+  await discardDialog.getByRole("button", { name: "取消" }).click();
   await expect(page.getByText("编辑题目", { exact: true })).toBeVisible();
 
-  page.once("dialog", async (dialog) => dialog.accept());
   await page.getByRole("button", { name: "关闭" }).click();
+  await expect(discardDialog).toBeVisible();
+  await discardDialog.getByRole("button", { name: "放弃修改" }).click();
   await expect(page.getByRole("heading", { name: "题目与解答" })).toBeVisible();
 });

@@ -55,16 +55,16 @@
   color: var(--fgColor-default);
   background: transparent;
   position: relative;
-  transition: background-color 120ms ease, border-color 120ms ease;
+  transition: background-color 120ms ease, border-color 120ms ease, transform 180ms ease, box-shadow 180ms ease;
 }
 
 .dragHandle { width: 18px; height: 28px; margin: 0; padding: 0; color: var(--fgColor-muted); cursor: grab; }
 .dragHandle:active { cursor: grabbing; }
 .dragHandleDisabled { visibility: hidden; }
-.channelItemDragging { opacity: 0.48; }
-.channelItemDropTarget { border-color: var(--fgColor-accent); }
+.channelItemDragging { z-index: 2; opacity: .8; background: var(--bgColor-muted); box-shadow: var(--oops-shadow-md); transform: scale(.985); }
+.channelItemDropTarget { border-color: var(--fgColor-accent); background: var(--sidebar-hover); }
 .channelItemDropBefore::before,
-.channelItemDropAfter::after { position: absolute; right: 4px; left: 4px; height: 2px; border-radius: 2px; background: var(--fgColor-accent); content: ""; }
+.channelItemDropAfter::after { position: absolute; z-index: 3; right: 4px; left: 4px; height: 3px; border-radius: 2px; background: var(--fgColor-accent); box-shadow: 0 0 0 2px var(--bgColor-default); content: ""; }
 .channelItemDropBefore::before { top: -1px; }
 .channelItemDropAfter::after { bottom: -1px; }
 
@@ -286,8 +286,11 @@
 .inlineControlGroup { display: flex; min-width: 0; align-items: flex-start; gap: 8px; }
 .inlineControlGroup > :first-child { min-width: 0; flex: 1; }
 .formError { margin-top: 6px; color: var(--fgColor-danger); font-size: 12px; line-height: 1.45; }
-.credentialInput { font-family: Arial, sans-serif; font-size: 13px; letter-spacing: 0; }
-.credentialInput[type="password"] { font-size: 4.5px; }
+.credentialControl { width: 100%; }
+.inlineControlGroup[data-secret-visible="false"] .credentialControl :global(input) { font-size: 3px; letter-spacing: 0; }
+.inlineControlGroup[data-secret-visible="true"] .credentialControl :global(input) { font-size: 13px; letter-spacing: 0; }
+
+.channelPosition { margin-left: auto; padding-left: 8px; color: var(--fgColor-muted); font-size: 11px; font-variant-numeric: tabular-nums; }
 
 .overviewRow {
   display: grid;
@@ -630,7 +633,8 @@
   .policyHeader { align-items: stretch; flex-direction: column; }
   .policyHeader > :last-child { align-self: flex-end; }
   .policyFlow { display: flex; overflow: visible; flex-direction: column; gap: 28px; margin-top: 16px; padding-top: 8px; }
-  .parallelStages { display: contents; }
+  .parallelStages { display: grid; gap: 12px; padding: 12px; border: 1px solid var(--borderColor-muted); border-radius: var(--oops-radius-md); background: var(--bgColor-muted); }
+  .parallelStages::after { display: block; grid-column: 1 / -1; order: -1; color: var(--fgColor-muted); content: "并行阶段：两项独立执行，均完成后进入审校"; font-size: 12px; font-weight: 600; }
   .stageNodeVision { order: 1; }
   .stageNodeAgent { order: 2; }
   .stageNodeDiagram { order: 3; }

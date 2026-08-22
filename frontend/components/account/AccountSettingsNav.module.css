@@ -2,3 +2,4 @@
 .link { display: inline-flex; min-height: 42px; flex: 0 0 auto; align-items: center; gap: 7px; padding: 0 13px; border-bottom: 2px solid transparent; color: var(--fgColor-muted); font-size: 13px; font-weight: 600; text-decoration: none; }
 .link:hover { color: var(--fgColor-default); background: var(--bgColor-muted); }
 .active { border-bottom-color: var(--fgColor-default); color: var(--fgColor-default); }
+@media (max-width: 543px) { .nav { flex-wrap: wrap; overflow: visible; } .link { min-width: 44px; flex: 1 1 max-content; justify-content: center; } }

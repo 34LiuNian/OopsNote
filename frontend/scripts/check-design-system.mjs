@@ -16,6 +16,8 @@ const rawColorExceptions = new Map([
   ["app/icon-light/route.tsx", "generated application icon pixels"],
   ["app/icon-dark/route.tsx", "generated application icon pixels"],
   ["app/debug/page.tsx", "inline SVG renderer fixture"],
+  ["app/papers/paperWorkflow.module.css", "print-paper rendering surface"],
+  ["app/papers/paperEditor.module.css", "print-paper rendering surface"],
   ["components/renderers/SvgMarkup.tsx", "sanitized source-SVG color normalization"],
   ["components/image-selection/imageSelection.css", "source-image selection overlay"],
   ["components/batch-continuous/batchContinuous.css", "source-image selection and processing overlay"],

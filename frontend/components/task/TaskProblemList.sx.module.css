@@ -50,7 +50,7 @@
 .sx17{border-top-width:1px;border-top-style:solid;border-top-color:var(--borderColor-muted);}
 
 /* Generated from components/task/TaskProblemList.tsx */
-.sx18{display:flex;align-items:center;justify-content:space-between;padding-inline:var(--oops-space-4);padding-block:var(--oops-space-2);cursor:pointer;background-color:var(--bgColor-muted);transition:background-color var(--oops-transition-fast);user-select:none;}.sx18:hover{background-color:neutral.muted;}.sx18:active{background-color:neutral.muted;}
+.sx18{display:flex;width:100%;padding-inline:var(--oops-space-4);padding-block:var(--oops-space-2);border:0;color:inherit;cursor:pointer;background-color:var(--bgColor-muted);text-align:left;transition:background-color var(--oops-transition-fast);user-select:none;}.sx18:hover,.sx18:active{background-color:var(--bgColor-inset);}.sx18:focus-visible{outline:2px solid var(--fgColor-accent);outline-offset:-2px;}
 
 /* Generated from components/task/TaskProblemList.tsx */
 .sx19{font-weight:600;font-size:var(--oops-text-sm);color:var(--fgColor-muted);}

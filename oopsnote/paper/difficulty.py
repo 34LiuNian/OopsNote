@@ -8,6 +8,8 @@ from collections.abc import Iterable
 
 from oopsnote.core import PaperDraftCreateRequest, PaperDraftItem, TaskRecord, subjects_match
 
+from .defaults import default_points_for
+
 QUESTION_TYPE_ORDER = {
     "单选题": 0,
     "多选题": 1,
@@ -149,6 +151,7 @@ def select_paper_items(
             for task in candidates
             if task.problem and task.problem.question_type.value == question_type
         ]
+        type_ordinal = 0
         for band in ("easy", "medium", "hard"):
             band_candidates = [
                 task
@@ -163,8 +166,10 @@ def select_paper_items(
                         problem_id=task.problem.id,
                         question_type=question_type,
                         difficulty_coefficient=coefficients.get(task.id),
+                        points=default_points_for(question_type, type_ordinal),
                     )
                 )
+                type_ordinal += 1
 
     return sorted(
         selected,

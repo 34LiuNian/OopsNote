@@ -11,4 +11,4 @@
 .sx4{padding-block:var(--oops-space-6);}
 
 /* Generated from app/settings/policy/page.tsx */
-.sx5{color:var(--fgColor-danger);margin-top:var(--oops-space-5);}
+.sx5{display:flex;align-items:center;gap:var(--oops-space-3);margin-top:var(--oops-space-5);color:var(--fgColor-danger);}

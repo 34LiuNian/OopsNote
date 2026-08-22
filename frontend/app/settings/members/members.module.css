@@ -2,7 +2,7 @@
 .headerActions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
 .panel { display: grid; gap: 22px; padding: 26px 28px; border: 1px solid var(--borderColor-default); border-radius: 8px; background: var(--bgColor-default); box-shadow: var(--oops-shadow-sm); }
 .panelHeading { display: flex; align-items: flex-start; gap: 10px; }
-.panelHeading h2 { margin: 0; font-size: 21px; line-height: 1.3; }
+.panelHeading h2 { margin: 0; font-size: 20px; line-height: 1.3; }
 .panelHeading p { margin: 4px 0 0; color: var(--fgColor-muted); font-size: 13px; line-height: 1.45; }
 .toolbar { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: end; gap: 16px 20px; }
 .field { display: grid; min-width: 0; gap: 6px; color: var(--fgColor-default); font-size: 13px; font-weight: 600; }
@@ -40,4 +40,19 @@
 .roleSummary { display: flex; align-items: center; gap: 8px; padding: 12px; border-radius: 6px; color: var(--fgColor-muted); background: var(--bgColor-muted); font-size: 12px; }
 .invitationResult label { display: grid; gap: 8px; color: var(--fgColor-muted); font-size: 12px; }
 .invitationResult code { overflow-wrap: anywhere; padding: 14px; border: 1px solid var(--borderColor-default); border-radius: 6px; color: var(--fgColor-default); background: var(--bgColor-muted); font-size: 14px; }
-@media (max-width: 760px) { .panel { padding: 20px; } .toolbar { grid-template-columns: 1fr; } }
+@media (max-width: 760px) {
+  .panel { padding: 20px; }
+  .toolbar { grid-template-columns: 1fr; }
+  .tableWrap { overflow: visible; border: 0; border-radius: 0; }
+  .table, .invitationTable { display: block; min-width: 0; }
+  .table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+  .table tbody { display: grid; gap: 12px; }
+  .table tr { display: grid; gap: 8px; padding: 14px; border: 1px solid var(--borderColor-muted); border-radius: var(--oops-radius-md); }
+  .table td { display: grid; grid-template-columns: minmax(86px, .7fr) minmax(0, 1.3fr); align-items: center; gap: 12px; padding: 0; border: 0; }
+  .table td::before { color: var(--fgColor-muted); content: attr(data-label); font-size: 12px; font-weight: 600; }
+  .table td:first-child .memberIdentity { grid-column: 1 / -1; }
+  .table td:first-child::before { display: none; }
+  .role, .quota, .actions { justify-self: start; }
+  .table tr:has(td[colspan]) { display: block; text-align: center; }
+  .table tr:has(td[colspan]) td { display: block; }
+}

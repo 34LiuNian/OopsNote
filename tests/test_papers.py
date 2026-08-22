@@ -494,6 +494,29 @@ def test_hidden_diagram_is_absent_from_paper_projection():
     assert document.items[0].diagram is None
 
 
+def test_paper_ignores_legacy_diagram_flag_without_reconstructed_item():
+    problem = Problem(
+        id="problem-legacy-flag",
+        content_format=ContentFormat.OOPSMARK_V1,
+        problem_text="历史记录仅保留了图形标记",
+        has_diagram=True,
+    )
+    task = TaskRecord(id="task-legacy-flag", problem=problem)
+    draft = PaperDraft(
+        items=[
+            PaperDraftItem(
+                task_id=task.id,
+                problem_id=problem.id,
+                question_type="单选题",
+            )
+        ]
+    )
+
+    document = build_paper_document(draft, {task.id: task})
+
+    assert document.items[0].diagram is None
+
+
 def test_paper_rejects_legacy_tikz_without_normalized_size_metrics():
     problem = Problem(
         id="problem-legacy-diagram",

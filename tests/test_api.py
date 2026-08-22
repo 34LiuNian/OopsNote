@@ -278,6 +278,20 @@ def test_problem_view_keeps_materialized_image_crop_out_of_the_display_projectio
     }
 
 
+def test_problem_view_does_not_project_legacy_diagram_flag_as_renderable_diagram():
+    task = TaskRecord(
+        status=TaskStatus.COMPLETED,
+        problem=Problem(problem_text="历史图形标记", has_diagram=True),
+    )
+
+    view = main._problem_view(task, task.problem)
+
+    assert view["has_diagram"] is True
+    assert view["diagram_detected"] is False
+    assert view["diagram_enabled"] is False
+    assert view["diagram_kind"] is None
+
+
 def test_problem_created_at_normalizes_legacy_naive_timestamp():
     problem = Problem(created_at="2026-08-07T12:00:00")
 

@@ -62,7 +62,6 @@ export default function SettingsPage() {
         onReset={() => { setDraft(null); setMessage(""); }}
         onSave={() => void save()}
       />
-      <Text className={sxStyles.sx3}>并发数越高，资源占用和 Provider 限流风险越高。</Text>
     </Box>
   );
 }

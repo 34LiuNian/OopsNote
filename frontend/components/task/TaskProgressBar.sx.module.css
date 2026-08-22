@@ -39,7 +39,7 @@
 .progressLine[data-status="error"]{background:var(--fgColor-danger);}
 .progressFill{position:absolute;inset:0;width:100%;background:var(--fgColor-success);}
 .progressFill[data-last="true"]{animation:progressLine 1s cubic-bezier(.4,0,.2,1) forwards;}
-.desktopLabel{position:absolute;left:var(--oops-geometry-left);transform:var(--oops-geometry-transform);min-width:80px;max-width:min(260px,calc(100vw - 120px));overflow:hidden;text-align:center;text-overflow:ellipsis;white-space:nowrap;}
+.desktopLabel{position:absolute;left:var(--oops-geometry-left);transform:var(--oops-geometry-transform);min-width:80px;max-width:min(260px,calc(100vw - 120px));text-align:center;}
 .desktopLabel[data-align="left"]{text-align:left;}
 .desktopLabel[data-align="right"]{text-align:right;}
 .desktopTitle,.mobileTitle{display:block;font-size:var(--oops-text-sm);font-weight:600;transition:all var(--oops-transition-normal);}
@@ -48,10 +48,10 @@
 .desktopTitle[data-status="processing"],.mobileTitle[data-status="processing"]{color:var(--fgColor-info);animation:fadeIn .3s ease-in-out;}
 .desktopTitle[data-status="wait"],.mobileTitle[data-status="wait"]{color:var(--fgColor-muted);}
 .desktopTitle[data-disabled="true"],.mobileTitle[data-disabled="true"]{opacity:.5;}
-.desktopSubtitle{display:block;margin-top:var(--oops-space-1);font-size:var(--oops-text-xs);color:var(--fgColor-muted);transition:color var(--oops-transition-slow);}
+.desktopSubtitle{display:block;max-height:3.15em;margin-top:var(--oops-space-1);overflow:hidden;font-size:var(--oops-text-xs);line-height:1.45;color:var(--fgColor-muted);transition:color var(--oops-transition-slow);}
 .mobileLine{flex:1;width:3px;min-height:12px;margin-block:2px;border-radius:var(--oops-radius-xs);transition:all var(--oops-transition-normal);background:var(--fgColor-muted);}
 .mobileLine[data-status="success"]{background:var(--fgColor-success);}
 .mobileLine[data-status="error"]{background:var(--fgColor-danger);}
 .mobileContent{min-width:0;padding-block:2px;padding-bottom:var(--oops-space-2);}
 .mobileContent[data-last="true"]{padding-bottom:0;}
-.mobileSubtitle{display:block;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:calc(100vw - 100px);font-size:var(--oops-text-xs);color:var(--fgColor-muted);}
+.mobileSubtitle{display:-webkit-box;max-width:calc(100vw - 72px);margin-top:2px;overflow:hidden;-webkit-box-orient:vertical;-webkit-line-clamp:2;font-size:var(--oops-text-xs);line-height:1.45;color:var(--fgColor-muted);}

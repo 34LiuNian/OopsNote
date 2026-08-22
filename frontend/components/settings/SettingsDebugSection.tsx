@@ -45,7 +45,7 @@ export function SettingsDebugSection({
         <Box className={sxStyles.sx3}>
           <BugIcon size={16} />
           <Box>
-            <Text className="oops-section-subtitle">Debug</Text>
+            <Text className="oops-section-subtitle">调试</Text>
             <Heading as="h3" className={["oops-section-title", sxStyles.sx4].filter(Boolean).join(" ")} >
               Debug Options
             </Heading>
@@ -53,17 +53,17 @@ export function SettingsDebugSection({
         </Box>
         <Box className={sxStyles.sx5}>
           <Button onClick={onReset} disabled={!isDirty || isSaving || isLoading}>
-            Reset
+            重置
           </Button>
           <Button variant="primary" onClick={onSave} disabled={!isDirty || isSaving || isLoading}>
-            {isSaving ? "Saving..." : "Save"}
+            {isSaving ? "正在保存..." : "保存"}
           </Button>
         </Box>
       </Box>
 
       {isDirty && !isSaving && !isLoading && (
         <Box className={["oops-badge oops-badge-warning", sxStyles.sx6].filter(Boolean).join(" ")} >
-          Unsaved changes
+          有未保存更改
         </Box>
       )}
 
@@ -80,7 +80,7 @@ export function SettingsDebugSection({
 
           >
             <Box className={sxStyles.sx10}>
-              <Text className={sxStyles.sx11}>LLM debug log</Text>
+              <Text className={sxStyles.sx11}>LLM 调试日志</Text>
               <Text className={sxStyles.sx12}>
                 Record detailed LLM requests and responses for troubleshooting.
               </Text>
@@ -94,7 +94,7 @@ export function SettingsDebugSection({
                 event.preventDefault();
                 onToggle("debug_llm_payload", !draft.debug_llm_payload);
               }}
-              aria-label="LLM debug log"
+              aria-label="LLM 调试日志"
             />
           </Box>
 
@@ -103,7 +103,7 @@ export function SettingsDebugSection({
 
           >
             <Box className={sxStyles.sx15}>
-              <Text className={sxStyles.sx16}>Task persistence</Text>
+              <Text className={sxStyles.sx16}>任务记录保留</Text>
               <Text className={sxStyles.sx17}>
                 Write task results to disk so they can be replayed and recovered later.
               </Text>
@@ -117,7 +117,7 @@ export function SettingsDebugSection({
                 event.preventDefault();
                 onToggle("persist_tasks", !draft.persist_tasks);
               }}
-              aria-label="Task persistence"
+              aria-label="任务记录保留"
             />
           </Box>
         </Box>

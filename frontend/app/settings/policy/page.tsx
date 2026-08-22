@@ -2,7 +2,7 @@
 
 import { useMemo, useState, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
-import { BadgeCheck, Bot, Image, Save, ScanText, ShieldAlert } from "lucide-react";
+import { BadgeCheck, Bot, Image, RefreshCw, Save, ScanText, ShieldAlert } from "lucide-react";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { Box, Button, Heading, Spinner, Text } from "@/components/ui/primitives";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
@@ -123,7 +123,7 @@ export default function LangChainPolicyPage() {
         </header>
 
         {channels.isLoading && <Box className={sxStyles.sx4}><Spinner size="medium" /></Box>}
-        {channels.isError && <Text className={sxStyles.sx5}>无法加载渠道，请确认管理员权限和后端状态。</Text>}
+        {channels.isError && <Box className={sxStyles.sx5}><Text>无法加载渠道，请确认管理员权限和后端状态。</Text><Button variant="secondary" size="small" leadingVisual={RefreshCw} onClick={() => void channels.refetch()}>重新加载</Button></Box>}
         {!channels.isLoading && !channels.isError && !items.length && (
           <div className={styles.emptyState}>
             <strong>还没有可编排的 AI 渠道</strong>

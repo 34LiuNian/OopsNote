@@ -143,6 +143,7 @@ export function ChannelRail({
                   <span className={styles.channelItemName}>{channel.display_name}</span>
                   <span className={styles.channelItemMeta}>{channel.models.length} 个模型 · {channel.id}</span>
                 </span>
+                {dragOrder ? <span className={styles.channelPosition} aria-label={`当前第 ${renderedChannels.indexOf(channel) + 1} 位`}>{renderedChannels.indexOf(channel) + 1}</span> : null}
               </Button>
               <span className={styles.channelSwitchWrap}>
                 <Tooltip text={statusText}>

@@ -21,8 +21,11 @@ export function SettingsRuntimeSection(props: Props) {
     <Box className={["oops-card", sxStyles.sx1].filter(Boolean).join(" ")} >
       <Box className={sxStyles.sx2}>
         <Box className={sxStyles.sx3}>
-          <Cpu size={16} />
-          <Box><Text className="oops-section-subtitle">AI Runtime</Text><Heading as="h3" className={["oops-section-title", sxStyles.sx4].filter(Boolean).join(" ")} >LangChain 并发任务</Heading></Box>
+          <Cpu size={16} aria-hidden="true" />
+          <Box className={sxStyles.sx7}>
+            <Text className="oops-section-subtitle">AI 运行</Text>
+            <Heading as="h3" className={["oops-section-title", sxStyles.sx4].filter(Boolean).join(" ")}>LangChain 并发任务</Heading>
+          </Box>
         </Box>
         <Box className={sxStyles.sx5}><Button onClick={props.onReset} disabled={!props.isDirty || props.isSaving}>重置</Button><Button variant="primary" onClick={props.onSave} disabled={!props.isDirty || props.isSaving}>保存</Button></Box>
       </Box>
@@ -33,6 +36,7 @@ export function SettingsRuntimeSection(props: Props) {
           <FormControl.Caption>范围 1–16；当前配置 {props.current ?? "-"}，保存后重启 OopsNote 生效</FormControl.Caption>
         </FormControl>
       )}
+      <Text className={sxStyles.helper}>并发数越高，资源占用和 Provider 限流风险越高。</Text>
       {props.message && <Text role="status" className={sxStyles.message} data-status={/失败|错误|error|unavailable|invalid|整数/i.test(props.message) ? "danger" : "success"}>{props.message}</Text>}
     </Box>
   );

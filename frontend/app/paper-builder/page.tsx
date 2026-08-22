@@ -290,6 +290,8 @@ export default function PaperBuilderPage() {
                       selected={!!selected[`${item.task_id}:${item.problem_id}`]}
                       toggleKey={`${item.task_id}:${item.problem_id}`}
                       onToggleSelection={toggleSelected}
+                      showMetaPills
+                      showAnswerPeek
                     />
                   </Box>
                 ))}
