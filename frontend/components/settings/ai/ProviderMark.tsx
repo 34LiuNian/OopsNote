@@ -142,7 +142,7 @@ export function ProviderIconPicker({
       ))}
       </div>
       {loadError
-        ? <span className={styles.providerIconEmpty} role="alert">{loadError}</span>
+        ? <span className={styles.providerIconEmpty}>{loadError}</span>
         : !visibleIcons.length && <span className={styles.providerIconEmpty}>没有匹配的图标</span>}
     </div>
   );

@@ -34,7 +34,10 @@ export default function AccountUsagePage() {
     }
   }, []);
   useEffect(() => {
-    void load();
+    const timer = setTimeout(() => {
+      void load();
+    }, 0);
+    return () => clearTimeout(timer);
   }, [load]);
 
   const remaining = quota ? Math.max(0, quota.daily_success_limit - quota.used_units) : 0;

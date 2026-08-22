@@ -39,7 +39,10 @@ export default function RegistrationAccessPage() {
 
   useEffect(() => {
     if (authLoading || !isAdminUser(user)) return;
-    void load();
+    const timer = setTimeout(() => {
+      void load();
+    }, 0);
+    return () => clearTimeout(timer);
   }, [authLoading, load, user]);
 
   async function save(event: FormEvent<HTMLFormElement>) {
