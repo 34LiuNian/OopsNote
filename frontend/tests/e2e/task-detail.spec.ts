@@ -5,6 +5,7 @@ test("completed task keeps a scaled diagram stable while editing replaces the re
   const taskId = "task-ui-test";
   const task = {
     id: taskId,
+    subject: "math",
     status: "completed",
     stage: "done",
     stage_message: "处理完成",
@@ -41,6 +42,7 @@ test("completed task keeps a scaled diagram stable while editing replaces the re
     },
     problem: {
       problem_id: "problem-ui-test",
+      subject: "math",
       question_no: "26",
       question_type: "单选题",
       source: "界面测试试卷.pdf",
@@ -88,6 +90,41 @@ test("completed task keeps a scaled diagram stable while editing replaces the re
   await page.addInitScript(() => document.documentElement.classList.add("oops-splash-skip"));
   await page.route("**/api/settings/tag-dimensions", async (route) => {
     await route.fulfill({ json: { dimensions: {} } });
+  });
+  await page.route("**/api/tags/tree**", async (route) => {
+    await route.fulfill({
+      json: {
+        schema_version: "xkw-knowledge-tree-v1",
+        subjects: {
+          math: {
+            subject: "math",
+            subject_label: "数学",
+            root: {
+              id: "math-root",
+              title: "数学",
+              depth: 0,
+              selectable: false,
+              is_leaf: false,
+              children: [{
+                id: "math-function",
+                title: "函数与导数",
+                depth: 1,
+                selectable: false,
+                is_leaf: false,
+                children: [{
+                  id: "math-function-leaf",
+                  title: "函数",
+                  depth: 2,
+                  selectable: true,
+                  is_leaf: true,
+                  children: [],
+                }],
+              }],
+            },
+          },
+        },
+      },
+    });
   });
   await page.route(`**/api/tasks/${taskId}`, async (route) => {
     await route.fulfill({ json: { task } });
@@ -174,7 +211,8 @@ test("completed task keeps a scaled diagram stable while editing replaces the re
 
   const problemText = page.locator("textarea").first();
   await expect(problemText).toHaveCSS("resize", "vertical");
-  await expect(page.locator(".tag-picker__field").filter({ hasText: "函数" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "选择知识点" })).toBeVisible();
+  await expect(page.getByLabel("移除知识点 函数")).toBeVisible();
   await expect(page.getByText("未选择", { exact: true })).toHaveCount(0);
   await problemText.fill("求函数 $f(x)=x^2+1$ 的最小值。");
   await page.getByRole("button", { name: "添加附图" }).click();

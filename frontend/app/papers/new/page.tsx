@@ -11,6 +11,7 @@ import { getKnowledgeTree } from "@/features/tags/api";
 import { createPaper } from "@/features/papers";
 import { DEFAULT_REQUESTED_COUNTS } from "@/features/papers/defaultPaperStructure";
 import { KnowledgeTreeSelector } from "@/features/papers/KnowledgeTreeSelector";
+import { collectLeafIds, compactSelectedNodes, findKnowledgeNode } from "@/components/knowledge-tree";
 import type { DifficultyBand, KnowledgeTreeNode } from "@/types/api";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { SidebarCollapseIcon } from "@/components/ui/icons";
@@ -37,40 +38,6 @@ function defaultTitle(subject: string): string {
   const now = new Date();
   const label = SUBJECTS.find((item) => item.value === subject)?.label ?? "综合";
   return `${now.getMonth() + 1}月${now.getDate()}日${label}试卷`;
-}
-
-function collectLeafIds(node: KnowledgeTreeNode): string[] {
-  const children = node.children.filter((child) => !child.scope || child.scope === "core");
-  if (!children.length) return [node.id];
-  return children.flatMap(collectLeafIds);
-}
-
-function findKnowledgeNode(node: KnowledgeTreeNode, id: string): KnowledgeTreeNode | null {
-  if (node.id === id) return node;
-  for (const child of node.children) {
-    const match = findKnowledgeNode(child, id);
-    if (match) return match;
-  }
-  return null;
-}
-
-function compactSelectedNodes(
-  root: KnowledgeTreeNode | null,
-  selectedLeafIds: Set<string>,
-): KnowledgeTreeNode[] {
-  if (!root) return [];
-
-  function visit(node: KnowledgeTreeNode): KnowledgeTreeNode[] {
-    const leafIds = collectLeafIds(node);
-    if (leafIds.length && leafIds.every((id) => selectedLeafIds.has(id))) return [node];
-    return node.children
-      .filter((child) => !child.scope || child.scope === "core")
-      .flatMap(visit);
-  }
-
-  return root.children
-    .filter((child) => !child.scope || child.scope === "core")
-    .flatMap(visit);
 }
 
 export default function NewPaperPage() {

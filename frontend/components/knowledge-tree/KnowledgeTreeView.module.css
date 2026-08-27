@@ -1,0 +1,124 @@
+.panel {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+}
+
+.search {
+  margin: 0 0 var(--oops-space-2);
+  padding: 9px 11px;
+  border: 1px solid var(--borderColor-default);
+  border-radius: var(--oops-radius-sm);
+  outline: none;
+  color: var(--fgColor-default);
+  background: var(--bgColor-default);
+  font: inherit;
+  font-size: var(--oops-text-sm);
+}
+
+.search:focus {
+  border-color: var(--fgColor-accent);
+}
+
+.scroll {
+  min-height: 0;
+  flex: 1;
+  overflow: auto;
+  padding: 4px 0 12px;
+}
+
+.list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.item {
+  margin: 0;
+  padding: 0;
+}
+
+.row {
+  display: flex;
+  min-width: 0;
+  min-height: 32px;
+  align-items: center;
+  gap: 6px;
+  border-radius: var(--oops-radius-sm);
+}
+
+.row:hover {
+  background: var(--bgColor-muted);
+}
+
+.checkbox {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 18px;
+  margin: 0;
+  accent-color: var(--fgColor-accent);
+}
+
+.expand,
+.label {
+  border: 0;
+  color: inherit;
+  background: transparent;
+  font: inherit;
+  cursor: pointer;
+}
+
+.expand {
+  display: grid;
+  width: 18px !important;
+  height: 18px !important;
+  min-width: 18px !important;
+  min-height: 18px !important;
+  flex: 0 0 18px;
+  place-items: center;
+  padding: 0 !important;
+  border-radius: 4px;
+  color: var(--fgColor-muted) !important;
+  background: transparent;
+}
+
+.expand:hover {
+  color: var(--fgColor-default) !important;
+  background: var(--bgColor-muted);
+}
+
+.spacer {
+  display: grid;
+  width: 18px;
+  height: 18px;
+  flex: 0 0 18px;
+  place-items: center;
+}
+
+.label {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  padding: 5px 4px;
+  background: transparent !important;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.label:hover {
+  background: transparent !important;
+}
+
+.labelSelected {
+  color: var(--fgColor-accent);
+  font-weight: 600;
+}
+
+.empty {
+  padding: 32px 12px;
+  color: var(--fgColor-muted);
+  text-align: center;
+  font-size: var(--oops-text-sm);
+}

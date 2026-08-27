@@ -13,6 +13,7 @@ import sxStyles from "./TaskProblemList.sx.module.css";
 
 type TaskProblem = {
   problem_id: string;
+  subject: string;
   question_no?: string | null;
   chapter?: string | null;
   question_type?: string | null;

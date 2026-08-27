@@ -28,8 +28,17 @@ def canonical_subject(subject: str | None) -> str | None:
     return _CANONICAL_BY_ALIAS.get(value.casefold(), value)
 
 
+def usable_subject(subject: str | None) -> str:
+    """Return a catalog-usable subject, treating blank and auto as unset."""
+
+    value = canonical_subject(subject) or ""
+    if not value or value == "auto":
+        return ""
+    return value
+
+
 def subjects_match(left: str, right: str) -> bool:
     return canonical_subject(left) == canonical_subject(right)
 
 
-__all__ = ["SUBJECT_ALIASES", "canonical_subject", "subjects_match"]
+__all__ = ["SUBJECT_ALIASES", "canonical_subject", "subjects_match", "usable_subject"]

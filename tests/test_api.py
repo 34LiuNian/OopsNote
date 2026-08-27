@@ -1732,3 +1732,22 @@ def test_problem_views_derive_lettered_option_labels_from_order():
     ]
     assert detail["options"] == expected
     assert summary["options"] == expected
+    assert detail["subject"] == "math"
+    assert summary["subject"] == "math"
+
+
+def test_task_view_exposes_subject_when_problem_subject_is_blank():
+    task = main.TaskRecord(
+        subject="physics",
+        problem=Problem(
+            content_format="oopsmark-v1",
+            subject="",
+            question_type="单选题",
+            problem_text="求安培力。",
+        ),
+    )
+
+    view = main._task_view(task)
+
+    assert view["subject"] == "physics"
+    assert view["problem"]["subject"] == "physics"

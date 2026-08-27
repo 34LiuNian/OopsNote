@@ -90,11 +90,11 @@ export const TagPicker = memo(function TagPicker({
       : false;
 
     const output: SuggestionItem[] = [];
-    if (enableRemoteSearch && query && !hasExactMatch && !selected.has(queryKey)) {
-      output.push({ type: "create", id: `create:${dimension}:${query}`, value: query, label: `新建“${query}”` });
-    }
     for (const suggestion of sortTagItemsByQuery(available, query).slice(0, maxSuggestions)) {
       output.push({ type: "existing", id: suggestion.id, value: suggestion.value, ref_count: suggestion.ref_count });
+    }
+    if (enableRemoteSearch && query && !hasExactMatch && !selected.has(queryKey)) {
+      output.push({ type: "create", id: `create:${dimension}:${query}`, value: query, label: `新建“${query}”` });
     }
     return output;
   }, [dimension, enableRemoteSearch, input, maxSuggestions, suggestions, value]);

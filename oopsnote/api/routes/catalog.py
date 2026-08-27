@@ -10,7 +10,7 @@ from fastapi import APIRouter, HTTPException, Query, Request
 
 from oopsnote.api.auth import AuthenticationError, require_admin_request
 from oopsnote.api.schemas import TagInput, TagRenameInput
-from oopsnote.core import Problem, Searcher, SearchQuery, TagDimension, TagItem
+from oopsnote.core import Problem, Searcher, SearchQuery, TagDimension, TagItem, subjects_match
 from oopsnote.obsidian.syncer import ObsidianSyncer
 
 router = APIRouter()
@@ -81,7 +81,7 @@ def _source_tag_items(
         problem = task.problem
         if not problem:
             continue
-        if subject and (problem.subject or task.subject) != subject:
+        if subject and not subjects_match(task.effective_subject(), subject):
             continue
         source = api._problem_source(task, problem)
         if not source or (normalized_query and normalized_query not in source.casefold()):

@@ -662,6 +662,7 @@ def _problem_view(task: TaskRecord, problem: Problem) -> dict[str, Any]:
     selected_diagram_category = diagram_category(diagram)
     return {
         "problem_id": problem.id,
+        "subject": task.effective_subject(),
         "question_no": task.effective_question_no(),
         "chapter": task.effective_chapter(),
         "question_type": problem.question_type.value,
@@ -830,6 +831,7 @@ def _task_view(record: TaskRecord) -> dict[str, Any]:
         ],
         "created_at": record.created_at.isoformat(),
         "updated_at": record.updated_at.isoformat(),
+        "subject": record.effective_subject(),
         "asset": _asset_view(record),
         "payload": {"difficulty": record.metadata.get("difficulty")},
         "trace": _trace_view(record.metadata.get("trace")),
@@ -871,7 +873,7 @@ def _task_summary(record: TaskRecord) -> dict[str, Any]:
         ),
         "created_at": record.created_at.isoformat(),
         "updated_at": record.updated_at.isoformat(),
-        "subject": record.subject,
+        "subject": record.effective_subject(),
         "question_no": record.effective_question_no(),
         "asset": _asset_view(record),
     }
@@ -882,7 +884,6 @@ def _problem_summary(task: TaskRecord, problem: Problem) -> dict[str, Any]:
     return {
         **view,
         "task_id": task.id,
-        "subject": problem.subject or task.subject,
         "knowledge_points": problem.knowledge_points,
         "created_at": problem.created_at.isoformat(),
     }

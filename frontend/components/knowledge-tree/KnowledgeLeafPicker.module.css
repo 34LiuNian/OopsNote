@@ -1,0 +1,92 @@
+.shell {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: var(--oops-space-2);
+}
+
+.summary {
+  display: flex;
+  min-width: 0;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--oops-space-3);
+}
+
+.chips {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-wrap: wrap;
+  gap: var(--oops-space-2);
+}
+
+.chip {
+  display: inline-flex;
+  max-width: 100%;
+  min-height: 28px;
+  align-items: center;
+  gap: var(--oops-space-2);
+  padding: 2px var(--oops-space-2);
+  border: 1px solid color-mix(in srgb, var(--fgColor-accent) 46%, var(--borderColor-default));
+  border-radius: var(--oops-radius-full);
+  background: var(--bgColor-accent-muted);
+  color: var(--fgColor-default);
+}
+
+.chipPath {
+  overflow: hidden;
+  max-width: 28ch;
+  color: var(--fgColor-muted);
+  font-size: var(--oops-text-xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chipTitle {
+  overflow: hidden;
+  font-size: var(--oops-text-sm);
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.empty {
+  color: var(--fgColor-muted);
+  font-size: var(--oops-text-sm);
+}
+
+.dialog {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+  gap: var(--oops-space-3);
+}
+
+.dialogTree {
+  display: flex;
+  min-height: 0;
+  height: min(60vh, 520px);
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--borderColor-muted);
+  border-radius: var(--oops-radius-md);
+  padding: var(--oops-space-3);
+}
+
+.dialogTree > * {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.dialogFooter {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--oops-space-3);
+}
+
+.hint {
+  color: var(--fgColor-muted);
+  font-size: var(--oops-text-xs);
+}

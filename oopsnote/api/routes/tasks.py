@@ -34,6 +34,7 @@ from oopsnote.core import (
     TagDimension,
     TaskCreateRequest,
     TaskStatus,
+    subjects_match,
 )
 
 router = APIRouter()
@@ -168,7 +169,7 @@ def list_tasks(
     if status:
         tasks = [task for task in tasks if task.status == status]
     if subject:
-        tasks = [task for task in tasks if task.subject == subject]
+        tasks = [task for task in tasks if subjects_match(task.effective_subject(), subject)]
     tasks.sort(key=lambda task: task.created_at, reverse=True)
     return {"items": [api._task_summary(task) for task in tasks[:limit]]}
 

@@ -8,6 +8,7 @@ from __future__ import annotations
 import re
 
 from .models import Problem, SearchQuery, TaskRecord
+from .subjects import subjects_match
 
 
 class Searcher:
@@ -21,7 +22,7 @@ class Searcher:
         results: list[Problem] = []
 
         for task in self._tasks:
-            if task.problem and self._match(task.problem, query):
+            if task.problem and self._match(task, query):
                 results.append(task.problem)
 
         # 按时间倒序
@@ -29,9 +30,11 @@ class Searcher:
         return results[: max(1, query.limit)]
 
     @staticmethod
-    def _match(p: Problem, q: SearchQuery) -> bool:
-        # subject
-        if q.subject and p.subject.casefold() != q.subject.casefold():
+    def _match(task: TaskRecord, q: SearchQuery) -> bool:
+        p = task.problem
+        if p is None:
+            return False
+        if q.subject and not subjects_match(task.effective_subject(), q.subject):
             return False
 
         # tags（匹配 knowledge_points + error_hypothesis）

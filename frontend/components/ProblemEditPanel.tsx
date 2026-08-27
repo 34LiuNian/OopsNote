@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Image from "next/image";
-import { Box, Button, Collapse, FormControl, GeometryButton, Heading, IconButton, NativeInput, NativeSelect, Text, TextInput, Textarea, useReducedMotion } from "@/components/ui/primitives";
+import { Box, Button, FormControl, GeometryButton, Heading, IconButton, NativeInput, NativeSelect, Text, TextInput, Textarea } from "@/components/ui/primitives";
 import { PlusIcon, TrashIcon } from "@/components/ui/icons";
 import { Check, ChevronDown, ChevronRight, CircleStop, Code2, Crop, Eye, History, Image as ImageIcon, ImageMinus, ImagePlus, PanelRight, RefreshCw, Save, Sparkles, Trash2, WandSparkles, X } from "lucide-react";
 import { optionLabel } from "@/lib/content/options";
@@ -10,14 +10,18 @@ import { notify } from "@/lib/notify";
 import { confirmAction } from "@/lib/confirm";
 import { apiErrorCode } from "@/lib/api";
 import { useAuthenticatedAssetUrl } from "@/hooks/useAuthenticatedAssetUrl";
-import type { DiagramCandidate, DiagramImageTone, DiagramItem, DiagramPlacement, NormalizedRect, TagDimensionStyle } from "../types/api";
+import type { ContentFormat, DiagramCandidate, DiagramImageTone, DiagramItem, DiagramPlacement, NormalizedRect, TagDimensionStyle } from "../types/api";
 import { cancelProblemDiagram, continueProblemDiagram, createProblemDiagramCandidate, deleteProblemDiagramCandidate, overrideProblem, rebuildProblemDiagram, reconstructProblemDiagram, selectProblemDiagramCandidate, updateProblemDiagramSettings } from "../features/tasks";
+import { KnowledgeLeafPicker } from "@/components/knowledge-tree";
 import { TagPicker } from "./TagPicker";
 import { ErrorBanner } from "./ui/ErrorBanner";
+import { ProblemContent } from "./ProblemContent";
 import { renderTikz } from "./renderers/TikzRenderer";
 import { AuthenticatedSvgMarkup } from "./renderers/AuthenticatedSvgMarkup";
 import { FigureCropper, FULL_IMAGE_CROP } from "./image-crop/FigureCropper";
 import sxStyles from "./ProblemEditPanel.sx.module.css";
+
+type EditorMode = "proofread" | "diagramFocus";
 
 type OptionDraft = {
   id: string;
@@ -29,6 +33,7 @@ type ProblemEditPanelProps = {
   taskAssetPath?: string | null;
   problem: {
     problem_id: string;
+    subject: string;
     question_no?: string | null;
     chapter?: string | null;
     source?: string | null;
@@ -36,6 +41,7 @@ type ProblemEditPanelProps = {
     section_question_count?: number | null;
     difficulty_needs_review?: boolean;
     problem_text: string;
+    content_format?: ContentFormat;
     diagram_detected?: boolean;
     diagram_enabled?: boolean;
     diagram_kind?: string | null;
@@ -45,6 +51,8 @@ type ProblemEditPanelProps = {
     diagram_image_tone?: DiagramImageTone;
     diagram_placement?: DiagramPlacement;
     diagram_scale_adjustment_percent?: number | null;
+    diagram_canvas_width_em?: number | null;
+    diagram_canvas_height_em?: number | null;
     diagram_render_status?: string | null;
     diagram_error?: string | null;
     diagram_error_category?: string | null;
@@ -158,13 +166,12 @@ export function ProblemEditPanel({ taskId, taskAssetPath, problem, tagStyles, on
   const [diagramMaxCandidates, setDiagramMaxCandidates] = useState("4");
   const [isRunningDiagramAction, setIsRunningDiagramAction] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  const reducedMotion = useReducedMotion();
-  const [diagramSectionOpen, setDiagramSectionOpen] = useState(() => (
-    Boolean(diagramItem) || Boolean(problem.diagram_error) || Boolean(problem.diagram_needs_review)
-  ));
+  const [editorMode, setEditorMode] = useState<EditorMode>("proofread");
   const [tikzView, setTikzView] = useState<"preview" | "source">("preview");
   const [layoutOpen, setLayoutOpen] = useState(false);
   const [diagramAddMenuOpen, setDiagramAddMenuOpen] = useState(false);
+  const [errorTagsOpen, setErrorTagsOpen] = useState(() => (Array.isArray(problem.error_tags) && problem.error_tags.length > 0));
+  const [userTagsOpen, setUserTagsOpen] = useState(() => (Array.isArray(problem.user_tags) && problem.user_tags.length > 0));
   const [isPersistingDiagram, setIsPersistingDiagram] = useState(false);
   const diagramPersistTimerRef = useRef<number | null>(null);
 
@@ -198,15 +205,27 @@ export function ProblemEditPanel({ taskId, taskAssetPath, problem, tagStyles, on
     }, 180);
   }, [persistDiagramSettings]);
 
+  const enterDiagramFocus = useCallback(() => {
+    setDiagramAddMenuOpen(false);
+    setEditorMode("diagramFocus");
+  }, []);
+
+  const exitDiagramFocus = useCallback(() => {
+    setLayoutOpen(false);
+    setTikzView("preview");
+    setEditorMode("proofread");
+  }, []);
+
   const setDiagramMode = useCallback(async (kind: "none" | "tikz" | "image") => {
     if (kind === "none") {
       setDiagramKind("none");
+      setEditorMode("proofread");
       await persistDiagramSettings({ enabled: false });
       return;
     }
     setDiagramSourceKind(kind);
     setDiagramKind(kind);
-    setDiagramSectionOpen(true);
+    setEditorMode("diagramFocus");
     // A fresh TikZ slot is valid before its first candidate is generated.
     if (kind === "tikz" && !diagramItem?.selected_candidate_id) {
       await persistDiagramSettings({ enabled: true });
@@ -422,7 +441,8 @@ export function ProblemEditPanel({ taskId, taskAssetPath, problem, tagStyles, on
   });
   const isDirty = initialDraftSignature !== currentDraftSignature;
 
-  const save = useCallback(async () => {
+  const save = useCallback(async (optionsArg?: { close?: boolean }) => {
+    const shouldClose = optionsArg?.close ?? true;
     setIsSaving(true);
 
     try {
@@ -469,7 +489,7 @@ export function ProblemEditPanel({ taskId, taskAssetPath, problem, tagStyles, on
       });
       notify.success({ title: "已保存" });
       await onSaved();
-      onClose();
+      if (shouldClose) onClose();
     } catch (err) {
       notify.error({
         title: "保存失败",
@@ -553,9 +573,279 @@ export function ProblemEditPanel({ taskId, taskAssetPath, problem, tagStyles, on
 
   const saveState = isSaving ? "saving" : isDirty ? "dirty" : "saved";
   const saveStateLabel = isSaving ? "保存中" : isDirty ? "未保存" : "已保存";
+  const isDiagramFocus = editorMode === "diagramFocus" && diagramKind !== "none";
+  const previewOptions = options
+    .map((option, index) => ({ key: optionLabel(index), text: option.text.trim() }))
+    .filter((option) => option.text);
+  const diagramStatusText = diagramItem?.active_run_id
+    ? "处理中"
+    : diagramItem?.needs_review
+      ? "需复核"
+      : "已就绪";
+  const diagramStatusTone = diagramItem?.active_run_id
+    ? "attention"
+    : diagramItem?.needs_review
+      ? "danger"
+      : "success";
+
+  const diagramWorkbenchBody = (
+    <Box className={sxStyles.diagramExpanded}>
+      <Box className={sxStyles.diagramTopbar}>
+        <Box className={sxStyles.diagramTypeSwitch} role="group" aria-label="当前显示的附图类型">
+          <GeometryButton type="button" className={[sxStyles.diagramSegment, diagramKind === "tikz" ? sxStyles.diagramSegmentActive : ""].filter(Boolean).join(" ")} aria-pressed={diagramKind === "tikz"} onClick={() => void setDiagramMode("tikz").catch(() => undefined)}>TikZ</GeometryButton>
+          <GeometryButton type="button" className={[sxStyles.diagramSegment, diagramKind === "image" ? sxStyles.diagramSegmentActive : ""].filter(Boolean).join(" ")} aria-pressed={diagramKind === "image"} disabled={!diagramImagePath} onClick={() => void setDiagramMode("image").catch(() => undefined)}>题图</GeometryButton>
+        </Box>
+        <Button size="small" variant="invisible" leadingVisual={PanelRight} trailingVisual={layoutOpen ? ChevronDown : ChevronRight} aria-expanded={layoutOpen} onClick={() => setLayoutOpen((open) => !open)}>{`${diagramPlacementLabel(diagramPlacement)} · ${diagramScaleAdjustmentPercent === 100 ? "自动字号" : `${diagramScaleAdjustmentPercent}%`}`}</Button>
+      </Box>
+
+      {layoutOpen ? (
+        <Box className={sxStyles.diagramLayoutPanel}>
+          <Box className={sxStyles.diagramLayoutLine}>
+            <Text className={sxStyles.diagramLayoutLabel}>位置</Text>
+            <NativeSelect
+              aria-label="附图位置"
+              className={sxStyles.diagramSelect}
+              value={diagramPlacementValue(diagramPlacement)}
+              onChange={(event) => {
+                const selected = diagramPlacementOptions.find((option) => option.value === event.target.value);
+                if (selected) void updateDiagramLayout({ placement: selected.placement }).catch(() => undefined);
+              }}
+            >
+              {diagramPlacementOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+            </NativeSelect>
+          </Box>
+          <Box className={sxStyles.diagramLayoutLine}>
+            <Text className={sxStyles.diagramLayoutLabel}>大小</Text>
+            <NativeInput className={sxStyles.diagramRange} aria-label="自动字号基准微调百分比" type="range" min="50" max="200" step="5" value={diagramScaleAdjustmentPercent} onChange={(event) => { const next = Number(event.target.value); setDiagramScaleAdjustmentPercent(next); scheduleDiagramSettings({ enabled: true, kind: diagramSourceKind, scale_adjustment_percent: next }); }} />
+            <Text className={sxStyles.diagramScaleValue}>{diagramScaleAdjustmentPercent === 100 ? "自动" : `${diagramScaleAdjustmentPercent}%`}</Text>
+          </Box>
+        </Box>
+      ) : null}
+
+      {diagramKind === "tikz" ? (
+        <Box className={sxStyles.diagramTikzPanel}>
+          <Box className={sxStyles.diagramWorkspace}>
+            <Box className={[sxStyles.diagramWorkspaceLayout, diagramItem?.candidates.length ? sxStyles.diagramWorkspaceLayoutWithSidebar : ""].filter(Boolean).join(" ")}>
+              {diagramItem?.candidates.length ? (
+                <Box as="aside" className={sxStyles.diagramVersionSidebar} aria-label="版本记录">
+                  <Box className={sxStyles.diagramVersionSidebarHeader}><History size={14} aria-hidden />版本记录 · {diagramItem.candidates.length}</Box>
+                  <Box role="group" aria-label="版本历史列表" className={sxStyles.diagramVersionSidebarList}>
+                    {[...diagramItem.candidates].reverse().map((candidate) => {
+                      const isCurrent = candidate.id === diagramItem.selected_candidate_id;
+                      const isViewed = candidate.id === effectiveCandidateViewId;
+                      return <GeometryButton key={candidate.id} type="button" className={[sxStyles.diagramSidebarRow, isViewed ? sxStyles.diagramSidebarRowViewed : ""].filter(Boolean).join(" ")} aria-pressed={isViewed} onClick={() => viewCandidateFromSidebar(candidate)}>
+                        <Box className={sxStyles.diagramVersionCopy}>
+                          <Text className={sxStyles.diagramVersionName}>版本 {candidate.ordinal} · {candidate.source_kind === "ai" ? "AI" : "人工"}</Text>
+                          <Text className={[sxStyles.diagramMuted, isCurrent ? sxStyles.diagramCurrentLabel : ""].filter(Boolean).join(" ")}>{isCurrent ? "当前使用" : isViewed ? "正在查看" : candidate.parent_candidate_id ? "基于上一版本" : "候选版本"}</Text>
+                        </Box>
+                      </GeometryButton>;
+                    })}
+                  </Box>
+                </Box>
+              ) : null}
+
+              <Box className={sxStyles.diagramWorkspaceMain}>
+                <Box className={sxStyles.diagramWorkspaceHead}>
+                  <Box className={sxStyles.diagramVersionTitle}>
+                    <Text className={sxStyles.diagramCurrentVersion}>{viewedCandidate ? `版本 ${viewedCandidate.ordinal}` : "尚无 TikZ 版本"}</Text>
+                    {viewedCandidate ? <Text className={sxStyles.diagramMuted}>{viewedCandidate.id === diagramItem?.selected_candidate_id ? `${viewedCandidate.source_kind === "ai" ? "AI 生成" : "人工编译"} · 当前使用` : `${viewedCandidate.source_kind === "ai" ? "AI 生成" : "人工编译"} · 正在查看`}</Text> : null}
+                  </Box>
+                  {tikzView === "preview" ? <Button size="small" variant="invisible" leadingVisual={Code2} onClick={openDiagramSource}>编辑源码</Button> : <Button size="small" variant="invisible" leadingVisual={Eye} onClick={requestLeaveDiagramSource}>返回预览</Button>}
+                </Box>
+
+                {viewedCandidate ? (
+                  <Box as="section" aria-label="版本详细信息" className={sxStyles.diagramCandidateDetails}>
+                    <Box className={sxStyles.diagramCandidateDetailsHead}>
+                      <Text className={sxStyles.diagramCandidateDetailsTitle}>版本详细信息</Text>
+                      <Text className={sxStyles.diagramCandidateMeta}>
+                        {[viewedCandidate.provider, viewedCandidate.model].filter(Boolean).join(" · ") || "本地编译"}
+                      </Text>
+                    </Box>
+                    <Text className={sxStyles.diagramCandidateReason}>
+                      {viewedCandidate.review_reason || (viewedCandidate.parent_candidate_id ? "基于上一版本编译。" : "候选版本。")}
+                    </Text>
+                    {viewedCandidate.hard_errors.length ? (
+                      <Box className={sxStyles.diagramCandidateIssue} data-kind="error">
+                        <Text>硬错误</Text>
+                        <Text>{viewedCandidate.hard_errors.join("；")}</Text>
+                      </Box>
+                    ) : null}
+                    {viewedCandidate.soft_differences.length ? (
+                      <Box className={sxStyles.diagramCandidateIssue} data-kind="muted">
+                        <Text>差异</Text>
+                        <Text>{viewedCandidate.soft_differences.join("；")}</Text>
+                      </Box>
+                    ) : null}
+                  </Box>
+                ) : null}
+
+                {tikzView === "preview" ? (
+                  <Box className={sxStyles.diagramTabPanel}>
+                    {viewedCandidate ? (
+                      <>
+                        <Box as="figure" aria-label="当前版本预览" className={sxStyles.diagramPreviewFrame}><CandidatePreview candidate={viewedCandidate} /></Box>
+                        <Box className={sxStyles.diagramPreviewFooter}>
+                          <Text className={sxStyles.diagramMuted}>{diagramItem?.active_run_id ? "正在生成候选" : "已保存"}</Text>
+                          <Box className={sxStyles.diagramActionRow}>
+                            {viewedCandidate.id !== diagramItem?.selected_candidate_id && viewedCandidate.svg_path && viewedCandidate.pdf_path ? <Button size="small" leadingVisual={Check} disabled={isRunningDiagramAction || Boolean(diagramItem?.active_run_id)} onClick={() => void selectCandidate(viewedCandidate)}>采用此版本</Button> : null}
+                            <Button size="small" variant="danger" leadingVisual={Trash2} disabled={isRunningDiagramAction || Boolean(diagramItem?.active_run_id)} onClick={() => void deleteCandidate(viewedCandidate)}>删除版本</Button>
+                          </Box>
+                        </Box>
+                      </>
+                    ) : (
+                      <Box className={sxStyles.diagramEmptyTikz}><Box><Box className={sxStyles.diagramEmptyIcon}><WandSparkles size={22} aria-hidden /></Box><Text className={sxStyles.diagramEmptyTitle}>尚无 TikZ 版本</Text><Text className={sxStyles.diagramMuted}>从原始题图生成第一版</Text></Box></Box>
+                    )}
+
+                    <Box className={sxStyles.diagramAiSection}>
+                      <Text className={sxStyles.diagramAiTitle}><Sparkles size={15} aria-hidden />AI 优化</Text>
+                      <Box className={sxStyles.diagramAiCompose}>
+                        <FormControl>
+                          <FormControl.Label htmlFor="diagram-instruction">附加指示（可选）</FormControl.Label>
+                          <TextInput id="diagram-instruction" block placeholder="例如：保留横轴刻度与箭头方向" value={diagramInstruction} onChange={(event) => setDiagramInstruction(event.currentTarget.value)} />
+                        </FormControl>
+                        <FormControl>
+                          <FormControl.Label htmlFor="diagram-rounds">最大轮数</FormControl.Label>
+                          <NativeSelect id="diagram-rounds" className={sxStyles.diagramSelect} aria-label="最大轮数" value={diagramMaxCandidates} onChange={(event) => setDiagramMaxCandidates(event.currentTarget.value)}>
+                            {[1, 2, 3, 4, 5, 6, 7, 8].map((round) => <option key={round} value={round}>{round}</option>)}
+                          </NativeSelect>
+                        </FormControl>
+                        <Box className={sxStyles.diagramPrimaryAction}>
+                          {!diagramItem?.candidates.length ? <Button size="small" variant="primary" leadingVisual={WandSparkles} disabled={isRunningDiagramAction || !taskAssetPath} onClick={() => void runDiagramAction("initial")}>AI 生成</Button> : <Button size="small" variant="primary" leadingVisual={Sparkles} disabled={isRunningDiagramAction || Boolean(diagramItem.active_run_id)} onClick={() => void runDiagramAction("continue")}>继续优化</Button>}
+                        </Box>
+                      </Box>
+                      <Box className={sxStyles.diagramAiFooter}>
+                        {diagramItem ? <Box className={sxStyles.diagramAiStatus}>
+                          <Text className={sxStyles.diagramStatus} data-status={diagramItem.needs_review || diagramItem.status === "failed" ? "danger" : "muted"}>{diagramStatusLabel[diagramItem.status]}</Text>
+                          {diagramItem.active_run_id ? <Button size="small" variant="danger" leadingVisual={CircleStop} disabled={isRunningDiagramAction} onClick={() => void cancelDiagram()}>取消任务</Button> : null}
+                        </Box> : <span />}
+                        <Button size="small" variant="invisible" leadingVisual={RefreshCw} disabled={isRunningDiagramAction || Boolean(diagramItem?.active_run_id)} onClick={() => void runDiagramAction("rebuild")}>从原图重新重建</Button>
+                      </Box>
+                    </Box>
+                  </Box>
+                ) : (
+                  <Box className={sxStyles.diagramSourceView}>
+                    <Box className={sxStyles.diagramSourceShell}>
+                      <Box className={sxStyles.diagramSourceHead}><Text family="mono">diagram.tikz</Text><Text className={sxStyles.diagramMuted}>{viewedCandidate ? `基于版本 ${viewedCandidate.ordinal}` : "新建 TikZ 版本"}</Text></Box>
+                      <Textarea value={diagramTikzSource} onChange={(event) => { setDiagramTikzSource(event.target.value); setDiagramSvg(null); setDiagramRenderStatus("pending"); setDiagramCompileError(""); }} block rows={14} className={sxStyles.diagramSourceEditor} placeholder="编辑 TikZ 源码。编译并保存后才会生成版本。" />
+                    </Box>
+                    {diagramCompileError ? <Box className={sxStyles.diagramCompileError}><Text className={sxStyles.diagramCompileErrorTitle}>{diagramCompileErrorCategory === "human_review" ? "需要人工介入" : "编译错误"}</Text><Text className={sxStyles.diagramCompileErrorBody}>{diagramCompileError}</Text></Box> : null}
+                    <Box className={sxStyles.diagramSourceActions}>
+                      <Button size="small" variant="invisible" onClick={requestLeaveDiagramSource}>放弃修改</Button>
+                      <Button size="small" variant="primary" leadingVisual={Save} loading={isCompilingDiagram} onClick={() => void compileAndSaveDiagram()} disabled={isCompilingDiagram}>{isCompilingDiagram ? "编译中…" : "编译并保存"}</Button>
+                    </Box>
+                  </Box>
+                )}
+              </Box>
+            </Box>
+          </Box>
+        </Box>
+      ) : null}
+
+      {diagramKind === "image" ? (
+        <Box className={sxStyles.diagramImagePanel}>
+          <Box className={sxStyles.diagramWorkspace}>
+            <Box className={sxStyles.diagramWorkspaceHead}>
+              <Box className={sxStyles.diagramVersionTitle}><Text className={sxStyles.diagramCurrentVersion}>题图裁剪</Text><Text className={sxStyles.diagramMuted}>已保存</Text></Box>
+              <Box className={sxStyles.diagramTypeSwitch} role="group" aria-label="题图色调">
+                <GeometryButton type="button" className={[sxStyles.diagramSegment, diagramImageTone === "auto" ? sxStyles.diagramSegmentActive : ""].filter(Boolean).join(" ")} aria-pressed={diagramImageTone === "auto"} onClick={() => { setDiagramImageTone("auto"); void persistDiagramSettings({ enabled: true, kind: "image", image_tone: "auto" }).catch(() => undefined); }}>自动适配</GeometryButton>
+                <GeometryButton type="button" className={[sxStyles.diagramSegment, diagramImageTone === "original" ? sxStyles.diagramSegmentActive : ""].filter(Boolean).join(" ")} aria-pressed={diagramImageTone === "original"} onClick={() => { setDiagramImageTone("original"); void persistDiagramSettings({ enabled: true, kind: "image", image_tone: "original" }).catch(() => undefined); }}>保留原色</GeometryButton>
+              </Box>
+            </Box>
+            {diagramImageUrl ? <FigureCropper imageUrl={diagramImageUrl} value={diagramImageCrop} tone={diagramImageTone} showToneControls={false} onChange={(next) => { setDiagramImageCrop(next); scheduleDiagramSettings({ enabled: true, kind: "image", image_crop: next }); }} onToneChange={(tone) => { setDiagramImageTone(tone); void persistDiagramSettings({ enabled: true, kind: "image", image_tone: tone }).catch(() => undefined); }} /> : <Text className={sxStyles.sx1}>当前题目没有可用的原始图片。</Text>}
+            <Box className={sxStyles.diagramImageFooter}><Text className={sxStyles.diagramMuted}>裁剪自原始题图 · 拖动选区后立即保存</Text><Crop size={15} aria-hidden /></Box>
+          </Box>
+        </Box>
+      ) : null}
+    </Box>
+  );
+
+  if (isDiagramFocus) {
+    return (
+      <Box className={sxStyles.editorShell} data-mode="diagram-focus">
+        <Box as="header" className={sxStyles.editorHeader}>
+          <Box className={sxStyles.headerIdentity}>
+            <Heading order={2} className={sxStyles.editorTitle}>附图沉浸</Heading>
+            <Text className={sxStyles.headerContext} title={sourceTags[0] || undefined}>
+              <span>{questionNo ? `题 ${questionNo}` : "未编号"}</span>
+              {chapter ? <span>{chapter}</span> : null}
+              {sourceTags[0] ? <span className={sxStyles.headerSource}>{sourceTags[0]}</span> : null}
+            </Text>
+          </Box>
+          <Box className={sxStyles.focusHeaderActions}>
+            <Button size="small" variant="invisible" onClick={exitDiagramFocus}>编辑文字</Button>
+            <Button size="small" variant="secondary" onClick={exitDiagramFocus}>退出改图</Button>
+            <IconButton size="small" variant="invisible" icon={X} aria-label="关闭" onClick={requestClose} />
+          </Box>
+        </Box>
+
+        <Box className={[sxStyles.editorBody, sxStyles.focusBody].join(" ")}>
+          {isDirty ? (
+            <Box className={sxStyles.focusDirtyBanner} role="status">
+              <Text>题目文字有未保存修改</Text>
+              <Button size="small" variant="invisible" leadingVisual={Save} loading={isSaving} disabled={isSaving} onClick={() => void save({ close: false })}>保存文字</Button>
+            </Box>
+          ) : null}
+
+          <Box as="section" aria-label="只读题面" className={sxStyles.focusProblemPreview}>
+            <ProblemContent
+              problemText={problemText}
+              contentFormat={problem.content_format}
+              options={previewOptions}
+              diagramDetected
+              diagramKind={diagramKind}
+              diagramTikzSource={diagramTikzSource || viewedCandidate?.tikz_source || problem.diagram_tikz_source}
+              diagramSvg={problem.diagram_svg}
+              diagramImagePath={diagramKind === "image" ? diagramImagePath : problem.diagram_image_path}
+              diagramImageTone={diagramImageTone}
+              diagramPlacement={diagramPlacement}
+              diagramScaleAdjustmentPercent={diagramScaleAdjustmentPercent}
+              diagramCanvasWidthEm={problem.diagram_canvas_width_em}
+              diagramCanvasHeightEm={problem.diagram_canvas_height_em}
+              diagramRenderStatus={problem.diagram_render_status}
+              diagramError={diagramCompileError || problem.diagram_error}
+              diagramNeedsReview={Boolean(diagramItem?.needs_review || problem.diagram_needs_review)}
+              itemKeyPrefix={`${problem.problem_id}-focus`}
+            />
+          </Box>
+
+          <Box as="section" aria-label="附图工作台" className={[sxStyles.diagramWorkbench, sxStyles.focusWorkbench].join(" ")}>
+            <Box className={sxStyles.diagramHeader}>
+              <Box className={sxStyles.diagramHeaderCopy}>
+                <Box className={sxStyles.diagramHeaderTitleRow}>
+                  <Text className={sxStyles.diagramDisclosureTitle}>附图工作台</Text>
+                  <Text className={sxStyles.diagramStatusBadge} data-status={diagramStatusTone}>
+                    <span aria-hidden />{diagramStatusText}
+                  </Text>
+                </Box>
+                <Text className={sxStyles.diagramHeaderSummary} truncate>
+                  {diagramKind === "tikz" ? `TikZ · ${viewedCandidate ? `版本 ${viewedCandidate.ordinal}` : "尚无版本"}` : "题图裁剪 · 已保存"}
+                  {diagramItem?.active_run_id ? " · 正在生成候选" : ""}
+                </Text>
+              </Box>
+              <Box className={sxStyles.diagramHeaderActions}>
+                <Button size="small" variant="invisible" leadingVisual={ImageMinus} disabled={isPersistingDiagram} onClick={() => void setDiagramMode("none").catch(() => undefined)}>移除</Button>
+              </Box>
+            </Box>
+            {diagramWorkbenchBody}
+          </Box>
+
+          <Box className={[sxStyles.editorFooter, sxStyles.focusFooter].join(" ")}>
+            <Text className={sxStyles.saveState} data-state={diagramItem?.active_run_id ? "dirty" : "saved"} aria-live="polite">
+              <span aria-hidden="true" />
+              {diagramItem?.active_run_id ? "附图处理中" : "附图设置已即时保存"}
+            </Text>
+            <Box className={sxStyles.footerActions}>
+              <Button size="small" variant="invisible" onClick={exitDiagramFocus}>编辑文字</Button>
+              <Button size="small" variant="secondary" onClick={exitDiagramFocus}>退出改图</Button>
+            </Box>
+          </Box>
+        </Box>
+      </Box>
+    );
+  }
 
   return (
-    <Box className={sxStyles.editorShell}>
+    <Box className={sxStyles.editorShell} data-mode="proofread">
       <Box as="header" className={sxStyles.editorHeader}>
         <Box className={sxStyles.headerIdentity}>
           <Heading order={2} className={sxStyles.editorTitle}>编辑题目</Heading>
@@ -683,38 +973,60 @@ export function ProblemEditPanel({ taskId, taskAssetPath, problem, tagStyles, on
 
             <Box as="section" className={sxStyles.contentSection} aria-labelledby="problem-tags-heading">
               <Box className={sxStyles.sectionHeading}>
-                <Heading order={3} id="problem-tags-heading" className={sxStyles.sectionHeadingTitle}>分类与标签</Heading>
+                <Box>
+                  <Heading order={3} id="problem-tags-heading" className={sxStyles.sectionHeadingTitle}>分类</Heading>
+                  <Text className={sxStyles.sectionSummary}>知识点从目录树选择叶子；错因和备注按需添加</Text>
+                </Box>
               </Box>
-              <Box className={sxStyles.tagGrid}>
-                <TagPicker
-                  title="知识体系"
-                  dimension="knowledge"
-                  value={knowledgeTags}
-                  onChange={setKnowledgeTags}
-                  styles={tagStyles}
-                  placeholder="搜索或添加"
-                />
-                <TagPicker
-                  title="错题归因"
-                  dimension="error"
-                  value={errorTags}
-                  onChange={setErrorTags}
-                  styles={tagStyles}
-                  placeholder="搜索或添加"
-                />
-                <TagPicker
-                  title="自定义"
-                  dimension="custom"
-                  value={userTags}
-                  onChange={setUserTags}
-                  styles={tagStyles}
-                  enableRemoteSearch={false}
-                  placeholder="输入后回车"
-                />
+              <Box className={sxStyles.taxonomyStack}>
+                <Box className={sxStyles.taxonomyRow}>
+                  <Text className={sxStyles.taxonomyLabel}>知识体系</Text>
+                  <KnowledgeLeafPicker
+                    subject={problem.subject}
+                    value={knowledgeTags}
+                    onChange={setKnowledgeTags}
+                  />
+                </Box>
+                <Box className={sxStyles.taxonomyRow}>
+                  <Text className={sxStyles.taxonomyLabel}>错题归因</Text>
+                  {errorTagsOpen || errorTags.length ? (
+                    <TagPicker
+                      title="错题归因"
+                      dimension="error"
+                      value={errorTags}
+                      onChange={setErrorTags}
+                      styles={tagStyles}
+                      placeholder="搜索已有错因"
+                    />
+                  ) : (
+                    <Box className={sxStyles.taxonomyIdle}>
+                      <Text className={sxStyles.taxonomyEmpty}>暂无错因</Text>
+                      <Button size="small" variant="invisible" onClick={() => setErrorTagsOpen(true)}>添加</Button>
+                    </Box>
+                  )}
+                </Box>
+                <Box className={sxStyles.taxonomyRow}>
+                  <Text className={sxStyles.taxonomyLabel}>备注标签</Text>
+                  {userTagsOpen || userTags.length ? (
+                    <TagPicker
+                      title="备注标签"
+                      dimension="custom"
+                      value={userTags}
+                      onChange={setUserTags}
+                      styles={tagStyles}
+                      enableRemoteSearch={false}
+                      placeholder="输入后回车"
+                    />
+                  ) : (
+                    <Box className={sxStyles.taxonomyIdle}>
+                      <Text className={sxStyles.taxonomyEmpty}>无</Text>
+                      <Button size="small" variant="invisible" onClick={() => setUserTagsOpen(true)}>添加</Button>
+                    </Box>
+                  )}
+                </Box>
               </Box>
             </Box>
           </Box>
-
         </Box>
 
         <Box className={[sxStyles.section, sxStyles.diagramSection].join(" ")}>
@@ -749,8 +1061,8 @@ export function ProblemEditPanel({ taskId, taskAssetPath, problem, tagStyles, on
                 <Box className={sxStyles.diagramHeaderCopy}>
                   <Box className={sxStyles.diagramHeaderTitleRow}>
                     <Text className={sxStyles.diagramDisclosureTitle}>附图</Text>
-                    <Text className={sxStyles.diagramStatusBadge} data-status={diagramItem?.active_run_id ? "attention" : diagramItem?.needs_review ? "danger" : "success"}>
-                      <span aria-hidden />{diagramItem?.active_run_id ? "处理中" : diagramItem?.needs_review ? "需复核" : "已就绪"}
+                    <Text className={sxStyles.diagramStatusBadge} data-status={diagramStatusTone}>
+                      <span aria-hidden />{diagramStatusText}
                     </Text>
                   </Box>
                   <Text className={sxStyles.diagramHeaderSummary} truncate>
@@ -760,193 +1072,19 @@ export function ProblemEditPanel({ taskId, taskAssetPath, problem, tagStyles, on
                 </Box>
                 <Box className={sxStyles.diagramHeaderActions}>
                   <Button size="small" variant="invisible" leadingVisual={ImageMinus} disabled={isPersistingDiagram} onClick={() => void setDiagramMode("none").catch(() => undefined)}>移除</Button>
-                  <IconButton size="small" variant="invisible" icon={diagramSectionOpen ? ChevronDown : ChevronRight} aria-label={diagramSectionOpen ? "折叠附图设置" : "展开附图设置"} onClick={() => setDiagramSectionOpen((open) => !open)} />
+                  <Button size="small" variant="primary" onClick={enterDiagramFocus}>进入改图</Button>
                 </Box>
               </Box>
 
-              {!diagramSectionOpen ? (
-                <Box as="figure" aria-label="折叠附图预览" className={sxStyles.diagramCollapsedPreview}>
-                  {diagramKind === "tikz" && viewedCandidate ? (
-                    <CandidatePreview candidate={viewedCandidate} />
-                  ) : diagramKind === "image" && diagramPreviewUrl ? (
-                    <Image src={diagramPreviewUrl} alt="当前附图预览" width={1200} height={640} unoptimized />
-                  ) : (
-                    <Box className={sxStyles.diagramCollapsedEmpty}><ImageIcon size={22} aria-hidden /><Text>暂无可用预览</Text></Box>
-                  )}
-                </Box>
-              ) : null}
-
-              <Collapse expanded={diagramSectionOpen} transitionDuration={reducedMotion ? 0 : 180}>
-                <Box className={sxStyles.diagramExpanded}>
-                  <Box className={sxStyles.diagramTopbar}>
-                    <Box className={sxStyles.diagramTypeSwitch} role="group" aria-label="当前显示的附图类型">
-                      <GeometryButton type="button" className={[sxStyles.diagramSegment, diagramKind === "tikz" ? sxStyles.diagramSegmentActive : ""].filter(Boolean).join(" ")} aria-pressed={diagramKind === "tikz"} onClick={() => void setDiagramMode("tikz").catch(() => undefined)}>TikZ</GeometryButton>
-                      <GeometryButton type="button" className={[sxStyles.diagramSegment, diagramKind === "image" ? sxStyles.diagramSegmentActive : ""].filter(Boolean).join(" ")} aria-pressed={diagramKind === "image"} disabled={!diagramImagePath} onClick={() => void setDiagramMode("image").catch(() => undefined)}>题图</GeometryButton>
-                    </Box>
-                    <Button size="small" variant="invisible" leadingVisual={PanelRight} trailingVisual={layoutOpen ? ChevronDown : ChevronRight} aria-expanded={layoutOpen} onClick={() => setLayoutOpen((open) => !open)}>{`${diagramPlacementLabel(diagramPlacement)} · ${diagramScaleAdjustmentPercent === 100 ? "自动字号" : `${diagramScaleAdjustmentPercent}%`}`}</Button>
-                  </Box>
-
-                  {layoutOpen ? (
-                    <Box className={sxStyles.diagramLayoutPanel}>
-                      <Box className={sxStyles.diagramLayoutLine}>
-                        <Text className={sxStyles.diagramLayoutLabel}>位置</Text>
-                        <NativeSelect
-                          aria-label="附图位置"
-                          className={sxStyles.diagramSelect}
-                          value={diagramPlacementValue(diagramPlacement)}
-                          onChange={(event) => {
-                            const selected = diagramPlacementOptions.find((option) => option.value === event.target.value);
-                            if (selected) void updateDiagramLayout({ placement: selected.placement }).catch(() => undefined);
-                          }}
-                        >
-                          {diagramPlacementOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-                        </NativeSelect>
-                      </Box>
-                      <Box className={sxStyles.diagramLayoutLine}>
-                        <Text className={sxStyles.diagramLayoutLabel}>大小</Text>
-                        <NativeInput className={sxStyles.diagramRange} aria-label="自动字号基准微调百分比" type="range" min="50" max="200" step="5" value={diagramScaleAdjustmentPercent} onChange={(event) => { const next = Number(event.target.value); setDiagramScaleAdjustmentPercent(next); scheduleDiagramSettings({ enabled: true, kind: diagramSourceKind, scale_adjustment_percent: next }); }} />
-                        <Text className={sxStyles.diagramScaleValue}>{diagramScaleAdjustmentPercent === 100 ? "自动" : `${diagramScaleAdjustmentPercent}%`}</Text>
-                      </Box>
-                    </Box>
-                  ) : null}
-
-                  {diagramKind === "tikz" ? (
-                    <Box className={sxStyles.diagramTikzPanel}>
-                      <Box className={sxStyles.diagramWorkspace}>
-                        <Box className={[sxStyles.diagramWorkspaceLayout, diagramItem?.candidates.length ? sxStyles.diagramWorkspaceLayoutWithSidebar : ""].filter(Boolean).join(" ")}>
-                          {diagramItem?.candidates.length ? (
-                            <Box as="aside" className={sxStyles.diagramVersionSidebar} aria-label="版本记录">
-                              <Box className={sxStyles.diagramVersionSidebarHeader}><History size={14} aria-hidden />版本记录 · {diagramItem.candidates.length}</Box>
-                              <Box role="group" aria-label="版本历史列表" className={sxStyles.diagramVersionSidebarList}>
-                                {[...diagramItem.candidates].reverse().map((candidate) => {
-                                  const isCurrent = candidate.id === diagramItem.selected_candidate_id;
-                                  const isViewed = candidate.id === effectiveCandidateViewId;
-                                  return <GeometryButton key={candidate.id} type="button" className={[sxStyles.diagramSidebarRow, isViewed ? sxStyles.diagramSidebarRowViewed : ""].filter(Boolean).join(" ")} aria-pressed={isViewed} onClick={() => viewCandidateFromSidebar(candidate)}>
-                                    <Box className={sxStyles.diagramVersionCopy}>
-                                      <Text className={sxStyles.diagramVersionName}>版本 {candidate.ordinal} · {candidate.source_kind === "ai" ? "AI" : "人工"}</Text>
-                                      <Text className={[sxStyles.diagramMuted, isCurrent ? sxStyles.diagramCurrentLabel : ""].filter(Boolean).join(" ")}>{isCurrent ? "当前使用" : isViewed ? "正在查看" : candidate.parent_candidate_id ? "基于上一版本" : "候选版本"}</Text>
-                                    </Box>
-                                  </GeometryButton>;
-                                })}
-                              </Box>
-                            </Box>
-                          ) : null}
-
-                          <Box className={sxStyles.diagramWorkspaceMain}>
-                            <Box className={sxStyles.diagramWorkspaceHead}>
-                              <Box className={sxStyles.diagramVersionTitle}>
-                                <Text className={sxStyles.diagramCurrentVersion}>{viewedCandidate ? `版本 ${viewedCandidate.ordinal}` : "尚无 TikZ 版本"}</Text>
-                                {viewedCandidate ? <Text className={sxStyles.diagramMuted}>{viewedCandidate.id === diagramItem?.selected_candidate_id ? `${viewedCandidate.source_kind === "ai" ? "AI 生成" : "人工编译"} · 当前使用` : `${viewedCandidate.source_kind === "ai" ? "AI 生成" : "人工编译"} · 正在查看`}</Text> : null}
-                              </Box>
-                              {tikzView === "preview" ? <Button size="small" variant="invisible" leadingVisual={Code2} onClick={openDiagramSource}>编辑源码</Button> : <Button size="small" variant="invisible" leadingVisual={Eye} onClick={requestLeaveDiagramSource}>返回预览</Button>}
-                            </Box>
-
-                            {viewedCandidate ? (
-                              <Box as="section" aria-label="版本详细信息" className={sxStyles.diagramCandidateDetails}>
-                                <Box className={sxStyles.diagramCandidateDetailsHead}>
-                                  <Text className={sxStyles.diagramCandidateDetailsTitle}>版本详细信息</Text>
-                                  <Text className={sxStyles.diagramCandidateMeta}>
-                                    {[viewedCandidate.provider, viewedCandidate.model].filter(Boolean).join(" · ") || "本地编译"}
-                                  </Text>
-                                </Box>
-                                <Text className={sxStyles.diagramCandidateReason}>
-                                  {viewedCandidate.review_reason || (viewedCandidate.parent_candidate_id ? "基于上一版本编译。" : "候选版本。")}
-                                </Text>
-                                {viewedCandidate.hard_errors.length ? (
-                                  <Box className={sxStyles.diagramCandidateIssue} data-kind="error">
-                                    <Text>硬错误</Text>
-                                    <Text>{viewedCandidate.hard_errors.join("；")}</Text>
-                                  </Box>
-                                ) : null}
-                                {viewedCandidate.soft_differences.length ? (
-                                  <Box className={sxStyles.diagramCandidateIssue} data-kind="muted">
-                                    <Text>差异</Text>
-                                    <Text>{viewedCandidate.soft_differences.join("；")}</Text>
-                                  </Box>
-                                ) : null}
-                              </Box>
-                            ) : null}
-
-                        {tikzView === "preview" ? (
-                          <Box className={sxStyles.diagramTabPanel}>
-                            {viewedCandidate ? (
-                              <>
-                                <Box as="figure" aria-label="当前版本预览" className={sxStyles.diagramPreviewFrame}><CandidatePreview candidate={viewedCandidate} /></Box>
-                                <Box className={sxStyles.diagramPreviewFooter}>
-                                  <Text className={sxStyles.diagramMuted}>{diagramItem?.active_run_id ? "正在生成候选" : "已保存"}</Text>
-                                  <Box className={sxStyles.diagramActionRow}>
-                                    {viewedCandidate.id !== diagramItem?.selected_candidate_id && viewedCandidate.svg_path && viewedCandidate.pdf_path ? <Button size="small" leadingVisual={Check} disabled={isRunningDiagramAction || Boolean(diagramItem?.active_run_id)} onClick={() => void selectCandidate(viewedCandidate)}>采用此版本</Button> : null}
-                                    <Button size="small" variant="danger" leadingVisual={Trash2} disabled={isRunningDiagramAction || Boolean(diagramItem?.active_run_id)} onClick={() => void deleteCandidate(viewedCandidate)}>删除版本</Button>
-                                  </Box>
-                                </Box>
-                              </>
-                            ) : (
-                              <Box className={sxStyles.diagramEmptyTikz}><Box><Box className={sxStyles.diagramEmptyIcon}><WandSparkles size={22} aria-hidden /></Box><Text className={sxStyles.diagramEmptyTitle}>尚无 TikZ 版本</Text><Text className={sxStyles.diagramMuted}>从原始题图生成第一版</Text></Box></Box>
-                            )}
-
-                            <Box className={sxStyles.diagramAiSection}>
-                              <Text className={sxStyles.diagramAiTitle}><Sparkles size={15} aria-hidden />AI 优化</Text>
-                              <Box className={sxStyles.diagramAiCompose}>
-                                <FormControl>
-                                  <FormControl.Label htmlFor="diagram-instruction">附加指示（可选）</FormControl.Label>
-                                  <TextInput id="diagram-instruction" block placeholder="例如：保留横轴刻度与箭头方向" value={diagramInstruction} onChange={(event) => setDiagramInstruction(event.currentTarget.value)} />
-                                </FormControl>
-                                <FormControl>
-                                  <FormControl.Label htmlFor="diagram-rounds">最大轮数</FormControl.Label>
-                                  <NativeSelect id="diagram-rounds" className={sxStyles.diagramSelect} aria-label="最大轮数" value={diagramMaxCandidates} onChange={(event) => setDiagramMaxCandidates(event.currentTarget.value)}>
-                                    {[1, 2, 3, 4, 5, 6, 7, 8].map((round) => <option key={round} value={round}>{round}</option>)}
-                                  </NativeSelect>
-                                </FormControl>
-                                <Box className={sxStyles.diagramPrimaryAction}>
-                                  {!diagramItem?.candidates.length ? <Button size="small" variant="primary" leadingVisual={WandSparkles} disabled={isRunningDiagramAction || !taskAssetPath} onClick={() => void runDiagramAction("initial")}>AI 生成</Button> : <Button size="small" variant="primary" leadingVisual={Sparkles} disabled={isRunningDiagramAction || Boolean(diagramItem.active_run_id)} onClick={() => void runDiagramAction("continue")}>继续优化</Button>}
-                                </Box>
-                              </Box>
-                              <Box className={sxStyles.diagramAiFooter}>
-                                {diagramItem ? <Box className={sxStyles.diagramAiStatus}>
-                                  <Text className={sxStyles.diagramStatus} data-status={diagramItem.needs_review || diagramItem.status === "failed" ? "danger" : "muted"}>{diagramStatusLabel[diagramItem.status]}</Text>
-                                  {diagramItem.active_run_id ? <Button size="small" variant="danger" leadingVisual={CircleStop} disabled={isRunningDiagramAction} onClick={() => void cancelDiagram()}>取消任务</Button> : null}
-                                </Box> : <span />}
-                                <Button size="small" variant="invisible" leadingVisual={RefreshCw} disabled={isRunningDiagramAction || Boolean(diagramItem?.active_run_id)} onClick={() => void runDiagramAction("rebuild")}>从原图重新重建</Button>
-                              </Box>
-                            </Box>
-
-                          </Box>
-                        ) : (
-                          <Box className={sxStyles.diagramSourceView}>
-                            <Box className={sxStyles.diagramSourceShell}>
-                              <Box className={sxStyles.diagramSourceHead}><Text family="mono">diagram.tikz</Text><Text className={sxStyles.diagramMuted}>{viewedCandidate ? `基于版本 ${viewedCandidate.ordinal}` : "新建 TikZ 版本"}</Text></Box>
-                              <Textarea value={diagramTikzSource} onChange={(event) => { setDiagramTikzSource(event.target.value); setDiagramSvg(null); setDiagramRenderStatus("pending"); setDiagramCompileError(""); }} block rows={14} className={sxStyles.diagramSourceEditor} placeholder="编辑 TikZ 源码。编译并保存后才会生成版本。" />
-                            </Box>
-                            {diagramCompileError ? <Box className={sxStyles.diagramCompileError}><Text className={sxStyles.diagramCompileErrorTitle}>{diagramCompileErrorCategory === "human_review" ? "需要人工介入" : "编译错误"}</Text><Text className={sxStyles.diagramCompileErrorBody}>{diagramCompileError}</Text></Box> : null}
-                            <Box className={sxStyles.diagramSourceActions}>
-                              <Button size="small" variant="invisible" onClick={requestLeaveDiagramSource}>放弃修改</Button>
-                              <Button size="small" variant="primary" leadingVisual={Save} loading={isCompilingDiagram} onClick={() => void compileAndSaveDiagram()} disabled={isCompilingDiagram}>{isCompilingDiagram ? "编译中…" : "编译并保存"}</Button>
-                            </Box>
-                          </Box>
-                        )}
-                      </Box>
-                    </Box>
-                  </Box>
-                </Box>
-                  ) : null}
-
-                  {diagramKind === "image" ? (
-                    <Box className={sxStyles.diagramImagePanel}>
-                      <Box className={sxStyles.diagramWorkspace}>
-                        <Box className={sxStyles.diagramWorkspaceHead}>
-                          <Box className={sxStyles.diagramVersionTitle}><Text className={sxStyles.diagramCurrentVersion}>题图裁剪</Text><Text className={sxStyles.diagramMuted}>已保存</Text></Box>
-                          <Box className={sxStyles.diagramTypeSwitch} role="group" aria-label="题图色调">
-                            <GeometryButton type="button" className={[sxStyles.diagramSegment, diagramImageTone === "auto" ? sxStyles.diagramSegmentActive : ""].filter(Boolean).join(" ")} aria-pressed={diagramImageTone === "auto"} onClick={() => { setDiagramImageTone("auto"); void persistDiagramSettings({ enabled: true, kind: "image", image_tone: "auto" }).catch(() => undefined); }}>自动适配</GeometryButton>
-                            <GeometryButton type="button" className={[sxStyles.diagramSegment, diagramImageTone === "original" ? sxStyles.diagramSegmentActive : ""].filter(Boolean).join(" ")} aria-pressed={diagramImageTone === "original"} onClick={() => { setDiagramImageTone("original"); void persistDiagramSettings({ enabled: true, kind: "image", image_tone: "original" }).catch(() => undefined); }}>保留原色</GeometryButton>
-                          </Box>
-                        </Box>
-                        {diagramImageUrl ? <FigureCropper imageUrl={diagramImageUrl} value={diagramImageCrop} tone={diagramImageTone} showToneControls={false} onChange={(next) => { setDiagramImageCrop(next); scheduleDiagramSettings({ enabled: true, kind: "image", image_crop: next }); }} onToneChange={(tone) => { setDiagramImageTone(tone); void persistDiagramSettings({ enabled: true, kind: "image", image_tone: tone }).catch(() => undefined); }} /> : <Text className={sxStyles.sx1}>当前题目没有可用的原始图片。</Text>}
-                        <Box className={sxStyles.diagramImageFooter}><Text className={sxStyles.diagramMuted}>裁剪自原始题图 · 拖动选区后立即保存</Text><Crop size={15} aria-hidden /></Box>
-                      </Box>
-                    </Box>
-                  ) : null}
-                </Box>
-              </Collapse>
+              <Box as="figure" aria-label="折叠附图预览" className={sxStyles.diagramCollapsedPreview}>
+                {diagramKind === "tikz" && viewedCandidate ? (
+                  <CandidatePreview candidate={viewedCandidate} />
+                ) : diagramKind === "image" && diagramPreviewUrl ? (
+                  <Image src={diagramPreviewUrl} alt="当前附图预览" width={1200} height={640} unoptimized />
+                ) : (
+                  <Box className={sxStyles.diagramCollapsedEmpty}><ImageIcon size={22} aria-hidden /><Text>暂无可用预览</Text></Box>
+                )}
+              </Box>
             </Box>
           )}
         </Box>
@@ -958,7 +1096,7 @@ export function ProblemEditPanel({ taskId, taskAssetPath, problem, tagStyles, on
           </Text>
           <Box className={sxStyles.footerActions}>
             <Button size="small" variant="invisible" onClick={requestClose}>取消</Button>
-            <Button variant="primary" leadingVisual={Save} loading={isSaving} onClick={save} disabled={isSaving || !isDirty}>
+            <Button variant="primary" leadingVisual={Save} loading={isSaving} onClick={() => void save()} disabled={isSaving || !isDirty}>
               {isSaving ? "保存中…" : "保存修改"}
             </Button>
           </Box>

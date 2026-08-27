@@ -21,6 +21,8 @@ from oopsnote.content import (
     validate_oopsmark,
 )
 
+from .subjects import usable_subject
+
 # ── 枚举 ──────────────────────────────────────────────
 
 
@@ -389,6 +391,31 @@ class TaskRecord(BaseModel):
     stage: TaskStage | None = None
     stage_message: str | None = None
     active_run_id: str | None = None
+
+    @model_validator(mode="after")
+    def align_subject(self) -> TaskRecord:
+        """Keep one stored subject. Fill blanks and aliases; do not overwrite a conflict."""
+
+        problem = self.problem
+        task_subject = usable_subject(self.subject)
+        problem_subject = usable_subject(problem.subject if problem else None)
+        if not task_subject and problem_subject:
+            task_subject = problem_subject
+        if task_subject and self.subject != task_subject:
+            self.subject = task_subject
+        if (
+            problem
+            and task_subject
+            and problem.subject != task_subject
+            and (not problem_subject or problem_subject == task_subject)
+        ):
+            self.problem = problem.model_copy(update={"subject": task_subject})
+        return self
+
+    def effective_subject(self) -> str:
+        return usable_subject(self.subject) or usable_subject(
+            self.problem.subject if self.problem else None
+        )
 
     def effective_question_no(self) -> str | None:
         raw = self.metadata.get("question_no")

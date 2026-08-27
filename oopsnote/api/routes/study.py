@@ -113,7 +113,7 @@ def create_variations(task_id: str, payload: VariationPayload) -> dict[str, Any]
     for _ in range(payload.count):
         task = api.TASK_STORE.create(
             TaskCreateRequest(
-                subject=parent.problem.subject or parent.subject,
+                subject=parent.effective_subject(),
                 metadata={
                     "variation_request": variation.model_dump(mode="json"),
                     "variation_parent_problem": parent.problem.model_dump(mode="json"),

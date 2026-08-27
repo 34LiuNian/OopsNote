@@ -72,7 +72,7 @@ class TestTaskStore:
         store = TaskStore(base_dir=Path(tempfile.mkdtemp()))
         t = store.create(TaskCreateRequest(subject="数学"))
         assert t.status == TaskStatus.PENDING
-        assert t.subject == "数学"
+        assert t.subject == "math"
 
         t2 = store.get(t.id)
         assert t2.id == t.id
@@ -564,7 +564,7 @@ class TestSearcher:
         s = Searcher([t1, t2])
         results = s.search(SearchQuery(subject="数学"))
         assert len(results) == 1
-        assert results[0].subject == "数学"
+        assert results[0].subject == "math"
 
     def test_by_tags(self):
         t1 = self._make_task("数学", knowledge_points=["二次函数", "最值问题"])
@@ -711,6 +711,50 @@ class TestProblemIdentity:
         assert store.canonical_for("c") == "a"
         with pytest.raises(ValueError, match="already merged"):
             store.merge("a", "c")
+
+
+class TestTaskSubjectAlignment:
+    def test_blank_problem_subject_is_filled_from_task(self):
+        task = TaskRecord(
+            subject="physics",
+            problem=Problem(subject="", problem_text="求安培力。"),
+        )
+
+        assert task.subject == "physics"
+        assert task.problem is not None
+        assert task.problem.subject == "physics"
+        assert task.effective_subject() == "physics"
+
+    def test_blank_task_subject_is_filled_from_problem(self):
+        task = TaskRecord(
+            subject="",
+            problem=Problem(subject="physics", problem_text="求安培力。"),
+        )
+
+        assert task.subject == "physics"
+        assert task.problem is not None
+        assert task.problem.subject == "physics"
+
+    def test_aliases_normalize_to_one_stored_key(self):
+        task = TaskRecord(
+            subject="物理",
+            problem=Problem(subject="physics", problem_text="求安培力。"),
+        )
+
+        assert task.subject == "physics"
+        assert task.problem is not None
+        assert task.problem.subject == "physics"
+
+    def test_conflicting_subjects_are_not_silently_overwritten(self):
+        task = TaskRecord(
+            subject="physics",
+            problem=Problem(subject="math", problem_text="求导。"),
+        )
+
+        assert task.subject == "physics"
+        assert task.problem is not None
+        assert task.problem.subject == "math"
+        assert task.effective_subject() == "physics"
 
 
 class TestTaskPrintedContext:

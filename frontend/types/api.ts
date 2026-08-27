@@ -114,6 +114,7 @@ export interface TaskResponse {
     diagram_runs?: TaskRunSummary[];
     created_at: string;
     updated_at: string;
+    subject: string;
     asset?: {
       asset_id: string;
       source: string;
@@ -128,6 +129,7 @@ export interface TaskResponse {
     trace?: SourceTrace | null;
     problem: {
       problem_id: string;
+      subject: string;
       question_no?: string | null;
       chapter?: string | null;
       question_type?: string | null;

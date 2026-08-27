@@ -26,6 +26,7 @@ test("diagram workbench keeps the full preview, details, and bounded text-only h
   }));
   const task = {
     id: taskId,
+    subject: "math",
     status: "completed",
     stage: "done",
     stage_message: "处理完成",
@@ -37,6 +38,7 @@ test("diagram workbench keeps the full preview, details, and bounded text-only h
     trace: null,
     problem: {
       problem_id: "problem-diagram-workbench",
+      subject: "math",
       question_no: "1",
       question_type: "单选题",
       source: "界面测试.pdf",
@@ -97,6 +99,9 @@ test("diagram workbench keeps the full preview, details, and bounded text-only h
   }));
   await page.route(new RegExp(`/api/(?:backend/)?tasks/${taskId}$`), async (route) => route.fulfill({ json: { task } }));
   await page.route(/\/api\/(?:backend\/)?settings\/tag-dimensions$/, async (route) => route.fulfill({ json: { dimensions: {} } }));
+  await page.route(/\/api\/(?:backend\/)?tags\/tree/, async (route) => route.fulfill({
+    json: { schema_version: "xkw-knowledge-tree-v1", subjects: { math: { subject: "math", subject_label: "数学", root: { id: "math-root", title: "数学", depth: 0, selectable: false, is_leaf: false, children: [] } } } },
+  }));
   await page.route(new RegExp(`/api/(?:backend/)?tasks/${taskId}/duplicates$`), async (route) => route.fulfill({ json: { items: [] } }));
   await page.route("**/assets/diagram-workbench-*.svg", async (route) => route.fulfill({ contentType: "image/svg+xml", body: svg }));
   await page.route("**/assets/diagram-workbench-source.png", async (route) => route.fulfill({ contentType: "image/png", body: "not-used" }));
@@ -108,15 +113,18 @@ test("diagram workbench keeps the full preview, details, and bounded text-only h
   await page.getByRole("button", { name: "编辑" }).click();
   await expect(page.getByText("编辑题目", { exact: true })).toBeVisible();
 
-  const workbench = page.getByRole("region", { name: "附图工作台" });
-  await expect(workbench.getByRole("button", { name: "折叠附图设置" })).toBeVisible();
-  await workbench.getByRole("button", { name: "折叠附图设置" }).click();
-  const collapsedPreview = workbench.getByRole("figure", { name: "折叠附图预览" });
+  const collapsedWorkbench = page.getByRole("region", { name: "附图工作台" });
+  await expect(collapsedWorkbench.getByRole("button", { name: "进入改图" })).toBeVisible();
+  const collapsedPreview = collapsedWorkbench.getByRole("figure", { name: "折叠附图预览" });
   await expect(collapsedPreview).toBeVisible();
   await expect(collapsedPreview.locator("svg")).toBeVisible();
   expect((await collapsedPreview.boundingBox())?.height ?? 0).toBeGreaterThan(150);
 
-  await workbench.getByRole("button", { name: "展开附图设置" }).click();
+  await collapsedWorkbench.getByRole("button", { name: "进入改图" }).click();
+  await expect(page.getByRole("heading", { name: "附图沉浸" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "只读题面" })).toBeVisible();
+
+  const workbench = page.getByRole("region", { name: "附图工作台" });
   const sidebar = workbench.getByRole("complementary", { name: "版本记录" });
   await expect(sidebar).toBeVisible();
   expect((await sidebar.boundingBox())?.width ?? 0).toBeGreaterThanOrEqual(230);
@@ -132,6 +140,11 @@ test("diagram workbench keeps the full preview, details, and bounded text-only h
   await expect(preview.locator("svg path").first()).toHaveAttribute("stroke", "currentColor");
   await expect(preview.locator("svg rect").first()).toHaveAttribute("fill", "var(--oops-svg-background)");
 
+  await page.getByRole("button", { name: "编辑文字" }).first().click();
+  await expect(page.getByRole("heading", { name: "编辑题目" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "进入改图" })).toBeVisible();
+
+  await page.getByRole("button", { name: "进入改图" }).click();
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(workbench).toBeVisible();
   const mobileHistorySize = await historyList.evaluate((element) => ({

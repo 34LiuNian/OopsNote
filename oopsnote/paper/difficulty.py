@@ -115,7 +115,7 @@ def _candidate_tasks(
     candidates = []
     for task in tasks:
         problem = task.problem
-        if not problem or not subject_matches(problem.subject or task.subject, subject):
+        if not problem or not subject_matches(task.effective_subject(), subject):
             continue
         if selected_tags and not selected_tags.intersection(problem.knowledge_points):
             continue

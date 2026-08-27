@@ -65,7 +65,7 @@ from .store import (
     ProblemMergeStore,
 )
 from .tags import TagStore
-from .subjects import SUBJECT_ALIASES, canonical_subject, subjects_match
+from .subjects import SUBJECT_ALIASES, canonical_subject, subjects_match, usable_subject
 from .workspace import Principal, UserRole, WorkspaceContext, WorkspaceId
 from .workspace_stores import WorkspaceStoreFactory, WorkspaceStores
 
@@ -137,4 +137,5 @@ __all__ = [
     "canonical_subject",
     "problem_fingerprint",
     "subjects_match",
+    "usable_subject",
 ]
