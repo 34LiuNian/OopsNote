@@ -551,7 +551,12 @@ class TestTagStore:
                                         "title": "力学",
                                         "scope": "core",
                                         "children": [
-                                            {"id": "leaf-m", "title": "质点", "scope": "core", "children": []}
+                                            {
+                                                "id": "leaf-m",
+                                                "title": "质点",
+                                                "scope": "core",
+                                                "children": [],
+                                            }
                                         ],
                                     },
                                 ],
@@ -569,7 +574,9 @@ class TestTagStore:
             tree_path=tree_path,
         )
 
-        assert tags.knowledge_leaf_titles_under("physics", ["l1-em"]) == {"安培力的计算式及初步应用"}
+        assert tags.knowledge_leaf_titles_under("physics", ["l1-em"]) == {
+            "安培力的计算式及初步应用"
+        }
         assert tags.knowledge_leaf_titles_under("physics", ["missing"]) == set()
 
     def test_subject_aliases_share_one_user_tag_namespace(self, tmp_path):

@@ -1769,7 +1769,11 @@ def test_list_problems_matches_any_leaf_under_knowledge_node(tmp_path, monkeypat
     mass_point = task_store.create(TaskCreateRequest(subject="physics"))
     task_store.set_problem(
         ampere.id,
-        Problem(subject="physics", problem_text="求安培力。", knowledge_points=["安培力的计算式及初步应用"]),
+        Problem(
+            subject="physics",
+            problem_text="求安培力。",
+            knowledge_points=["安培力的计算式及初步应用"],
+        ),
     )
     task_store.set_problem(
         mass_point.id,
@@ -1792,7 +1796,11 @@ def test_list_problems_knowledge_any_matches_intersection(tmp_path, monkeypatch)
     mass_point = task_store.create(TaskCreateRequest(subject="physics"))
     task_store.set_problem(
         ampere.id,
-        Problem(subject="physics", problem_text="求安培力。", knowledge_points=["安培力的计算式及初步应用"]),
+        Problem(
+            subject="physics",
+            problem_text="求安培力。",
+            knowledge_points=["安培力的计算式及初步应用"],
+        ),
     )
     task_store.set_problem(
         mass_point.id,
