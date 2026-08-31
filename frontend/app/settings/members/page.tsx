@@ -11,6 +11,7 @@ import { Button, Collapse, IconButton, Modal, PasswordInput, Select, TextInput }
 import { fetchJson } from "@/lib/api";
 import { isAdminUser } from "@/lib/auth";
 import { notify } from "@/lib/notify";
+import { notifyRequestError } from "@/lib/requestError";
 import styles from "./members.module.css";
 
 type MemberQuota = {
@@ -79,7 +80,7 @@ export default function MembersPage() {
       setInvitations(payload.invitations || []);
       setQuotaAvailable(payload.quotaAvailable);
     } catch (reason) {
-      setLoadError(reason instanceof Error ? reason.message : "无法加载成员列表");
+      setLoadError(notifyRequestError("成员加载失败", reason, "无法加载成员列表"));
     } finally {
       setLoading(false);
     }

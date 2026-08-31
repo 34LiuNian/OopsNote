@@ -7,6 +7,7 @@ import { useAuth } from "@/components/providers";
 import { InitialAvatar } from "@/components/ui/InitialAvatar";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
 import { Button, Menu } from "@/components/ui/primitives";
+import { notifyRequestError } from "@/lib/requestError";
 
 type QuotaSummary = {
   daily_success_limit: number;
@@ -31,7 +32,7 @@ export function AccountMenu() {
       const payload = await response.json() as { quota?: QuotaSummary };
       setQuota(payload.quota || null);
     } catch (reason) {
-      setQuotaError(reason instanceof Error ? reason.message : "额度服务暂时不可用");
+      setQuotaError(notifyRequestError("账户额度加载失败", reason, "额度服务暂时不可用"));
     }
   }
 

@@ -8,6 +8,7 @@ import { ErrorBanner } from "@/components/ui/ErrorBanner";
 import { Button, Select, TextInput } from "@/components/ui/primitives";
 import { isAdminUser } from "@/lib/auth";
 import { notify } from "@/lib/notify";
+import { notifyRequestError } from "@/lib/requestError";
 import styles from "./access.module.css";
 
 type RegistrationMode = "closed" | "invite" | "open";
@@ -31,7 +32,7 @@ export default function RegistrationAccessPage() {
       setMode(payload.mode);
       setOpenDailySuccessLimit(payload.openDailySuccessLimit);
     } catch (reason) {
-      setLoadError(reason instanceof Error ? reason.message : "无法读取注册策略");
+      setLoadError(notifyRequestError("注册策略加载失败", reason, "无法读取注册策略"));
     } finally {
       setLoading(false);
     }

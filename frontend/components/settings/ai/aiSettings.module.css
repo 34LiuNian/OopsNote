@@ -25,7 +25,7 @@
 
 .railTitle {
   margin: 0;
-  font-size: 18px;
+  font-size: var(--oops-text-md);
   font-weight: 680;
   letter-spacing: 0;
 }
@@ -51,7 +51,7 @@
   gap: 0;
   padding: 0;
   border: 1px solid transparent;
-  border-radius: 7px;
+  border-radius: var(--oops-radius-md);
   color: var(--fgColor-default);
   background: transparent;
   position: relative;
@@ -64,7 +64,7 @@
 .channelItemDragging { z-index: 2; opacity: .8; background: var(--bgColor-muted); box-shadow: var(--oops-shadow-md); transform: scale(.985); }
 .channelItemDropTarget { border-color: var(--fgColor-accent); background: var(--sidebar-hover); }
 .channelItemDropBefore::before,
-.channelItemDropAfter::after { position: absolute; z-index: 3; right: 4px; left: 4px; height: 3px; border-radius: 2px; background: var(--fgColor-accent); box-shadow: 0 0 0 2px var(--bgColor-default); content: ""; }
+.channelItemDropAfter::after { position: absolute; z-index: 3; right: 4px; left: 4px; height: 3px; border-radius: var(--oops-radius-xs); background: var(--fgColor-accent); box-shadow: 0 0 0 2px var(--bgColor-default); content: ""; }
 .channelItemDropBefore::before { top: -1px; }
 .channelItemDropAfter::after { bottom: -1px; }
 
@@ -85,12 +85,12 @@
   gap: 10px;
   padding: 8px 4px 8px 2px;
   border: 0;
-  color: inherit;
+  color: var(--fgColor-default);
   background: transparent;
   --button-bg: transparent !important;
   --button-hover: transparent !important;
   --button-bd: 0 solid transparent !important;
-  --button-color: inherit !important;
+  --button-color: var(--fgColor-default) !important;
   text-align: left;
   cursor: pointer;
 }
@@ -150,8 +150,8 @@
 .channelItemName,
 .channelItemMeta { display: block; }
 
-.channelItemName { font-size: 13px; font-weight: 650; }
-.channelItemMeta { margin-top: 2px; color: var(--fgColor-muted); font-size: 11px; }
+.channelItemName { color: var(--fgColor-default); font-size: 13px; font-weight: 650; }
+.channelItemMeta { margin-top: 2px; color: var(--fgColor-muted); font-size: var(--oops-text-xs); }
 
 .providerMark {
   display: grid;
@@ -257,7 +257,7 @@
 .providerIconToolbar strong { flex: 0 0 auto; font-size: 13px; }
 .providerIconSearch { min-width: 0; flex: 1; height: 32px; padding: 0 9px; border: 1px solid var(--borderColor-muted); border-radius: 6px; color: inherit; background: var(--bgColor-muted); font: inherit; font-size: 12px; }
 .providerIconSearch:focus { border-color: var(--borderColor-default); outline: 2px solid color-mix(in srgb, var(--fgColor-accent) 30%, transparent); outline-offset: 1px; }
-.providerIconClose { width: 28px; height: 28px; padding: 0; border: 0; color: var(--fgColor-muted); background: transparent; font-size: 22px; line-height: 1; cursor: pointer; }
+.providerIconClose { width: 28px; height: 28px; padding: 0; border: 0; color: var(--fgColor-muted); background: transparent; font-size: var(--oops-text-lg); line-height: 1; cursor: pointer; }
 .providerIconGrid { display: grid; max-height: 400px; grid-template-columns: repeat(auto-fill, 42px); justify-content: start; gap: 8px 12px; overflow-y: auto; padding: 2px; }
 .providerIconEmpty { display: block; padding: 24px 8px; color: var(--fgColor-muted); text-align: center; font-size: 12px; }
 .providerIconOption {
@@ -290,7 +290,7 @@
 .inlineControlGroup[data-secret-visible="false"] .credentialControl :global(input) { font-size: 3px; letter-spacing: 0; }
 .inlineControlGroup[data-secret-visible="true"] .credentialControl :global(input) { font-size: 13px; letter-spacing: 0; }
 
-.channelPosition { margin-left: auto; padding-left: 8px; color: var(--fgColor-muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+.channelPosition { margin-left: auto; padding-left: 8px; color: var(--fgColor-muted); font-size: var(--oops-text-xs); font-variant-numeric: tabular-nums; }
 
 .overviewRow {
   display: grid;
@@ -329,7 +329,7 @@
   gap: 16px;
 }
 
-.sectionTitle { margin: 0; font-size: 17px; font-weight: 680; letter-spacing: 0; }
+.sectionTitle { margin: 0; font-size: var(--oops-text-md); font-weight: 680; letter-spacing: 0; }
 .sectionMeta { margin-left: 7px; color: var(--fgColor-muted); font-size: 12px; font-weight: 500; }
 .catalogToolbar { margin-top: 16px; align-items: flex-end; }
 
@@ -385,12 +385,12 @@
   color: var(--fgColor-muted);
   background: var(--bgColor-muted);
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: var(--oops-text-xs);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.modelMeta { display: block; max-width: 100%; min-width: 0; margin-top: 4px; color: var(--fgColor-muted); font-size: 11px; }
+.modelMeta { display: block; max-width: 100%; min-width: 0; margin-top: 4px; color: var(--fgColor-muted); font-size: var(--oops-text-xs); }
 .modelActions { display: flex; align-items: center; gap: 7px; }
 .capabilityButton {
   display: grid;
@@ -529,12 +529,12 @@
 .stageCardInvalid { border-color: color-mix(in srgb, var(--fgColor-danger) 45%, var(--borderColor-default)); }
 .stageHeader { display: flex; min-width: 0; align-items: center; justify-content: space-between; gap: 10px; }
 .stageTitleLine { display: flex; min-width: 0; align-items: center; gap: 8px; overflow-wrap: anywhere; font-size: 14px; font-weight: 680; }
-.stageHint { margin-top: 5px; color: var(--fgColor-muted); font-size: 11px; }
-.stageCapability { flex: 0 0 auto; padding: 2px 8px; border: 1px solid var(--borderColor-muted); border-radius: 4px; color: var(--fgColor-muted); background: var(--bgColor-muted); font-size: 11px; font-weight: 600; white-space: nowrap; }
+.stageHint { margin-top: 5px; color: var(--fgColor-muted); font-size: var(--oops-text-xs); }
+.stageCapability { flex: 0 0 auto; padding: 2px 8px; border: 1px solid var(--borderColor-muted); border-radius: 4px; color: var(--fgColor-muted); background: var(--bgColor-muted); font-size: var(--oops-text-xs); font-weight: 600; white-space: nowrap; }
 .stageSelection { display: flex; min-width: 0; align-items: center; gap: 12px; margin-top: 18px; }
 .stageSelectionText { min-width: 0; }
 .stageSelectionPlaceholder { display: grid; width: 42px; height: 42px; flex: 0 0 auto; place-items: center; border: 1px dashed var(--borderColor-default); border-radius: 8px; color: var(--fgColor-muted); background: var(--bgColor-muted); }
-.stageChannel { color: var(--fgColor-muted); font-size: 11px; }
+.stageChannel { color: var(--fgColor-muted); font-size: var(--oops-text-xs); }
 .stageModel { margin-top: 2px; font-size: 14px; font-weight: 640; }
 .stageChannel,
 .stageModel,
@@ -555,7 +555,7 @@
   gap: 12px;
   padding: 9px 10px;
   border: 1px solid transparent;
-  border-radius: 7px;
+  border-radius: var(--oops-radius-md);
   color: var(--fgColor-default);
   background: transparent;
   text-align: left;
@@ -583,7 +583,7 @@
 .pickerOption:hover:not(:disabled) { border-color: var(--borderColor-muted); background: var(--bgColor-muted); }
 .pickerOptionSelected { border-color: var(--borderColor-default); background: var(--bgColor-muted); }
 .pickerOption:disabled { cursor: not-allowed; opacity: 0.48; }
-.pickerReason { margin-top: 3px; color: var(--fgColor-muted); font-size: 11px; }
+.pickerReason { margin-top: 3px; color: var(--fgColor-muted); font-size: var(--oops-text-xs); }
 
 @media (max-width: 1023px) {
   .channelWorkspace,

@@ -128,7 +128,7 @@
 .a4Secret { margin: 0 0 20px; font-size: 12px; font-weight: 650; text-align: left; }
 .a4TitleField, .a4SubtitleField { display: block; }
 .a4TitleInput, .a4SubtitleInput { display: block; width: 100%; border: 0; outline: 0; color: inherit; background: transparent; font-family: inherit; text-align: center; }
-.a4TitleInput { margin: 0; font-size: 28px; font-weight: 700; line-height: 1.45; }
+.a4TitleInput { margin: 0; font-size: var(--oops-text-xl); font-weight: 700; line-height: 1.45; }
 .a4TitleInput::placeholder, .a4SubtitleInput::placeholder { color: #71717a; opacity: 0.72; }
 .a4TitleInput:focus, .a4SubtitleInput:focus { outline: 2px solid var(--fgColor-accent); outline-offset: 4px; }
 .a4SubtitleInput { margin-top: 8px; font-size: 16px; line-height: 1.45; }
@@ -137,7 +137,7 @@
 .a4QuestionGroup { break-inside: avoid; }
 .a4SectionHeading { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin: 10px 0 2px; padding-bottom: 5px; border-bottom: 1px solid #d4d4d8; color: #27272a; font-family: var(--font-sans); font-size: 12px; font-weight: 650; }
 .a4SectionHeading span:last-child { color: #71717a; font-weight: 400; }
-.a4Question { position: relative; padding: 12px 8px 14px; border-radius: 4px; font-size: 15px; line-height: 1.75; cursor: pointer; transition: background var(--oops-transition-fast); }
+.a4Question { position: relative; padding: 12px 8px 14px; border-radius: 4px; font-size: var(--oops-text-sm); line-height: 1.75; cursor: pointer; transition: background var(--oops-transition-fast); }
 .a4Question:hover, .a4Question[data-active="true"] { background: color-mix(in srgb, var(--bgColor-accent-muted) 42%, transparent); }
 .a4Question:focus-visible { outline: 2px solid var(--fgColor-accent); outline-offset: 2px; }
 .a4QuestionHead { display: flex; align-items: baseline; gap: 8px; margin-bottom: 8px; padding-right: 170px; font-family: var(--font-sans); font-size: 13px; font-weight: 650; }
@@ -148,12 +148,12 @@
 
 .paperItemControls { position: absolute; z-index: 3; top: 4px; right: 6px; display: flex; min-height: 32px; align-items: center; gap: 3px; padding: 2px 3px; border: 1px solid var(--borderColor-default); border-radius: 6px; background: var(--bgColor-default); box-shadow: var(--oops-shadow-sm); font-family: var(--font-sans); }
 .canvasDragHandle { cursor: grab; }
-.canvasPoints { display: flex; align-items: center; gap: 4px; padding: 0 4px; color: var(--fgColor-muted); font-size: 11px; }
+.canvasPoints { display: flex; align-items: center; gap: 4px; padding: 0 4px; color: var(--fgColor-muted); font-size: var(--oops-text-xs); }
 .canvasPoints input { width: 46px; height: 28px; padding: 0 4px; text-align: center; }
-.canvasSelect { width: 92px; height: 28px; padding: 0 3px; border: 1px solid var(--borderColor-default); border-radius: 5px; color: var(--fgColor-default); background: var(--bgColor-default); font: inherit; font-size: 11px; }
+.canvasSelect { width: 92px; height: 28px; padding: 0 3px; border: 1px solid var(--borderColor-default); border-radius: var(--oops-radius-sm); color: var(--fgColor-default); background: var(--bgColor-default); font: inherit; font-size: var(--oops-text-xs); }
 
 .a4Empty { display: flex; min-height: 0; flex: 1; align-items: center; justify-content: center; gap: 12px; flex-direction: column; color: #71717a; font-family: var(--font-sans); font-size: 14px; text-align: center; }
-.a4PageFooter { position: absolute; right: 62px; bottom: 18px; left: 62px; color: #71717a; font-family: var(--font-sans); font-size: 11px; text-align: center; }
+.a4PageFooter { position: absolute; right: 62px; bottom: 18px; left: 62px; color: #71717a; font-family: var(--font-sans); font-size: var(--oops-text-xs); text-align: center; }
 .previewPanel { display: flex; min-height: 0; flex: 1; flex-direction: column; overflow: hidden; background: var(--bgColor-default); }
 .previewHeader { display: flex; min-height: 44px; flex: 0 0 auto; align-items: center; justify-content: space-between; gap: 8px; padding: 7px 16px; border-bottom: 1px solid var(--borderColor-default); }
 .previewActions { display: flex; align-items: center; gap: 4px; }
@@ -182,7 +182,7 @@
   .settingsPopover { top: 112px; right: 12px; width: calc(100% - 24px); }
   .settingsGrid { grid-template-columns: 1fr; }
   .a4Page { padding: 34px 20px 42px; }
-  .a4TitleInput { font-size: 22px; }
+  .a4TitleInput { font-size: var(--oops-text-lg); }
   .a4Question { padding-right: 6px; padding-left: 6px; font-size: 14px; }
   .a4QuestionHead { padding-right: 0; }
   .paperItemControls { top: 32px; right: 2px; max-width: calc(100% - 4px); flex-wrap: wrap; justify-content: flex-end; }

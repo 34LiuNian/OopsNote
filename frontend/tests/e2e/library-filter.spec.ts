@@ -53,6 +53,8 @@ test("source filtering uses document names and does not emit border style warnin
   await waitForAppReady(page);
   await expect(page.getByText("第 2 道题", { exact: true })).toBeVisible();
 
+  await page.getByRole("button", { name: "筛选" }).click();
+  await page.getByRole("button", { name: "更多筛选" }).click();
   const sourceInput = page.getByRole("textbox", { name: "来源标签输入" });
   await sourceInput.focus();
   await page.getByRole("option", { name: /questions\.pdf/ }).click();

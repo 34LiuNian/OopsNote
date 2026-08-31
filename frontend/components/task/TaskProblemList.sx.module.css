@@ -44,7 +44,7 @@
 .sx15{padding-inline:var(--oops-space-4);padding-bottom:var(--oops-space-2);display:flex;gap:var(--oops-space-1);flex-wrap:wrap;}
 
 /* Generated from components/task/TaskProblemList.tsx */
-.sx16{font-size:11px;}
+.sx16{font-size: var(--oops-text-xs);}
 
 /* Generated from components/task/TaskProblemList.tsx */
 .sx17{border-top-width:1px;border-top-style:solid;border-top-color:var(--borderColor-muted);}

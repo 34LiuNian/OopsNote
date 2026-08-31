@@ -26,8 +26,19 @@ const notificationHost = read("components/ui/MantineNotifications.tsx");
 if (!/color === "red" \? false/.test(policySource)) failures.push("red notification policy must force autoClose=false");
 if (!/errorNotificationId/.test(notifySource)) failures.push("notify.error must use stable error IDs");
 if (/notify\.error/.test(bannerSource) || !/role="alert"/.test(bannerSource)) failures.push("ErrorBanner must render the owning page error without creating a notification");
-if (!/queryCache:\s*new QueryCache\(\)/.test(querySource) || !/mutationCache:\s*new MutationCache\(\)/.test(querySource)) failures.push("React Query cache failures must stay in the owning page state");
-if (!/addEventListener\("error"/.test(monitorSource) || !/unhandledrejection/.test(monitorSource) || !/console\.error/.test(monitorSource)) failures.push("browser-level failures must preserve console evidence without notification duplication");
+if (!/queryCache:\s*new QueryCache\(\)/.test(querySource) || !/mutationCache:\s*new MutationCache\(\)/.test(querySource)) failures.push("React Query cache must not add a second global error notification path");
+if (!/addEventListener\("error"/.test(monitorSource) || !/unhandledrejection/.test(monitorSource) || !/console\.error/.test(monitorSource) || !/notifyRequestError/.test(monitorSource)) failures.push("browser-level failures must report through notify.error and preserve console evidence");
+for (const file of [
+  "components/renderers/TikzRenderer.tsx",
+  "components/renderers/Mermaid.tsx",
+  "components/renderers/MoleculeRenderer.tsx",
+  "components/renderers/SvgMarkup.tsx",
+  "components/renderers/LatexAssetRenderer.tsx",
+]) {
+  if (!/useRenderErrorNotification/.test(read(file))) {
+    failures.push(`${file} must raise a persistent notification for local rendering failures`);
+  }
+}
 const notificationLimit = Number(notificationHost.match(/limit=\{(\d+)\}/)?.[1] || 0);
 if (notificationLimit < 6) failures.push("notification host must keep enough persistent errors visible");
 

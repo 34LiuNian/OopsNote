@@ -36,6 +36,7 @@ import { Box, Button, GeometryButton, IconButton, NativeInput, NativeSelect, Spi
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
 import { RenameDialog } from "@/components/ui/RenameDialog";
 import { notify } from "@/lib/notify";
+import { notifyRequestError } from "@/lib/requestError";
 import { confirmAction } from "@/lib/confirm";
 import { hasApiErrorCode } from "@/lib/api";
 import { selectionsToSessionSegments, sessionSegmentsToSelections, submittedSelectionsToSelections } from "../adapters/batchSessionSelectionAdapter";
@@ -153,7 +154,7 @@ export function BatchScanForm() {
     try {
       return await listBatchSessions();
     } catch (reason) {
-      setSavedSessionsError(reason instanceof Error ? reason.message : "无法读取已保存记录");
+      setSavedSessionsError(notifyRequestError("批量扫描记录加载失败", reason, "无法读取已保存记录"));
       return null;
     }
   }, []);
@@ -332,7 +333,7 @@ export function BatchScanForm() {
       setImageUrls((current) => ({ ...current, [pageIndex]: url }));
     }).catch((reason) => {
       if (!(reason instanceof StaleWorkspaceError)) {
-        notify.error({ id: "batch-operation-error", title: reason instanceof Error ? reason.message : "页面加载失败" });
+        notify.error({ title: reason instanceof Error ? reason.message : "页面加载失败" });
       }
     });
   }, [ensurePageFile]);
@@ -428,7 +429,7 @@ export function BatchScanForm() {
       }
     } catch (reason) {
       if (!(reason instanceof StaleWorkspaceError)) {
-        notify.error({ id: "batch-operation-error", title: reason instanceof Error ? reason.message : "导入失败" });
+        notify.error({ title: reason instanceof Error ? reason.message : "导入失败" });
       }
     } finally {
       setIsImporting(false);
@@ -454,7 +455,7 @@ export function BatchScanForm() {
       }
     } catch (reason) {
       if (!(reason instanceof StaleWorkspaceError)) {
-        notify.error({ id: "batch-operation-error", title: reason instanceof Error ? reason.message : "恢复批量扫描失败" });
+        notify.error({ title: reason instanceof Error ? reason.message : "恢复批量扫描失败" });
       }
     } finally {
       setIsImporting(false);
@@ -532,6 +533,7 @@ export function BatchScanForm() {
         throw new Error("后端返回的批量扫描保存结果与请求不一致");
       }
       setSaveState(currentContentSnapshotRef.current === savedSnapshot ? "saved" : "idle");
+      notify.dismiss("batch-session-persist-error");
       return session;
       } catch (reason) {
         if (hasApiErrorCode(reason, "batch_revision_conflict")) {
@@ -539,11 +541,17 @@ export function BatchScanForm() {
           if (latest) {
             applyServerSession(latest, true);
             setSaveState("saved");
+            notify.dismiss("batch-session-persist-error");
             notify.error({ title: "批量扫描已在另一处修改，已加载最新版本" });
           }
           throw reason;
         }
         setSaveState("failed");
+        notify.error({
+          id: "batch-session-persist-error",
+          title: "批量扫描保存失败",
+          description: reason instanceof Error ? reason.message : "请稍后重试",
+        });
         throw reason;
       }
     };
@@ -651,12 +659,13 @@ export function BatchScanForm() {
     setExcludedPageIndices(nextExcluded);
     const target = nearestAvailablePageIndex(pages, nextExcluded, pageIndex);
     focusPageAfterLayoutChange(target);
-    void persistSession(nextSelections, { excluded_page_indices: nextExcluded, active_page: target }).catch(() => undefined);
-    notify.success({
-      title: affected.length
-        ? `第 ${pageIndex + 1} 页已删除，同时移除 ${affected.length} 个待提交选框`
-        : `第 ${pageIndex + 1} 页已删除，可在页面栏恢复`,
-    });
+    void persistSession(nextSelections, { excluded_page_indices: nextExcluded, active_page: target }).then(() => {
+      notify.success({
+        title: affected.length
+          ? `第 ${pageIndex + 1} 页已删除，同时移除 ${affected.length} 个待提交选框`
+          : `第 ${pageIndex + 1} 页已删除，可在页面栏恢复`,
+      });
+    }).catch(() => undefined);
   }, [activePages.length, activeSelectionId, excludedPageIndices, focusPageAfterLayoutChange, pages, persistSession, reprojectSelections]);
 
   const restorePage = useCallback((pageIndex: number) => {

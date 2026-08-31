@@ -245,6 +245,8 @@ export type ListProblemsParams = {
   tag?: string;
   source?: string | string[];
   knowledge_tag?: string | string[];
+  knowledge_node_id?: string | string[];
+  knowledge_any?: string | string[];
   error_tag?: string | string[];
   user_tag?: string | string[];
   created_after?: string;

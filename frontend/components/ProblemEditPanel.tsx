@@ -7,6 +7,7 @@ import { PlusIcon, TrashIcon } from "@/components/ui/icons";
 import { Check, ChevronDown, ChevronRight, CircleStop, Code2, Crop, Eye, History, Image as ImageIcon, ImageMinus, ImagePlus, PanelRight, RefreshCw, Save, Sparkles, Trash2, WandSparkles, X } from "lucide-react";
 import { optionLabel } from "@/lib/content/options";
 import { notify } from "@/lib/notify";
+import { DIAGRAM_SAVE_LABEL, presentImmediateSaveState, presentSaveState, PROOFREAD_SAVE_LABEL } from "@/lib/saveState";
 import { confirmAction } from "@/lib/confirm";
 import { apiErrorCode } from "@/lib/api";
 import { useAuthenticatedAssetUrl } from "@/hooks/useAuthenticatedAssetUrl";
@@ -14,7 +15,6 @@ import type { ContentFormat, DiagramCandidate, DiagramImageTone, DiagramItem, Di
 import { cancelProblemDiagram, continueProblemDiagram, createProblemDiagramCandidate, deleteProblemDiagramCandidate, overrideProblem, rebuildProblemDiagram, reconstructProblemDiagram, selectProblemDiagramCandidate, updateProblemDiagramSettings } from "../features/tasks";
 import { KnowledgeLeafPicker } from "@/components/knowledge-tree";
 import { TagPicker } from "./TagPicker";
-import { ErrorBanner } from "./ui/ErrorBanner";
 import { ProblemContent } from "./ProblemContent";
 import { renderTikz } from "./renderers/TikzRenderer";
 import { AuthenticatedSvgMarkup } from "./renderers/AuthenticatedSvgMarkup";
@@ -166,6 +166,9 @@ export function ProblemEditPanel({ taskId, taskAssetPath, problem, tagStyles, on
   const [diagramMaxCandidates, setDiagramMaxCandidates] = useState("4");
   const [isRunningDiagramAction, setIsRunningDiagramAction] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [failedDraftSignature, setFailedDraftSignature] = useState<string | null>(null);
+  const [diagramWriteQueued, setDiagramWriteQueued] = useState(false);
+  const [diagramSaveFailed, setDiagramSaveFailed] = useState(false);
   const [editorMode, setEditorMode] = useState<EditorMode>("proofread");
   const [tikzView, setTikzView] = useState<"preview" | "source">("preview");
   const [layoutOpen, setLayoutOpen] = useState(false);
@@ -185,11 +188,15 @@ export function ProblemEditPanel({ taskId, taskAssetPath, problem, tagStyles, on
       window.clearTimeout(diagramPersistTimerRef.current);
       diagramPersistTimerRef.current = null;
     }
+    setDiagramWriteQueued(false);
     setIsPersistingDiagram(true);
+    setDiagramSaveFailed(false);
     try {
       await updateProblemDiagramSettings(taskId, payload);
       await onSaved();
+      setDiagramSaveFailed(false);
     } catch (error) {
+      setDiagramSaveFailed(true);
       notify.error({ title: "附图设置保存失败", description: error instanceof Error ? error.message : "请稍后重试" });
       throw error;
     } finally {
@@ -199,8 +206,10 @@ export function ProblemEditPanel({ taskId, taskAssetPath, problem, tagStyles, on
 
   const scheduleDiagramSettings = useCallback((payload: Parameters<typeof updateProblemDiagramSettings>[1]) => {
     if (diagramPersistTimerRef.current !== null) window.clearTimeout(diagramPersistTimerRef.current);
+    setDiagramWriteQueued(true);
     diagramPersistTimerRef.current = window.setTimeout(() => {
       diagramPersistTimerRef.current = null;
+      setDiagramWriteQueued(false);
       void persistDiagramSettings(payload).catch(() => undefined);
     }, 180);
   }, [persistDiagramSettings]);
@@ -344,7 +353,10 @@ export function ProblemEditPanel({ taskId, taskAssetPath, problem, tagStyles, on
       setDiagramCompileError(message.replace(/\\n/g, "\n"));
       const category = apiErrorCode(err) === "renderer_environment_error" ? "human_review" : "";
       setDiagramCompileErrorCategory(category);
-      notify.error({ title: category === "human_review" ? "需要人工介入" : "图形编译失败" });
+      notify.error({
+        title: category === "human_review" ? "需要人工介入" : "TikZ 渲染失败",
+        description: message,
+      });
     } finally {
       setIsCompilingDiagram(false);
     }
@@ -440,10 +452,12 @@ export function ProblemEditPanel({ taskId, taskAssetPath, problem, tagStyles, on
     userTags,
   });
   const isDirty = initialDraftSignature !== currentDraftSignature;
+  const saveFailed = failedDraftSignature === currentDraftSignature;
 
   const save = useCallback(async (optionsArg?: { close?: boolean }) => {
     const shouldClose = optionsArg?.close ?? true;
     setIsSaving(true);
+    setFailedDraftSignature(null);
 
     try {
       const parsedOptions = options.map((option) => option.text.trim()).filter(Boolean);
@@ -491,6 +505,7 @@ export function ProblemEditPanel({ taskId, taskAssetPath, problem, tagStyles, on
       await onSaved();
       if (shouldClose) onClose();
     } catch (err) {
+      setFailedDraftSignature(currentDraftSignature);
       notify.error({
         title: "保存失败",
         description: err instanceof Error ? err.message : "请稍后重试",
@@ -499,6 +514,7 @@ export function ProblemEditPanel({ taskId, taskAssetPath, problem, tagStyles, on
       setIsSaving(false);
     }
   }, [
+    currentDraftSignature,
     knowledgeTags,
     errorTags,
     onClose,
@@ -571,8 +587,14 @@ export function ProblemEditPanel({ taskId, taskAssetPath, problem, tagStyles, on
     diagramSourceKind === "image" ? diagramImagePath : null,
   );
 
-  const saveState = isSaving ? "saving" : isDirty ? "dirty" : "saved";
-  const saveStateLabel = isSaving ? "保存中" : isDirty ? "未保存" : "已保存";
+  const saveState = presentSaveState(isSaving, saveFailed, isDirty);
+  const saveStateLabel = PROOFREAD_SAVE_LABEL[saveState];
+  const diagramSaveState = presentImmediateSaveState(
+    isPersistingDiagram || diagramWriteQueued,
+    diagramSaveFailed,
+    Boolean(diagramItem?.active_run_id),
+  );
+  const diagramSaveStateLabel = DIAGRAM_SAVE_LABEL[diagramSaveState];
   const isDiagramFocus = editorMode === "diagramFocus" && diagramKind !== "none";
   const previewOptions = options
     .map((option, index) => ({ key: optionLabel(index), text: option.text.trim() }))
@@ -830,9 +852,9 @@ export function ProblemEditPanel({ taskId, taskAssetPath, problem, tagStyles, on
           </Box>
 
           <Box className={[sxStyles.editorFooter, sxStyles.focusFooter].join(" ")}>
-            <Text className={sxStyles.saveState} data-state={diagramItem?.active_run_id ? "dirty" : "saved"} aria-live="polite">
+            <Text className={sxStyles.saveState} data-state={diagramSaveState} aria-live="polite">
               <span aria-hidden="true" />
-              {diagramItem?.active_run_id ? "附图处理中" : "附图设置已即时保存"}
+              {diagramSaveStateLabel}
             </Text>
             <Box className={sxStyles.footerActions}>
               <Button size="small" variant="invisible" onClick={exitDiagramFocus}>编辑文字</Button>

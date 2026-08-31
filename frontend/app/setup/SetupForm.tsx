@@ -8,6 +8,7 @@ import { AuthField } from "@/components/auth/AuthField";
 import styles from "@/components/auth/AuthenticationShell.module.css";
 import { Button } from "@/components/ui/primitives";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
+import { notifyRequestError } from "@/lib/requestError";
 
 export function SetupForm() {
   const [name, setName] = useState("");
@@ -34,12 +35,12 @@ export function SetupForm() {
       });
       const payload = (await response.json()) as { error?: string };
       if (!response.ok) {
-        setError(payload.error || "初始化失败");
+        setError(notifyRequestError("初始化失败", payload.error || "初始化失败"));
         return;
       }
       window.location.replace(`/login?identifier=${encodeURIComponent(email.trim())}`);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "初始化请求失败");
+      setError(notifyRequestError("初始化失败", reason, "初始化请求失败"));
     } finally {
       setSubmitting(false);
     }

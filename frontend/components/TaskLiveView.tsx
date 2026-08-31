@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   Box,
   Button,
@@ -13,6 +13,7 @@ import {
 import { RefreshCw } from "lucide-react";
 import { useAuthenticatedAssetUrl } from "@/hooks/useAuthenticatedAssetUrl";
 import { confirmAction } from "@/lib/confirm";
+import { notifyRequestError } from "@/lib/requestError";
 import type { DiagramItem, TaskRunSummary } from "@/types/api";
 import { TaskActions } from "./task/TaskActions";
 import { TaskProblemDetail } from "./task/TaskProblemList";
@@ -99,6 +100,15 @@ export function TaskLiveView({ taskId }: { taskId: string }) {
   const streamErrorMessage = streamError instanceof Error ? streamError.message : streamError ?? "";
   const screenshotUrl = useAuthenticatedAssetUrl(viewData?.task.trace?.screenshot_path);
 
+  useEffect(() => {
+    if (!streamErrorMessage) return;
+    notifyRequestError("加载任务失败", streamErrorMessage);
+  }, [streamErrorMessage]);
+
+  const reportTaskError = useCallback((message: string) => {
+    setError(notifyRequestError("任务操作失败", message));
+  }, []);
+
   const cancelTask = useCallback(async () => {
     if (!viewData) return;
     const status = viewData.task.status;
@@ -110,7 +120,7 @@ export function TaskLiveView({ taskId }: { taskId: string }) {
       await cancelTaskRequest(taskId);
       await loadOnce();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "作废任务失败");
+      setError(notifyRequestError("作废任务失败", err, "作废任务失败"));
     } finally {
       setIsCancelling(false);
     }
@@ -130,7 +140,7 @@ export function TaskLiveView({ taskId }: { taskId: string }) {
       await retryTaskRequest(taskId, true);
       await loadOnce();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "重试失败");
+      setError(notifyRequestError("任务重试失败", err, "重试失败"));
     } finally {
       setIsRetrying(false);
     }
@@ -148,7 +158,7 @@ export function TaskLiveView({ taskId }: { taskId: string }) {
           await deleteTask(taskId);
           window.location.href = "/library";
         } catch (err) {
-          setError(err instanceof Error ? err.message : "删除任务失败");
+          setError(notifyRequestError("删除任务失败", err, "删除任务失败"));
         }
       },
     });
@@ -338,14 +348,14 @@ export function TaskLiveView({ taskId }: { taskId: string }) {
             problem={viewData.task.problem}
             mergedInto={viewData.task.merged_into}
             onStatusMessage={setStatusMessage}
-            onError={setError}
+            onError={reportTaskError}
             onRefresh={loadOnce}
             section="variations"
           />
         </Modal>
       )}
 
-      <ErrorBanner message={error} />
+      <ErrorBanner message={error} title="任务操作失败" />
 
       {!error && !viewData && (
         <Box className={["oops-empty-state", sxStyles.sx13].filter(Boolean).join(" ")} >
@@ -360,7 +370,7 @@ export function TaskLiveView({ taskId }: { taskId: string }) {
           problem={viewData.task.problem}
           mergedInto={viewData.task.merged_into}
           onStatusMessage={setStatusMessage}
-          onError={setError}
+          onError={reportTaskError}
           onRefresh={loadOnce}
           section="duplicates"
         />
@@ -381,7 +391,7 @@ export function TaskLiveView({ taskId }: { taskId: string }) {
           onSaved={loadOnce}
           tagStyles={tagStyles}
           onStatusMessage={setStatusMessage}
-          onError={setError}
+          onError={reportTaskError}
           onOpenSourceImage={() => setIsScreenshotOpen(true)}
           onOpenVariations={() => setIsVariationOpen(true)}
         />

@@ -46,6 +46,7 @@ test("library sidebar layers can be controlled independently on desktop", async 
 
   await expect(primarySidebar).toHaveClass(/is-collapsed/);
   await expect(secondarySidebar).not.toHaveClass(/is-closed/);
+  await expect(secondarySidebar).toHaveCSS("width", "312px");
   await expect(secondarySidebar).toHaveCSS("margin-top", "16px");
   await expect(primaryToggle).toBeVisible();
   await expect(page.getByRole("button", { name: "筛选", exact: true })).toHaveAttribute("aria-pressed", "true");

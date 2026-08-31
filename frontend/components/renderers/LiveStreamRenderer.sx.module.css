@@ -1,5 +1,5 @@
 /* Generated from components/renderers/LiveStreamRenderer.tsx */
-.sx1{padding:var(--oops-space-2);background-color:var(--bgColor-muted);border-radius:2px;margin-bottom:var(--oops-space-4);display:flex;flex-direction:column;}
+.sx1{padding:var(--oops-space-2);background-color:var(--bgColor-muted);border-radius: var(--oops-radius-xs);margin-bottom:var(--oops-space-4);display:flex;flex-direction:column;}
 
 /* Generated from components/renderers/LiveStreamRenderer.tsx */
 .sx2{display:flex;justify-content:space-between;align-items:center;margin-bottom:var(--oops-space-2);}
@@ -8,7 +8,7 @@
 .sx3{font-weight:bold;}
 
 /* Generated from components/renderers/LiveStreamRenderer.tsx */
-.sx4{max-height:400px;overflow-y:auto;background-color:var(--bgColor-default);padding:var(--oops-space-2);border-radius:1px;border:1px solid;border-color:var(--borderColor-default);}
+.sx4{max-height:400px;overflow-y:auto;background-color:var(--bgColor-default);padding:var(--oops-space-2);border-radius: var(--oops-radius-xs);border:1px solid;border-color:var(--borderColor-default);}
 
 /* Generated from components/renderers/LiveStreamRenderer.tsx */
 .sx5{white-space:pre-wrap;font-family:var(--font-mono);font-size:var(--oops-text-sm);margin:var(--oops-space-0);}

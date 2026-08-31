@@ -29,7 +29,7 @@ export function confirmAction({
           await onConfirm();
         } catch (error) {
           notify.error({
-            title: "操作失败",
+            title: `${title}失败`,
             description: formatApiError(error),
           });
         }

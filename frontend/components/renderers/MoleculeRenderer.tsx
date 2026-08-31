@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { RDKitModule } from "@rdkit/rdkit";
 import { Box, Text } from "@/components/ui/primitives";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
+import { useRenderErrorNotification } from "@/hooks/useRenderErrorNotification";
 import { loadDerivedSvg, storeDerivedSvg } from "@/lib/derived-svg-cache";
 import { sanitizeSvgMarkup, SvgMarkup } from "./SvgMarkup";
 import sxStyles from "./MoleculeRenderer.sx.module.css";
@@ -105,6 +106,7 @@ export function MoleculeRenderer({ code }: { code: string }) {
     ? "分子结构数据过长，已停止渲染"
     : result.source === source ? result.error : "";
   const svg = result.source === source ? result.svg : "";
+  useRenderErrorNotification("分子结构渲染失败", error);
 
   if (error) {
     return (

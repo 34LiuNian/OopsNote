@@ -172,6 +172,8 @@ def list_problems(
     subject: str | None = None,
     source: list[str] | None = Query(default=None),
     knowledge_tag: list[str] | None = Query(default=None),
+    knowledge_node_id: list[str] | None = Query(default=None),
+    knowledge_any: list[str] | None = Query(default=None),
     error_tag: list[str] | None = Query(default=None),
     user_tag: list[str] | None = Query(default=None),
     created_after: str | None = None,
@@ -180,17 +182,28 @@ def list_problems(
     api = _api()
     after = _parse_iso(created_after)
     before = _parse_iso(created_before)
+    branch_leaves = (
+        api.TAG_STORE.knowledge_leaf_titles_under(subject, knowledge_node_id)
+        if subject and knowledge_node_id
+        else set()
+    )
     items: list[dict[str, Any]] = []
     for task in api.TASK_STORE.list_all():
         problem = task.problem
         if not problem:
             continue
         item = api._problem_summary(task, problem)
-        if subject and item["subject"] != subject:
+        if subject and not subjects_match(task.effective_subject(), subject):
             continue
         if source and item["source"] not in source:
             continue
         if knowledge_tag and not set(knowledge_tag).issubset(item["knowledge_tags"]):
+            continue
+        if knowledge_node_id and (
+            not branch_leaves or not branch_leaves.intersection(item["knowledge_tags"])
+        ):
+            continue
+        if knowledge_any and not set(knowledge_any).intersection(item["knowledge_tags"]):
             continue
         if error_tag and not set(error_tag).issubset(item["error_tags"]):
             continue

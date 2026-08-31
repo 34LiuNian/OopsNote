@@ -1751,3 +1751,59 @@ def test_task_view_exposes_subject_when_problem_subject_is_blank():
 
     assert view["subject"] == "physics"
     assert view["problem"]["subject"] == "physics"
+
+
+def test_list_problems_matches_any_leaf_under_knowledge_node(tmp_path, monkeypatch):
+    task_store = TaskStore(tmp_path / "tasks")
+    monkeypatch.setattr(main, "TASK_STORE", task_store)
+
+    class BranchTagStore:
+        def knowledge_leaf_titles_under(self, subject: str, node_ids: list[str]) -> set[str]:
+            assert subject == "physics"
+            if "l1-em" in node_ids:
+                return {"安培力的计算式及初步应用", "通电导线在磁场中的作用力方向"}
+            return set()
+
+    monkeypatch.setattr(main, "TAG_STORE", BranchTagStore())
+    ampere = task_store.create(TaskCreateRequest(subject="physics"))
+    mass_point = task_store.create(TaskCreateRequest(subject="physics"))
+    task_store.set_problem(
+        ampere.id,
+        Problem(subject="physics", problem_text="求安培力。", knowledge_points=["安培力的计算式及初步应用"]),
+    )
+    task_store.set_problem(
+        mass_point.id,
+        Problem(subject="physics", problem_text="质点。", knowledge_points=["质点"]),
+    )
+
+    client = TestClient(main.app)
+    filtered = client.get("/problems", params={"subject": "physics", "knowledge_node_id": "l1-em"})
+    all_items = client.get("/problems", params={"subject": "physics"})
+
+    assert filtered.status_code == 200
+    assert [item["problem_text"] for item in filtered.json()["items"]] == ["求安培力。"]
+    assert {item["problem_text"] for item in all_items.json()["items"]} == {"求安培力。", "质点。"}
+
+
+def test_list_problems_knowledge_any_matches_intersection(tmp_path, monkeypatch):
+    task_store = TaskStore(tmp_path / "tasks")
+    monkeypatch.setattr(main, "TASK_STORE", task_store)
+    ampere = task_store.create(TaskCreateRequest(subject="physics"))
+    mass_point = task_store.create(TaskCreateRequest(subject="physics"))
+    task_store.set_problem(
+        ampere.id,
+        Problem(subject="physics", problem_text="求安培力。", knowledge_points=["安培力的计算式及初步应用"]),
+    )
+    task_store.set_problem(
+        mass_point.id,
+        Problem(subject="physics", problem_text="质点。", knowledge_points=["质点"]),
+    )
+
+    client = TestClient(main.app)
+    filtered = client.get(
+        "/problems",
+        params=[("subject", "physics"), ("knowledge_any", "质点"), ("knowledge_any", "无关叶子")],
+    )
+
+    assert filtered.status_code == 200
+    assert [item["problem_text"] for item in filtered.json()["items"]] == ["质点。"]

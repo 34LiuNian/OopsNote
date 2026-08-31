@@ -28,6 +28,12 @@ const gradientExceptions = new Map([
   ["components/batch-continuous/batchContinuous.css", "selection masks and active-processing border"],
 ]);
 
+const ALLOWED_FONT_PX = new Set([12, 13, 14, 16, 20, 24, 32, 40]);
+const ALLOWED_RADIUS_PX = new Set([0, 4, 6, 8, 12, 16]);
+const fontSizeExceptions = new Map([
+  ["components/settings/ai/aiSettings.module.css", "3px credential mask hides secret glyphs without a second input type"],
+]);
+
 function collectFiles(directory) {
   const files = [];
   for (const entry of readdirSync(directory)) {
@@ -90,6 +96,23 @@ for (const absolute of files) {
 
   for (const match of findMatches(source, /\bGloock\b/g)) {
     failures.push(`${file}:${match.line} disallowed display font ${match.value}`);
+  }
+
+  if (file !== "app/design-tokens.css") {
+    for (const match of source.matchAll(/font-size\s*:\s*([\d.]+)px/gi)) {
+      const px = Number(match[1]);
+      if (ALLOWED_FONT_PX.has(px)) continue;
+      if (fontSizeExceptions.has(file) && px === 3) continue;
+      failures.push(`${file}:${lineNumber(source, match.index ?? 0)} off-scale font-size ${match[0].trim()}`);
+    }
+    for (const match of source.matchAll(/border-radius\s*:\s*([^;}\n]+)/gi)) {
+      const value = match[1].replace(/var\(--oops-radius-[\w-]+\)/g, "");
+      for (const radius of value.matchAll(/([\d.]+)px/g)) {
+        const px = Number(radius[1]);
+        if (px === 999 || px === 9999 || ALLOWED_RADIUS_PX.has(px)) continue;
+        failures.push(`${file}:${lineNumber(source, match.index ?? 0)} off-scale border-radius ${match[0].trim()}`);
+      }
+    }
   }
 }
 

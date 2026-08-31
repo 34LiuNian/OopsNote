@@ -7,6 +7,7 @@ import { ErrorBanner } from "@/components/ui/ErrorBanner";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { deletePaper, listPapers } from "@/features/papers";
 import { confirmAction } from "@/lib/confirm";
+import { notifyRequestError } from "@/lib/requestError";
 import type { PaperDraft } from "@/types/api";
 import sxStyles from "./page.sx.module.css";
 
@@ -19,7 +20,7 @@ export default function PapersPage() {
   useEffect(() => {
     void listPapers()
       .then((response) => setPapers(response.items))
-      .catch((reason) => setError(reason instanceof Error ? reason.message : "草稿加载失败"))
+      .catch((reason) => setError(notifyRequestError("加载试卷草稿失败", reason, "草稿加载失败")))
       .finally(() => setLoading(false));
   }, []);
 

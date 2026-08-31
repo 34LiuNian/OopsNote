@@ -1,7 +1,7 @@
 # OopsNote architecture
 
 状态：LangChain 单一运行时，Better Auth 单一生产认证
-更新：2026-08-15
+更新：2026-08-27
 
 ## 1. 产品边界
 
@@ -85,7 +85,7 @@ OCR / AI / manual edit -> OopsMark v1 -> Web renderer
 | `oopsnote/mcp` | AI 可调用的数据工具和 pipeline 写入边界 |
 | `oopsnote/obsidian` | Core 到 Vault 的同步 |
 | `oopsnote/paper` | 试卷模板与导出支持 |
-| `frontend` | Next.js UI、Better Auth 与 BFF |
+| `frontend` | Next.js UI、Better Auth 与 BFF。排版与交互约定见 [frontend-interaction.md](frontend-interaction.md) |
 | `skills` | OCR、解题、验证、标签和编排指令的唯一源码 |
 
 ## 7. 配置与密钥

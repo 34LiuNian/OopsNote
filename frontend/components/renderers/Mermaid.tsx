@@ -2,6 +2,7 @@
 
 import { Box, Text } from "@/components/ui/primitives";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
+import { useRenderErrorNotification } from "@/hooks/useRenderErrorNotification";
 import { useTheme } from "@/components/providers/ThemeProvider";
 import { loadDerivedSvg, storeDerivedSvg } from "@/lib/derived-svg-cache";
 import { useEffect, useId, useState } from "react";
@@ -71,6 +72,8 @@ export function Mermaid({ code }: { code: string }) {
       cleanOwnArtifacts();
     };
   }, [code, id, resolvedTheme]);
+
+  useRenderErrorNotification("流程图渲染失败", error);
 
   if (error) {
     return (

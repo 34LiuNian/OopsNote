@@ -56,13 +56,13 @@
   top: 6%;
   left: 5%;
   font-family: var(--font-sans);
-  font-size: 18px;
+  font-size: var(--oops-text-md);
   font-weight: 700;
 }
 
 .question {
   position: absolute;
-  font-size: 15px;
+  font-size: var(--oops-text-sm);
   line-height: 1.8;
 }
 

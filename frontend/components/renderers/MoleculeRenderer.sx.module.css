@@ -1,5 +1,5 @@
 /* Generated from components/renderers/MoleculeRenderer.tsx */
-.sx1{padding:var(--oops-space-2);border:1px solid;border-color:var(--fgColor-danger-emphasis);border-radius:1px;background-color:var(--bgColor-danger-muted);}
+.sx1{padding:var(--oops-space-2);border:1px solid;border-color:var(--fgColor-danger-emphasis);border-radius: var(--oops-radius-xs);background-color:var(--bgColor-danger-muted);}
 
 /* Generated from components/renderers/MoleculeRenderer.tsx */
 .sx3{margin-top:var(--oops-space-2);margin-bottom:var(--oops-space-0);white-space:pre-wrap;font-family:var(--font-mono);font-size:var(--oops-text-xs);}

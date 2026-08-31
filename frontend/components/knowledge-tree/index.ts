@@ -4,7 +4,12 @@ export type { KnowledgeTreeSelectionMode } from "./KnowledgeTreeView";
 export {
   buildSelectionStates,
   collectExpandedIdsForSelection,
+  collectLeafIdSet,
   collectLeafIds,
+  collectLeafNodes,
+  collectLeafTitles,
+  cascadeDisplayNodes,
+  compactSelectedNodeIds,
   compactSelectedNodes,
   coreChildren,
   filterTree,
@@ -13,6 +18,7 @@ export {
   isCoreNode,
   isTreeLeaf,
   nodeTitlePath,
+  selectedLeafIdsFromNodeIds,
   selectedLeafIdsFromTitles,
 } from "./knowledgeTree";
 export type { NodeSelectionState } from "./knowledgeTree";

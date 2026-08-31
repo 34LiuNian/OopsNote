@@ -17,7 +17,7 @@ OopsNote 区分两类任务：
 
 配置面板只负责描述目标试卷，不负责逐题编辑：
 
-1. 从知识树选择知识点。
+1. 从知识树选择知识点（共享 `frontend/components/knowledge-tree/`，组卷和题库筛选为 cascade 整枝筛选；单题编辑为叶子选择，见 [frontend-interaction.md](frontend-interaction.md)）。
 2. 选择难度比例；提供预设和自定义两层方式。
 3. 设置各题型数量。
 4. 自动选择候选题并进入编辑器，或跳过自动选题，以空试卷进入编辑器手动选题。

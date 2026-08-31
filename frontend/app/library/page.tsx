@@ -54,7 +54,7 @@ export default function LibraryPage() {
   } = useProblemList({
     subject: subject || undefined,
     source: sourceFilter.length > 0 ? sourceFilter : undefined,
-    knowledge_tag: knowledgeFilter.length > 0 ? knowledgeFilter : undefined,
+    knowledge_node_id: knowledgeFilter.length > 0 ? knowledgeFilter : undefined,
     error_tag: errorFilter.length > 0 ? errorFilter : undefined,
     user_tag: customFilter.length > 0 ? customFilter : undefined,
     created_after: dateAfter || undefined,
@@ -174,7 +174,9 @@ export default function LibraryPage() {
         <LibraryFilterPanel
           subject={subject}
           onSubjectChange={(value) => {
+            if (value === subject) return;
             setSubject(value);
+            setKnowledgeFilter([]);
             setSelectedIds({});
           }}
           dateAfter={dateAfter}

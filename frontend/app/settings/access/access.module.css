@@ -1,11 +1,11 @@
 .page { display: grid; min-width: 0; gap: 20px; }
 .panel { display: grid; gap: 24px; padding: 28px; border: 1px solid var(--borderColor-default); border-radius: 8px; background: var(--bgColor-default); box-shadow: var(--oops-shadow-sm); }
 .heading { display: flex; align-items: flex-start; gap: 10px; }
-.heading h2 { margin: 0; font-size: 21px; }
+.heading h2 { margin: 0; font-size: var(--oops-text-lg); }
 .heading p { margin: 4px 0 0; color: var(--fgColor-muted); font-size: 13px; }
 .field { display: grid; gap: 7px; color: var(--fgColor-default); font-size: 13px; font-weight: 650; }
 .field select, .field input { min-height: 40px; padding: 0 11px; border: 1px solid var(--borderColor-default); border-radius: 6px; color: var(--fgColor-default); background: var(--bgColor-default); font: inherit; font-weight: 400; }
 .field span, .emailPolicy span { color: var(--fgColor-muted); font-size: 12px; font-weight: 400; line-height: 1.5; }
-.emailPolicy { display: grid; gap: 5px; padding: 15px 16px; border: 1px solid var(--borderColor-muted); border-radius: 7px; background: var(--bgColor-muted); font-size: 13px; }
+.emailPolicy { display: grid; gap: 5px; padding: 15px 16px; border: 1px solid var(--borderColor-muted); border-radius: var(--oops-radius-md); background: var(--bgColor-muted); font-size: 13px; }
 .footer { display: flex; justify-content: flex-end; }
 @media (max-width: 680px) { .panel { padding: 20px; } }

@@ -1,7 +1,7 @@
 import { MutationCache, QueryCache, QueryClient } from "@tanstack/react-query";
 
-// Query and mutation failures are rendered by the owning page/component.
-// The global cache must not create duplicate notifications.
+// Query and mutation failures are owned by the page that renders them.
+// The page reports through notify.error; the global cache must not add a second path.
 export const queryClient = new QueryClient({
   queryCache: new QueryCache(),
   mutationCache: new MutationCache(),

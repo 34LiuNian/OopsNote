@@ -4,29 +4,19 @@
   min-height: 0;
   flex: 1;
   flex-direction: column;
+  gap: var(--oops-space-2);
 }
 
 .search {
-  margin: 0 0 var(--oops-space-2);
-  padding: 9px 11px;
-  border: 1px solid var(--borderColor-default);
-  border-radius: var(--oops-radius-sm);
-  outline: none;
-  color: var(--fgColor-default);
-  background: var(--bgColor-default);
-  font: inherit;
-  font-size: var(--oops-text-sm);
-}
-
-.search:focus {
-  border-color: var(--fgColor-accent);
+  flex: 0 0 auto;
+  margin: 0;
 }
 
 .scroll {
   min-height: 0;
   flex: 1;
   overflow: auto;
-  padding: 4px 0 12px;
+  padding: 0 0 var(--oops-space-2);
 }
 
 .list {
@@ -43,9 +33,10 @@
 .row {
   display: flex;
   min-width: 0;
-  min-height: 32px;
+  min-height: var(--oops-control-height-sm);
   align-items: center;
-  gap: 6px;
+  gap: var(--oops-space-1);
+  padding-left: calc(var(--oops-geometry-tree-depth, 0) * var(--oops-space-3));
   border-radius: var(--oops-radius-sm);
 }
 
@@ -54,9 +45,9 @@
 }
 
 .checkbox {
-  width: 18px;
-  height: 18px;
-  flex: 0 0 18px;
+  width: var(--oops-space-4);
+  height: var(--oops-space-4);
+  flex: 0 0 var(--oops-space-4);
   margin: 0;
   accent-color: var(--fgColor-accent);
 }
@@ -72,14 +63,14 @@
 
 .expand {
   display: grid;
-  width: 18px !important;
-  height: 18px !important;
-  min-width: 18px !important;
-  min-height: 18px !important;
-  flex: 0 0 18px;
+  width: var(--oops-space-4) !important;
+  height: var(--oops-space-4) !important;
+  min-width: var(--oops-space-4) !important;
+  min-height: var(--oops-space-4) !important;
+  flex: 0 0 var(--oops-space-4);
   place-items: center;
   padding: 0 !important;
-  border-radius: 4px;
+  border-radius: var(--oops-radius-sm);
   color: var(--fgColor-muted) !important;
   background: transparent;
 }
@@ -91,9 +82,9 @@
 
 .spacer {
   display: grid;
-  width: 18px;
-  height: 18px;
-  flex: 0 0 18px;
+  width: var(--oops-space-4);
+  height: var(--oops-space-4);
+  flex: 0 0 var(--oops-space-4);
   place-items: center;
 }
 
@@ -101,7 +92,7 @@
   min-width: 0;
   flex: 1;
   overflow: hidden;
-  padding: 5px 4px;
+  padding: var(--oops-space-1) var(--oops-space-2);
   background: transparent !important;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -117,7 +108,7 @@
 }
 
 .empty {
-  padding: 32px 12px;
+  padding: var(--oops-space-7) var(--oops-space-4);
   color: var(--fgColor-muted);
   text-align: center;
   font-size: var(--oops-text-sm);

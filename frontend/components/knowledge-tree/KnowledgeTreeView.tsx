@@ -1,14 +1,14 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { ChevronDown, ChevronRight } from "lucide-react";
-import { Button, IconButton, NativeInput } from "@/components/ui/primitives";
+import { useMemo, useState, type CSSProperties } from "react";
+import { ChevronDown, ChevronRight, Search } from "lucide-react";
+import { Button, IconButton, NativeInput, TextInput } from "@/components/ui/primitives";
 import type { KnowledgeTreeNode } from "@/types/api";
 import {
   buildSelectionStates,
   collectExpandedIdsForSelection,
+  collectLeafIdSet,
   filterTree,
-  isTreeLeaf,
   type NodeSelectionState,
 } from "./knowledgeTree";
 import styles from "./KnowledgeTreeView.module.css";
@@ -21,6 +21,7 @@ function TreeNodeRow({
   selectionMode,
   selectionStates,
   defaultExpandedIds,
+  leafIds,
   onToggle,
 }: {
   node: KnowledgeTreeNode;
@@ -28,12 +29,13 @@ function TreeNodeRow({
   selectionMode: KnowledgeTreeSelectionMode;
   selectionStates: Map<string, NodeSelectionState>;
   defaultExpandedIds: Set<string>;
+  leafIds: Set<string>;
   onToggle: (node: KnowledgeTreeNode) => void;
 }) {
   const [expanded, setExpanded] = useState(() => defaultExpandedIds.has(node.id));
   const open = searching || expanded;
-  const leaf = isTreeLeaf(node);
-  const hasChildren = !leaf;
+  const leaf = leafIds.has(node.id);
+  const hasChildren = node.children.length > 0;
   const selectable = selectionMode === "cascade" || leaf;
   const reserveExpandColumn = !hasChildren && selectionMode === "cascade";
   const selectionState = selectionStates.get(node.id) ?? { checked: false, indeterminate: false };
@@ -52,7 +54,10 @@ function TreeNodeRow({
 
   return (
     <li className={styles.item}>
-      <div className={styles.row} style={{ paddingLeft: `${Math.max(0, node.depth - 1) * 14}px` }}>
+      <div
+        className={styles.row}
+        style={{ "--oops-geometry-tree-depth": Math.max(0, node.depth - 1) } as CSSProperties}
+      >
         {hasChildren ? (
           <IconButton
             icon={open ? ChevronDown : ChevronRight}
@@ -96,6 +101,7 @@ function TreeNodeRow({
               selectionMode={selectionMode}
               selectionStates={selectionStates}
               defaultExpandedIds={defaultExpandedIds}
+              leafIds={leafIds}
               onToggle={onToggle}
             />
           ))}
@@ -139,15 +145,18 @@ export function KnowledgeTreeView({
     () => collectExpandedIdsForSelection(root, selectedLeafIds),
     [root, selectedLeafIds],
   );
+  const leafIds = useMemo(() => collectLeafIdSet(root), [root]);
 
   return (
     <div className={[styles.panel, className].filter(Boolean).join(" ")}>
-      <NativeInput
+      <TextInput
         className={styles.search}
         value={query}
         onChange={(event) => setQuery(event.target.value)}
         placeholder={searchPlaceholder}
         aria-label={searchPlaceholder}
+        leadingVisual={Search}
+        block
       />
       <div className={styles.scroll}>
         {!root ? <div className={styles.empty}>{loadingLabel}</div> : null}
@@ -162,6 +171,7 @@ export function KnowledgeTreeView({
                 selectionMode={selectionMode}
                 selectionStates={selectionStates}
                 defaultExpandedIds={defaultExpandedIds}
+                leafIds={leafIds}
                 onToggle={onToggle}
               />
             ))}

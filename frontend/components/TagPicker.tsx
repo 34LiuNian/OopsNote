@@ -7,6 +7,7 @@ import { TagSuggestionList } from "@/components/tags/TagSuggestionList";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
 import type { TagDimension, TagDimensionStyle, TagItem } from "@/types/api";
 import { searchTags } from "@/features/tags/api";
+import { notifyRequestError } from "@/lib/requestError";
 import { sortTagItemsByQuery } from "@/features/tags/ranking";
 import sxStyles from "./TagPicker.sx.module.css";
 
@@ -118,7 +119,7 @@ export const TagPicker = memo(function TagPicker({
         }
       } catch (reason) {
         if (lastRequest.current === requestId) setSuggestions([]);
-        if (lastRequest.current === requestId) setSearchError(reason instanceof Error ? reason.message : "无法搜索标签");
+        if (lastRequest.current === requestId) setSearchError(notifyRequestError("标签建议加载失败", reason, "无法搜索标签"));
       } finally {
         if (lastRequest.current === requestId) setLoading(false);
       }

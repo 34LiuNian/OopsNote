@@ -14,6 +14,7 @@ import { KnowledgeTreeSelector } from "@/features/papers/KnowledgeTreeSelector";
 import { collectLeafIds, compactSelectedNodes, findKnowledgeNode } from "@/components/knowledge-tree";
 import type { DifficultyBand, KnowledgeTreeNode } from "@/types/api";
 import { PageHeader } from "@/components/layout/PageHeader";
+import { notifyRequestError } from "@/lib/requestError";
 import { SidebarCollapseIcon } from "@/components/ui/icons";
 import { useSecondarySidebar } from "@/components/layout/SecondarySidebarContext";
 import styles from "../paperWorkflow.module.css";
@@ -71,7 +72,7 @@ export default function NewPaperPage() {
         if (active) setRoot(response.subjects[subject]?.root ?? null);
       })
       .catch((reason) => {
-        if (active) setTreeError(reason instanceof Error ? reason.message : "知识树加载失败");
+        if (active) setTreeError(notifyRequestError("加载知识树失败", reason, "知识树加载失败"));
       });
     return () => { active = false; };
   }, [subject]);
@@ -154,7 +155,7 @@ export default function NewPaperPage() {
       });
       router.push(`/papers/${encodeURIComponent(paper.id)}/edit`);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "创建试卷失败");
+      setError(notifyRequestError("创建试卷失败", reason, "创建试卷失败"));
       setCreating(false);
     }
   }

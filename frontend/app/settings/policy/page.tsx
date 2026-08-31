@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
 import { BadgeCheck, Bot, Image, RefreshCw, Save, ScanText, ShieldAlert } from "lucide-react";
 import { useAuth } from "@/components/providers/AuthProvider";
@@ -8,6 +8,7 @@ import { Box, Button, Heading, Spinner, Text } from "@/components/ui/primitives"
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
 import { isAdminUser } from "@/lib/auth";
 import { notify } from "@/lib/notify";
+import { notifyRequestError } from "@/lib/requestError";
 import { useAiChannels, useAiChannelMutations } from "@/features/settings/useAiProviders";
 import { policyModelUnavailableReason, updatePolicyStage } from "@/features/settings/modelOptions";
 import type { LangChainPolicy, StageSelection } from "@/features/settings/types";
@@ -66,6 +67,11 @@ export default function LangChainPolicyPage() {
   const [pickerStage, setPickerStage] = useState<PolicyStageDefinition | null>(null);
   const [errorMessage, setErrorMessage] = useState("");
 
+  useEffect(() => {
+    if (!channels.isError) return;
+    notifyRequestError("无法加载 AI 渠道", channels.error, "请确认管理员权限和后端状态");
+  }, [channels.error, channels.isError]);
+
   // Auth and React Query can be initialized from browser-only session/cache
   // state. Keep the SSR tree and the first client tree identical.
   if (!isHydrated || loading) return <Box className={sxStyles.sx1}><Spinner size="medium" /></Box>;
@@ -103,7 +109,7 @@ export default function LangChainPolicyPage() {
       setPolicyDraft(result.policy);
       notify.success({ title: "LangChain 策略已保存", description: `策略版本 ${result.policy.version} 将用于后续新 run。` });
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "策略保存失败");
+      setErrorMessage(notifyRequestError("策略保存失败", error, "策略保存失败"));
     }
   }
 
@@ -157,7 +163,7 @@ export default function LangChainPolicyPage() {
             </section>
           </>
         )}
-        <ErrorBanner message={errorMessage} />
+        <ErrorBanner message={errorMessage} title="策略保存失败" />
       </div>
       <ModelPickerDrawer
         channels={items}

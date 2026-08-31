@@ -6,7 +6,7 @@
 .panelHeading p { margin: 4px 0 0; color: var(--fgColor-muted); font-size: 13px; line-height: 1.45; }
 .toolbar { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: end; gap: 16px 20px; }
 .field { display: grid; min-width: 0; gap: 6px; color: var(--fgColor-default); font-size: 13px; font-weight: 600; }
-.field input, .field select { min-height: 36px; min-width: 0; padding: 0 10px; border: 1px solid var(--borderColor-default); border-radius: 5px; color: var(--fgColor-default); background: var(--bgColor-default); }
+.field input, .field select { min-height: 36px; min-width: 0; padding: 0 10px; border: 1px solid var(--borderColor-default); border-radius: var(--oops-radius-sm); color: var(--fgColor-default); background: var(--bgColor-default); }
 .command { display: inline-flex; min-height: 38px; align-items: center; justify-content: center; gap: 7px; padding: 0 14px; border: 1px solid var(--borderColor-default); border-radius: 6px; color: var(--fgColor-default); background: var(--bgColor-default); font-size: 13px; font-weight: 600; cursor: pointer; }
 .command:hover { background: var(--bgColor-muted); }
 .command:disabled { cursor: not-allowed; opacity: .55; }
@@ -14,9 +14,9 @@
 .primary:hover { background: var(--fgColor-accent); filter: brightness(.94); }
 .message { margin: 0; color: var(--fgColor-muted); font-size: 13px; }
 .messageError { color: var(--fgColor-danger); }
-.tableWrap { min-width: 0; overflow: auto; border: 1px solid var(--borderColor-muted); border-radius: 7px; }
+.tableWrap { min-width: 0; overflow: auto; border: 1px solid var(--borderColor-muted); border-radius: var(--oops-radius-md); }
 .table { width: 100%; min-width: 920px; border-collapse: collapse; font-size: 13px; }
-.table th { padding: 10px 8px; color: var(--fgColor-muted); font-size: 11px; font-weight: 700; text-align: left; }
+.table th { padding: 10px 8px; color: var(--fgColor-muted); font-size: var(--oops-text-xs); font-weight: 700; text-align: left; }
 .table td { padding: 11px 8px; border-top: 1px solid var(--borderColor-muted); vertical-align: middle; }
 .identity { display: grid; min-width: 0; gap: 2px; }
 .memberIdentity { display: flex; min-width: 0; align-items: center; gap: 9px; }
@@ -30,7 +30,7 @@
 .quota { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
 .quota input { width: 64px; min-height: 30px; padding: 0 7px; border: 1px solid var(--borderColor-default); border-radius: 4px; color: var(--fgColor-default); background: var(--bgColor-default); }
 .actions { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
-.iconButton { display: grid; width: 32px; height: 32px; place-items: center; border: 1px solid transparent; border-radius: 5px; color: var(--fgColor-muted); background: transparent; cursor: pointer; }
+.iconButton { display: grid; width: 32px; height: 32px; place-items: center; border: 1px solid transparent; border-radius: var(--oops-radius-sm); color: var(--fgColor-muted); background: transparent; cursor: pointer; }
 .iconButton:hover { border-color: var(--borderColor-default); color: var(--fgColor-default); background: var(--bgColor-muted); }
 .iconButton:disabled { cursor: not-allowed; opacity: .4; }
 .role { min-height: 30px; padding: 0 7px; border: 1px solid var(--borderColor-default); border-radius: 4px; color: var(--fgColor-default); background: var(--bgColor-default); }

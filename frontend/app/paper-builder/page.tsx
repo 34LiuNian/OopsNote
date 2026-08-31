@@ -19,6 +19,7 @@ import { SUBJECT_OPTIONS } from "../../config/subjects";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { ApiError } from "@/lib/api";
 import { notify } from "@/lib/notify";
+import { notifyRequestError } from "@/lib/requestError";
 import sxStyles from "./page.sx.module.css";
 
 const BUILDER_SUBJECT_OPTIONS = [
@@ -71,6 +72,11 @@ export default function PaperBuilderPage() {
     created_after: effectiveDateAfter || undefined,
     created_before: effectiveDateBefore || undefined,
   });
+
+  useEffect(() => {
+    if (!error) return;
+    notifyRequestError("加载题库失败", error);
+  }, [error]);
 
   const [selected, setSelected] = useState<Record<string, boolean>>({});
 

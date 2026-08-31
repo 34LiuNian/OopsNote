@@ -514,6 +514,64 @@ class TestTagStore:
         with pytest.raises(ValueError, match="unknown level-two"):
             tags.ai_knowledge_leaves("math", ["level-one"])
 
+    def test_knowledge_leaf_titles_under_selected_level_one_node(self, tmp_path):
+        tree_path = tmp_path / "knowledge_trees.json"
+        tree_path.write_text(
+            json.dumps(
+                {
+                    "subjects": {
+                        "physics": {
+                            "root": {
+                                "id": "root",
+                                "title": "物理",
+                                "scope": "core",
+                                "children": [
+                                    {
+                                        "id": "l1-em",
+                                        "title": "电磁学",
+                                        "scope": "core",
+                                        "children": [
+                                            {
+                                                "id": "l2",
+                                                "title": "磁场",
+                                                "scope": "core",
+                                                "children": [
+                                                    {
+                                                        "id": "leaf",
+                                                        "title": "安培力的计算式及初步应用",
+                                                        "scope": "core",
+                                                        "children": [],
+                                                    }
+                                                ],
+                                            }
+                                        ],
+                                    },
+                                    {
+                                        "id": "l1-mech",
+                                        "title": "力学",
+                                        "scope": "core",
+                                        "children": [
+                                            {"id": "leaf-m", "title": "质点", "scope": "core", "children": []}
+                                        ],
+                                    },
+                                ],
+                            }
+                        }
+                    }
+                },
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
+        tags = TagStore(
+            user_path=tmp_path / "tags_user.json",
+            builtin_path=tmp_path / "tags_builtin.json",
+            tree_path=tree_path,
+        )
+
+        assert tags.knowledge_leaf_titles_under("physics", ["l1-em"]) == {"安培力的计算式及初步应用"}
+        assert tags.knowledge_leaf_titles_under("physics", ["missing"]) == set()
+
     def test_subject_aliases_share_one_user_tag_namespace(self, tmp_path):
         tags = TagStore(
             user_path=tmp_path / "tags_user.json",

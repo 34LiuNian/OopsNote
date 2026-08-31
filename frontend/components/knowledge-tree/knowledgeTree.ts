@@ -17,10 +17,32 @@ export function isTreeLeaf(node: KnowledgeTreeNode): boolean {
   return coreChildren(node).length === 0;
 }
 
-export function collectLeafIds(node: KnowledgeTreeNode): string[] {
+export function collectLeafNodes(node: KnowledgeTreeNode): KnowledgeTreeNode[] {
+  if (!isCoreNode(node)) return [];
   const children = coreChildren(node);
-  if (!children.length) return [node.id];
-  return children.flatMap(collectLeafIds);
+  if (!children.length) return [node];
+  return children.flatMap(collectLeafNodes);
+}
+
+export function collectLeafIds(node: KnowledgeTreeNode): string[] {
+  return collectLeafNodes(node).map((leaf) => leaf.id);
+}
+
+export function collectLeafTitles(node: KnowledgeTreeNode): string[] {
+  const titles: string[] = [];
+  const seen = new Set<string>();
+  for (const leaf of collectLeafNodes(node)) {
+    const title = leaf.title.trim();
+    const key = title.toLocaleLowerCase();
+    if (!title || seen.has(key)) continue;
+    seen.add(key);
+    titles.push(title);
+  }
+  return titles;
+}
+
+export function collectLeafIdSet(root: KnowledgeTreeNode | null): Set<string> {
+  return new Set(root ? collectLeafIds(root) : []);
 }
 
 export function collectExpandedIdsForSelection(
@@ -144,4 +166,38 @@ export function selectedLeafIdsFromTitles(root: KnowledgeTreeNode | null, titles
     for (const leaf of findLeavesByTitle(root, title)) ids.add(leaf.id);
   }
   return ids;
+}
+
+export function selectedLeafIdsFromNodeIds(root: KnowledgeTreeNode | null, nodeIds: string[]): Set<string> {
+  const ids = new Set<string>();
+  if (!root) return ids;
+  for (const nodeId of nodeIds) {
+    const node = findKnowledgeNode(root, nodeId);
+    if (!node) continue;
+    for (const leafId of collectLeafIds(node)) ids.add(leafId);
+  }
+  return ids;
+}
+
+export function compactSelectedNodeIds(
+  root: KnowledgeTreeNode | null,
+  selectedLeafIds: Set<string>,
+): string[] {
+  return compactSelectedNodes(root, selectedLeafIds).map((node) => node.id);
+}
+
+export function cascadeDisplayNodes(
+  root: KnowledgeTreeNode | null,
+  valueNodeIds: string[],
+): { nodes: KnowledgeTreeNode[]; orphans: string[] } {
+  if (!root) return { nodes: [], orphans: [...valueNodeIds] };
+  const selectedLeaves = selectedLeafIdsFromNodeIds(root, valueNodeIds);
+  const nodes = compactSelectedNodes(root, selectedLeaves);
+  const covered = new Set(nodes.flatMap((node) => collectLeafIds(node)));
+  const orphans = valueNodeIds.filter((id) => {
+    const node = findKnowledgeNode(root, id);
+    if (!node) return true;
+    return collectLeafIds(node).some((leafId) => !covered.has(leafId));
+  });
+  return { nodes, orphans };
 }

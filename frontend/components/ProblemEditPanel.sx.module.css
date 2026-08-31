@@ -29,7 +29,7 @@
 .sx10{display:grid;grid-template-columns:1fr;gap:var(--oops-space-4);}@media (min-width: 544px){.sx10{grid-template-columns:1fr 1fr 1fr;}}
 
 /* Generated from components/ProblemEditPanel.tsx */
-.sx11{color:var(--color-text-subtle);font-size:0.8125rem;}
+.sx11{color:var(--fgColor-muted);font-size:13px;}
 
 /* Generated from components/ProblemEditPanel.tsx */
 .sx12{font-weight:600;font-size:var(--oops-text-sm);}
@@ -59,7 +59,7 @@
 .sx20{min-width:0px;display:flex;flex-direction:column;gap:var(--oops-space-2);}
 
 /* Generated from components/ProblemEditPanel.tsx */
-.sx21{padding:var(--oops-space-2);border:1px solid;border-color:var(--borderColor-default);border-radius:1px;background-color:var(--bgColor-muted);}
+.sx21{padding:var(--oops-space-2);border:1px solid;border-color:var(--borderColor-default);border-radius: var(--oops-radius-xs);background-color:var(--bgColor-muted);}
 
 /* Generated from components/ProblemEditPanel.tsx */
 .sx22{color:var(--fgColor-muted);font-size:var(--oops-text-xs);}
@@ -101,10 +101,10 @@
 .sx36{margin-top:var(--oops-space-4);}
 
 /* Generated from components/ProblemEditPanel.tsx */
-.sx37{margin-top:var(--oops-space-2);padding:var(--oops-space-2);border:1px solid;border-color:var(--borderColor-default);border-radius:1px;background-color:var(--bgColor-muted);}.sx37 svg{max-width:100%;height:auto;}
+.sx37{margin-top:var(--oops-space-2);padding:var(--oops-space-2);border:1px solid;border-color:var(--borderColor-default);border-radius: var(--oops-radius-xs);background-color:var(--bgColor-muted);}.sx37 svg{max-width:100%;height:auto;}
 
 /* Generated from components/ProblemEditPanel.tsx */
-.sx38{margin-top:var(--oops-space-2);padding:var(--oops-space-2);border:1px solid;border-color:var(--fgColor-danger-emphasis);border-radius:1px;background-color:var(--bgColor-danger-muted);}
+.sx38{margin-top:var(--oops-space-2);padding:var(--oops-space-2);border:1px solid;border-color:var(--fgColor-danger-emphasis);border-radius: var(--oops-radius-xs);background-color:var(--bgColor-danger-muted);}
 
 /* Generated from components/ProblemEditPanel.tsx */
 .sx39{color:var(--fgColor-danger);font-size:var(--oops-text-sm);font-weight:600;}
@@ -159,7 +159,9 @@
 .editorFooter{display:flex;min-height:48px;align-items:center;justify-content:space-between;gap:var(--oops-space-4);margin-top:var(--oops-space-5);padding-top:var(--oops-space-3);border-top:1px solid var(--borderColor-muted);}
 .saveState{display:inline-flex;align-items:center;gap:var(--oops-space-2);color:var(--fgColor-muted);font-size:var(--oops-text-xs);}
 .saveState>span{width:7px;height:7px;flex:0 0 auto;border-radius:50%;background:currentColor;}
+.saveState[data-state="saving"]{color:var(--fgColor-muted);}
 .saveState[data-state="dirty"]{color:var(--fgColor-attention);}
+.saveState[data-state="failed"]{color:var(--fgColor-danger);}
 .saveState[data-state="saved"]{color:var(--fgColor-success);}
 .footerActions{display:flex;align-items:center;gap:var(--oops-space-2);}
 

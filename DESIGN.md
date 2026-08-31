@@ -98,6 +98,21 @@ The interface must feel:
 
 The product's personality comes from the OopsNote wordmark, real academic content, diagrams, page imagery, and restrained motion. Decorative gradients, floating shapes, generic illustration, and ornamental card stacks are not part of the product language.
 
+Working rules for problem-edit layout, knowledge-tree selection, and save semantics live in [docs/frontend-interaction.md](docs/frontend-interaction.md). This file still owns visual tokens; that document owns information architecture.
+
+## Interaction Architecture
+
+Layout follows the job in front of the user, not a requirement to display every tool at once.
+
+- **Glanceable review** stays on a stable stacked page: identity rail, stem, options, a collapsed diagram preview, and compact classification chips.
+- **Long-running tools** (diagram workbench, catalog tree, TikZ source) get their own bounded surface: an explicit editor mode, a dialog, or a persistent filter sidebar.
+- Expanding a control must not grow the document until it covers save actions, other fields, or the diagram card.
+- Empty optional regions stay one line with an add affordance. Do not keep three equal inputs for knowledge, error cause, and notes.
+- Primary actions have one write meaning. Diagram settings persist as the user changes them; problem-text drafts use an explicit save on the proofread footer.
+- Selectable vs browse-only tree nodes are distinguished by checkbox vs chevron, never by type size. Indent encodes depth only.
+
+Typography and color in this file still apply inside those surfaces. Do not invent a second type scale for tree depth or node kind.
+
 ## Reference Synthesis
 
 This system preserves OopsNote's existing graphite shell and strengthens it with three references from [awesome-design-md](https://github.com/VoltAgent/awesome-design-md):
@@ -205,7 +220,9 @@ Flat cards use no shadow. Hover may strengthen the border but must not shift lay
 - Desktop title bar: 58px.
 - Expanded primary sidebar: 208px.
 - Collapsed primary rail: 58px.
-- Context sidebar: 240px.
+- Context sidebar default: 240px.
+- Catalog/filter L1 (library, AI channels): 312px.
+- Paper compose L1: 320px, because the knowledge tree stays resident.
 - Main content uses a stable constrained gutter and scrolls independently.
 - The content shell may use its existing 16px top-left radius; inner page sections remain unframed.
 

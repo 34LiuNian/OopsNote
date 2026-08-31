@@ -1,7 +1,7 @@
 .page { display: grid; min-width: 0; gap: 20px; }
 .panel { display: grid; gap: 24px; padding: 28px; border: 1px solid var(--borderColor-default); border-radius: 8px; background: var(--bgColor-default); box-shadow: var(--oops-shadow-sm); }
 .panelHeading { display: flex; align-items: flex-start; gap: 10px; }
-.panelHeading h2 { margin: 0; font-size: 21px; line-height: 1.3; }
+.panelHeading h2 { margin: 0; font-size: var(--oops-text-lg); line-height: 1.3; }
 .panelHeading p, .avatarRow p, .footer p { margin: 4px 0 0; color: var(--fgColor-muted); font-size: 13px; line-height: 1.5; }
 .avatarRow { display: flex; align-items: center; gap: 22px; padding: 20px 0; border-block: 1px solid var(--borderColor-muted); }
 .avatarRow strong { display: block; font-size: 14px; }
@@ -11,7 +11,7 @@
 .footer { display: flex; min-height: 36px; align-items: center; justify-content: space-between; gap: 16px; }
 .footer p { margin: 0; }
 .state { color: var(--fgColor-muted); }
-.usageGrid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border: 1px solid var(--borderColor-muted); border-radius: 7px; }
+.usageGrid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border: 1px solid var(--borderColor-muted); border-radius: var(--oops-radius-md); }
 .usageGrid > div { display: grid; gap: 8px; padding: 20px; border-right: 1px solid var(--borderColor-muted); }
 .usageGrid > div:last-child { border-right: 0; }
 .usageGrid span { display: inline-flex; align-items: center; gap: 5px; color: var(--fgColor-muted); font-size: 12px; }

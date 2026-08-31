@@ -133,12 +133,12 @@ export function ModelPickerDrawer({
                 type="button"
                 className={`${styles.pickerOption}${selected ? ` ${styles.pickerOptionSelected}` : ""}`}
                 onClick={() => onSelect({ channel_id: channel.id, model_id: model.id })}
+                trailingVisual={selected ? Check : undefined}
               >
                 <span className={styles.stageSelectionText}>
                   <span className={styles.modelName}>{model.id}</span>
                   <span className={styles.pickerReason}>{model.source} · {definition.capabilityLabel}</span>
                 </span>
-                {selected ? <Check size={17} /> : null}
               </Button>
             );
           })}

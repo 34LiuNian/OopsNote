@@ -62,10 +62,7 @@ export function TaskThumbnail({ asset, size = "medium" }: TaskThumbnailProps) {
           target.style.display = "none";
           const parent = target.parentElement;
           if (parent) {
-            parent.style.color = "fg.muted";
-            parent.style.fontSize = "10px";
-            parent.style.textAlign = "center";
-            parent.style.padding = "4px";
+            parent.classList.add("task-thumbnail-error");
             parent.textContent = "加载失败";
           }
         }}

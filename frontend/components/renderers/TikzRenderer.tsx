@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Box, Text } from "@/components/ui/primitives";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
+import { useRenderErrorNotification } from "@/hooks/useRenderErrorNotification";
 import { sanitizeSvgMarkup, SvgMarkup } from "./SvgMarkup";
 import { apiErrorFromResponse, fetchApi } from "@/lib/api";
 import sxStyles from "./TikzRenderer.sx.module.css";
@@ -72,6 +73,7 @@ export function TikzRenderer({
 
   const error = source.length > 50_000 ? "TikZ 源码过长" : result.source === source ? result.error : "";
   const svg = result.source === source ? result.svg : "";
+  useRenderErrorNotification("TikZ 渲染失败", error);
 
   if (svg) return <SvgMarkup svg={svg} label="TikZ 图形" colorMode="themed" fit={fit} />;
   void allowBackendFallback;

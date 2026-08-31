@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/primitives";
 import { AccountSettingsNav } from "@/components/account/AccountSettingsNav";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
+import { notifyRequestError } from "@/lib/requestError";
 import styles from "../account.module.css";
 
 type Quota = {
@@ -28,7 +29,7 @@ export default function AccountUsagePage() {
       const payload = await response.json() as { quota?: Quota } & Quota;
       setQuota(payload.quota || payload);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "无法读取额度");
+      setError(notifyRequestError("加载额度失败", reason, "无法读取额度"));
     } finally {
       setLoading(false);
     }

@@ -259,6 +259,39 @@ class TagStore:
         root = self._knowledge_subject_root(subject)
         return {str(node["title"]) for node in self._leaf_nodes(root, scope=None)}
 
+    def knowledge_leaf_titles_under(self, subject: str, node_ids: list[str]) -> set[str]:
+        """Return core leaf titles under the selected catalog nodes."""
+
+        selected_ids = {node_id for node_id in node_ids if node_id}
+        if not selected_ids:
+            return set()
+        try:
+            root = self._knowledge_subject_root(subject)
+        except ValueError:
+            return set()
+        titles: set[str] = set()
+
+        def visit(node: dict[str, Any], capturing: bool) -> None:
+            scope = node.get("scope")
+            if scope and scope != "core":
+                return
+            children = [
+                child
+                for child in node.get("children") or []
+                if not child.get("scope") or child.get("scope") == "core"
+            ]
+            selected = capturing or str(node.get("id") or "") in selected_ids
+            if selected and not children:
+                title = str(node.get("title") or "").strip()
+                if title:
+                    titles.add(title)
+                return
+            for child in children:
+                visit(child, selected)
+
+        visit(root, False)
+        return titles
+
     def knowledge_tree(self, subject: str | None = None) -> dict[str, Any]:
         """Return the cleaned tracked knowledge tree, optionally for one subject."""
 

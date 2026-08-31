@@ -39,3 +39,5 @@ JSON 正文来自 `response.content.text`；当 `response.content.encoding` 为
 - 受管 AI 最终提交只接受知识树叶子标签，父目录、未登记值和自由创建的知识标签会被拒绝。
 - 标签正文仍保存标准术语字符串；树节点 ID 和路径属于目录元数据。
 - 用户标签保存在根目录 `storage/`，不会被目录重新生成覆盖。
+- Web 选择知识体系时，题目上只保存叶子标签，不得在题目编辑页新建知识标签。共享实现为 `frontend/components/knowledge-tree/`。组卷筛选和题库筛选可级联勾选子树；单题编辑为叶子多选对话框。详见 [frontend-interaction.md](frontend-interaction.md)。
+- 题目元数据 `chapter` 是原卷印刷章节，用于卷面定位和难度区段，不是知识树一级分组，也不能用知识树节点代替。

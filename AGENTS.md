@@ -103,6 +103,34 @@ npm --prefix frontend run lint
 Do not claim browser E2E, credentialed model behavior, or paper compilation from static checks
 alone.
 
+## Frontend information architecture
+
+Read `DESIGN.md` and `docs/frontend-interaction.md` before changing problem-edit
+layout, paper knowledge filters, tagging, or any surface that mixes glanceable
+review with a long-running tool.
+
+- Before changing visual style or micro-interaction (spacing, chips, hover,
+  expand, subject pickers), ask detailed questions and wait for an explicit
+  choice. Do not iterate by guessing.
+- Decide layout from use frequency, not from a desire to show everything at once.
+  Proofreading is the default stacked page; deep diagram work is an explicit mode;
+  catalog trees and other tall tools open in a bounded overlay or sidebar.
+- Keep one job per path. Do not reuse a primary save button for two write
+  semantics (problem-text drafts are explicit; diagram settings persist immediately).
+- Match the control to the data. Knowledge points are catalog leaves, not free
+  tags. Printed `chapter` is source-paper location, not the knowledge-tree grouping.
+  Error causes and custom notes are secondary and stay collapsed when empty.
+- Reuse `frontend/components/knowledge-tree/` for catalog selection. Paper filters
+  and library filters use cascade selection (parents select the whole branch).
+  Problem edit uses leaf-only selection in a dialog. Leaf identity comes from the
+  unfiltered catalog tree, not from a search-pruned node.
+- Auto-expand only the ancestor chain of selected leaves. Do not expand by depth.
+  Non-selectable nodes must not reserve a checkbox column.
+- Do not distinguish leaf vs parent with type size. Chevron and checkbox already
+  encode role; depth is encoded by indent.
+- Align subject at `TaskRecord` (`effective_subject()`). Frontend consumers read
+  the projected `subject`; they must not re-merge `task.subject || problem.subject`.
+
 ## Frontend Button Icon Contract
 
 - The shared `frontend/components/ui/primitives.tsx` `Button` owns icon-and-label alignment.

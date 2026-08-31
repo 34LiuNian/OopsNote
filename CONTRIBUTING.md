@@ -34,4 +34,6 @@ CI 在每次 push/PR 上运行三个 job：Backend（ruff + pytest）、Frontend
 ## 项目结构
 
 见 `README.md` 与 `AGENTS.md`；内容格式改动前先读 `docs/oopsmark-v1.md`；
-可靠性相关改动先读 `skills/prevent-patchwork-technical-debt/SKILL.md`。
+可靠性相关改动先读 `skills/prevent-patchwork-technical-debt/SKILL.md`；
+题目编辑、知识树、标签或「阅读 + 工具」混合界面改动前先读 `DESIGN.md` 与
+`docs/frontend-interaction.md`。

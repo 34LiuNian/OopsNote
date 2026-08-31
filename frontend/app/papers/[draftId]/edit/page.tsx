@@ -42,6 +42,7 @@ import {
 } from "@/features/papers/defaultPaperStructure";
 import { confirmAction } from "@/lib/confirm";
 import { notify } from "@/lib/notify";
+import { notifyRequestError } from "@/lib/requestError";
 import type { PaperDraft, PaperDraftItem, ProblemSummary } from "@/types/api";
 import styles from "../../paperEditor.module.css";
 import sxStyles from "./page.sx.module.css";
@@ -206,7 +207,7 @@ export default function PaperEditorPage() {
       .catch(
         (reason) =>
           active &&
-          setError(reason instanceof Error ? reason.message : "试卷加载失败"),
+          setError(notifyRequestError("加载试卷失败", reason, "试卷加载失败")),
       )
       .finally(() => active && setLoading(false));
     return () => {
@@ -245,7 +246,7 @@ export default function PaperEditorPage() {
     })
       .then(setCandidates)
       .catch((reason) =>
-        setError(reason instanceof Error ? reason.message : "候选题加载失败"),
+        setError(notifyRequestError("候选题加载失败", reason, "候选题加载失败")),
       )
       .finally(() => setCandidateLoading(false));
   }, [paper?.knowledge_node_ids, paper?.knowledge_tags, paper?.subject]);
@@ -369,7 +370,7 @@ export default function PaperEditorPage() {
       setSaveState("saved");
     } catch (reason) {
       setSaveState("error");
-      setError(reason instanceof Error ? reason.message : "保存失败");
+      setError(notifyRequestError("试卷保存失败", reason, "保存失败"));
     }
   }
   function toggleCandidateInPaper(candidate: Candidate) {
@@ -497,7 +498,7 @@ export default function PaperEditorPage() {
       setPreviewUrl(URL.createObjectURL(pdf));
     } catch (reason) {
       setPreviewError(
-        reason instanceof Error ? reason.message : "试卷编译失败",
+        notifyRequestError("试卷编译失败", reason, "试卷编译失败"),
       );
     } finally {
       setPreviewLoading(false);

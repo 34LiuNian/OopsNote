@@ -19,7 +19,7 @@
 .batch-continuous-page__borrow-mask.is-right::after { -webkit-backdrop-filter: blur(4.6px); backdrop-filter: blur(4.6px); -webkit-mask-image: linear-gradient(to left, white 0%, rgb(255 255 255 / 78%) 36%, transparent 76%); mask-image: linear-gradient(to left, white 0%, rgb(255 255 255 / 78%) 36%, transparent 76%); }
 .batch-continuous-page.is-inverted .batch-continuous-page__borrow-mask { opacity: .92; }
 .batch-continuous-page__borrow-mask.is-hovered { opacity: 0; }
-.batch-continuous-page__column-label { position: absolute; z-index: 2; top: 4px; left: 50%; padding: 2px 6px; border-radius: 999px; transform: translateX(-50%); color: var(--fgColor-muted); background: color-mix(in srgb, var(--bgColor-default) 82%, transparent); font-size: 10px; line-height: 1.4; pointer-events: none; }
+.batch-continuous-page__column-label { position: absolute; z-index: 2; top: 4px; left: 50%; padding: 2px 6px; border-radius: 999px; transform: translateX(-50%); color: var(--fgColor-muted); background: color-mix(in srgb, var(--bgColor-default) 82%, transparent); font-size: var(--oops-text-xs); line-height: 1.4; pointer-events: none; }
 .batch-selection-overlay { position: absolute; z-index: 4; inset: 0; cursor: crosshair; touch-action: none; }
 .batch-selection { --selection-box-color: var(--fgColor-info); --selection-box-stroke: var(--batch-selection-muted-stroke, 2px); --selection-box-radius: var(--oops-radius-xs); transition: box-shadow 120ms ease-out, background-color 120ms ease-out; }
 .batch-selection.is-pending { cursor: grab; }
@@ -33,7 +33,7 @@
 .batch-selection.is-completed { --selection-box-color: var(--fgColor-success); }
 .batch-selection.is-failed { --selection-box-color: var(--fgColor-danger); }
 .batch-selection.is-needs_review { --selection-box-color: #d97706; background: color-mix(in srgb, #f59e0b 6%, transparent); }
-.batch-selection__label { position: absolute; top: -4px; left: 0; display: grid; min-width: 22px; height: 22px; place-items: center; padding: 0 6px; border: 1px solid var(--selection-box-color); border-radius: 4px; transform: translateY(-100%); color: var(--selection-box-color); background: rgb(255 255 255 / 96%); box-shadow: 0 1px 3px rgb(15 23 42 / 18%); font-size: 10px; font-weight: 700; line-height: 1; pointer-events: none; }
+.batch-selection__label { position: absolute; top: -4px; left: 0; display: grid; min-width: 22px; height: 22px; place-items: center; padding: 0 6px; border: 1px solid var(--selection-box-color); border-radius: 4px; transform: translateY(-100%); color: var(--selection-box-color); background: rgb(255 255 255 / 96%); box-shadow: 0 1px 3px rgb(15 23 42 / 18%); font-size: var(--oops-text-xs); font-weight: 700; line-height: 1; pointer-events: none; }
 .batch-selection.is-active .batch-selection__label { color: #fff; background: var(--selection-box-color); }
 .batch-selection.is-label-inside .batch-selection__label { top: 4px; left: 4px; transform: none; }
 .batch-selection-handle { z-index: 5; }

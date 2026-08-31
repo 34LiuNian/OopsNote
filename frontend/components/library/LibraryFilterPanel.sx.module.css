@@ -3,3 +3,10 @@
 
 /* Generated from components/library/LibraryFilterPanel.tsx */
 .sx2{display:grid;gap:var(--oops-space-2);}
+
+.body{flex:1;min-height:0;}
+.primary{display:flex;flex-direction:column;gap:var(--oops-space-4);}
+.subjectRow{display:flex;min-width:0;align-items:baseline;gap:var(--oops-space-3);}
+.subjectRow :global(.oops-field-label){padding:0;line-height:1.35;}
+.more{flex:0 0 auto;padding-top:var(--oops-space-2);border-top:1px solid var(--borderColor-muted);}
+.moreBody{display:flex;flex-direction:column;gap:var(--oops-space-4);padding-top:var(--oops-space-3);}

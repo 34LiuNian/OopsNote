@@ -11,7 +11,7 @@
 .sx4{color:var(--fgColor-muted);margin-top:var(--oops-space-1);}
 
 /* Generated from app/debug/page.tsx */
-.sx5{padding:var(--oops-space-4);border:1px solid;border-color:var(--borderColor-default);border-radius:2px;}
+.sx5{padding:var(--oops-space-4);border:1px solid;border-color:var(--borderColor-default);border-radius: var(--oops-radius-xs);}
 
 /* Generated from app/debug/page.tsx */
 .sx6{font-size:var(--oops-text-md);margin-bottom:var(--oops-space-2);}
@@ -23,7 +23,7 @@
 .sx8{display:flex;gap:var(--oops-space-2);flex-wrap:wrap;margin-top:var(--oops-space-2);}
 
 /* Generated from app/debug/page.tsx */
-.sx9{padding:var(--oops-space-4);border:1px solid;border-color:var(--borderColor-default);border-radius:2px;}
+.sx9{padding:var(--oops-space-4);border:1px solid;border-color:var(--borderColor-default);border-radius: var(--oops-radius-xs);}
 
 /* Generated from app/debug/page.tsx */
 .sx10{font-size:var(--oops-text-md);margin-bottom:var(--oops-space-1);}
@@ -41,13 +41,13 @@
 .sx14{display:grid;grid-template-columns:1fr;gap:var(--oops-space-4);}@media (min-width: 544px){.sx14{grid-template-columns:1fr 1fr;}}
 
 /* Generated from app/debug/page.tsx */
-.sx15{padding:var(--oops-space-4);border:1px solid;border-color:var(--borderColor-default);border-radius:2px;}
+.sx15{padding:var(--oops-space-4);border:1px solid;border-color:var(--borderColor-default);border-radius: var(--oops-radius-xs);}
 
 /* Generated from app/debug/page.tsx */
 .sx16{font-size:var(--oops-text-md);margin-bottom:var(--oops-space-2);}
 
 /* Generated from app/debug/page.tsx */
-.sx17{padding:var(--oops-space-4);border:1px solid;border-color:var(--borderColor-default);border-radius:2px;}
+.sx17{padding:var(--oops-space-4);border:1px solid;border-color:var(--borderColor-default);border-radius: var(--oops-radius-xs);}
 
 /* Generated from app/debug/page.tsx */
 .sx18{font-size:var(--oops-text-md);margin-bottom:var(--oops-space-2);}
@@ -68,4 +68,4 @@
 .sx23{font-size:var(--oops-text-md);}
 
 /* Generated from app/debug/page.tsx */
-.sx24{padding:var(--oops-space-4);border:1px solid;border-color:var(--borderColor-default);border-radius:2px;}
+.sx24{padding:var(--oops-space-4);border:1px solid;border-color:var(--borderColor-default);border-radius: var(--oops-radius-xs);}

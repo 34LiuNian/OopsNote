@@ -1,6 +1,6 @@
 "use client";
 
-import { useDeferredValue, useMemo, useState } from "react";
+import { useDeferredValue, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { CircleCheck, CircleX, Copy, PlugZap, Save, ShieldAlert, Trash2 } from "lucide-react";
 import { useAuth } from "@/components/providers/AuthProvider";
@@ -8,6 +8,7 @@ import { Box, Button, FormControl, Heading, IconButton, PasswordInput, Select, S
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
 import { isAdminUser } from "@/lib/auth";
 import { notify } from "@/lib/notify";
+import { notifyRequestError } from "@/lib/requestError";
 import { confirmAction } from "@/lib/confirm";
 import { formatApiError } from "@/lib/errorFormatter";
 import { getChannelCredential } from "@/features/settings/api";
@@ -108,6 +109,11 @@ export default function AiChannelsPage() {
       ? MASKED_SECRET
       : "";
 
+  useEffect(() => {
+    if (!channels.isError) return;
+    notifyRequestError("无法加载 AI 渠道", channels.error, "请检查管理员权限和后端服务");
+  }, [channels.error, channels.isError]);
+
   if (loading) return <Box className={sxStyles.sx1}><Spinner size="medium" /></Box>;
   if (!isAdmin) return <Box className={sxStyles.sx2}><ShieldAlert size={22} /><Box><Heading order={2}>无权访问</Heading><Text className={sxStyles.sx3}>AI Provider 配置仅管理员可用。</Text></Box></Box>;
 
@@ -140,7 +146,7 @@ export default function AiChannelsPage() {
       const result = await mutations.check.mutateAsync({ channelId: selected.id, modelId: effectiveCheckModelId });
       setCheckResult(result.validation);
     } catch (error) {
-      setErrorMessage(formatApiError(error, "连通性检查失败"));
+      setErrorMessage(notifyRequestError("连通性检查失败", formatApiError(error, "连通性检查失败")));
     }
   }
 
@@ -148,7 +154,7 @@ export default function AiChannelsPage() {
     try {
       await mutations.reorder.mutateAsync(channelIds);
     } catch (error) {
-      setErrorMessage(formatApiError(error, "渠道排序保存失败"));
+      setErrorMessage(notifyRequestError("渠道排序保存失败", formatApiError(error, "渠道排序保存失败")));
     }
   }
 
@@ -182,7 +188,7 @@ export default function AiChannelsPage() {
         setDraft(draftFrom(result.channel));
       }
     } catch (error) {
-      setErrorMessage(formatApiError(error, "渠道信息保存失败"));
+      setErrorMessage(notifyRequestError("渠道信息保存失败", formatApiError(error, "渠道信息保存失败")));
       return;
     }
 
@@ -200,7 +206,7 @@ export default function AiChannelsPage() {
         syncedCount = result.discovery.count;
       }
     } catch (error) {
-      setCredentialError(formatApiError(error, secretDirty ? "凭据验证失败" : "模型同步失败"));
+      setCredentialError(notifyRequestError(secretDirty ? "凭据验证失败" : "模型同步失败", formatApiError(error, secretDirty ? "凭据验证失败" : "模型同步失败")));
       return;
     }
 
@@ -223,7 +229,7 @@ export default function AiChannelsPage() {
       setSecretRevealed(true);
       setSecretVisible(true);
     } catch (error) {
-      setCredentialError(formatApiError(error, "无法读取已保存密钥"));
+      setCredentialError(notifyRequestError("凭据操作失败", formatApiError(error, "无法读取已保存密钥")));
     } finally {
       setRevealingSecret(false);
     }
@@ -255,7 +261,7 @@ export default function AiChannelsPage() {
       const result = await mutations.sync.mutateAsync(selected.id);
       notify.success({ title: "模型目录已同步", description: `${result.validation.message}，共 ${result.discovery.count} 个模型。` });
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "模型同步失败");
+      setErrorMessage(notifyRequestError("模型同步失败", error, "模型同步失败"));
     }
   }
 
@@ -266,7 +272,7 @@ export default function AiChannelsPage() {
     try {
       await mutations.model.mutateAsync({ channelId: selected.id, modelId: model.id, payload: patch });
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "模型配置失败");
+      setErrorMessage(notifyRequestError("模型配置失败", error, "模型配置失败"));
     } finally {
       setBusyModelId(null);
     }
@@ -279,7 +285,7 @@ export default function AiChannelsPage() {
       if (selected?.id === channel.id) setDraft((current) => ({ ...current, enabled }));
       notify.success({ title: enabled ? "渠道已启用" : "渠道已停用" });
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "渠道状态更新失败");
+      setErrorMessage(notifyRequestError("渠道状态更新失败", error, "渠道状态更新失败"));
     }
   }
 
@@ -308,7 +314,7 @@ export default function AiChannelsPage() {
       resetCredentialDraft();
       notify.success({ title: "渠道已删除" });
     } catch (error) {
-      setErrorMessage(formatApiError(error, "删除渠道失败"));
+      setErrorMessage(notifyRequestError("删除渠道失败", formatApiError(error, "删除渠道失败")));
     }
   }
 
@@ -464,7 +470,7 @@ export default function AiChannelsPage() {
                 onQueryChange={setModelQuery}
                 onSync={() => void syncModels()}
               />}
-              <ErrorBanner message={errorMessage} />
+              <ErrorBanner message={errorMessage} title="渠道操作失败" />
               <ErrorBanner message={credentialError} title="凭据操作失败" />
             </div>
           </>

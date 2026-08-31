@@ -5,7 +5,7 @@
 .sx2{display:grid;grid-template-columns:1fr;gap:var(--oops-space-4);}@media (min-width: 544px){.sx2{grid-template-columns:1fr 1fr;}}
 
 /* Generated from components/upload/AnnotationForm.tsx */
-.sx3{display:flex;align-items:center;border:1px solid;border-color:var(--borderColor-default);border-radius:2px;overflow:hidden;}.sx3:focus-within{box-shadow:0 0 0 2px var(--borderColor-accent-emphasis);}
+.sx3{display:flex;align-items:center;border:1px solid;border-color:var(--borderColor-default);border-radius:var(--oops-radius-xs);overflow:hidden;}.sx3:focus-within{box-shadow:var(--oops-focus-ring);}
 
 /* Generated from components/upload/AnnotationForm.tsx */
 .sx4{flex:1;border:none;border-radius:0px;}.sx4 input{text-align:center;}.sx4:focus{box-shadow:none;border:none;}

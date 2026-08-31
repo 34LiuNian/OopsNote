@@ -28,7 +28,8 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const isLibrary = pathname.startsWith("/library");
   const isChannels = pathname.startsWith("/settings/channels");
   const isPaperCompose = pathname === "/papers/new";
-  const hasSecondarySidebar = isLibrary || isChannels || isPaperCompose;
+  const isCatalogSidebar = isLibrary || isChannels;
+  const hasSecondarySidebar = isCatalogSidebar || isPaperCompose;
   const defaultDesktopSidebarState: DesktopSidebarState = {
     pathname,
     primaryCollapsed: isLibrary,
@@ -122,7 +123,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         closeSecondarySidebar,
       }}
     >
-      <Box className={`oops-app-shell${sidebarCollapsed ? " is-sidebar-collapsed" : ""}${secondaryView === "context" ? " is-secondary-open" : " is-secondary-closed"}${isChannels ? " is-secondary-channels" : ""}${isPaperCompose ? " is-secondary-paper-compose" : ""}`}>
+      <Box className={`oops-app-shell${sidebarCollapsed ? " is-sidebar-collapsed" : ""}${secondaryView === "context" ? " is-secondary-open" : " is-secondary-closed"}${isCatalogSidebar ? " is-secondary-catalog" : ""}${isPaperCompose ? " is-secondary-paper-compose" : ""}`}>
         <Box as="header" className="oops-titlebar">
           <Button
             variant="default"

@@ -1,8 +1,8 @@
 /* Generated from components/renderers/LatexAssetRenderer.tsx */
-.sx1{padding:var(--oops-space-2);border:1px solid;border-color:var(--fgColor-danger-emphasis);border-radius:1px;background-color:var(--bgColor-danger-muted);}
+.sx1{padding:var(--oops-space-2);border:1px solid;border-color:var(--fgColor-danger-emphasis);border-radius: var(--oops-radius-xs);background-color:var(--bgColor-danger-muted);}
 
 /* Generated from components/renderers/LatexAssetRenderer.tsx */
-.sx3{padding:var(--oops-space-2);border:1px dashed;border-color:var(--borderColor-default);border-radius:1px;}
+.sx3{padding:var(--oops-space-2);border:1px dashed;border-color:var(--borderColor-default);border-radius: var(--oops-radius-xs);}
 
 /* Generated from components/renderers/LatexAssetRenderer.tsx */
 .sx4{color:var(--fgColor-muted);font-size:var(--oops-text-sm);}

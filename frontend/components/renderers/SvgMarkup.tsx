@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Box, Text } from "@/components/ui/primitives";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
+import { useRenderErrorNotification } from "@/hooks/useRenderErrorNotification";
 import sxStyles from "./SvgMarkup.sx.module.css";
 
 const BLOCKED_ELEMENTS = "script,foreignObject,iframe,object,embed,link,meta,audio,video";
@@ -155,6 +156,11 @@ export function SvgMarkup({
     }, 0);
     return () => window.clearTimeout(preparationTimer);
   }, [colorMode, preparationKey, svg]);
+
+  useRenderErrorNotification(
+    "SVG 渲染失败",
+    currentMarkup === "" ? "SVG 内容无效，无法显示。" : "",
+  );
 
   if (currentMarkup === null) {
     return <Text className={sxStyles.sx1}>图形准备中…</Text>;

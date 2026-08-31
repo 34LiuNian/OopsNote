@@ -2,6 +2,7 @@
 
 import { Box, Text } from "@/components/ui/primitives";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
+import { useRenderErrorNotification } from "@/hooks/useRenderErrorNotification";
 import { useLatexAsset } from "@/hooks/useLatexAsset";
 import { SvgMarkup } from "./SvgMarkup";
 import sxStyles from "./LatexAssetRenderer.sx.module.css";
@@ -24,6 +25,7 @@ export function LatexAssetRenderer({
   fit = false,
 }: LatexAssetRendererProps) {
   const { status, data, error } = useLatexAsset({ kind, content, inline });
+  useRenderErrorNotification("LaTeX 渲染失败", status === "error" ? (error || errorLabel) : "");
 
   if (!content) return null;
 

@@ -16,12 +16,20 @@ export function notificationAutoClose(
   return color === "red" ? false : requested;
 }
 
+export function requestErrorMessage(reason: unknown, fallback: string): string {
+  if (typeof reason === "string" && reason.trim()) return reason.trim();
+  if (reason instanceof Error && reason.message.trim()) return reason.message;
+  return fallback;
+}
+
 export function errorNotificationId(
   title: string,
   description?: string,
   explicitId?: string,
 ): string {
   if (explicitId) return explicitId;
-  const evidence = (description || title).trim().replace(/\s+/g, " ");
+  const titlePart = title.trim().replace(/\s+/g, " ");
+  const descriptionPart = (description ?? "").trim().replace(/\s+/g, " ");
+  const evidence = descriptionPart ? `${titlePart}\u0000${descriptionPart}` : titlePart;
   return `error-${hash(evidence || "unknown-error")}`;
 }
