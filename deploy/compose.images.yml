@@ -1,0 +1,20 @@
+# Prebuilt image override: pull from GHCR instead of building on the server.
+# Usage:
+#   docker compose -f docker-compose.yml -f deploy/compose.images.yml pull
+#   docker compose -f docker-compose.yml -f deploy/compose.images.yml up -d
+#
+# Images are published by GitHub Actions on every push to main (see
+# .github/workflows/ci.yml, job "docker"). `main` tracks the latest push;
+# `main-<short-sha>` pins an exact revision for rollback.
+services:
+  frontend:
+    image: ghcr.io/34liuniian/oopsnote-frontend:main
+    build: null
+
+  backend:
+    image: ghcr.io/34liuniian/oopsnote-backend:main
+    build: null
+
+  latex-renderer:
+    image: ghcr.io/34liuniian/oopsnote-latex-renderer:main
+    build: null
