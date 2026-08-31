@@ -10,7 +10,6 @@
 | `docker-compose.yml` | 生产（backend / frontend / latex-renderer，认证默认 Better Auth） |
 | `docker-compose.dev.yml` | 容器化本地开发（源码绑定挂载 + `--reload` 热更新） |
 | `docker-compose.local.yml` | 本地认证模式覆盖：`docker compose -f docker-compose.yml -f docker-compose.local.yml ...` |
-| `deploy/compose.bootstrap.yml` | 一次性引导：挂载 bootstrap secret，使 `/setup` 引导页可用（创建第一个管理员） |
 
 ## 生产部署（从零开始）
 
@@ -20,7 +19,7 @@
 2. 环境变量与密钥：执行 `./scripts/deploy/bootstrap.sh`（或 `make secrets`）——
    自动从模板生成 `.env` 与全部 secret 文件；随后编辑 `.env` 填写
    `OOPSNOTE_PUBLIC_URL`（认证默认 Better Auth，无需其它认证配置）。
-3. 启动并检查：
+3. 启动并检查（bootstrap secret 已随生产 Compose 常驻挂载，无需额外 override）：
 
    ```sh
    docker compose up -d --build
@@ -36,13 +35,9 @@
 
 5. 首次进入网页完成引导（创建第一个管理员）：
 
-   ```sh
-   docker compose -f docker-compose.yml -f deploy/compose.bootstrap.yml up -d frontend
-   ```
-
-   然后浏览器打开 `https://<OOPSNOTE_PUBLIC_URL>/setup`，填表创建管理员账号。
-   完成后立即移除该 override（`docker compose up -d frontend`），引导页即随
-   bootstrap secret 一起失效。
+   浏览器打开 `https://<OOPSNOTE_PUBLIC_URL>/setup`，填表创建管理员账号。
+   引导页仅在用户表为空时可达，创建完成后自动关闭（再次访问回到登录页）。
+   登录页也会在引导可用时显示「初始化管理员」入口。
 
 ## 升级
 

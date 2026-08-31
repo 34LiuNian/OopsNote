@@ -1,9 +1,8 @@
 # OopsNote Compose secrets
 
-`docker-compose.yml`、`docker-compose.dev.yml` 与 `deploy/compose.bootstrap.yml`
-把本目录下的文件以 Docker secret 挂载进容器。真实密钥被 `.gitignore` 忽略，
-仓库只提交 `*.example` 占位模板；部署前在服务器上生成真实文件（目录 0700、
-文件 0600）。
+`docker-compose.yml` 与 `docker-compose.dev.yml` 把本目录下的文件以 Docker
+secret 挂载进容器。真实密钥被 `.gitignore` 忽略，仓库只提交 `*.example`
+占位模板；部署前在服务器上生成真实文件（目录 0700、文件 0600）。
 
 ## 生产（docker-compose.yml）
 
@@ -12,7 +11,7 @@
 | `better_auth_secret` | Better Auth 会话签名密钥（≥32 字节） |
 | `bff_hmac_secret` | 前端 BFF → 后端请求 HMAC 密钥 |
 | `credential_store_key` | SecretStore 凭证库主密钥（Fernet 兼容：32 随机字节的 urlsafe base64） |
-| `bootstrap_secret` | 首次引导密钥：`deploy/compose.bootstrap.yml` 挂载后，访问 `/setup` 创建第一个管理员 |
+| `bootstrap_secret` | 首次引导密钥：生产 Compose 常驻挂载，用户表为空时 `/setup` 可创建第一个管理员 |
 
 ## 开发（docker-compose.dev.yml）
 

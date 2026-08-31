@@ -16,8 +16,8 @@
   或加密的容器 vault + 文件挂载主密钥），不写入环境变量、日志或响应。
 - 仓库不包含任何真实密钥；`deploy/oopsnote/secrets/` 只提交 `*.example`
   占位模板，真实文件由 `scripts/deploy/bootstrap.sh` 在服务器上生成（0600）。
-- 首次管理员创建（`/setup` 引导页）仅在运营者显式挂载一次性 bootstrap
-  secret 时可用，且创建动作是一次性原子 claim；完成后请立即移除该 override。
+- 首次管理员创建（`/setup` 引导页）仅在用户表为空时可用，且创建动作是一次
+  性原子 claim；创建完成后引导页自动关闭，无需手动摘除。
 - 后端仅接受由 Better Auth BFF 用 HMAC 签发的内部身份请求；前端与后端共享
   的 HMAC 密钥独立于会话密钥。
 - 若发现密钥泄露：轮换对应 secret（`bootstrap.sh` 只会生成缺失文件，轮换需

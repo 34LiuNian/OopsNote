@@ -5,7 +5,7 @@ import { betterAuthIdentityStats } from "@/lib/better-auth-database";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-/** 供登录页/引导页探测：只有运营者挂载了 bootstrap 密钥且尚无用户时才可用。 */
+/** 供登录页/引导页探测：bootstrap 密钥已挂载且尚无任何用户时才可用。 */
 export async function GET() {
   const available = Boolean(bootstrapSecret()) && betterAuthIdentityStats().totalUsers === 0;
   return NextResponse.json({ available });
@@ -13,8 +13,7 @@ export async function GET() {
 
 /**
  * 网页引导入口：服务端直接使用已挂载的 bootstrap 密钥，无需调用方携带
- * secret。该端点仅在运营者显式挂载 compose.bootstrap.yml（一次性）时存在，
- * 且创建动作仍然是一次性原子 claim——完成后请立即移除该 override。
+ * secret。仅在尚无任何用户时可达，创建动作仍然是一次性原子 claim。
  */
 export async function POST(request: Request) {
   if (!bootstrapSecret()) {

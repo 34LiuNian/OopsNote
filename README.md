@@ -42,7 +42,8 @@ finalize；AI 运行时不直接写仓库文件。题目正文统一使用
 [OopsMark v1](docs/oopsmark-v1.md)。
 
 完整设计见 [架构文档](docs/ARCHITECTURE.md)，本机 provider 与凭证配置见
-[LangChain 运维指南](docs/operations/langchain.md)。
+[LangChain 运维指南](docs/operations/langchain.md)。题目编辑与知识树交互见
+[前端信息架构](docs/frontend-interaction.md)。
 
 ## 项目结构
 
@@ -116,12 +117,8 @@ LangChain 隔离生产评测报告：
 docker compose up -d --build
 ```
 
-首次启动后，挂载一次性引导并访问 `/setup` 创建管理员：
-
-```sh
-docker compose -f docker-compose.yml -f deploy/compose.bootstrap.yml up -d frontend
-# 浏览器打开 https://<你的域名>/setup，填表创建管理员，完成后移除该 override
-```
+首次启动后访问 `https://<你的域名>/setup` 创建管理员（用户表为空时可用，
+创建完成即自动关闭，无需手动摘除任何配置）：
 
 - `docker-compose.yml` 生产 Compose（backend / frontend / latex-renderer，
   认证默认 Better Auth）。

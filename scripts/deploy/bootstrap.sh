@@ -36,6 +36,5 @@ fi
 
 echo "首启引导完成。编辑 $project_root/.env 后执行："
 echo "  docker compose up -d --build"
-echo "创建第一个管理员："
-echo "  docker compose -f docker-compose.yml -f deploy/compose.bootstrap.yml up -d frontend"
-echo "然后访问 https://<你的域名>/setup 完成网页引导。"
+echo "然后访问 https://<你的域名>/setup 创建第一个管理员（用户表为空时可用，"
+echo "创建完成即自动关闭）。"

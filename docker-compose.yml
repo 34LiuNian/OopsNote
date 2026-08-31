@@ -11,13 +11,14 @@ services:
       BETTER_AUTH_URL: ${OOPSNOTE_PUBLIC_URL:-https://oopsnote.example.com}
       OOPSNOTE_AUTH_DB_PATH: /auth/auth.sqlite
       OOPSNOTE_BACKEND_URL: http://backend:8000
-      OOPSNOTE_BETTER_AUTH_SECRET_FILE: /run/secrets/oopsnote_better_auth_secret
+      OOPSNOTE_BOOTSTRAP_SECRET_FILE: /run/secrets/oopsnote_bootstrap_secret
       OOPSNOTE_BFF_HMAC_SECRET_FILE: /run/secrets/oopsnote_bff_hmac_secret
     volumes:
       - oopsnote-auth:/auth
     secrets:
       - oopsnote_better_auth_secret
       - oopsnote_bff_hmac_secret
+      - oopsnote_bootstrap_secret
     ports:
       - "127.0.0.1:13000:3000"
     depends_on:
@@ -96,3 +97,5 @@ secrets:
     file: ./deploy/oopsnote/secrets/bff_hmac_secret
   oopsnote_secret_store_key:
     file: ./deploy/oopsnote/secrets/credential_store_key
+  oopsnote_bootstrap_secret:
+    file: ./deploy/oopsnote/secrets/bootstrap_secret

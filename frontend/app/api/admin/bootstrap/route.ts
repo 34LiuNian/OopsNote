@@ -7,7 +7,7 @@ export const dynamic = "force-dynamic";
 /**
  * curl 兼容入口：调用方必须携带与服务器一致的 x-oopsnote-bootstrap-secret。
  * 网页引导请使用 /api/admin/setup（服务端直接读取已挂载的 bootstrap 密钥，
- * 仅在运营者显式挂载 compose.bootstrap.yml 时可用）。
+ * 仅在尚无任何用户时可用）。
  */
 export async function POST(request: Request) {
   const configured = bootstrapSecret();
