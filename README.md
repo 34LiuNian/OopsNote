@@ -113,20 +113,22 @@ LangChain 隔离生产评测报告：
 ```sh
 ./scripts/deploy/bootstrap.sh      # 首次启动：自动生成 .env 与全部 secret
 # 编辑 .env 填写公开域名（认证默认 Better Auth）
-./scripts/deploy/sync_production_context.sh
-docker compose up -d --build
+docker compose -f docker-compose.yml -f deploy/compose.images.yml pull
+docker compose -f docker-compose.yml -f deploy/compose.images.yml up -d
 ```
 
 首次启动后访问 `https://<你的域名>/setup` 创建管理员（用户表为空时可用，
-创建完成即自动关闭，无需手动摘除任何配置）：
+创建完成即自动关闭，无需手动摘除任何配置）。
 
+- 镜像由 GitHub Actions 在 push 到 `main` 时自动构建并发布到 GHCR，服务器
+  免构建部署；详见 [deploy/README.md](deploy/README.md)。
 - `docker-compose.yml` 生产 Compose（backend / frontend / latex-renderer，
-  认证默认 Better Auth）。
+  认证默认 Better Auth）；`deploy/compose.images.yml` 预构建镜像覆盖。
 - `docker-compose.dev.yml` 容器化本地开发；`docker-compose.local.yml` 本地认证
   模式覆盖。
 - Secret 模板与生成方式见 `deploy/oopsnote/secrets/README.md`。
 - CI：GitHub Actions（`.github/workflows/ci.yml`）在 push/PR 上运行 ruff、
-  eslint、tsc、单元测试与前后端镜像构建。
+  eslint、tsc、单元测试，push 到 main 时额外构建并发布三个镜像。
 
 ## 当前进度
 
