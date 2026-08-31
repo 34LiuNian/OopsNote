@@ -10,7 +10,10 @@ import { TaskProgressBar } from "../../components/task/TaskProgressBar";
 import { useTaskProgress, ProgressStepKey } from "../../hooks/useTaskProgress";
 import { confirmAction } from "@/lib/confirm";
 import { notify } from "@/lib/notify";
+import { isAdminUser } from "@/lib/auth";
+import { useAuth } from "@/components/providers/AuthProvider";
 import { SelectionDebugFixture } from "./SelectionDebugFixture";
+import { AuthFixtures } from "@/components/auth/AuthFixtures";
 import sxStyles from "./page.sx.module.css";
 
 const DEFAULT_TEXT = [
@@ -62,6 +65,21 @@ const DEFAULT_TEXT = [
 const STEP_KEYS: ProgressStepKey[] = ["queued", "ocr", "solving", "tagging"];
 
 export default function DebugPage() {
+  const { user, loading } = useAuth();
+  if (!loading && !isAdminUser(user)) {
+    return (
+      <Box className={sxStyles.sx1}>
+        <Text className={sxStyles.sx2}>Debug</Text>
+        <Heading as="h2" className={sxStyles.sx3}>仅管理员可见</Heading>
+        <Text className={sxStyles.sx4}>渲染调试与测试台只对管理员账号开放。</Text>
+      </Box>
+    );
+  }
+
+  return <DebugPageContent />;
+}
+
+function DebugPageContent() {
   // Markdown 相关状态
   const [text, setText] = useState(DEFAULT_TEXT);
   const [progressIndex, setProgressIndex] = useState<number>(-1);
@@ -180,6 +198,8 @@ export default function DebugPage() {
           }}
         />
       </Box>
+
+      <AuthFixtures />
 
       <SelectionDebugFixture />
 

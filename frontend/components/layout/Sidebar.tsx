@@ -27,7 +27,7 @@ const NAV_ITEMS = [
   { href: "/settings/channels", label: "AI 渠道", icon: BlocksIcon, section: "admin" },
   { href: "/settings/policy", label: "AI 策略", icon: GitBranchIcon, section: "admin" },
   { href: "/settings", label: "系统运行", icon: GearIcon, section: "admin", matchExact: true },
-  { href: "/debug", label: "渲染调试", icon: BookIcon, section: "tools" },
+  { href: "/debug", label: "渲染调试", icon: BookIcon, section: "admin" },
 ] as const;
 
 function NavigationItems({
@@ -42,7 +42,6 @@ function NavigationItems({
   const pathname = usePathname();
   const { user } = useAuth();
   const mainItems = NAV_ITEMS.filter((item) => item.section === "main");
-  const toolItems = NAV_ITEMS.filter((item) => item.section === "tools");
   const adminItems = NAV_ITEMS.filter((item) => item.section === "admin" && isAdminUser(user));
   const isActive = (item: (typeof NAV_ITEMS)[number]) => "matchExact" in item && item.matchExact ? pathname === item.href : pathname.startsWith(item.href);
 
@@ -73,9 +72,6 @@ function NavigationItems({
           {adminItems.map(renderItem)}
         </>
       )}
-      <div className="app-sidebar__divider" />
-      {!collapsed && <span className="app-sidebar__label">工具</span>}
-      {toolItems.map(renderItem)}
     </nav>
   );
 }

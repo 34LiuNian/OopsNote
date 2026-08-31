@@ -1,4 +1,6 @@
 .shell {
+  position: relative;
+  isolation: isolate;
   display: grid;
   grid-template-areas: "photo" "form";
   grid-template-rows: auto 1fr;
@@ -10,43 +12,49 @@
 .photoRegion {
   grid-area: photo;
   min-width: 0;
-  padding: var(--oops-space-4);
+}
+/* 窄屏：照片铺满整个 auth 壳（真实页面即整屏；沙盒中只铺满所属容器）。 */
+.photo {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: var(--oops-auth-backdrop) url('/auth-background.webp') center / cover no-repeat;
 }
 
-.photo {
-  height: 168px;
-  border: 1px solid var(--borderColor-default);
-  border-radius: var(--oops-radius-shell);
-  background: var(--oops-auth-backdrop) url('/auth-background.webp') center / cover no-repeat;
+.photo::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: color-mix(in srgb, var(--bgColor-default) 72%, transparent);
 }
 
 .formRegion {
   grid-area: form;
+  position: relative;
+  z-index: 1;
   display: grid;
   min-width: 0;
   padding: clamp(var(--oops-space-5), 5vw, 56px);
   place-items: center;
 }
 
+
 .formContent { width: min(100%, 400px); }
 
 .brand {
   display: grid;
-  width: 64px;
-  height: 64px;
+  width: 72px;
+  height: 72px;
   margin: 0 auto var(--oops-space-5);
   place-items: center;
-  overflow: hidden;
-  border-radius: var(--oops-radius-lg);
   color: transparent;
-  background: var(--bgColor-muted);
   font-size: 0;
 }
 
 .brand span {
   display: block;
-  width: 34px;
-  height: 34px;
+  width: 72px;
+  height: 72px;
   background: var(--fgColor-default);
   -webkit-mask: url('/favicon.svg') center / contain no-repeat;
   mask: url('/favicon.svg') center / contain no-repeat;
@@ -86,18 +94,7 @@
   height: 62px;
   border-radius: var(--oops-radius-md);
   background: var(--bgColor-muted);
-  animation: auth-pulse 1.4s ease-in-out infinite;
 }
-.skeletonFooter {
-  height: 40px;
-  margin-top: var(--oops-space-1);
-  border-radius: var(--oops-radius-md);
-  background: var(--bgColor-muted);
-}
-
-@keyframes auth-spin { to { transform: rotate(360deg); } }
-@keyframes auth-progress { 0% { transform: translateX(-120%); } 100% { transform: translateX(360%); } }
-@keyframes auth-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .55; } }
 
 @media (min-width: 1024px) {
   .shell {
@@ -106,8 +103,19 @@
     grid-template-rows: 1fr;
   }
   .photoRegion { padding: clamp(var(--oops-space-5), 3vw, 40px); padding-left: 0; }
-  .photo { height: 100%; }
+  .photo {
+    position: static;
+    inset: auto;
+    height: 100%;
+    border: 1px solid var(--borderColor-default);
+    border-radius: var(--oops-radius-shell);
+  }
+  .photo::after { content: none; }
+  .formRegion { background: var(--bgColor-default); }
 }
+
+@keyframes auth-progress { 0% { transform: translateX(-120%); } 100% { transform: translateX(360%); } }
+@keyframes auth-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .55; } }
 
 @media (prefers-reduced-motion: reduce) {
   .spinner,
