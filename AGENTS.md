@@ -103,6 +103,18 @@ npm --prefix frontend run lint
 Do not claim browser E2E, credentialed model behavior, or paper compilation from static checks
 alone.
 
+## Debug process hygiene
+
+- Any process started for debugging (dev servers, watchers, REPLs, benchmark
+  runs, port probes) must be stopped before the task ends. Do not leave a
+  managed or background process running "for later" unless the user explicitly
+  asked to keep it alive.
+- Prefer session-managed processes (hub `start`) so they can be stopped
+  reliably; when killing user-started processes, confirm the exact PID and
+  command line first.
+- After stopping, verify the port is released (`netstat`) and no orphaned
+  child process (e.g. `next start-server`) still holds it.
+
 ## Frontend information architecture
 
 Read `DESIGN.md` and `docs/frontend-interaction.md` before changing problem-edit
