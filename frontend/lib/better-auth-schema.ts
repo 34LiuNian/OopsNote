@@ -221,7 +221,39 @@ where "source" = 'admin'
   },
 ] as const;
 
+/** 迁移清单：供测试与诊断读取；运行时只经 ensureBetterAuthSchema 应用。 */
+export const authSchemaMigrations = migrations;
+
+const expectedMigrations: Record<number, string> = Object.fromEntries(
+  migrations.map((migration) => [migration.version, migration.name]),
+);
+const MIGRATION_BUSY_TIMEOUT_MS = 30_000;
+
+function readAppliedMigrations(database: Database.Database): { version: number; name: string }[] {
+  return database
+    .prepare('select "version", "name" from "_oopsnote_auth_schema_migrations"')
+    .all() as { version: number; name: string }[];
+}
+
 export function ensureBetterAuthSchema(database: Database.Database): void {
+  // 稳态快速路径：迁移表已存在且全部版本按名匹配时只做读校验，不抢写锁。
+  // 本函数在模块评估时执行，Next.js dev/构建的并发 worker 会对同一库同时
+  // 触发；无条件 BEGIN IMMEDIATE 会让后到方在 busy_timeout 内拿不到写锁
+  // 而抛 SQLITE_BUSY（"database is locked"）。已迁移完成的启动不应碰写锁。
+  const migrationTable = database
+    .prepare(
+      "select 1 from sqlite_master where type = 'table' and name = '_oopsnote_auth_schema_migrations'",
+    )
+    .get();
+  if (migrationTable) {
+    const appliedRows = readAppliedMigrations(database);
+    if (
+      appliedRows.length === Object.keys(expectedMigrations).length &&
+      appliedRows.every((row) => expectedMigrations[Number(row.version)] === row.name)
+    ) {
+      return;
+    }
+  }
   const applyMigrations = database.transaction(() => {
     database.exec(`
       create table if not exists "_oopsnote_auth_schema_migrations" (
@@ -230,14 +262,9 @@ export function ensureBetterAuthSchema(database: Database.Database): void {
         "appliedAt" text not null
       );
     `);
-    const expected = new Map<number, string>(
-      migrations.map((migration) => [migration.version, migration.name]),
-    );
-    const appliedRows = database
-      .prepare('select "version", "name" from "_oopsnote_auth_schema_migrations"')
-      .all() as { version: number; name: string }[];
+    const appliedRows = readAppliedMigrations(database);
     for (const row of appliedRows) {
-      if (expected.get(Number(row.version)) !== row.name) {
+      if (expectedMigrations[Number(row.version)] !== row.name) {
         throw new Error(`Unknown or mismatched Better Auth schema migration: ${row.version}`);
       }
     }
@@ -252,8 +279,14 @@ export function ensureBetterAuthSchema(database: Database.Database): void {
         .run(migration.version, migration.name, new Date().toISOString());
     }
   });
-  // BEGIN IMMEDIATE：并发构建 worker / 多实例冷启动会对同一个新库同时迁移，
-  // 第二个连接在写锁上等待并重读已应用版本，避免 check-then-ALTER 竞态产生
-  // "duplicate column name"（见 CI 前端镜像构建失败）。
-  applyMigrations.immediate();
+  // 冷启动/升级需要写锁：临时加长 busy_timeout，覆盖并发 worker 持锁迁移
+  // 的整个窗口。BEGIN IMMEDIATE 保证等待方拿到锁后重读已应用版本，避免
+  // check-then-ALTER 竞态产生 "duplicate column name"（见 CI 前端镜像构建）。
+  const previousBusyTimeout = database.pragma("busy_timeout", { simple: true }) as number;
+  database.pragma(`busy_timeout = ${MIGRATION_BUSY_TIMEOUT_MS}`);
+  try {
+    applyMigrations.immediate();
+  } finally {
+    database.pragma(`busy_timeout = ${previousBusyTimeout}`);
+  }
 }

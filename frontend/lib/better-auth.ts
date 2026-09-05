@@ -40,7 +40,11 @@ export const auth = betterAuth({
   database: {
     dialect: new SqliteDialect({ database: betterAuthDatabase }),
     type: "sqlite",
-    transaction: true,
+    // 不开 better-auth 显式事务。kysely 单连接模型下，事务回调内的查询若经
+    // ALS fallback 落到外层 provider，会被外层事务占用的 #runningPromise
+    // 永久排队（实测 register 挂死）。关闭后所有查询走同一串行 provider，
+    // 与 kysely-adapter 对 SQLite 的官方默认一致；写原子性由 SQLite 单写者
+    // 语义 + busy_timeout 串行化保证。
   },
   emailAndPassword: {
     enabled: true,
